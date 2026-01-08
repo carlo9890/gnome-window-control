@@ -362,11 +362,8 @@ class WindowControlService {
                 const workspace = win.get_workspace();
                 const workspaceIndex = win.is_on_all_workspaces() ? -1 : (workspace ? workspace.index() : -1);
                 
-                // Use GLib.Variant for uint64 window ID to avoid GJS D-Bus type errors
-                const windowId = new GLib.Variant('t', win.get_id());
-                
                 result.push(new GLib.Variant('(tssssbiiii)', [
-                    windowId,                                  // t - window ID
+                    win.get_id(),                              // t - window ID
                     win.get_title() || '',                     // s - title
                     win.get_wm_class() || '',                  // s - wm_class
                     win.get_wm_class_instance() || '',         // s - wm_class_instance
@@ -408,7 +405,7 @@ class WindowControlService {
                     sandboxed_app_id: win.get_sandboxed_app_id() || '',
                     gtk_application_id: win.get_gtk_application_id() || '',
                     has_focus: win.has_focus(),
-                    appears_focused: win.appears_focused,
+                    appears_focused: typeof win.appears_focused === 'boolean' ? win.appears_focused : win.has_focus(),
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
                     is_maximized: win.get_maximized() === Meta.MaximizeFlags.BOTH,

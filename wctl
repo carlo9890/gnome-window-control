@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # D-Bus service details
-DBUS_DEST="org.gnome.Shell.Extensions.WindowControl"
+DBUS_DEST="org.gnome.Shell"
 DBUS_PATH="/org/gnome/Shell/Extensions/WindowControl"
 DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
 
