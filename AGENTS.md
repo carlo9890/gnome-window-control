@@ -100,15 +100,32 @@ gdbus call --session --dest org.gnome.Shell \
 | Change Type | Restart Required? |
 |-------------|-------------------|
 | First install | Yes (log out/in on Wayland) |
-| Code changes (extension.js) | No - use `./scripts/update.sh` |
+| Code changes (extension.js) | **Yes** - disable/enable does NOT reload JS from disk |
 | metadata.json changes | Yes |
 | Adding new files | Yes |
+
+**Important**: Unlike some plugin systems, `gnome-extensions disable/enable` does NOT reload JavaScript code from disk. It only calls `disable()` and `enable()` on the already-loaded code. To test actual code changes, you must restart GNOME Shell (log out/in on Wayland).
+
+### Logging
+
+GNOME Shell extensions use the `console` API but with different log levels:
+
+| Function | Level | Visible by default? |
+|----------|-------|---------------------|
+| `console.log()` | DEBUG | No - filtered out |
+| `console.warn()` | WARNING | Yes |
+| `console.error()` | CRITICAL | Yes |
+
+To see `console.log()` output, set `G_MESSAGES_DEBUG=all` before starting GNOME Shell.
+
+For production code, use `console.error()` sparingly for actual errors only.
 
 ### Common Issues
 
 1. **Extension not found**: Run `gnome-extensions list` - if not listed, need restart
 2. **D-Bus errors**: Check `./scripts/update.sh logs` for JavaScript errors
 3. **Methods returning wrong types**: GJS D-Bus has quirks with uint64 - use BigInt or GLib.Variant
+4. **Code changes not taking effect**: Need full GNOME Shell restart, not just disable/enable
 
 ## Requirements Doc
 
