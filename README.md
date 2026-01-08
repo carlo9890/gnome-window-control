@@ -22,8 +22,8 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/carlo9890/stop-gap.git
-   cd stop-gap
+   git clone https://github.com/carlo9890/gnome-window-control.git
+   cd gnome-window-control
    ```
 
 2. Install the extension:
@@ -184,7 +184,7 @@ gdbus call --session \
 ## Project Structure
 
 ```
-stop-gap/
+gnome-window-control/
 ├── window-control@hko9890/    # GNOME Shell extension
 │   ├── extension.js           # Main extension code
 │   ├── metadata.json          # Extension metadata
@@ -198,9 +198,9 @@ stop-gap/
 └── LICENSE                    # MIT License
 ```
 
-## Why "stop-gap"?
+## Background
 
-This project is a stop-gap solution for window control on Wayland until better native solutions emerge. On X11, tools like `wmctrl` and `xdotool` provide this functionality, but they don't work on Wayland due to its security model. This extension bridges that gap by exposing window control through GNOME Shell's privileged position.
+This project provides window control on Wayland where traditional tools don't work. On X11, tools like `wmctrl` and `xdotool` provide this functionality, but they don't work on Wayland due to its security model. This extension bridges that gap by exposing window control through GNOME Shell's privileged position.
 
 ## License
 
