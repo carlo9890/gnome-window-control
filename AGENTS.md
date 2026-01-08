@@ -1,40 +1,115 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+## Project Overview
 
-## Quick Reference
+GNOME Window Control - A GNOME Shell extension providing D-Bus interface for window control on Wayland.
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
+## Project Structure
+
+```
+stop-gap/
+├── window-control@hko9890/    # GNOME Shell extension source
+│   ├── extension.js           # Main extension code
+│   ├── metadata.json          # Extension metadata
+│   └── README.md              # Extension-specific docs
+├── scripts/                   # Build and dev scripts
+│   ├── build.sh               # Build distributable zip
+│   └── update.sh              # Local dev update script
+├── dist/                      # Build output (gitignored)
+├── wctl                       # CLI wrapper script
+├── README.md                  # Project documentation
+├── CONTRIBUTING.md            # Contribution guidelines
+└── LICENSE                    # MIT License
 ```
 
-## Landing the Plane (Session Completion)
+## Development Workflow
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+### Testing Extension Changes
 
-**MANDATORY WORKFLOW:**
+After modifying `window-control@hko9890/extension.js`:
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+```bash
+# Full update: validate, install, reload, test
+./scripts/update.sh
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+# Or step by step:
+./scripts/update.sh validate   # Check files are valid
+./scripts/update.sh install    # Copy to ~/.local/share/gnome-shell/extensions/
+./scripts/update.sh reload     # Disable and re-enable extension
+./scripts/update.sh test       # Test D-Bus interface
+./scripts/update.sh logs       # Check for errors
+```
 
+### Building for Distribution
+
+```bash
+./scripts/build.sh all         # Clean, validate, build zip
+./scripts/build.sh install     # Install locally from source
+```
+
+Output goes to `dist/window-control@hko9890_v<version>.zip`
+
+### Checking Extension Status
+
+```bash
+# Extension info
+gnome-extensions info window-control@hko9890
+
+# Check logs for errors
+journalctl --user -b -g "Window Control" -f
+
+# Test D-Bus
+gdbus call --session \
+  --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/WindowControl \
+  --method org.gnome.Shell.Extensions.WindowControl.GetFocused
+```
+
+## D-Bus Interface
+
+**Important**: The extension registers under `org.gnome.Shell`, not as a standalone service.
+
+- **Destination**: `org.gnome.Shell`
+- **Path**: `/org/gnome/Shell/Extensions/WindowControl`
+- **Interface**: `org.gnome.Shell.Extensions.WindowControl`
+
+### Testing Methods
+
+```bash
+# List windows
+gdbus call --session --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/WindowControl \
+  --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
+
+# Get focused window
+gdbus call --session --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/WindowControl \
+  --method org.gnome.Shell.Extensions.WindowControl.GetFocused
+
+# Activate window by ID
+gdbus call --session --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/WindowControl \
+  --method org.gnome.Shell.Extensions.WindowControl.Activate \
+  "uint64:12345"
+```
+
+## GNOME Extension Notes
+
+### When Restart is Required
+
+| Change Type | Restart Required? |
+|-------------|-------------------|
+| First install | Yes (log out/in on Wayland) |
+| Code changes (extension.js) | No - use `./scripts/update.sh` |
+| metadata.json changes | Yes |
+| Adding new files | Yes |
+
+### Common Issues
+
+1. **Extension not found**: Run `gnome-extensions list` - if not listed, need restart
+2. **D-Bus errors**: Check `./scripts/update.sh logs` for JavaScript errors
+3. **Methods returning wrong types**: GJS D-Bus has quirks with uint64 - use BigInt or GLib.Variant
+
+## Requirements Doc
+
+See `gnome-window-control-extension-requirements.md` for full API specification.

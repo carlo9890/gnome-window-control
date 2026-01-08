@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'window-control@hko9890/**'
-      - 'build/**'
+      - 'scripts/**'
       - '.github/workflows/build.yml'
   pull_request:
     branches: [main]
     paths:
       - 'window-control@hko9890/**'
-      - 'build/**'
+      - 'scripts/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -29,16 +29,16 @@ jobs:
           python-version: '3.x'
 
       - name: Make build script executable
-        run: chmod +x build/build.sh
+        run: chmod +x scripts/build.sh
 
       - name: Build extension
-        run: ./build/build.sh all
+        run: ./scripts/build.sh all
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: gnome-window-control-extension
-          path: build/dist/*.zip
+          path: dist/*.zip
           retention-days: 30
 
   release:

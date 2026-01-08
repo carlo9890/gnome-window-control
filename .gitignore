@@ -1,1 +1,11 @@
+# Beads database (synced via JSONL)
 .beads/beads.db
+
+# Build output
+dist/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
