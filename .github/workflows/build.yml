@@ -1,0 +1,104 @@
+name: Build Extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'window-control@hko9890/**'
+      - 'build/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'window-control@hko9890/**'
+      - 'build/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Make build script executable
+        run: chmod +x build/build.sh
+
+      - name: Build extension
+        run: ./build/build.sh all
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnome-window-control-extension
+          path: build/dist/*.zip
+          retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('window-control@hko9890/metadata.json'))['version'])")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gnome-window-control-extension
+          path: dist/
+
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        if: steps.check_release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          body: |
+            ## GNOME Window Control Extension v${{ steps.version.outputs.version }}
+            
+            ### Installation
+            
+            1. Download `window-control@hko9890_v${{ steps.version.outputs.version }}.zip`
+            2. Install: `gnome-extensions install window-control@hko9890_v${{ steps.version.outputs.version }}.zip --force`
+            3. Restart GNOME Shell (log out/in on Wayland)
+            4. Enable: `gnome-extensions enable window-control@hko9890`
+            
+            ### Compatibility
+            - GNOME Shell 45, 46, 47
+          files: dist/*.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
