@@ -325,6 +325,7 @@ class WindowControlService {
             }
         }
         
+        console.log(`[Window Control] _getAllWindows(): found ${actors.length} actors, ${windows.length} normal windows`);
         return windows;
     }
 
@@ -352,6 +353,7 @@ class WindowControlService {
 
     // List: Get all windows as array of tuples
     List() {
+        console.log(`[Window Control] List() called`);
         try {
             const windows = this._getAllWindows();
             const result = [];
@@ -360,8 +362,11 @@ class WindowControlService {
                 const workspace = win.get_workspace();
                 const workspaceIndex = win.is_on_all_workspaces() ? -1 : (workspace ? workspace.index() : -1);
                 
-                result.push([
-                    win.get_id(),                              // t - window ID
+                // Use GLib.Variant for uint64 window ID to avoid GJS D-Bus type errors
+                const windowId = new GLib.Variant('t', win.get_id());
+                
+                result.push(new GLib.Variant('(tssssbiiii)', [
+                    windowId,                                  // t - window ID
                     win.get_title() || '',                     // s - title
                     win.get_wm_class() || '',                  // s - wm_class
                     win.get_wm_class_instance() || '',         // s - wm_class_instance
@@ -371,18 +376,20 @@ class WindowControlService {
                     win.get_monitor(),                         // i - monitor index
                     win.get_pid(),                             // i - PID
                     win.get_window_type(),                     // i - window type enum
-                ]);
+                ]));
             }
             
-            return [result];
+            console.log(`[Window Control] List() returning ${result.length} windows`);
+            return new GLib.Variant('(a(tssssbiiii))', [result]);
         } catch (e) {
             console.error(`[Window Control] List() error: ${e.message}`);
-            return [[]];
+            return new GLib.Variant('(a(tssssbiiii))', [[]]);
         }
     }
 
     // ListDetailed: Get all windows as JSON string with full details
     ListDetailed() {
+        console.log(`[Window Control] ListDetailed() called`);
         try {
             const windows = this._getAllWindows();
             const result = [];
@@ -401,7 +408,7 @@ class WindowControlService {
                     sandboxed_app_id: win.get_sandboxed_app_id() || '',
                     gtk_application_id: win.get_gtk_application_id() || '',
                     has_focus: win.has_focus(),
-                    appears_focused: win.appears_focused(),
+                    appears_focused: win.appears_focused,
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
                     is_maximized: win.get_maximized() === Meta.MaximizeFlags.BOTH,
@@ -423,6 +430,7 @@ class WindowControlService {
                 });
             }
             
+            console.log(`[Window Control] ListDetailed() returning ${result.length} windows`);
             return JSON.stringify(result);
         } catch (e) {
             console.error(`[Window Control] ListDetailed() error: ${e.message}`);
@@ -432,12 +440,15 @@ class WindowControlService {
 
     // Activate: Activate (focus and raise) a window by ID
     Activate(windowId) {
+        console.log(`[Window Control] Activate(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.activate(global.get_current_time());
+                console.log(`[Window Control] Activate(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Activate(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Activate() error: ${e.message}`);
@@ -447,12 +458,15 @@ class WindowControlService {
 
     // ActivateByTitle: Activate window by exact title match
     ActivateByTitle(title) {
+        console.log(`[Window Control] ActivateByTitle("${title}") called`);
         try {
             const win = this._findWindowByPredicate(w => w.get_title() === title);
             if (win) {
                 win.activate(global.get_current_time());
+                console.log(`[Window Control] ActivateByTitle("${title}") -> true`);
                 return true;
             }
+            console.log(`[Window Control] ActivateByTitle("${title}") -> false (not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByTitle() error: ${e.message}`);
@@ -462,6 +476,7 @@ class WindowControlService {
 
     // ActivateByTitleSubstring: Activate window by title substring
     ActivateByTitleSubstring(substring) {
+        console.log(`[Window Control] ActivateByTitleSubstring("${substring}") called`);
         try {
             const win = this._findWindowByPredicate(w => {
                 const title = w.get_title();
@@ -469,8 +484,10 @@ class WindowControlService {
             });
             if (win) {
                 win.activate(global.get_current_time());
+                console.log(`[Window Control] ActivateByTitleSubstring("${substring}") -> true`);
                 return true;
             }
+            console.log(`[Window Control] ActivateByTitleSubstring("${substring}") -> false (not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByTitleSubstring() error: ${e.message}`);
@@ -480,12 +497,15 @@ class WindowControlService {
 
     // ActivateByWmClass: Activate window by WM class (exact match)
     ActivateByWmClass(wmClass) {
+        console.log(`[Window Control] ActivateByWmClass("${wmClass}") called`);
         try {
             const win = this._findWindowByPredicate(w => w.get_wm_class() === wmClass);
             if (win) {
                 win.activate(global.get_current_time());
+                console.log(`[Window Control] ActivateByWmClass("${wmClass}") -> true`);
                 return true;
             }
+            console.log(`[Window Control] ActivateByWmClass("${wmClass}") -> false (not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByWmClass() error: ${e.message}`);
@@ -495,12 +515,15 @@ class WindowControlService {
 
     // ActivateByPid: Activate window by PID
     ActivateByPid(pid) {
+        console.log(`[Window Control] ActivateByPid(${pid}) called`);
         try {
             const win = this._findWindowByPredicate(w => w.get_pid() === pid);
             if (win) {
                 win.activate(global.get_current_time());
+                console.log(`[Window Control] ActivateByPid(${pid}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] ActivateByPid(${pid}) -> false (not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByPid() error: ${e.message}`);
@@ -510,12 +533,15 @@ class WindowControlService {
 
     // Focus: Focus a window by ID (without raising)
     Focus(windowId) {
+        console.log(`[Window Control] Focus(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.focus(global.get_current_time());
+                console.log(`[Window Control] Focus(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Focus(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Focus() error: ${e.message}`);
@@ -525,15 +551,17 @@ class WindowControlService {
 
     // GetFocused: Get the currently focused window
     GetFocused() {
+        console.log(`[Window Control] GetFocused() called`);
         try {
             const win = this._findWindowByPredicate(w => w.has_focus());
             if (win) {
-                return [
-                    win.get_id(),
-                    win.get_title() || '',
-                    win.get_wm_class() || '',
-                ];
+                const id = win.get_id();
+                const title = win.get_title() || '';
+                const wmClass = win.get_wm_class() || '';
+                console.log(`[Window Control] GetFocused() -> ${id}, "${title}", "${wmClass}"`);
+                return [id, title, wmClass];
             }
+            console.log(`[Window Control] GetFocused() -> no focused window`);
             return [0, '', ''];
         } catch (e) {
             console.error(`[Window Control] GetFocused() error: ${e.message}`);
@@ -543,12 +571,15 @@ class WindowControlService {
 
     // Move: Move window to position
     Move(windowId, x, y) {
+        console.log(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.move_frame(true, x, y);
+                console.log(`[Window Control] Move(${windowId}, ${x}, ${y}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Move(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Move() error: ${e.message}`);
@@ -558,13 +589,16 @@ class WindowControlService {
 
     // Resize: Resize window (keeps position)
     Resize(windowId, width, height) {
+        console.log(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 const rect = win.get_frame_rect();
                 win.move_resize_frame(true, rect.x, rect.y, width, height);
+                console.log(`[Window Control] Resize(${windowId}, ${width}, ${height}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Resize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Resize() error: ${e.message}`);
@@ -574,12 +608,15 @@ class WindowControlService {
 
     // MoveResize: Move and resize window atomically
     MoveResize(windowId, x, y, width, height) {
+        console.log(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.move_resize_frame(true, x, y, width, height);
+                console.log(`[Window Control] MoveResize(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] MoveResize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] MoveResize() error: ${e.message}`);
@@ -589,12 +626,15 @@ class WindowControlService {
 
     // GetGeometry: Get window geometry
     GetGeometry(windowId) {
+        console.log(`[Window Control] GetGeometry(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 const rect = win.get_frame_rect();
+                console.log(`[Window Control] GetGeometry(${windowId}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
                 return [rect.x, rect.y, rect.width, rect.height];
             }
+            console.log(`[Window Control] GetGeometry(${windowId}) -> not found`);
             return [-1, -1, -1, -1];
         } catch (e) {
             console.error(`[Window Control] GetGeometry() error: ${e.message}`);
@@ -604,12 +644,15 @@ class WindowControlService {
 
     // MoveToMonitor: Move window to specified monitor
     MoveToMonitor(windowId, monitor) {
+        console.log(`[Window Control] MoveToMonitor(${windowId}, ${monitor}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.move_to_monitor(monitor);
+                console.log(`[Window Control] MoveToMonitor(${windowId}, ${monitor}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] MoveToMonitor(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] MoveToMonitor() error: ${e.message}`);
@@ -619,12 +662,15 @@ class WindowControlService {
 
     // MoveToWorkspace: Move window to specified workspace
     MoveToWorkspace(windowId, workspace) {
+        console.log(`[Window Control] MoveToWorkspace(${windowId}, ${workspace}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.change_workspace_by_index(workspace, false);
+                console.log(`[Window Control] MoveToWorkspace(${windowId}, ${workspace}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] MoveToWorkspace(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] MoveToWorkspace() error: ${e.message}`);
@@ -634,12 +680,15 @@ class WindowControlService {
 
     // Minimize: Minimize window
     Minimize(windowId) {
+        console.log(`[Window Control] Minimize(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.minimize();
+                console.log(`[Window Control] Minimize(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Minimize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Minimize() error: ${e.message}`);
@@ -649,12 +698,15 @@ class WindowControlService {
 
     // Unminimize: Unminimize (restore) window
     Unminimize(windowId) {
+        console.log(`[Window Control] Unminimize(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.unminimize();
+                console.log(`[Window Control] Unminimize(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Unminimize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Unminimize() error: ${e.message}`);
@@ -664,12 +716,15 @@ class WindowControlService {
 
     // Maximize: Maximize window
     Maximize(windowId) {
+        console.log(`[Window Control] Maximize(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.maximize(Meta.MaximizeFlags.BOTH);
+                console.log(`[Window Control] Maximize(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Maximize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Maximize() error: ${e.message}`);
@@ -679,12 +734,15 @@ class WindowControlService {
 
     // Unmaximize: Unmaximize window
     Unmaximize(windowId) {
+        console.log(`[Window Control] Unmaximize(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.unmaximize(Meta.MaximizeFlags.BOTH);
+                console.log(`[Window Control] Unmaximize(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Unmaximize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Unmaximize() error: ${e.message}`);
@@ -694,12 +752,15 @@ class WindowControlService {
 
     // Fullscreen: Make window fullscreen
     Fullscreen(windowId) {
+        console.log(`[Window Control] Fullscreen(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.make_fullscreen();
+                console.log(`[Window Control] Fullscreen(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Fullscreen(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Fullscreen() error: ${e.message}`);
@@ -709,12 +770,15 @@ class WindowControlService {
 
     // Unfullscreen: Exit fullscreen mode
     Unfullscreen(windowId) {
+        console.log(`[Window Control] Unfullscreen(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.unmake_fullscreen();
+                console.log(`[Window Control] Unfullscreen(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Unfullscreen(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Unfullscreen() error: ${e.message}`);
@@ -724,6 +788,7 @@ class WindowControlService {
 
     // SetAbove: Set window always-on-top state
     SetAbove(windowId, above) {
+        console.log(`[Window Control] SetAbove(${windowId}, ${above}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
@@ -732,8 +797,10 @@ class WindowControlService {
                 } else {
                     win.unmake_above();
                 }
+                console.log(`[Window Control] SetAbove(${windowId}, ${above}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] SetAbove(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] SetAbove() error: ${e.message}`);
@@ -743,6 +810,7 @@ class WindowControlService {
 
     // SetSticky: Set window sticky state (on all workspaces)
     SetSticky(windowId, sticky) {
+        console.log(`[Window Control] SetSticky(${windowId}, ${sticky}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
@@ -751,8 +819,10 @@ class WindowControlService {
                 } else {
                     win.unstick();
                 }
+                console.log(`[Window Control] SetSticky(${windowId}, ${sticky}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] SetSticky(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] SetSticky() error: ${e.message}`);
@@ -762,12 +832,15 @@ class WindowControlService {
 
     // Close: Close window (polite request)
     Close(windowId) {
+        console.log(`[Window Control] Close(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 win.delete(global.get_current_time());
+                console.log(`[Window Control] Close(${windowId}) -> true`);
                 return true;
             }
+            console.log(`[Window Control] Close(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Close() error: ${e.message}`);
