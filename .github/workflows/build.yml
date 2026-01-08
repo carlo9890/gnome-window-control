@@ -6,12 +6,16 @@ on:
     paths:
       - 'window-control@hko9890/**'
       - 'scripts/**'
+      - 'wctl'
+      - 'install-wctl.sh'
       - '.github/workflows/build.yml'
   pull_request:
     branches: [main]
     paths:
       - 'window-control@hko9890/**'
       - 'scripts/**'
+      - 'wctl'
+      - 'install-wctl.sh'
       - '.github/workflows/build.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -34,11 +38,25 @@ jobs:
       - name: Build extension
         run: ./scripts/build.sh all
 
-      - name: Upload build artifact
+      - name: Upload extension artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gnome-window-control-extension
+          name: window-control-extension
           path: dist/*.zip
+          retention-days: 30
+
+      - name: Upload wctl artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wctl
+          path: wctl
+          retention-days: 30
+
+      - name: Upload install script artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-wctl
+          path: install-wctl.sh
           retention-days: 30
 
   release:
@@ -62,11 +80,23 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Download artifact
+      - name: Download extension artifact
         uses: actions/download-artifact@v4
         with:
-          name: gnome-window-control-extension
+          name: window-control-extension
           path: dist/
+
+      - name: Download wctl artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wctl
+          path: release-files/
+
+      - name: Download install script artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: install-wctl
+          path: release-files/
 
       - name: Check if release exists
         id: check_release
@@ -90,14 +120,27 @@ jobs:
             
             ### Installation
             
+            #### Extension
             1. Download `window-control@hko9890_v${{ steps.version.outputs.version }}.zip`
             2. Install: `gnome-extensions install window-control@hko9890_v${{ steps.version.outputs.version }}.zip --force`
             3. Restart GNOME Shell (log out/in on Wayland)
             4. Enable: `gnome-extensions enable window-control@hko9890`
             
+            #### wctl CLI (Optional)
+            Download `wctl` and `install-wctl.sh`, then run:
+            ```bash
+            chmod +x install-wctl.sh
+            ./install-wctl.sh
+            ```
+            
+            Or manually copy `wctl` to `~/.local/bin/`.
+            
             ### Compatibility
             - GNOME Shell 45, 46, 47
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            release-files/wctl
+            release-files/install-wctl.sh
           draft: false
           prerelease: false
         env:

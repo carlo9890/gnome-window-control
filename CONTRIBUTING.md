@@ -62,17 +62,20 @@ On Wayland, you may need to log out and back in for some changes.
 - Use `const` and `let`, not `var`
 - Use template literals for string interpolation
 - Wrap D-Bus method implementations in try/catch
-- Log errors with `console.error()`
+- Use `console.log()` for informational messages (method calls, window counts, etc.)
+- Use `console.error()` ONLY in catch blocks for actual errors
 - Return graceful defaults on error (empty arrays, `false`, etc.)
 
 Example:
 ```javascript
 SomeMethod(param) {
+    console.log(`[WindowControl] SomeMethod(${param}) called`);
     try {
         const window = this._findWindowById(param);
         if (!window) return false;
         
         window.someAction();
+        console.log(`[WindowControl] SomeMethod(${param}) -> true`);
         return true;
     } catch (e) {
         console.error(`[WindowControl] SomeMethod failed: ${e.message}`);
@@ -126,6 +129,20 @@ Some windows (like Steam popups) return null for get_title().
 Now returns empty string instead of crashing.
 ```
 
+## Running Tests
+
+The project includes test scripts in the `tests/` directory:
+
+```bash
+# Run all query tests (non-destructive, won't modify windows)
+./tests/run-all-query-tests.sh
+
+# Run modification tests (will minimize/maximize/move windows - use with caution)
+./tests/run-all-modification-tests.sh
+```
+
+**Note**: The extension must be enabled and running for tests to pass.
+
 ## Adding New D-Bus Methods
 
 1. Add the method signature to the D-Bus XML in `extension.js`:
@@ -146,11 +163,13 @@ Now returns empty string instead of crashing.
 2. Add the implementation in `WindowControlService` class:
    ```javascript
    YourNewMethod(windowId) {
+       console.log(`[WindowControl] YourNewMethod(${windowId}) called`);
        try {
            const window = this._findWindowById(windowId);
            if (!window) return false;
            
            // Your implementation
+           console.log(`[WindowControl] YourNewMethod(${windowId}) -> true`);
            return true;
        } catch (e) {
            console.error(`[WindowControl] YourNewMethod failed: ${e.message}`);

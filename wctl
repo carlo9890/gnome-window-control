@@ -34,6 +34,30 @@ die() {
     exit 1
 }
 
+# Check if the Window Control extension is installed and enabled
+check_extension() {
+    # Check if extension is installed
+    if ! gnome-extensions list 2>/dev/null | grep -q "window-control@hko9890"; then
+        die "Window Control extension is not installed.
+
+Install it with:
+    gnome-extensions install window-control@hko9890
+
+Or copy manually:
+    cp -r window-control@hko9890 ~/.local/share/gnome-shell/extensions/
+
+Then restart GNOME Shell (log out/in on Wayland) and enable the extension."
+    fi
+
+    # Check if extension is enabled
+    if ! gnome-extensions list --enabled 2>/dev/null | grep -q "window-control@hko9890"; then
+        die "Window Control extension is installed but not enabled.
+
+Enable it with:
+    gnome-extensions enable window-control@hko9890"
+    fi
+}
+
 # Call D-Bus method and return raw output
 # Usage: dbus_call METHOD [ARGS...]
 dbus_call() {
@@ -790,6 +814,17 @@ main() {
     local cmd="$1"
     shift
     
+    # Skip extension check for help commands
+    case "$cmd" in
+        help|--help|-h)
+            show_help
+            exit 0
+            ;;
+    esac
+    
+    # Check extension is installed and enabled before running commands
+    check_extension
+    
     case "$cmd" in
         # Listing commands
         list)
@@ -859,10 +894,6 @@ main() {
             cmd_close "$@"
             ;;
         
-        # Help
-        help|--help|-h)
-            show_help
-            ;;
         *)
             die "Unknown command: $cmd. Run 'wctl help' for usage."
             ;;

@@ -5,6 +5,7 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 ## Features
 
 - **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.)
+- **Window info** - Get detailed information about any window by ID
 - **Activate windows** - Focus/raise windows by ID, title, WM class, or PID
 - **Move/resize windows** - Position and size windows programmatically
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
@@ -46,11 +47,16 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 ### wctl CLI Wrapper (Optional)
 
-Copy the `wctl` script to your PATH:
+Use the install script:
 ```bash
-sudo cp wctl /usr/local/bin/
-# or
+./install-wctl.sh
+```
+
+Or manually copy to your PATH:
+```bash
 cp wctl ~/.local/bin/
+# or
+sudo cp wctl /usr/local/bin/
 ```
 
 ## Usage
@@ -67,6 +73,9 @@ wctl list --json
 # Get focused window
 wctl focused
 
+# Get focused window as JSON
+wctl focused --json
+
 # Activate window by ID
 wctl activate 12345
 
@@ -82,6 +91,12 @@ wctl activate -c kitty
 # Activate by PID
 wctl activate -p 54321
 
+# Get detailed info about a window
+wctl info 12345
+
+# Get window info as JSON
+wctl info 12345 --json
+
 # Move window to position
 wctl move 12345 100 200
 
@@ -91,12 +106,8 @@ wctl resize 12345 1920 1080
 # Move and resize in one call
 wctl move-resize 12345 0 0 960 1080
 
-# Get window geometry
-wctl geometry 12345
-
-# Move to monitor/workspace
+# Move to monitor
 wctl to-monitor 12345 1
-wctl to-workspace 12345 2
 
 # Window state
 wctl minimize 12345
@@ -178,7 +189,10 @@ stop-gap/
 │   ├── extension.js           # Main extension code
 │   ├── metadata.json          # Extension metadata
 │   └── README.md              # Extension-specific docs
+├── scripts/                   # Build and development scripts
+├── tests/                     # Test scripts
 ├── wctl                       # CLI wrapper script
+├── install-wctl.sh            # wctl install script
 ├── README.md                  # This file
 ├── CONTRIBUTING.md            # Contribution guidelines
 └── LICENSE                    # MIT License
