@@ -373,7 +373,7 @@ class WindowControlService {
                 ];
             });
             console.error(`[Window Control] List() returning ${result.length} windows`);
-            return [result];  // Return array wrapped in array (for D-Bus tuple)
+            return result;
         } catch (e) {
             console.error(`[Window Control] List() error: ${e.message}`);
             return [[]];
@@ -401,7 +401,7 @@ class WindowControlService {
                     sandboxed_app_id: win.get_sandboxed_app_id() || '',
                     gtk_application_id: win.get_gtk_application_id() || '',
                     has_focus: win.has_focus(),
-                    appears_focused: typeof win.appears_focused === 'boolean' ? win.appears_focused : win.has_focus(),
+                    appears_focused: win.has_focus(),
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
                     is_maximized: win.get_maximized() === Meta.MaximizeFlags.BOTH,
