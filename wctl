@@ -313,13 +313,13 @@ cmd_list_json() {
     local raw
     raw=$(dbus_call "ListDetailed")
     
-    # The output is: ('JSON_STRING',)
+    # The output is: ("JSON_STRING",)
     # Extract the JSON string from GVariant wrapper
-    local json="${raw#(\'}"
-    json="${json%\',)}"
+    local json="${raw#(\"}"
+    json="${json%\",)}"
     
-    # Handle escaped quotes if any
-    json="${json//\\\'/\'}"
+    # Unescape the JSON (GVariant escapes internal quotes)
+    json="${json//\\\"/\"}"
     
     echo "$json"
 }
@@ -514,9 +514,9 @@ cmd_info() {
     raw=$(dbus_call "ListDetailed")
     
     # Extract the JSON string from GVariant wrapper
-    local json="${raw#(\'}"
-    json="${json%\',)}"
-    json="${json//\\\'/\'}"
+    local json="${raw#(\"}"
+    json="${json%\",)}"
+    json="${json//\\\"/\"}"
     
     # Find the window with matching ID using jq
     local window
