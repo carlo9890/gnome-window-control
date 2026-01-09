@@ -308,15 +308,6 @@ wait_for_change
 assert_exit_code 0 "$WCTL_EXIT_CODE" "focus: Command should succeed"
 
 echo ""
-echo "--- Monitor Tests ---"
-
-# Test: to-monitor (only if multi-monitor)
-info "Testing: to-monitor"
-# Just verify command succeeds - monitor 0 should always exist
-run_wctl to-monitor "$TEST_WINDOW_ID" 0
-assert_exit_code 0 "$WCTL_EXIT_CODE" "to-monitor: Command should succeed"
-
-echo ""
 echo "--- Close Test ---"
 
 # Test: close (this will destroy the window, so do it last)

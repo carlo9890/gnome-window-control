@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 #
-# run-all.sh - Run all wctl tests and show combined summary
+# run-all-query-tests.sh - Run all read-only wctl tests
+#
+# This runner executes only query/read-only tests that do NOT:
+# - Create new windows
+# - Modify window state
+# - Change system state
+#
+# For state-modifying tests, use run-all-modification-tests.sh
 #
 
 set -uo pipefail
@@ -29,13 +36,14 @@ TOTAL_SKIPPED=0
 SCRIPTS_RUN=0
 SCRIPTS_FAILED=0
 
-echo -e "${BOLD}Running all wctl tests${RESET}"
+echo -e "${BOLD}Running all wctl query tests (read-only)${RESET}"
 echo "========================================"
 echo
 
-# Find and run all test scripts (excluding helper)
+# Find and run all test scripts (excluding helper and modification tests)
 for test_script in "$SCRIPT_DIR"/test-*.sh; do
     [[ "$(basename "$test_script")" == "test-helper.sh" ]] && continue
+    [[ "$(basename "$test_script")" == "test-modifications.sh" ]] && continue
     [[ ! -x "$test_script" ]] && continue
     
     ((SCRIPTS_RUN++))
@@ -85,6 +93,6 @@ if [[ $TOTAL_FAILED -gt 0 || $SCRIPTS_FAILED -gt 0 ]]; then
     echo -e "\n${RED}FAILED${RESET}"
     exit 1
 else
-    echo -e "\n${GREEN}ALL TESTS PASSED${RESET}"
+    echo -e "\n${GREEN}ALL QUERY TESTS PASSED${RESET}"
     exit 0
 fi
