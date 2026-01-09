@@ -218,6 +218,28 @@ Modification tests spawn a test window and exercise all state-changing commands 
 
 5. Update README.md with the new method/command
 
+## Releasing
+
+**IMPORTANT**: All releases MUST be created using the release script:
+
+```bash
+./scripts/release.sh
+```
+
+Do NOT manually create GitHub releases. The script ensures all required assets are included:
+- Extension zip file
+- `wctl` CLI script  
+- `install-wctl.sh` installer
+
+### Release Process
+
+1. Update version in `window-control@hko9890/metadata.json`
+2. Update `CHANGELOG.md` with release notes
+3. Commit: `git commit -am "chore: bump version to vX"`
+4. Create tag: `git tag vX`
+5. Push: `git push && git push --tags`
+6. Run: `./scripts/release.sh`
+
 ## Reporting Issues
 
 When reporting bugs, please include:
