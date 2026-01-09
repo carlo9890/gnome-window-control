@@ -131,17 +131,45 @@ Now returns empty string instead of crashing.
 
 ## Running Tests
 
-The project includes test scripts in the `tests/` directory:
+The project includes test scripts in the `tests/` directory.
+
+**Note**: The extension must be enabled and running for tests to pass.
+
+### Query Tests (Read-Only)
+
+Query tests are safe, read-only tests that do NOT create windows or modify state:
 
 ```bash
-# Run all query tests (non-destructive, won't modify windows)
 ./tests/run-all-query-tests.sh
+```
 
-# Run modification tests (will minimize/maximize/move windows - use with caution)
+**MUST run before every commit** - These tests verify that basic functionality works without side effects.
+
+**MUST pass before every push** - Do not push code that fails query tests.
+
+### Modification Tests (State-Changing)
+
+Modification tests spawn a test window and exercise all state-changing commands (minimize, maximize, move, resize, close, etc.):
+
+```bash
 ./tests/run-all-modification-tests.sh
 ```
 
-**Note**: The extension must be enabled and running for tests to pass.
+**WARNING**: These tests will:
+- Create a new kitty terminal window
+- Change window focus
+- Minimize/maximize/move windows on your screen
+- Close the test window when done
+
+**Run manually before releases** - These tests must pass before creating a new release tag. They are NOT required for every commit because they disrupt your desktop environment.
+
+### Test Requirements Summary
+
+| Action | Query Tests | Modification Tests |
+|--------|-------------|-------------------|
+| Before commit | **MUST pass** | Optional |
+| Before push | **MUST pass** | Optional |
+| Before release | **MUST pass** | **MUST pass** |
 
 ## Adding New D-Bus Methods
 
