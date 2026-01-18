@@ -28,6 +28,9 @@ else
     RESET=''
 fi
 
+# Version
+VERSION="0.4.0"
+
 # Print error message and exit
 die() {
     echo -e "${RED}Error:${RESET} $1" >&2
@@ -133,8 +136,8 @@ truncate() {
 
 # Show help message
 show_help() {
-    cat << 'EOF'
-wctl - Window Control CLI
+    cat << EOF
+wctl $VERSION - Window Control CLI
 
 USAGE:
     wctl <COMMAND> [OPTIONS]
@@ -161,6 +164,11 @@ GEOMETRY COMMANDS:
     move <ID> <X> <Y>                   Move window to position
     resize <ID> <WIDTH> <HEIGHT>        Resize window
     move-resize <ID> <X> <Y> <W> <H>    Move and resize atomically
+
+TILING & POSITIONING:
+    tile <ID> <position>                Tile window to 4x2 grid position
+    center <ID> [horizontal|vertical|both]  Center window on screen
+
 STATE COMMANDS:
     minimize <ID>           Minimize window
     unminimize <ID>         Restore from minimize
@@ -174,6 +182,7 @@ STATE COMMANDS:
 
 OTHER:
     help                    Show this help message
+    completion <SHELL>      Output shell completion script (bash or zsh)
 
 EXAMPLES:
     wctl list                         # Show all windows
@@ -187,9 +196,17 @@ EXAMPLES:
     wctl info 12345 --json            # Get window info as JSON
     wctl move 12345 100 100           # Move window to (100, 100)
     wctl resize 12345 800 600         # Resize to 800x600
+    wctl tile 12345 top-left          # Tile to top-left of 4x2 grid
+    wctl tile 12345 center            # Tile to center of grid
+    wctl center 12345                 # Center on screen (both axes)
+    wctl center 12345 horizontal      # Center horizontally only
     wctl maximize 12345               # Maximize window
     wctl above 12345 on               # Set always-on-top
     wctl close 12345                  # Close window
+
+SHELL COMPLETION:
+    Bash: wctl completion bash > ~/.local/share/bash-completion/completions/wctl
+    Zsh:  wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
 
 ENVIRONMENT:
     The Window Control GNOME Shell extension must be enabled.
@@ -521,6 +538,197 @@ cmd_move_resize() {
 }
 
 # ============================================================================
+# Tiling & Positioning Commands
+# ============================================================================
+
+# Tile window to grid position
+cmd_tile() {
+    local id="${1:-}"
+    local position="${2:-}"
+    
+    [[ -z "$id" || -z "$position" ]] && die "Usage: wctl tile <ID> <position>
+Valid positions:
+  top-left, top-center, top-right
+  left, center, right
+  bottom-left, bottom-center, bottom-right"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    # Get window info to find monitor
+    local json window
+    json=$(dbus_call_json "ListDetailed")
+    window=$(echo "$json" | jq -e --arg id "$id" '.[] | select(.id == ($id | tonumber))' 2>/dev/null) || {
+        die "Window not found: $id"
+    }
+    
+    local monitor_index
+    monitor_index=$(echo "$window" | jq -r '.monitor_index')
+    
+    # Get workarea for window's monitor
+    local raw
+    raw=$(dbus_call "GetWorkarea" "$monitor_index")
+    
+    # Parse workarea - format is (x, y, width, height)
+    local wa_x wa_y wa_w wa_h
+    if [[ "$raw" =~ ^\(([0-9]+),\ ([0-9]+),\ ([0-9]+),\ ([0-9]+)\)$ ]]; then
+        wa_x="${BASH_REMATCH[1]}"
+        wa_y="${BASH_REMATCH[2]}"
+        wa_w="${BASH_REMATCH[3]}"
+        wa_h="${BASH_REMATCH[4]}"
+    else
+        die "Failed to parse workarea: $raw"
+    fi
+    
+    # Calculate grid cell dimensions (4x2 grid)
+    local cell_w=$((wa_w / 4))
+    local cell_h=$((wa_h / 2))
+    
+    # Map position to grid coordinates
+    local start_col end_col start_row end_row
+    case "$position" in
+        top-left)
+            start_col=0 end_col=0 start_row=0 end_row=0
+            ;;
+        top-center)
+            start_col=1 end_col=2 start_row=0 end_row=0
+            ;;
+        top-right)
+            start_col=3 end_col=3 start_row=0 end_row=0
+            ;;
+        left)
+            start_col=0 end_col=0 start_row=0 end_row=1
+            ;;
+        center)
+            start_col=1 end_col=2 start_row=0 end_row=1
+            ;;
+        right)
+            start_col=3 end_col=3 start_row=0 end_row=1
+            ;;
+        bottom-left)
+            start_col=0 end_col=0 start_row=1 end_row=1
+            ;;
+        bottom-center)
+            start_col=1 end_col=2 start_row=1 end_row=1
+            ;;
+        bottom-right)
+            start_col=3 end_col=3 start_row=1 end_row=1
+            ;;
+        *)
+            die "Invalid position: $position
+Valid positions:
+  top-left, top-center, top-right
+  left, center, right
+  bottom-left, bottom-center, bottom-right"
+            ;;
+    esac
+    
+    # Calculate pixel positions
+    local x=$((wa_x + cell_w * start_col))
+    local y=$((wa_y + cell_h * start_row))
+    local width=$((cell_w * (end_col - start_col + 1)))
+    local height=$((cell_h * (end_row - start_row + 1)))
+    
+    # Call MoveResize to position window
+    raw=$(dbus_call "MoveResize" "$id" "$x" "$y" "$width" "$height")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window tiled to $position"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Center window on screen
+cmd_center() {
+    local id="${1:-}"
+    local axis="${2:-both}"
+    
+    [[ -z "$id" ]] && die "Usage: wctl center <ID> [horizontal|vertical|both]"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    # Normalize axis argument (support short forms)
+    case "$axis" in
+        h|horizontal)
+            axis="horizontal"
+            ;;
+        v|vertical)
+            axis="vertical"
+            ;;
+        both|"")
+            axis="both"
+            ;;
+        *)
+            die "Invalid axis: $axis. Must be 'horizontal', 'vertical', or 'both'"
+            ;;
+    esac
+    
+    # Get window info
+    local json window
+    json=$(dbus_call_json "ListDetailed")
+    window=$(echo "$json" | jq -e --arg id "$id" '.[] | select(.id == ($id | tonumber))' 2>/dev/null) || {
+        die "Window not found: $id"
+    }
+    
+    # Get current window geometry
+    local win_x win_y win_w win_h
+    win_x=$(echo "$window" | jq -r '.frame_rect.x')
+    win_y=$(echo "$window" | jq -r '.frame_rect.y')
+    win_w=$(echo "$window" | jq -r '.frame_rect.width')
+    win_h=$(echo "$window" | jq -r '.frame_rect.height')
+    
+    # Get monitor index
+    local monitor_index
+    monitor_index=$(echo "$window" | jq -r '.monitor_index')
+    
+    # Get workarea for window's monitor
+    local raw
+    raw=$(dbus_call "GetWorkarea" "$monitor_index")
+    
+    # Parse workarea - format is (x, y, width, height)
+    local wa_x wa_y wa_w wa_h
+    if [[ "$raw" =~ ^\(([0-9]+),\ ([0-9]+),\ ([0-9]+),\ ([0-9]+)\)$ ]]; then
+        wa_x="${BASH_REMATCH[1]}"
+        wa_y="${BASH_REMATCH[2]}"
+        wa_w="${BASH_REMATCH[3]}"
+        wa_h="${BASH_REMATCH[4]}"
+    else
+        die "Failed to parse workarea: $raw"
+    fi
+    
+    # Calculate centered positions
+    local new_x="$win_x"
+    local new_y="$win_y"
+    
+    if [[ "$axis" == "horizontal" || "$axis" == "both" ]]; then
+        new_x=$((wa_x + (wa_w - win_w) / 2))
+    fi
+    
+    if [[ "$axis" == "vertical" || "$axis" == "both" ]]; then
+        new_y=$((wa_y + (wa_h - win_h) / 2))
+    fi
+    
+    # Call Move to reposition window (preserve size)
+    raw=$(dbus_call "Move" "$id" "$new_x" "$new_y")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        case "$axis" in
+            horizontal)
+                echo "Window centered horizontally"
+                ;;
+            vertical)
+                echo "Window centered vertically"
+                ;;
+            both)
+                echo "Window centered"
+                ;;
+        esac
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# ============================================================================
 # State Commands
 # ============================================================================
 
@@ -609,6 +817,193 @@ cmd_above() {
     fi
 }
 
+# Output bash completion script
+cmd_completion_bash() {
+    cat << 'BASH_COMPLETION'
+# Bash completion for wctl
+# Install: wctl completion bash > ~/.local/share/bash-completion/completions/wctl
+
+_wctl_get_window_ids() {
+    local ids
+    ids=$(wctl list --json 2>/dev/null | jq -r '.[].id' 2>/dev/null)
+    echo "$ids"
+}
+
+_wctl() {
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="list focused info activate focus move resize move-resize minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
+    local id_commands="info focus move resize move-resize minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close"
+
+    # Complete command names
+    if [[ $cword -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+        return
+    fi
+
+    local cmd="${words[1]}"
+
+    case "$cmd" in
+        list|focused)
+            COMPREPLY=($(compgen -W "--json" -- "$cur"))
+            ;;
+        info)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
+            elif [[ $cword -eq 3 ]]; then
+                COMPREPLY=($(compgen -W "--json" -- "$cur"))
+            fi
+            ;;
+        activate)
+            if [[ $cword -eq 2 ]]; then
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-t -s -c -p" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "-t -s -c -p $(_wctl_get_window_ids)" -- "$cur"))
+                fi
+            fi
+            ;;
+        above|sticky)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
+            elif [[ $cword -eq 3 ]]; then
+                COMPREPLY=($(compgen -W "on off" -- "$cur"))
+            fi
+            ;;
+        completion)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "bash zsh" -- "$cur"))
+            fi
+            ;;
+        focus|move|resize|move-resize|minimize|unminimize|maximize|unmaximize|fullscreen|unfullscreen|close)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
+            fi
+            ;;
+    esac
+}
+
+complete -F _wctl wctl
+BASH_COMPLETION
+}
+
+# Output zsh completion script
+cmd_completion_zsh() {
+    cat << 'ZSH_COMPLETION'
+#compdef wctl
+# Zsh completion for wctl
+# Install: wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
+
+_wctl_window_ids() {
+    local -a windows
+    local json
+    json=$(wctl list --json 2>/dev/null) || return
+    
+    # Parse JSON and create completion entries with descriptions
+    while IFS=$'\t' read -r id title; do
+        # Truncate long titles
+        if [[ ${#title} -gt 50 ]]; then
+            title="${title:0:47}..."
+        fi
+        windows+=("$id:$title")
+    done < <(echo "$json" | jq -r '.[] | [.id, .title] | @tsv' 2>/dev/null)
+    
+    _describe -t windows 'window' windows
+}
+
+_wctl() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    local -a commands=(
+        'list:List all windows'
+        'focused:Show focused window info'
+        'info:Show detailed window info'
+        'activate:Activate a window'
+        'focus:Focus window without raising'
+        'move:Move window to position'
+        'resize:Resize window'
+        'move-resize:Move and resize window'
+        'minimize:Minimize window'
+        'unminimize:Restore from minimize'
+        'maximize:Maximize window'
+        'unmaximize:Restore from maximize'
+        'fullscreen:Make window fullscreen'
+        'unfullscreen:Exit fullscreen'
+        'above:Set always-on-top state'
+        'sticky:Set sticky (all workspaces) state'
+        'close:Close window'
+        'help:Show help message'
+        'completion:Output shell completion script'
+    )
+
+    _arguments -C \
+        '1:command:->command' \
+        '*::args:->args'
+
+    case $state in
+        command)
+            _describe -t commands 'wctl command' commands
+            ;;
+        args)
+            case $words[1] in
+                list|focused)
+                    _arguments '--json[Output as JSON]'
+                    ;;
+                info)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '--json[Output as JSON]'
+                    ;;
+                activate)
+                    _arguments \
+                        '(-t -s -c -p)1:window id:_wctl_window_ids' \
+                        '(-s -c -p)-t[Activate by exact title]:title:' \
+                        '(-t -c -p)-s[Activate by title substring]:substring:' \
+                        '(-t -s -p)-c[Activate by WM class]:class:' \
+                        '(-t -s -c)-p[Activate by PID]:pid:'
+                    ;;
+                focus|minimize|unminimize|maximize|unmaximize|fullscreen|unfullscreen|close)
+                    _arguments '1:window id:_wctl_window_ids'
+                    ;;
+                move)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '2:x position:' \
+                        '3:y position:'
+                    ;;
+                resize)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '2:width:' \
+                        '3:height:'
+                    ;;
+                move-resize)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '2:x position:' \
+                        '3:y position:' \
+                        '4:width:' \
+                        '5:height:'
+                    ;;
+                above|sticky)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '2:state:(on off)'
+                    ;;
+                completion)
+                    _arguments '1:shell:(bash zsh)'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_wctl "$@"
+ZSH_COMPLETION
+}
+
 # Set sticky (all workspaces) state
 cmd_sticky() {
     local id="${1:-}"
@@ -656,11 +1051,34 @@ main() {
     local cmd="$1"
     shift
     
-    # Skip extension check for help commands
+    # Skip extension check for help, version, and completion commands
     case "$cmd" in
         help|--help|-h)
             show_help
             exit 0
+            ;;
+        version|--version|-v)
+            echo "wctl $VERSION"
+            exit 0
+            ;;
+        completion)
+            local shell="${1:-}"
+            case "$shell" in
+                bash)
+                    cmd_completion_bash
+                    exit 0
+                    ;;
+                zsh)
+                    cmd_completion_zsh
+                    exit 0
+                    ;;
+                "")
+                    die "Usage: wctl completion <bash|zsh>"
+                    ;;
+                *)
+                    die "Unknown shell: $shell. Supported: bash, zsh"
+                    ;;
+            esac
             ;;
     esac
     
@@ -703,6 +1121,15 @@ main() {
         move-resize)
             cmd_move_resize "$@"
             ;;
+        
+        # Tiling & Positioning commands
+        tile)
+            cmd_tile "$@"
+            ;;
+        center)
+            cmd_center "$@"
+            ;;
+        
         # State commands
         minimize)
             cmd_minimize "$@"
