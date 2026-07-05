@@ -1,5 +1,13 @@
 # Changelog
 
+## v7 (2026-07-05)
+
+### Added
+- Extended GNOME Shell compatibility to cover all currently released versions: added `48`, `49`, and `50` to `shell-version` (previously `45`-`47`)
+
+### Fixed
+- Made the maximize/unmaximize code path compatible with GNOME 49+, which removed the `Meta.MaximizeFlags` argument from `Meta.Window.maximize()`/`unmaximize()` and removed `get_maximized()` (now uses `get_maximize_flags()`/`is_maximized()`). A single `extension.js` runs on GNOME 45-50 via runtime API detection.
+
 ## v6 (2026-03-23)
 
 ### Added

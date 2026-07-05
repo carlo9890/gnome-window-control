@@ -303,6 +303,35 @@ const WINDOW_TYPE_NAMES = {
     [Meta.WindowType.OVERRIDE_OTHER]: 'override_other',
 };
 
+// GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
+// longer take a Meta.MaximizeFlags argument, and get_maximized() was removed in
+// favor of get_maximize_flags()/is_maximized() (verified against mutter 49.0
+// window.h). global.get_window_actors() and the rest of the Meta.Window API used
+// here are unchanged across GNOME 45-50. Detect the pre-49 API via the removed
+// get_maximized() method so a single extension.js works on all supported shells.
+function _isFullyMaximized(win) {
+    if (typeof win.get_maximized === 'function') {
+        return win.get_maximized() === Meta.MaximizeFlags.BOTH;      // GNOME <= 48
+    }
+    return win.get_maximize_flags() === Meta.MaximizeFlags.BOTH;     // GNOME 49+
+}
+
+function _maximizeWindow(win) {
+    if (typeof win.get_maximized === 'function') {
+        win.maximize(Meta.MaximizeFlags.BOTH);                       // GNOME <= 48
+    } else {
+        win.maximize();                                              // GNOME 49+
+    }
+}
+
+function _unmaximizeWindow(win) {
+    if (typeof win.get_maximized === 'function') {
+        win.unmaximize(Meta.MaximizeFlags.BOTH);                     // GNOME <= 48
+    } else {
+        win.unmaximize();                                            // GNOME 49+
+    }
+}
+
 // D-Bus service implementation
 class WindowControlService {
     constructor() {
@@ -403,7 +432,7 @@ class WindowControlService {
                     appears_focused: win.has_focus(),
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
-                    is_maximized: win.get_maximized() === Meta.MaximizeFlags.BOTH,
+                    is_maximized: _isFullyMaximized(win),
                     is_fullscreen: win.is_fullscreen(),
                     is_above: win.is_above(),
                     is_on_all_workspaces: win.is_on_all_workspaces(),
@@ -761,7 +790,7 @@ class WindowControlService {
         try {
             const win = this._findWindowById(windowId);
             if (win) {
-                win.maximize(Meta.MaximizeFlags.BOTH);
+                _maximizeWindow(win);
                 console.log(`[Window Control] Maximize(${windowId}) -> true`);
                 return true;
             }
@@ -779,7 +808,7 @@ class WindowControlService {
         try {
             const win = this._findWindowById(windowId);
             if (win) {
-                win.unmaximize(Meta.MaximizeFlags.BOTH);
+                _unmaximizeWindow(win);
                 console.log(`[Window Control] Unmaximize(${windowId}) -> true`);
                 return true;
             }

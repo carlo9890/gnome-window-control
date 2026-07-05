@@ -13,7 +13,7 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 ## Compatibility
 
-- GNOME Shell 45, 46, 47
+- GNOME Shell 45-50
 - Wayland and X11 sessions
 
 ## Installation

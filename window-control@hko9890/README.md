@@ -4,7 +4,7 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
 
 ## Compatibility
 
-- GNOME Shell 45, 46, 47
+- GNOME Shell 45-50
 
 ## Installation
 
