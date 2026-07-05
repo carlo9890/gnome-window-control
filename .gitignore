@@ -1,6 +1,3 @@
-# Beads database (synced via JSONL)
-.beads/beads.db
-
 # Build output
 dist/
 
@@ -13,10 +10,5 @@ dist/
 # Debug output
 output/
 
-# bv (beads viewer) local config and caches
-.bv/
-
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
+# taskmgr runtime lock
+.tasks/.lock

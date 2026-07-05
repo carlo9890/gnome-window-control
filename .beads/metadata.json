@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "gnome_window_control",
-  "project_id": "175eff67-c0ae-4811-9046-1f92d8730038"
-}
