@@ -35,6 +35,7 @@ TOTAL_FAILED=0
 TOTAL_SKIPPED=0
 SCRIPTS_RUN=0
 SCRIPTS_FAILED=0
+SCRIPTS_WITH_TESTS=0
 
 echo -e "${BOLD}Running all wctl query tests (read-only)${RESET}"
 echo "========================================"
@@ -66,9 +67,18 @@ for test_script in "$SCRIPT_DIR"/test-*.sh; do
     TOTAL_FAILED=$((TOTAL_FAILED + failed))
     TOTAL_SKIPPED=$((TOTAL_SKIPPED + skipped))
     
+    # A script that produced any pass/fail actually exercised something. One that
+    # exited 0 with zero counts self-skipped (e.g. extension not running) and must
+    # NOT be reported as a pass.
+    if (( passed + failed > 0 )); then
+        ((SCRIPTS_WITH_TESTS++))
+    fi
+
     # Show result for this script
     script_name=$(basename "$test_script")
-    if [[ $exit_code -eq 0 && $failed -eq 0 ]]; then
+    if [[ $exit_code -eq 0 && $failed -eq 0 && $((passed + failed)) -eq 0 ]]; then
+        echo -e "${YELLOW}⊘${RESET} ${script_name}: no tests executed (skipped)"
+    elif [[ $exit_code -eq 0 && $failed -eq 0 ]]; then
         echo -e "${GREEN}✓${RESET} ${script_name}: ${passed} passed, ${skipped} skipped"
     else
         echo -e "${RED}✗${RESET} ${script_name}: ${passed} passed, ${failed} failed, ${skipped} skipped"
@@ -92,6 +102,11 @@ echo "========================================"
 if [[ $TOTAL_FAILED -gt 0 || $SCRIPTS_FAILED -gt 0 ]]; then
     echo -e "\n${RED}FAILED${RESET}"
     exit 1
+elif [[ $SCRIPTS_WITH_TESTS -eq 0 ]]; then
+    # Nothing actually ran (extension not running?). A green "PASSED" here would be
+    # a false signal, so report SKIPPED distinctly.
+    echo -e "\n${YELLOW}NO QUERY TESTS EXECUTED${RESET} - is the extension enabled? (gnome-extensions enable window-control@hko9890)"
+    exit 0
 else
     echo -e "\n${GREEN}ALL QUERY TESTS PASSED${RESET}"
     exit 0

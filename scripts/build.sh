@@ -74,7 +74,22 @@ validate() {
         log_error "UUID mismatch: expected $EXTENSION_UUID, got $uuid"
         exit 1
     fi
-    
+
+    # Syntax-check every JS source. docs/CODING.md marks this CRITICAL; run it here
+    # so `build.sh all` (and therefore CI) fails on a syntax error before packaging.
+    if command -v node >/dev/null 2>&1; then
+        local js
+        for js in "$EXTENSION_DIR"/*.js; do
+            if ! node --check "$js"; then
+                log_error "JavaScript syntax error in: $js"
+                exit 1
+            fi
+        done
+        log_info "JavaScript syntax check passed (node --check)!"
+    else
+        log_warn "node not found; skipping JavaScript syntax check (install node to enable it)"
+    fi
+
     log_info "Validation passed!"
 }
 

@@ -1,192 +1,53 @@
-# Agent Instructions
+# AGENTS.md — gnome-window-control routing
 
-## Project Overview
+## Repository purpose
 
-GNOME Window Control - A GNOME Shell extension providing D-Bus interface for window control on Wayland.
+A GNOME Shell extension exposing a D-Bus interface for listing and controlling
+windows on Wayland, plus `wctl`, a bash CLI over that interface. Extension code is
+GJS; the CLI is bash; targets GNOME Shell 45-50.
 
-## Project Structure
+## Use-case routing
 
-```
-gnome-window-control/
-├── window-control@hko9890/    # GNOME Shell extension source
-│   ├── extension.js           # Main extension code
-│   ├── metadata.json          # Extension metadata
-│   └── README.md              # Extension-specific docs
-├── scripts/                   # Build and dev scripts
-│   ├── build.sh               # Build/install/validate
-│   ├── release.sh             # Create a GitHub release
-│   ├── start-nested.sh        # Start nested GNOME Shell session
-│   └── debug-dbus.sh          # Debug D-Bus interface
-├── tests/                     # Query and modification test suites
-├── wctl                       # CLI wrapper script
-├── install-wctl.sh            # wctl installer
-├── README.md                  # Project documentation
-├── CONTRIBUTING.md            # Contribution guidelines
-├── CHANGELOG.md               # Release notes
-├── gnome-window-control-extension-requirements.md  # Original design spec
-└── LICENSE                    # MIT License
-```
+Depending on your goal, load the relevant document first.
 
-## Development Workflow
+### Research, planning, analysis
 
-### Testing Code Changes (Nested Session)
+Load [docs/OVERVIEW.md](docs/OVERVIEW.md) for the architecture, repository layout,
+and search expressions for finding things.
 
-Since disable/enable doesn't reload JS code, use a **nested GNOME Shell session**:
+### Coding and file changes
 
-```bash
-# 1. Make your code changes
-# 2. Install the updated files
-./scripts/build.sh install
+Load [docs/CODING.md](docs/CODING.md) before changing code — style, the mandatory
+`node --check` gate, building, and the recipe for adding a D-Bus method.
 
-# 3. Start a nested GNOME Shell (runs in a window)
-./scripts/start-nested.sh
+### Testing and verification
 
-# 4. Inside the nested session, open a terminal and enable:
-gnome-extensions enable window-control@hko9890
+Load [docs/TESTING.md](docs/TESTING.md) for the test suites and CI gates.
 
-# 5. Test your changes in the nested session
-# 6. Close the window and repeat
-```
+### Run the extension to reproduce a bug or verify a change
 
-The nested session runs GNOME Shell in a window, isolated from your main session. All logs appear in the terminal that started it.
+Load [docs/RUNNING.md](docs/RUNNING.md) to reload and drive the extension by hand —
+`disable`/`enable` does **not** reload JS from disk, so code changes need a shell
+restart or nested session.
 
-### Testing D-Bus Interface
+### Analyze logs
 
-Use the debug script to test D-Bus methods:
+Load [docs/MONITORING.md](docs/MONITORING.md) for viewing logs, log levels, and
+interpreting common signals.
 
-```bash
-./scripts/debug-dbus.sh
-```
+### Commit, branch, PR workflow
 
-### Building for Distribution
+Load [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before git operations or
+opening a PR.
 
-```bash
-./scripts/build.sh all         # Clean, validate, build zip
-./scripts/build.sh install     # Install locally from source
-```
+### Release
 
-Output goes to `dist/window-control@hko9890_v<version>.zip`
+Load [docs/RELEASING.md](docs/RELEASING.md) to cut a release. Releases MUST use
+`./scripts/release.sh`.
 
-### Checking Extension Status
+### Requirements / design spec
 
-```bash
-# Extension info
-gnome-extensions info window-control@hko9890
-
-# Check logs for errors
-journalctl --user -b -g "Window Control" -f
-
-# Test D-Bus
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.GetFocused
-```
-
-## D-Bus Interface
-
-**Important**: The extension registers under `org.gnome.Shell`, not as a standalone service.
-
-- **Destination**: `org.gnome.Shell`
-- **Path**: `/org/gnome/Shell/Extensions/WindowControl`
-- **Interface**: `org.gnome.Shell.Extensions.WindowControl`
-
-### Testing Methods
-
-```bash
-# List windows
-gdbus call --session --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
-
-# Get focused window
-gdbus call --session --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.GetFocused
-
-# Activate window by ID
-gdbus call --session --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.Activate \
-  "uint64:12345"
-```
-
-## GNOME Extension Notes
-
-### When Restart is Required
-
-| Change Type | Restart Required? |
-|-------------|-------------------|
-| First install | Yes (log out/in on Wayland) |
-| Code changes (extension.js) | **Yes** - disable/enable does NOT reload JS from disk |
-| metadata.json changes | Yes |
-| Adding new files | Yes |
-
-**Important**: Unlike some plugin systems, `gnome-extensions disable/enable` does NOT reload JavaScript code from disk. It only calls `disable()` and `enable()` on the already-loaded code. To test actual code changes, you must restart GNOME Shell (log out/in on Wayland).
-
-**Tip**: Use a **nested GNOME Shell session** instead of logging out/in. Run `./scripts/start-nested.sh` to start GNOME Shell in a window for testing.
-
-### Logging
-
-GNOME Shell extensions use the `console` API but with different log levels:
-
-| Function | Level | Visible by default? |
-|----------|-------|---------------------|
-| `console.log()` | DEBUG | No - filtered out |
-| `console.warn()` | WARNING | Yes |
-| `console.error()` | CRITICAL | Yes |
-
-To see `console.log()` output, set `G_MESSAGES_DEBUG=all` before starting GNOME Shell.
-
-For production code, use `console.error()` sparingly for actual errors only.
-
-### JavaScript Syntax Validation
-
-**CRITICAL**: When modifying JavaScript files (extension.js, etc.), you MUST validate syntax before closing any task.
-
-Run this command:
-```bash
-node --check window-control@hko9890/extension.js
-```
-
-If this fails, the code has syntax errors and cannot be committed.
-
-**Task Acceptance Criteria**: All tasks that modify JavaScript code MUST include:
-```markdown
-- [ ] Code passes syntax check (`node --check <file>`)
-```
-
-### Common Issues
-
-1. **Extension not found**: Run `gnome-extensions list` - if not listed, need restart
-2. **D-Bus errors**: Check `journalctl --user -b -g "Window Control" -f` for JavaScript errors
-3. **Methods returning wrong types**: GJS D-Bus has quirks with uint64 - use BigInt or GLib.Variant
-4. **Code changes not taking effect**: Need full GNOME Shell restart, not just disable/enable
-
-## Release Process
-
-**CRITICAL**: All releases MUST be created using the release script.
-
-```bash
-./scripts/release.sh
-```
-
-**Never create releases manually** with `gh release create` or the GitHub web UI. The script ensures:
-- All 3 required assets are included (extension zip, wctl, install-wctl.sh)
-- Version numbers match between metadata.json and wctl
-- Git tags exist and are pushed
-- Release notes are properly formatted
-
-See CONTRIBUTING.md for full release checklist.
-
-**Note**: `.github/workflows/build.yml` also has a `release` job that auto-creates
-the GitHub release on push to `main` when one does not yet exist for the current
-version. `release.sh` remains authoritative (proper CHANGELOG notes + validated
-assets) and overwrites any release CI created for the same tag.
-
-## Requirements Doc
-
-`gnome-window-control-extension-requirements.md` is the original design
-specification. For the current D-Bus surface, the interface XML in
-`window-control@hko9890/extension.js` and the method table in README.md are
-authoritative.
+`gnome-window-control-extension-requirements.md` is the original design spec. The
+authoritative D-Bus surface is the interface XML in
+`window-control@hko9890/dbus-interface.js` and the method table in
+[README.md](README.md).

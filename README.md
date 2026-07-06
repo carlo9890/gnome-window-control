@@ -40,30 +40,8 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 #### From Source (For Development)
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/carlo9890/gnome-window-control.git
-   cd gnome-window-control
-   ```
-
-2. Install the extension from source:
-   ```bash
-   ./scripts/build.sh install
-   ```
-
-   Or manually copy to the extensions directory:
-   ```bash
-   cp -r window-control@hko9890 ~/.local/share/gnome-shell/extensions/
-   ```
-
-3. Restart GNOME Shell:
-   - On X11: Press `Alt+F2`, type `r`, and press Enter
-   - On Wayland: Log out and log back in
-
-4. Enable the extension:
-   ```bash
-   gnome-extensions enable window-control@hko9890
-   ```
+Building and installing from source is a contributor task — see
+[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/CODING.md](docs/CODING.md).
 
 ### wctl CLI Wrapper (Optional)
 
@@ -225,31 +203,18 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `SetAbove` | `(tb) -> b` | Set/unset always-on-top |
 | `SetSticky` | `(tb) -> b` | Set/unset sticky (all workspaces) |
 
-## Project Structure
-
-```
-gnome-window-control/
-├── window-control@hko9890/    # GNOME Shell extension
-│   ├── extension.js           # Main extension code
-│   ├── metadata.json          # Extension metadata
-│   └── README.md              # Extension-specific docs
-├── scripts/                   # Build and development scripts
-├── tests/                     # Test scripts
-├── wctl                       # CLI wrapper script
-├── install-wctl.sh            # wctl install script
-├── README.md                  # This file
-├── CONTRIBUTING.md            # Contribution guidelines
-└── LICENSE                    # MIT License
-```
-
 ## Background
 
-This project provides window control on Wayland where traditional tools don't work. On X11, tools like `wmctrl` and `xdotool` provide this functionality, but they don't work on Wayland due to its security model. This extension bridges that gap by exposing window control through GNOME Shell's privileged position.
+On X11, tools like `wmctrl` and `xdotool` provide window control, but they don't
+work on Wayland due to its security model. This extension bridges that gap by
+exposing window control through GNOME Shell's privileged position.
+
+## Contributing & internals
+
+- Repository layout and architecture: [docs/OVERVIEW.md](docs/OVERVIEW.md)
+- Building from source, testing, contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Version numbering (`wctl --version` `0.N.0` ↔ release `vN`): [docs/RELEASING.md](docs/RELEASING.md#version-format)
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

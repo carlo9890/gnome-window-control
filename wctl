@@ -31,26 +31,63 @@ die() {
     exit 1
 }
 
+# Validate that an argument is a numeric window ID (dies otherwise).
+# Usage: validate_id <ID>
+validate_id() {
+    [[ ! "${1:-}" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    return 0
+}
+
+# Report the result of a boolean D-Bus action to the user.
+# Usage: report_result <RAW_GVARIANT> <SUCCESS_MESSAGE> <ID>
+# Prints the success message on "(true,)", otherwise reports the window as not
+# found (including the id) and exits non-zero.
+report_result() {
+    local raw="$1"
+    local success_msg="$2"
+    local id="${3:-}"
+
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "$success_msg"
+    else
+        echo "Window not found: $id"
+        exit 1
+    fi
+}
+
+# Classify a failed D-Bus client invocation as "extension not running".
+# Both transports (gdbus, busctl) funnel their error text through here so the
+# same fault produces the same actionable hint regardless of which one ran.
+# Usage: is_extension_not_running <ERROR_TEXT>
+is_extension_not_running() {
+    local err="$1"
+    [[ "$err" == *"was not provided"* ]] && return 0
+    [[ "$err" == *"does not exist"* ]] && return 0
+    [[ "$err" == *"No route to host"* ]] && return 0
+    [[ "$err" == *"ServiceUnknown"* ]] && return 0
+    [[ "$err" == *"not found"* ]] && return 0
+    return 1
+}
+
 # Call D-Bus method and return raw output (GVariant format)
 # Usage: dbus_call METHOD [ARGS...]
 dbus_call() {
     local method="$1"
     shift
-    
+
     local result
     if ! result=$(gdbus call --session \
         --dest "$DBUS_DEST" \
         --object-path "$DBUS_PATH" \
         --method "${DBUS_IFACE}.${method}" \
         "$@" 2>&1); then
-        
-        # Check for common errors
-        if [[ "$result" == *"was not provided"* ]] || [[ "$result" == *"does not exist"* ]]; then
+
+        if is_extension_not_running "$result"; then
             die "Window Control extension is not running. Enable it in GNOME Extensions."
         fi
         die "D-Bus call failed: $result"
     fi
-    
+
     echo "$result"
 }
 
@@ -66,9 +103,8 @@ dbus_call_json() {
         "$DBUS_PATH" \
         "$DBUS_IFACE" \
         "$method" 2>&1); then
-        
-        # Check for common errors
-        if [[ "$result" == *"No route to host"* ]] || [[ "$result" == *"not found"* ]]; then
+
+        if is_extension_not_running "$result"; then
             die "Window Control extension is not running. Enable it in GNOME Extensions."
         fi
         die "D-Bus call failed: $result"
@@ -84,8 +120,7 @@ dbus_call_json() {
 get_window_json_by_id() {
     local id="${1:-}"
 
-    [[ -z "$id" ]] && die "Window ID must be a number"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    validate_id "$id"
 
     local json window
     json=$(dbus_call_json "ListDetailed")
@@ -191,6 +226,46 @@ resolve_place_position() {
             die "Invalid Y position: $token. Use a number or top|center|bottom"
             ;;
     esac
+}
+
+# Resolve a 4x2 grid tile position into "x y width height" for a given workarea.
+# Pure arithmetic (no D-Bus), so it is unit-tested directly in tests/test-logic.sh.
+# Usage: resolve_tile_geometry <POSITION> <WA_X> <WA_Y> <WA_W> <WA_H>
+resolve_tile_geometry() {
+    local position="$1"
+    local wa_x="$2"
+    local wa_y="$3"
+    local wa_w="$4"
+    local wa_h="$5"
+
+    local cell_w=$((wa_w / 4))
+    local cell_h=$((wa_h / 2))
+
+    local start_col end_col start_row end_row
+    case "$position" in
+        top-left)      start_col=0 end_col=0 start_row=0 end_row=0 ;;
+        top-center)    start_col=1 end_col=2 start_row=0 end_row=0 ;;
+        top-right)     start_col=3 end_col=3 start_row=0 end_row=0 ;;
+        left)          start_col=0 end_col=0 start_row=0 end_row=1 ;;
+        center)        start_col=1 end_col=2 start_row=0 end_row=1 ;;
+        right)         start_col=3 end_col=3 start_row=0 end_row=1 ;;
+        bottom-left)   start_col=0 end_col=0 start_row=1 end_row=1 ;;
+        bottom-center) start_col=1 end_col=2 start_row=1 end_row=1 ;;
+        bottom-right)  start_col=3 end_col=3 start_row=1 end_row=1 ;;
+        *)
+            die "Invalid position: $position
+Valid positions:
+  top-left, top-center, top-right
+  left, center, right
+  bottom-left, bottom-center, bottom-right"
+            ;;
+    esac
+
+    local x=$((wa_x + cell_w * start_col))
+    local y=$((wa_y + cell_h * start_row))
+    local width=$((cell_w * (end_col - start_col + 1)))
+    local height=$((cell_h * (end_row - start_row + 1)))
+    echo "$x $y $width $height"
 }
 
 # Show help message
@@ -363,11 +438,10 @@ cmd_activate() {
     
     [[ -z "$value" ]] && die "Usage: wctl activate <ID> or wctl activate -t|-s|-c|-p <value>"
     
-    local raw success
+    local raw
     case "$mode" in
         id)
-            # Validate numeric ID
-            [[ ! "$value" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+            validate_id "$value"
             raw=$(dbus_call "Activate" "$value")
             ;;
         title)
@@ -385,14 +459,8 @@ cmd_activate() {
             raw=$(dbus_call "ActivateByPid" "$value")
             ;;
     esac
-    
-    # Parse result - format is (true,) or (false,)
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window activated"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+
+    report_result "$raw" "Window activated" "$value"
 }
 
 # Focus a window by ID (without raising)
@@ -400,18 +468,11 @@ cmd_focus() {
     local id="${1:-}"
     
     [[ -z "$id" ]] && die "Usage: wctl focus <ID>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    
+    validate_id "$id"
+
     local raw
     raw=$(dbus_call "Focus" "$id")
-    
-    # Parse result - format is (true,) or (false,)
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window focused"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "Window focused" "$id"
 }
 
 # Show focused window
@@ -485,7 +546,7 @@ cmd_info() {
     done
     
     [[ -z "$id" ]] && die "Usage: wctl info <ID> [--json]"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    validate_id "$id"
     
     # Get detailed window list as JSON
     local json
@@ -535,19 +596,13 @@ cmd_move() {
     local y="${3:-}"
     
     [[ -z "$id" || -z "$x" || -z "$y" ]] && die "Usage: wctl move <ID> <X> <Y>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    validate_id "$id"
     [[ ! "$x" =~ ^-?[0-9]+$ ]] && die "X coordinate must be a number"
     [[ ! "$y" =~ ^-?[0-9]+$ ]] && die "Y coordinate must be a number"
-    
+
     local raw
     raw=$(dbus_call "Move" "$id" "$x" "$y")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window moved"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "Window moved" "$id"
 }
 
 # Resize window
@@ -557,19 +612,13 @@ cmd_resize() {
     local height="${3:-}"
     
     [[ -z "$id" || -z "$width" || -z "$height" ]] && die "Usage: wctl resize <ID> <WIDTH> <HEIGHT>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    [[ ! "$width" =~ ^[0-9]+$ ]] && die "Width must be a positive number"
-    [[ ! "$height" =~ ^[0-9]+$ ]] && die "Height must be a positive number"
-    
+    validate_id "$id"
+    [[ ! "$width" =~ ^[1-9][0-9]*$ ]] && die "Width must be a positive number"
+    [[ ! "$height" =~ ^[1-9][0-9]*$ ]] && die "Height must be a positive number"
+
     local raw
     raw=$(dbus_call "Resize" "$id" "$width" "$height")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window resized"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "Window resized" "$id"
 }
 
 # Move and resize window
@@ -582,21 +631,15 @@ cmd_move_resize() {
     
     [[ -z "$id" || -z "$x" || -z "$y" || -z "$width" || -z "$height" ]] && \
         die "Usage: wctl move-resize <ID> <X> <Y> <WIDTH> <HEIGHT>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    validate_id "$id"
     [[ ! "$x" =~ ^-?[0-9]+$ ]] && die "X coordinate must be a number"
     [[ ! "$y" =~ ^-?[0-9]+$ ]] && die "Y coordinate must be a number"
-    [[ ! "$width" =~ ^[0-9]+$ ]] && die "Width must be a positive number"
-    [[ ! "$height" =~ ^[0-9]+$ ]] && die "Height must be a positive number"
-    
+    [[ ! "$width" =~ ^[1-9][0-9]*$ ]] && die "Width must be a positive number"
+    [[ ! "$height" =~ ^[1-9][0-9]*$ ]] && die "Height must be a positive number"
+
     local raw
     raw=$(dbus_call "MoveResize" "$id" "$x" "$y" "$width" "$height")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window moved and resized"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "Window moved and resized" "$id"
 }
 
 # ============================================================================
@@ -619,66 +662,16 @@ Valid positions:
 
     local wa_x wa_y wa_w wa_h
     read -r wa_x wa_y wa_w wa_h <<< "$(get_workarea_for_window_json "$window")"
-    
-    # Calculate grid cell dimensions (4x2 grid)
-    local cell_w=$((wa_w / 4))
-    local cell_h=$((wa_h / 2))
-    
-    # Map position to grid coordinates
-    local start_col end_col start_row end_row
-    case "$position" in
-        top-left)
-            start_col=0 end_col=0 start_row=0 end_row=0
-            ;;
-        top-center)
-            start_col=1 end_col=2 start_row=0 end_row=0
-            ;;
-        top-right)
-            start_col=3 end_col=3 start_row=0 end_row=0
-            ;;
-        left)
-            start_col=0 end_col=0 start_row=0 end_row=1
-            ;;
-        center)
-            start_col=1 end_col=2 start_row=0 end_row=1
-            ;;
-        right)
-            start_col=3 end_col=3 start_row=0 end_row=1
-            ;;
-        bottom-left)
-            start_col=0 end_col=0 start_row=1 end_row=1
-            ;;
-        bottom-center)
-            start_col=1 end_col=2 start_row=1 end_row=1
-            ;;
-        bottom-right)
-            start_col=3 end_col=3 start_row=1 end_row=1
-            ;;
-        *)
-            die "Invalid position: $position
-Valid positions:
-  top-left, top-center, top-right
-  left, center, right
-  bottom-left, bottom-center, bottom-right"
-            ;;
-    esac
-    
-    # Calculate pixel positions
-    local x=$((wa_x + cell_w * start_col))
-    local y=$((wa_y + cell_h * start_row))
-    local width=$((cell_w * (end_col - start_col + 1)))
-    local height=$((cell_h * (end_row - start_row + 1)))
-    
-    # Call MoveResize to position window
+
+    # Resolve the grid cell into pixel geometry (pure helper; dies on bad position).
+    local geom
+    geom=$(resolve_tile_geometry "$position" "$wa_x" "$wa_y" "$wa_w" "$wa_h") || exit 1
+    local x y width height
+    read -r x y width height <<< "$geom"
+
     local raw
     raw=$(dbus_call "MoveResize" "$id" "$x" "$y" "$width" "$height")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window tiled to $position"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "Window tiled to $position" "$id"
 }
 
 # Center window on screen
@@ -687,8 +680,8 @@ cmd_center() {
     local axis="${2:-both}"
     
     [[ -z "$id" ]] && die "Usage: wctl center <ID> [horizontal|vertical|both]"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    
+    validate_id "$id"
+
     # Normalize axis argument (support short forms)
     case "$axis" in
         h|horizontal)
@@ -717,39 +710,30 @@ cmd_center() {
     
     local wa_x wa_y wa_w wa_h
     read -r wa_x wa_y wa_w wa_h <<< "$(get_workarea_for_window_json "$window")"
-    
-    # Calculate centered positions
+
+    # Centering is the workarea-relative 'center' token, so reuse the single
+    # source of that formula in resolve_place_position (preserve size via Move).
     local new_x="$win_x"
     local new_y="$win_y"
-    
+    local success_msg
+
     if [[ "$axis" == "horizontal" || "$axis" == "both" ]]; then
-        new_x=$((wa_x + (wa_w - win_w) / 2))
+        new_x=$(resolve_place_position center x "$wa_x" "$wa_w" "$win_w")
     fi
-    
+
     if [[ "$axis" == "vertical" || "$axis" == "both" ]]; then
-        new_y=$((wa_y + (wa_h - win_h) / 2))
+        new_y=$(resolve_place_position center y "$wa_y" "$wa_h" "$win_h")
     fi
-    
-    # Call Move to reposition window (preserve size)
+
+    case "$axis" in
+        horizontal) success_msg="Window centered horizontally" ;;
+        vertical)   success_msg="Window centered vertically" ;;
+        both)       success_msg="Window centered" ;;
+    esac
+
     local raw
     raw=$(dbus_call "Move" "$id" "$new_x" "$new_y")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        case "$axis" in
-            horizontal)
-                echo "Window centered horizontally"
-                ;;
-            vertical)
-                echo "Window centered vertically"
-                ;;
-            both)
-                echo "Window centered"
-                ;;
-        esac
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "$success_msg" "$id"
 }
 
 # Place window using a mix of absolute pixels and workarea-relative tokens
@@ -765,7 +749,7 @@ X:      number or left|center|right
 Y:      number or top|center|bottom
 WIDTH:  positive number or percentage like 50%
 HEIGHT: positive number or percentage like 100%"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    validate_id "$id"
 
     local window
     window=$(get_window_json_by_id "$id")
@@ -781,13 +765,7 @@ HEIGHT: positive number or percentage like 100%"
 
     local raw
     raw=$(dbus_call "MoveResize" "$id" "$x" "$y" "$width" "$height")
-
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window placed"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "Window placed" "$id"
 }
 
 # ============================================================================
@@ -800,19 +778,13 @@ cmd_simple_state() {
     local method="$1"
     local success_msg="$2"
     local id="${3:-}"
-    
+
     [[ -z "$id" ]] && die "Usage: wctl ${method,,} <ID>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    
+    validate_id "$id"
+
     local raw
     raw=$(dbus_call "$method" "$id")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "$success_msg"
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    report_result "$raw" "$success_msg" "$id"
 }
 
 cmd_minimize() {
@@ -843,40 +815,47 @@ cmd_close() {
     cmd_simple_state "Close" "Window closed" "$@"
 }
 
-# Set above (always-on-top) state
-cmd_above() {
-    local id="${1:-}"
-    local state="${2:-}"
-    
-    [[ -z "$id" || -z "$state" ]] && die "Usage: wctl above <ID> on|off"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    
-    local above
+# Shared helper for boolean window-state setters (above, sticky).
+# Usage: cmd_bool_state <METHOD> <ON_MSG> <OFF_MSG> <ID> <STATE>
+cmd_bool_state() {
+    local method="$1"
+    local on_msg="$2"
+    local off_msg="$3"
+    local id="${4:-}"
+    local state="${5:-}"
+
+    local name="${method#Set}"
+    name="${name,,}"
+    [[ -z "$id" || -z "$state" ]] && die "Usage: wctl ${name} <ID> on|off"
+    validate_id "$id"
+
+    local value
     case "$state" in
         on|true|1)
-            above="true"
+            value="true"
             ;;
         off|false|0)
-            above="false"
+            value="false"
             ;;
         *)
             die "State must be 'on' or 'off'"
             ;;
     esac
-    
+
     local raw
-    raw=$(dbus_call "SetAbove" "$id" "$above")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        if [[ "$above" == "true" ]]; then
-            echo "Window set to always-on-top"
-        else
-            echo "Window removed from always-on-top"
-        fi
+    raw=$(dbus_call "$method" "$id" "$value")
+    if [[ "$value" == "true" ]]; then
+        report_result "$raw" "$on_msg" "$id"
     else
-        echo "Window not found"
-        exit 1
+        report_result "$raw" "$off_msg" "$id"
     fi
+}
+
+# Set above (always-on-top) state
+cmd_above() {
+    cmd_bool_state "SetAbove" \
+        "Window set to always-on-top" \
+        "Window removed from always-on-top" "$@"
 }
 
 # Output bash completion script
@@ -896,7 +875,6 @@ _wctl() {
     _init_completion || return
 
     local commands="list focused info activate focus move resize move-resize place tile center minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
-    local id_commands="info focus move resize move-resize place tile center minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close"
 
     # Complete command names
     if [[ $cword -eq 1 ]]; then
@@ -924,6 +902,20 @@ _wctl() {
                 COMPREPLY=($(compgen -W "left center right" -- "$cur"))
             elif [[ $cword -eq 4 ]]; then
                 COMPREPLY=($(compgen -W "top center bottom" -- "$cur"))
+            fi
+            ;;
+        tile)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
+            elif [[ $cword -eq 3 ]]; then
+                COMPREPLY=($(compgen -W "top-left top-center top-right left center right bottom-left bottom-center bottom-right" -- "$cur"))
+            fi
+            ;;
+        center)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
+            elif [[ $cword -eq 3 ]]; then
+                COMPREPLY=($(compgen -W "horizontal vertical both" -- "$cur"))
             fi
             ;;
         activate)
@@ -1069,6 +1061,16 @@ _wctl() {
                         '4:width or percentage:' \
                         '5:height or percentage:'
                     ;;
+                tile)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '2:position:(top-left top-center top-right left center right bottom-left bottom-center bottom-right)'
+                    ;;
+                center)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '2:axis:(horizontal vertical both)'
+                    ;;
                 above|sticky)
                     _arguments \
                         '1:window id:_wctl_window_ids' \
@@ -1088,38 +1090,9 @@ ZSH_COMPLETION
 
 # Set sticky (all workspaces) state
 cmd_sticky() {
-    local id="${1:-}"
-    local state="${2:-}"
-    
-    [[ -z "$id" || -z "$state" ]] && die "Usage: wctl sticky <ID> on|off"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    
-    local sticky
-    case "$state" in
-        on|true|1)
-            sticky="true"
-            ;;
-        off|false|0)
-            sticky="false"
-            ;;
-        *)
-            die "State must be 'on' or 'off'"
-            ;;
-    esac
-    
-    local raw
-    raw=$(dbus_call "SetSticky" "$id" "$sticky")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        if [[ "$sticky" == "true" ]]; then
-            echo "Window set to all workspaces"
-        else
-            echo "Window removed from all workspaces"
-        fi
-    else
-        echo "Window not found"
-        exit 1
-    fi
+    cmd_bool_state "SetSticky" \
+        "Window set to all workspaces" \
+        "Window removed from all workspaces" "$@"
 }
 
 # Main entry point

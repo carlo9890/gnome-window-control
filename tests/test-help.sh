@@ -41,12 +41,19 @@ assert_contains "$WCTL_OUTPUT" "STATE COMMANDS:" "Help contains STATE COMMANDS s
 assert_contains "$WCTL_OUTPUT" "EXAMPLES:" "Help contains EXAMPLES section"
 assert_contains "$WCTL_OUTPUT" "ENVIRONMENT:" "Help contains ENVIRONMENT section"
 
-# Test: Help mentions key commands
-assert_contains "$WCTL_OUTPUT" "list" "Help mentions list command"
-assert_contains "$WCTL_OUTPUT" "focused" "Help mentions focused command"
-assert_contains "$WCTL_OUTPUT" "activate" "Help mentions activate command"
-assert_contains "$WCTL_OUTPUT" "info" "Help mentions info command"
-assert_contains "$WCTL_OUTPUT" "move" "Help mentions move command"
-assert_contains "$WCTL_OUTPUT" "place" "Help mentions place command"
+# Test: Help documents each command via a distinctive fragment of its own help
+# line. Bare tokens like "move" appear in "move-resize", examples, and prose, so
+# they cannot detect a dropped command line; these synopses can.
+assert_contains "$WCTL_OUTPUT" "list --json" "Help documents list --json"
+assert_contains "$WCTL_OUTPUT" "focused --json" "Help documents focused command"
+assert_contains "$WCTL_OUTPUT" "activate -c <CLASS>" "Help documents activate by WM class"
+assert_contains "$WCTL_OUTPUT" "info <ID>" "Help documents info command"
+assert_contains "$WCTL_OUTPUT" "move <ID> <X> <Y>" "Help documents move command"
+assert_contains "$WCTL_OUTPUT" "move-resize <ID> <X> <Y> <W> <H>" "Help documents move-resize command"
+assert_contains "$WCTL_OUTPUT" "place <ID> <X> <Y> <W> <H>" "Help documents place command"
+assert_contains "$WCTL_OUTPUT" "tile <ID> <position>" "Help documents tile command"
+assert_contains "$WCTL_OUTPUT" "center <ID> [horizontal|vertical|both]" "Help documents center command"
+assert_contains "$WCTL_OUTPUT" "above <ID> on|off" "Help documents above command"
+assert_contains "$WCTL_OUTPUT" "sticky <ID> on|off" "Help documents sticky command"
 
 summary

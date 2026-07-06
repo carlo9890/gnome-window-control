@@ -43,9 +43,11 @@ else
     assert_contains "$WCTL_OUTPUT" "Size:" "Output contains 'Size:' field"
     assert_contains "$WCTL_OUTPUT" "States:" "Output contains 'States:' field"
     
-    # Test: Focused field should show "yes" for focused window
-    assert_contains "$WCTL_OUTPUT" "Focused:" "Output contains Focused field"
-    assert_contains "$WCTL_OUTPUT" "yes" "Focused field shows 'yes'"
+    # Test: the Focused field value must be exactly "yes". Extract the field's own
+    # value rather than grepping the whole blob for "yes" (which a title/class could
+    # satisfy even if the extension regressed to reporting Focused: no).
+    focused_value=$(echo "$WCTL_OUTPUT" | grep -oP 'Focused:\s*\K\S+')
+    assert_equals "$focused_value" "yes" "Focused field value is 'yes'"
     
     # Test: Extract window ID from output
     if [[ "$WCTL_OUTPUT" =~ Window:\ +([0-9]+) ]]; then

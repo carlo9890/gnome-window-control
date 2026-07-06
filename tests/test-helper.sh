@@ -172,7 +172,7 @@ assert_matches() {
     local actual="$1"
     local pattern="$2"
     local msg="${3:-Output should match pattern}"
-    
+
     if [[ "$actual" =~ $pattern ]]; then
         pass "$msg"
         return 0
@@ -180,6 +180,37 @@ assert_matches() {
         fail "$msg"
         echo "  Pattern: '$pattern'"
         echo "  Actual:  '$actual'"
+        return 1
+    fi
+}
+
+# assert_within ACTUAL EXPECTED TOLERANCE [MESSAGE]
+# Numeric assertion that |actual - expected| <= tolerance. Window managers can
+# nudge geometry by a few pixels (decorations, snapping), so exact placement
+# assertions are brittle -- but a tolerance band still fails on a genuinely wrong
+# result, unlike a bare "is it non-empty" check.
+assert_within() {
+    local actual="$1"
+    local expected="$2"
+    local tol="$3"
+    local msg="${4:-Value should be within tolerance}"
+
+    if [[ ! "$actual" =~ ^-?[0-9]+$ ]]; then
+        fail "$msg"
+        echo "  Expected a number within +/-$tol of $expected, got: '$actual'"
+        return 1
+    fi
+
+    local diff=$((actual - expected))
+    (( diff < 0 )) && diff=$((-diff))
+
+    if (( diff <= tol )); then
+        pass "$msg"
+        return 0
+    else
+        fail "$msg"
+        echo "  Expected: $expected (+/-$tol)"
+        echo "  Actual:   $actual (off by $diff)"
         return 1
     fi
 }

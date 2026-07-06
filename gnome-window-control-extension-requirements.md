@@ -24,7 +24,11 @@ On Wayland/GNOME:
 
 - Window decoration/theming
 - Keyboard shortcuts - this is a programmatic interface only
-- Tiling/snapping logic - just expose primitives, let scripts handle layout
+- Tiling/snapping logic in the **D-Bus surface** - the extension exposes only
+  geometry primitives (Move/Resize/MoveResize/GetWorkarea, etc.). Higher-level
+  layout is composed on top of those primitives in scripts. The `wctl` CLI ships
+  two such conveniences built entirely on the primitives - `wctl tile` (a 4x2
+  grid) and `wctl center` - so the D-Bus interface itself stays layout-free.
 
 ---
 
