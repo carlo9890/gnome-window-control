@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Start a nested GNOME Shell session for manual testing
 
 set -e

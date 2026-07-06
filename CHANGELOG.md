@@ -22,6 +22,22 @@
 - Added modification-test coverage for `wctl place`
 - Updated help tests and verified query tests, modification tests, and build validation
 
+## v5 (2026-01-18)
+
+### Added
+- `ListMonitors` D-Bus method for enumerating monitors
+- `GetWorkarea` D-Bus method for querying a monitor's usable work area
+- `wctl tile` and `wctl center` commands for grid tiling and centering
+
+### Fixed
+- Missing closing brace in the `ListDetailed` method
+
+### Testing
+- Added coverage for the `tile` and `center` commands
+
+### Tooling
+- Added `scripts/release.sh` with wctl/metadata version validation and GitHub-releases install docs
+
 ## v4 (2026-01-09)
 
 ### Fixed
@@ -37,3 +53,13 @@
 ### Documentation
 - Added test requirements to CONTRIBUTING.md
 - Improved test runners to separate query and modification tests
+
+## v3 (2026-01-08)
+
+### Changed
+- Updated `install-wctl.sh` to support downloading `wctl` from GitHub releases
+- Added an initial release script
+
+## v2 (2026-01-08)
+
+- Initial tagged release of the extension and `wctl` CLI

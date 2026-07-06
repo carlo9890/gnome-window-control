@@ -111,9 +111,12 @@ From `Meta.Window` (via `global.get_window_actors()` → `actor.get_meta_window(
 
 ## D-Bus Interface Design
 
-### Service Name
+### Bus Name (D-Bus destination)
+
+The extension exports its object on GNOME Shell's own bus connection, so the
+D-Bus destination is:
 ```
-org.gnome.Shell.Extensions.WindowControl
+org.gnome.Shell
 ```
 
 ### Object Path
@@ -233,14 +236,6 @@ Move and resize window in one call. More efficient than separate calls.
 
 Get window geometry: (x, y, width, height). Returns (-1, -1, -1, -1) if not found.
 
-#### `MoveToMonitor(id: t, monitor: i) → b`
-
-Move window to specified monitor index.
-
-#### `MoveToWorkspace(id: t, workspace: i) → b`
-
-Move window to specified workspace index.
-
 ---
 
 ### State Change Methods
@@ -293,7 +288,7 @@ Set or unset sticky (visible on all workspaces).
 ### List all windows
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.List
 ```
@@ -301,7 +296,7 @@ gdbus call --session \
 ### Get detailed JSON list
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.ListDetailed \
   | sed "s/^('//;s/',)$//" | jq .
@@ -310,7 +305,7 @@ gdbus call --session \
 ### Activate by ID
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.Activate \
   12345
@@ -319,7 +314,7 @@ gdbus call --session \
 ### Find and activate kitty window
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.ActivateByWmClass \
   "kitty"
@@ -328,7 +323,7 @@ gdbus call --session \
 ### Get currently focused window
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.GetFocused
 ```
@@ -336,7 +331,7 @@ gdbus call --session \
 ### Move window to position
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.Move \
   12345 100 100
@@ -345,7 +340,7 @@ gdbus call --session \
 ### Resize window
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.Resize \
   12345 1920 1080
@@ -354,25 +349,16 @@ gdbus call --session \
 ### Move and resize in one call
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.MoveResize \
   12345 0 0 960 1080
 ```
 
-### Move window to monitor 1
-```bash
-gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.MoveToMonitor \
-  12345 1
-```
-
 ### Maximize a window
 ```bash
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.Maximize \
   12345
@@ -401,9 +387,6 @@ wctl resize 12345 1920 1080          # Resize to 1920x1080
 wctl move-resize 12345 0 0 960 1080  # Move and resize
 wctl place 12345 center top 50% 100% # Place with workarea-relative tokens
 wctl info 12345                      # Get current geometry/details
-
-# Monitor & Workspace
-wctl to-monitor 12345 1      # Move to monitor 1
 
 # State
 wctl minimize 12345
@@ -438,7 +421,7 @@ window-control@example.com/
   "name": "Window Control",
   "description": "D-Bus interface for listing and controlling windows",
   "version": 1,
-  "shell-version": ["45", "46", "47"],
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
   "url": "https://github.com/username/gnome-window-control"
 }
 ```
