@@ -46,9 +46,9 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
    cd gnome-window-control
    ```
 
-2. Install the extension:
+2. Install the extension from source:
    ```bash
-   gnome-extensions install window-control@hko9890 --force
+   ./scripts/build.sh install
    ```
 
    Or manually copy to the extensions directory:
@@ -132,8 +132,16 @@ wctl place 12345 center top 50% 100%
 # Exact pixel placement still works
 wctl place 12345 1280 32 3840 1408
 
-# Move to monitor
-wctl to-monitor 12345 1
+# Tile to a grid cell (e.g. left half, top-right quadrant)
+wctl tile 12345 left
+wctl tile 12345 top-right
+
+# Center on screen (both axes, or just one)
+wctl center 12345
+wctl center 12345 horizontal
+
+# Focus a window without raising it
+wctl focus 12345
 
 # Window state
 wctl minimize 12345
@@ -161,19 +169,19 @@ size, so panels and docks are respected.
 ```bash
 # List all windows
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.List
 
 # Get detailed JSON
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
 
 # Activate by WM class
 gdbus call --session \
-  --dest org.gnome.Shell.Extensions.WindowControl \
+  --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.ActivateByWmClass \
   "kitty"
@@ -181,7 +189,10 @@ gdbus call --session \
 
 ## D-Bus Interface
 
-**Service:** `org.gnome.Shell.Extensions.WindowControl`  
+The extension exports its object on GNOME Shell's own bus connection, so the D-Bus
+destination is `org.gnome.Shell` (not a standalone service name).
+
+**Bus name (dest):** `org.gnome.Shell`  
 **Path:** `/org/gnome/Shell/Extensions/WindowControl`  
 **Interface:** `org.gnome.Shell.Extensions.WindowControl`
 
@@ -191,6 +202,7 @@ gdbus call --session \
 |--------|-----------|-------------|
 | `List` | `() -> a(tssssbiiii)` | List all windows |
 | `ListDetailed` | `() -> s` | List windows as JSON with full details |
+| `ListMonitors` | `() -> s` | List monitors as JSON |
 | `Activate` | `(t) -> b` | Activate window by ID |
 | `ActivateByTitle` | `(s) -> b` | Activate by exact title match |
 | `ActivateByTitleSubstring` | `(s) -> b` | Activate by title substring |
@@ -203,8 +215,7 @@ gdbus call --session \
 | `Resize` | `(tii) -> b` | Resize window to (width, height) |
 | `MoveResize` | `(tiiii) -> b` | Move and resize window |
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
-| `MoveToMonitor` | `(ti) -> b` | Move window to monitor |
-| `MoveToWorkspace` | `(ti) -> b` | Move window to workspace |
+| `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area |
 | `Minimize` | `(t) -> b` | Minimize window |
 | `Unminimize` | `(t) -> b` | Restore minimized window |
 | `Maximize` | `(t) -> b` | Maximize window |

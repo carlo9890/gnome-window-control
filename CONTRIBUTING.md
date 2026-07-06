@@ -19,7 +19,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ### Prerequisites
 
-- GNOME Shell 45, 46, or 47
+- GNOME Shell 45-50
 - `gnome-extensions` CLI tool
 - Basic knowledge of GJS (GNOME JavaScript)
 
@@ -45,14 +45,19 @@ journalctl -f -o cat /usr/bin/gnome-shell 2>&1 | grep -i window-control
 
 ### Reloading Changes
 
-After modifying `extension.js`:
+**`gnome-extensions disable`/`enable` does NOT reload JavaScript from disk** — it
+only re-runs `disable()`/`enable()` on the already-loaded code. To test changes to
+`extension.js` you must reload the code itself:
 
-```bash
-gnome-extensions disable window-control@hko9890
-gnome-extensions enable window-control@hko9890
-```
+- **Recommended** — use a nested GNOME Shell session:
+  ```bash
+  ./scripts/build.sh install   # copy updated files into place
+  ./scripts/start-nested.sh    # launch a nested shell in a window
+  ```
+  Then enable the extension inside the nested session.
+- **Otherwise** — restart GNOME Shell (log out/in on Wayland; `Alt+F2` `r` on X11).
 
-On Wayland, you may need to log out and back in for some changes.
+See AGENTS.md for details.
 
 ## Code Style
 
@@ -69,16 +74,16 @@ On Wayland, you may need to log out and back in for some changes.
 Example:
 ```javascript
 SomeMethod(param) {
-    console.log(`[WindowControl] SomeMethod(${param}) called`);
+    console.log(`[Window Control] SomeMethod(${param}) called`);
     try {
         const window = this._findWindowById(param);
         if (!window) return false;
         
         window.someAction();
-        console.log(`[WindowControl] SomeMethod(${param}) -> true`);
+        console.log(`[Window Control] SomeMethod(${param}) -> true`);
         return true;
     } catch (e) {
-        console.error(`[WindowControl] SomeMethod failed: ${e.message}`);
+        console.error(`[Window Control] SomeMethod failed: ${e.message}`);
         return false;
     }
 }
@@ -191,26 +196,29 @@ Modification tests spawn a test window and exercise all state-changing commands 
 2. Add the implementation in `WindowControlService` class:
    ```javascript
    YourNewMethod(windowId) {
-       console.log(`[WindowControl] YourNewMethod(${windowId}) called`);
+       console.log(`[Window Control] YourNewMethod(${windowId}) called`);
        try {
            const window = this._findWindowById(windowId);
            if (!window) return false;
            
            // Your implementation
-           console.log(`[WindowControl] YourNewMethod(${windowId}) -> true`);
+           console.log(`[Window Control] YourNewMethod(${windowId}) -> true`);
            return true;
        } catch (e) {
-           console.error(`[WindowControl] YourNewMethod failed: ${e.message}`);
+           console.error(`[Window Control] YourNewMethod failed: ${e.message}`);
            return false;
        }
    }
    ```
 
-3. Add the corresponding command to `wctl`:
+3. Add the corresponding command to `wctl`. Use the `dbus_call` helper (bare,
+   untyped args) and validate inline with `die`, matching the existing commands:
    ```bash
    your-new-command)
-       validate_args 2 "$@"
-       call_dbus "YourNewMethod" "uint64:$2"
+       id="$2"
+       [[ "$id" =~ ^[0-9]+$ ]] || die "Window ID must be a number: $id"
+       raw=$(dbus_call "YourNewMethod" "$id")
+       [[ "$raw" == "(true,)" ]] && echo "OK" || { echo "Window not found"; exit 1; }
        ;;
    ```
 
@@ -239,6 +247,16 @@ Do NOT manually create GitHub releases. The script ensures all required assets a
 4. Create tag: `git tag vX`
 5. Push: `git push && git push --tags`
 6. Run: `./scripts/release.sh`
+
+### Automated releases (CI)
+
+`.github/workflows/build.yml` has a `release` job that runs on every push to
+`main` and **auto-creates the GitHub release** for the current `metadata.json`
+version if one does not already exist. Running `./scripts/release.sh` is still the
+way to publish a release with proper CHANGELOG-derived notes and all validated
+assets — it overwrites any release CI created for the same tag. The "do not create
+releases manually" rule above refers to the web UI / ad-hoc `gh release create`;
+it does not describe the CI job. Keep the two paths in sync.
 
 ## Reporting Issues
 

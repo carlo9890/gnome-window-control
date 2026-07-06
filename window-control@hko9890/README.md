@@ -13,15 +13,10 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
 1. Clone or download this repository:
    ```bash
    git clone <repository-url>
-   cd stop-gap
+   cd gnome-window-control
    ```
 
-2. Install the extension:
-   ```bash
-   gnome-extensions install window-control@hko9890 --force
-   ```
-
-   Or manually copy to the extensions directory:
+2. Install the extension by copying it into the extensions directory:
    ```bash
    cp -r window-control@hko9890 ~/.local/share/gnome-shell/extensions/
    ```
@@ -62,11 +57,9 @@ journalctl -f -o cat /usr/bin/gnome-shell
 
 ### Reload Extension
 
-After making changes:
-```bash
-gnome-extensions disable window-control@hko9890
-gnome-extensions enable window-control@hko9890
-```
+`gnome-extensions disable`/`enable` does NOT reload the JavaScript from disk. To
+apply changes to `extension.js`, restart GNOME Shell (log out/in on Wayland;
+`Alt+F2` `r` on X11), or use a nested GNOME Shell session for testing.
 
 ## License
 

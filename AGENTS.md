@@ -7,19 +7,23 @@ GNOME Window Control - A GNOME Shell extension providing D-Bus interface for win
 ## Project Structure
 
 ```
-stop-gap/
+gnome-window-control/
 ├── window-control@hko9890/    # GNOME Shell extension source
 │   ├── extension.js           # Main extension code
 │   ├── metadata.json          # Extension metadata
 │   └── README.md              # Extension-specific docs
 ├── scripts/                   # Build and dev scripts
-│   ├── build.sh               # Build distributable zip
+│   ├── build.sh               # Build/install/validate
+│   ├── release.sh             # Create a GitHub release
 │   ├── start-nested.sh        # Start nested GNOME Shell session
 │   └── debug-dbus.sh          # Debug D-Bus interface
-├── dist/                      # Build output (gitignored)
+├── tests/                     # Query and modification test suites
 ├── wctl                       # CLI wrapper script
+├── install-wctl.sh            # wctl installer
 ├── README.md                  # Project documentation
 ├── CONTRIBUTING.md            # Contribution guidelines
+├── CHANGELOG.md               # Release notes
+├── gnome-window-control-extension-requirements.md  # Original design spec
 └── LICENSE                    # MIT License
 ```
 
@@ -175,6 +179,14 @@ If this fails, the code has syntax errors and cannot be committed.
 
 See CONTRIBUTING.md for full release checklist.
 
+**Note**: `.github/workflows/build.yml` also has a `release` job that auto-creates
+the GitHub release on push to `main` when one does not yet exist for the current
+version. `release.sh` remains authoritative (proper CHANGELOG notes + validated
+assets) and overwrites any release CI created for the same tag.
+
 ## Requirements Doc
 
-See `gnome-window-control-extension-requirements.md` for full API specification.
+`gnome-window-control-extension-requirements.md` is the original design
+specification. For the current D-Bus surface, the interface XML in
+`window-control@hko9890/extension.js` and the method table in README.md are
+authoritative.
