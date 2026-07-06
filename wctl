@@ -14,16 +14,10 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
 # Colors for output (disabled if not a tty)
 if [[ -t 1 ]]; then
     BOLD='\033[1m'
-    DIM='\033[2m'
-    GREEN='\033[32m'
-    YELLOW='\033[33m'
     RED='\033[31m'
     RESET='\033[0m'
 else
     BOLD=''
-    DIM=''
-    GREEN=''
-    YELLOW=''
     RED=''
     RESET=''
 fi
@@ -83,18 +77,6 @@ dbus_call_json() {
     # busctl --json returns: {"type":"s","data":["JSON_STRING"]}
     # Extract the actual JSON string from data[0]
     echo "$result" | jq -r '.data[0]'
-}
-
-# Truncate string to max length with ellipsis
-truncate() {
-    local str="$1"
-    local max="$2"
-    
-    if [[ ${#str} -gt $max ]]; then
-        echo "${str:0:$((max-3))}..."
-    else
-        echo "$str"
-    fi
 }
 
 # Get a single window from ListDetailed JSON
@@ -688,6 +670,7 @@ Valid positions:
     local height=$((cell_h * (end_row - start_row + 1)))
     
     # Call MoveResize to position window
+    local raw
     raw=$(dbus_call "MoveResize" "$id" "$x" "$y" "$width" "$height")
     
     if [[ "$raw" == "(true,)" ]]; then
@@ -748,6 +731,7 @@ cmd_center() {
     fi
     
     # Call Move to reposition window (preserve size)
+    local raw
     raw=$(dbus_call "Move" "$id" "$new_x" "$new_y")
     
     if [[ "$raw" == "(true,)" ]]; then
@@ -1263,4 +1247,7 @@ main() {
     esac
 }
 
-main "$@"
+# Run the CLI only when executed directly (not when sourced, e.g. by unit tests)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

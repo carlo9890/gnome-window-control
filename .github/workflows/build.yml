@@ -8,6 +8,7 @@ on:
       - 'scripts/**'
       - 'wctl'
       - 'install-wctl.sh'
+      - 'tests/**'
       - '.github/workflows/build.yml'
   pull_request:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - 'scripts/**'
       - 'wctl'
       - 'install-wctl.sh'
+      - 'tests/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -31,6 +33,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+
+      - name: Run pure-logic tests (no extension required)
+        run: |
+          chmod +x wctl tests/*.sh
+          bash tests/test-logic.sh
 
       - name: Make build script executable
         run: chmod +x scripts/build.sh
@@ -136,7 +143,7 @@ jobs:
             Or manually copy `wctl` to `~/.local/bin/`.
             
             ### Compatibility
-            - GNOME Shell 45, 46, 47
+            - GNOME Shell 45-50
           files: |
             dist/*.zip
             release-files/wctl

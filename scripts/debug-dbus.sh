@@ -4,6 +4,8 @@
 # Run this inside a nested GNOME Shell session
 #
 
+set -uo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 OUTPUT_DIR="$PROJECT_ROOT/output"
@@ -11,9 +13,9 @@ mkdir -p "$OUTPUT_DIR"
 
 OUTPUT_FILE="$OUTPUT_DIR/debug-$(date +%Y%m%d-%H%M%S).txt"
 
-DEST="org.gnome.Shell"
-PATH_="/org/gnome/Shell/Extensions/WindowControl"
-IFACE="org.gnome.Shell.Extensions.WindowControl"
+DBUS_DEST="org.gnome.Shell"
+DBUS_PATH="/org/gnome/Shell/Extensions/WindowControl"
+DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
 
 {
     echo "Window Control D-Bus Debug"
@@ -23,38 +25,30 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
     echo ""
 
     echo "=== GetFocused ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetFocused" 2>&1
-    echo ""
-
-    echo "=== List ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.List" 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetFocused" 2>&1
     echo ""
 
     echo "=== ListDetailed ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1
     echo ""
 
     echo "=== ListDetailed (formatted JSON) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
         sed "s/^('//;s/',)$//" | jq . 2>/dev/null || echo "(jq not available or invalid JSON)"
     echo ""
 
-    # Get a window ID for testing (first window from list)
-    WINDOW_ID=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>/dev/null | \
-        sed "s/^('//;s/',)$//" | jq -r '.[0].id // empty' 2>/dev/null)
+    # Fetch the window list once, then extract the first window's fields from it
+    WINDOW_LIST=$(gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>/dev/null | \
+        sed "s/^('//;s/',)$//")
+    WINDOW_ID=$(echo "$WINDOW_LIST" | jq -r '.[0].id // empty' 2>/dev/null)
 
     if [[ -n "$WINDOW_ID" ]]; then
         # Extract window properties for activation tests
-        WINDOW_TITLE=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>/dev/null | \
-            sed "s/^('//;s/',)$//" | jq -r '.[0].title // empty' 2>/dev/null)
-        WINDOW_CLASS=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>/dev/null | \
-            sed "s/^('//;s/',)$//" | jq -r '.[0].wm_class // empty' 2>/dev/null)
-        WINDOW_PID=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>/dev/null | \
-            sed "s/^('//;s/',)$//" | jq -r '.[0].pid // empty' 2>/dev/null)
-        WINDOW_WORKSPACE=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>/dev/null | \
-            sed "s/^('//;s/',)$//" | jq -r '.[0].workspace // 0' 2>/dev/null)
-        WINDOW_MONITOR=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>/dev/null | \
-            sed "s/^('//;s/',)$//" | jq -r '.[0].monitor // 0' 2>/dev/null)
+        WINDOW_TITLE=$(echo "$WINDOW_LIST" | jq -r '.[0].title // empty' 2>/dev/null)
+        WINDOW_CLASS=$(echo "$WINDOW_LIST" | jq -r '.[0].wm_class // empty' 2>/dev/null)
+        WINDOW_PID=$(echo "$WINDOW_LIST" | jq -r '.[0].pid // empty' 2>/dev/null)
+        WINDOW_WORKSPACE=$(echo "$WINDOW_LIST" | jq -r '.[0].workspace_index // 0' 2>/dev/null)
+        WINDOW_MONITOR=$(echo "$WINDOW_LIST" | jq -r '.[0].monitor_index // 0' 2>/dev/null)
 
         echo "=== Testing with Window ID: $WINDOW_ID ==="
         echo "    Title: $WINDOW_TITLE"
@@ -70,15 +64,15 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== GetGeometry $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Activate $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Activate" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Activate" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Focus $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Focus" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Focus" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "============================================"
@@ -88,7 +82,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
 
         if [[ -n "$WINDOW_TITLE" ]]; then
             echo "=== ActivateByTitle '$WINDOW_TITLE' ==="
-            gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ActivateByTitle" "$WINDOW_TITLE" 2>&1
+            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitle" "$WINDOW_TITLE" 2>&1
             echo ""
 
             # Extract first 5 chars of title for substring test (if long enough)
@@ -98,7 +92,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
                 TITLE_SUBSTR="$WINDOW_TITLE"
             fi
             echo "=== ActivateByTitleSubstring '$TITLE_SUBSTR' ==="
-            gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ActivateByTitleSubstring" "$TITLE_SUBSTR" 2>&1
+            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitleSubstring" "$TITLE_SUBSTR" 2>&1
             echo ""
         else
             echo "=== ActivateByTitle - SKIPPED (no title) ==="
@@ -109,7 +103,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
 
         if [[ -n "$WINDOW_CLASS" ]]; then
             echo "=== ActivateByWmClass '$WINDOW_CLASS' ==="
-            gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ActivateByWmClass" "$WINDOW_CLASS" 2>&1
+            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByWmClass" "$WINDOW_CLASS" 2>&1
             echo ""
         else
             echo "=== ActivateByWmClass - SKIPPED (no wm_class) ==="
@@ -118,7 +112,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
 
         if [[ -n "$WINDOW_PID" && "$WINDOW_PID" != "null" ]]; then
             echo "=== ActivateByPid $WINDOW_PID ==="
-            gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ActivateByPid" "$WINDOW_PID" 2>&1
+            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByPid" "$WINDOW_PID" 2>&1
             echo ""
         else
             echo "=== ActivateByPid - SKIPPED (no pid) ==="
@@ -126,15 +120,15 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         fi
 
         echo "=== ActivateByTitle (non-existent) 'ThisTitleDoesNotExist12345' ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ActivateByTitle" "ThisTitleDoesNotExist12345" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitle" "ThisTitleDoesNotExist12345" 2>&1
         echo ""
 
         echo "=== ActivateByWmClass (non-existent) 'NonExistentClass99' ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ActivateByWmClass" "NonExistentClass99" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByWmClass" "NonExistentClass99" 2>&1
         echo ""
 
         echo "=== ActivateByPid (invalid) 999999999 ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ActivateByPid" 999999999 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByPid" 999999999 2>&1
         echo ""
 
         echo "============================================"
@@ -143,17 +137,17 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Minimize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Minimize" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Minimize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Verify minimized state ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_minimized}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== Unminimize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Unminimize" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Unminimize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
@@ -163,17 +157,17 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Maximize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Maximize" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Maximize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Verify maximized state ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_maximized}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== Unmaximize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Unmaximize" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Unmaximize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
@@ -183,22 +177,22 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Fullscreen $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Fullscreen" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Fullscreen" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Verify fullscreen state ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_fullscreen}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== Unfullscreen $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Unfullscreen" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Unfullscreen" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Verify unfullscreen state ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_fullscreen}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
@@ -208,17 +202,17 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== SetAbove $WINDOW_ID true ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetAbove" "$WINDOW_ID" true 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.SetAbove" "$WINDOW_ID" true 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Verify above state ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_above}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== SetAbove $WINDOW_ID false ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetAbove" "$WINDOW_ID" false 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.SetAbove" "$WINDOW_ID" false 2>&1
         sleep 0.5
         echo ""
 
@@ -228,22 +222,22 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== SetSticky $WINDOW_ID true ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetSticky" "$WINDOW_ID" true 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.SetSticky" "$WINDOW_ID" true 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Verify sticky state ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_on_all_workspaces}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== SetSticky $WINDOW_ID false ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetSticky" "$WINDOW_ID" false 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.SetSticky" "$WINDOW_ID" false 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Verify unsticky state ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_on_all_workspaces}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
@@ -253,30 +247,30 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Move $WINDOW_ID 100 100 ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Move" "$WINDOW_ID" 100 100 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Move" "$WINDOW_ID" 100 100 2>&1
         sleep 0.5
         echo ""
 
         echo "=== GetGeometry after Move ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Resize $WINDOW_ID 800 600 ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Resize" "$WINDOW_ID" 800 600 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Resize" "$WINDOW_ID" 800 600 2>&1
         sleep 0.5
         echo ""
 
         echo "=== GetGeometry after Resize ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== MoveResize $WINDOW_ID 50 50 640 480 ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveResize" "$WINDOW_ID" 50 50 640 480 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.MoveResize" "$WINDOW_ID" 50 50 640 480 2>&1
         sleep 0.5
         echo ""
 
         echo "=== GetGeometry after MoveResize ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "============================================"
@@ -285,7 +279,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Final ListDetailed ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
+        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
             sed "s/^('//;s/',)$//" | jq . 2>/dev/null || echo "(jq not available)"
         echo ""
 
@@ -295,7 +289,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
         echo "NOTE: Close method not tested automatically as it would close the test window."
         echo "To test Close manually:"
-        echo "  gdbus call --session --dest $DEST --object-path $PATH_ --method $IFACE.Close $WINDOW_ID"
+        echo "  gdbus call --session --dest $DBUS_DEST --object-path $DBUS_PATH --method $DBUS_IFACE.Close $WINDOW_ID"
         echo ""
 
     else
@@ -309,51 +303,51 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
     echo ""
 
     echo "=== Activate (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Activate" 999999999 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Activate" 999999999 2>&1
     echo ""
 
     echo "=== Focus (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Focus" 999999999 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Focus" 999999999 2>&1
     echo ""
 
     echo "=== GetGeometry (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" 999999999 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetGeometry" 999999999 2>&1
     echo ""
 
     echo "=== Minimize (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Minimize" 999999999 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Minimize" 999999999 2>&1
     echo ""
 
     echo "=== Maximize (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Maximize" 999999999 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Maximize" 999999999 2>&1
     echo ""
 
     echo "=== Fullscreen (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Fullscreen" 999999999 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Fullscreen" 999999999 2>&1
     echo ""
 
     echo "=== SetAbove (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetAbove" 999999999 true 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.SetAbove" 999999999 true 2>&1
     echo ""
 
     echo "=== SetSticky (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetSticky" 999999999 true 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.SetSticky" 999999999 true 2>&1
     echo ""
 
     echo "=== Move (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Move" 999999999 0 0 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Move" 999999999 0 0 2>&1
     echo ""
 
     echo "=== Resize (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Resize" 999999999 100 100 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Resize" 999999999 100 100 2>&1
     echo ""
 
     echo "=== MoveResize (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveResize" 999999999 0 0 100 100 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.MoveResize" 999999999 0 0 100 100 2>&1
     echo ""
 
     echo "=== Close (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Close" 999999999 2>&1
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.Close" 999999999 2>&1
     echo ""
 
     echo "============================================"
@@ -361,7 +355,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
     echo "============================================"
     echo ""
     echo "Methods tested:"
-    echo "  - List, ListDetailed, GetFocused"
+    echo "  - ListDetailed, GetFocused"
     echo "  - Activate, Focus"
     echo "  - ActivateByTitle, ActivateByTitleSubstring, ActivateByWmClass, ActivateByPid"
     echo "  - Minimize, Unminimize"

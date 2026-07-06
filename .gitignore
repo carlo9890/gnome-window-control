@@ -3,6 +3,7 @@ dist/
 
 # IDE
 .idea/
+.coder/
 
 # OS
 .DS_Store
