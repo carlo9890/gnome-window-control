@@ -173,9 +173,10 @@ class WindowControlService {
                     sandboxed_app_id: win.get_sandboxed_app_id() || '',
                     gtk_application_id: win.get_gtk_application_id() || '',
                     has_focus: win.has_focus(),
-                    // appears_focused() is a distinct Meta.Window getter (e.g. true when
+                    // appears-focused is a distinct Meta.Window property (e.g. true when
                     // an attached modal dialog holds focus); keep it separate from has_focus.
-                    appears_focused: win.appears_focused(),
+                    // It is a GObject property, not a method -- accessed without parens.
+                    appears_focused: win.appears_focused,
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
                     is_maximized: _isFullyMaximized(win),
