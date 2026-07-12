@@ -1,26 +1,29 @@
 # Changelog
 
-## Unreleased
-
-### Fixed
-- `wctl resize`/`move-resize` now reject a width or height of `0` (the validator
-  previously accepted `0` despite the "must be a positive number" message)
-- `List` D-Bus method returns an empty array `[]` (not `[[]]`, a phantom
-  zero-field window) on error, matching `ListDetailed`/`ListMonitors`
-- `ListDetailed`'s `appears_focused` field now reads the distinct
-  `win.appears_focused` property (a GObject property, accessed without parens)
-  instead of duplicating `has_focus`
-- `wctl` no longer reports "Window not found" with two different wordings; all
-  commands report `Window not found: <id>`, and the "extension not running" hint
-  is now emitted consistently across both D-Bus transports
+## v7 (2026-07-12)
 
 ### Added
+- Extended GNOME Shell compatibility to cover all currently released versions: added `48`, `49`, and `50` to `shell-version` (previously `45`-`47`)
 - `wctl tile` and `wctl center` now offer shell completion (bash and zsh)
 - Headless test coverage (`tests/test-logic.sh`): tile-grid geometry (incl.
   workarea width not divisible by 4), placement boundaries (negative / >100%),
   `resize 0`, near-miss workarea parsing, and a command-inventory drift guard
 - CI runs `node --check` on all extension JS as a gate; `build.sh validate` does
   the same locally
+
+### Fixed
+- Made the maximize/unmaximize code path compatible with GNOME 49+, which removed the `Meta.MaximizeFlags` argument from `Meta.Window.maximize()`/`unmaximize()` and removed `get_maximized()` (now uses `get_maximize_flags()`/`is_maximized()`). A single `extension.js` runs on GNOME 45-50 via runtime API detection.
+- `ListDetailed`'s `appears_focused` field now reads the distinct
+  `win.appears_focused` property (a GObject property, accessed without parens)
+  instead of calling it as a method, which threw and crashed the whole handler
+  (breaking `wctl list --json`, `info`, and `focused --json`)
+- `wctl resize`/`move-resize` now reject a width or height of `0` (the validator
+  previously accepted `0` despite the "must be a positive number" message)
+- `List` D-Bus method returns an empty array `[]` (not `[[]]`, a phantom
+  zero-field window) on error, matching `ListDetailed`/`ListMonitors`
+- `wctl` no longer reports "Window not found" with two different wordings; all
+  commands report `Window not found: <id>`, and the "extension not running" hint
+  is now emitted consistently across both D-Bus transports
 
 ### Changed
 - Extracted the D-Bus interface XML into `window-control@hko9890/dbus-interface.js`
@@ -44,14 +47,6 @@
 - Reconciled the project-structure trees, documented the headless CI-gate test
   suite and the `0.N.0 ↔ vN` version mapping, filled in the packaged extension
   README's usage section, and clarified the tiling non-goal
-
-## v7 (2026-07-05)
-
-### Added
-- Extended GNOME Shell compatibility to cover all currently released versions: added `48`, `49`, and `50` to `shell-version` (previously `45`-`47`)
-
-### Fixed
-- Made the maximize/unmaximize code path compatible with GNOME 49+, which removed the `Meta.MaximizeFlags` argument from `Meta.Window.maximize()`/`unmaximize()` and removed `get_maximized()` (now uses `get_maximize_flags()`/`is_maximized()`). A single `extension.js` runs on GNOME 45-50 via runtime API detection.
 
 ## v6 (2026-03-23)
 
