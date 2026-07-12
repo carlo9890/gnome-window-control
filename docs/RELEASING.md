@@ -28,14 +28,3 @@ Releases, git tags, and CHANGELOG entries use the integer form `vN` (e.g. `v7`).
 `wctl --version` reports the zero-padded `0.N.0` form (e.g. `0.7.0`) for the same
 release; `scripts/release.sh` enforces the `0.<N>.0 ↔ vN` mapping. So
 `wctl --version` reporting `0.7.0` corresponds to GitHub release/tag `v7`.
-
-## Automated releases (CI)
-
-`.github/workflows/build.yml` has a `release` job that runs on every push to
-`main` and **auto-creates the GitHub release** for the current `metadata.json`
-version if one does not already exist. `release.sh` remains authoritative — it
-publishes proper CHANGELOG-derived notes and all validated assets, and overwrites
-any release CI created for the same tag.
-
-The "do not create releases manually" rule refers to the web UI and ad-hoc
-`gh release create`; it does not describe the CI job. Keep the two paths in sync.
