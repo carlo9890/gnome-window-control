@@ -7,8 +7,9 @@
   previously accepted `0` despite the "must be a positive number" message)
 - `List` D-Bus method returns an empty array `[]` (not `[[]]`, a phantom
   zero-field window) on error, matching `ListDetailed`/`ListMonitors`
-- `ListDetailed`'s `appears_focused` field now calls `win.appears_focused()` (a
-  distinct getter) instead of duplicating `has_focus`
+- `ListDetailed`'s `appears_focused` field now reads the distinct
+  `win.appears_focused` property (a GObject property, accessed without parens)
+  instead of duplicating `has_focus`
 - `wctl` no longer reports "Window not found" with two different wordings; all
   commands report `Window not found: <id>`, and the "extension not running" hint
   is now emitted consistently across both D-Bus transports
@@ -28,7 +29,9 @@
   `extension.js` (shared `_actOnWindow` helper for the simple handlers)
 - Modification tests assert geometry within a pixel tolerance instead of
   accepting any non-empty result; the standalone `scripts/test-tile-center.sh`
-  harness was folded into `tests/test-modifications.sh` and removed
+  harness was removed, its tile/center geometry checks folded into
+  `tests/test-modifications.sh` (verified against the canonical geometry helpers)
+  and its axis/usage guards into the headless `tests/test-logic.sh`
 - Query/modification runners now report "no tests executed" as SKIPPED rather
   than a false pass
 

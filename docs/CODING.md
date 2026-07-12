@@ -80,6 +80,10 @@ file in the extension directory (`extension.js`, `dbus-interface.js`,
    }
    ```
 
+   > GJS quirk: D-Bus `t` (uint64) args arrive as plain JS numbers, which lose
+   > precision above 2^53. Mutter window IDs are well within that range, but if a
+   > method ever handles larger uint64 values, use `BigInt`/`GLib.Variant`.
+
 3. Add the corresponding command to `wctl`, reusing the shared helpers:
 
    ```bash
@@ -97,9 +101,10 @@ file in the extension directory (`extension.js`, `dbus-interface.js`,
    Wire it into `main()`'s dispatch `case`.
 
 4. Update the help text **and both shell completions** in `wctl`. The
-   command-inventory test in `tests/test-logic.sh` fails if the four command lists
-   (help, dispatch, bash completion, zsh completion) disagree, so update its
-   `EXPECTED_COMMANDS` list too.
+   command-inventory test in `tests/test-logic.sh` cross-checks the help text and
+   both completions against its `EXPECTED_COMMANDS` list, so update that list too.
+   (Dispatch is covered functionally by the argument-guard tests — an unwired
+   command falls through to "Unknown command" and fails them.)
 
 5. Update the method table in `README.md`.
 

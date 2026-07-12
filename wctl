@@ -65,7 +65,6 @@ is_extension_not_running() {
     [[ "$err" == *"does not exist"* ]] && return 0
     [[ "$err" == *"No route to host"* ]] && return 0
     [[ "$err" == *"ServiceUnknown"* ]] && return 0
-    [[ "$err" == *"not found"* ]] && return 0
     return 1
 }
 

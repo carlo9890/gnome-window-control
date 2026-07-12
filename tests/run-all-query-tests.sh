@@ -41,6 +41,19 @@ echo -e "${BOLD}Running all wctl query tests (read-only)${RESET}"
 echo "========================================"
 echo
 
+# The query suites are read-only D-Bus tests that need the extension running.
+# If it is down they all self-skip, and a green "PASSED" over zero executed
+# tests would be a false signal -- so gate on the extension up front and report
+# SKIPPED distinctly. (The pure-logic and help suites run headlessly via
+# `bash tests/test-logic.sh`; they are not the query gate.)
+if ! gdbus call --session --dest org.gnome.Shell \
+        --object-path /org/gnome/Shell/Extensions/WindowControl \
+        --method org.gnome.Shell.Extensions.WindowControl.GetFocused >/dev/null 2>&1; then
+    echo -e "${YELLOW}NO QUERY TESTS EXECUTED${RESET} - the Window Control extension is not running."
+    echo "Enable it with: gnome-extensions enable window-control@hko9890"
+    exit 0
+fi
+
 # Find and run all test scripts (excluding helper and modification tests)
 for test_script in "$SCRIPT_DIR"/test-*.sh; do
     [[ "$(basename "$test_script")" == "test-helper.sh" ]] && continue

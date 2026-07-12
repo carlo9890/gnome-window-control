@@ -176,7 +176,8 @@ class WindowControlService {
                     // appears-focused is a distinct Meta.Window property (e.g. true when
                     // an attached modal dialog holds focus); keep it separate from has_focus.
                     // It is a GObject property, not a method -- accessed without parens.
-                    appears_focused: win.appears_focused,
+                    // Fall back to has_focus() defensively if the property is ever absent.
+                    appears_focused: win.appears_focused ?? win.has_focus(),
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
                     is_maximized: _isFullyMaximized(win),

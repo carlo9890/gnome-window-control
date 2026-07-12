@@ -14,11 +14,13 @@ tags exist and are pushed, and that the release notes come from `CHANGELOG.md`.
 ## Release checklist
 
 1. Update the version in `window-control@hko9890/metadata.json`.
-2. Move the `CHANGELOG.md` `Unreleased` section under a new `vN` heading.
-3. Commit: `git commit -am "chore: bump version to vN"`.
-4. Tag: `git tag vN`.
-5. Push: `git push && git push --tags`.
-6. Run: `./scripts/release.sh`.
+2. Bump `VERSION` in `wctl` to the matching `0.<N>.0` form (see Version format
+   below). `scripts/release.sh` hard-fails if it does not match `metadata.json`.
+3. Move the `CHANGELOG.md` `Unreleased` section under a new `vN` heading.
+4. Commit: `git commit -am "chore: bump version to vN"`.
+5. Tag: `git tag vN`.
+6. Push: `git push && git push --tags`.
+7. Run: `./scripts/release.sh`.
 
 ## Version format
 

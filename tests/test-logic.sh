@@ -127,6 +127,34 @@ expect_die "Window ID must be a number"      place abc left top 50% 100%
 expect_die "Window ID must be a number"      above abc on
 expect_die "Unknown shell: elvish"             completion elvish
 expect_die "Unknown command"                  no-such-command
+# Usage guards that die before any D-Bus call (missing required args).
+expect_die "Usage: wctl center"               center
+expect_die "Usage: wctl tile"                 tile
+expect_die "Usage: wctl tile"                 tile 123
+
+# center axis normalization: the short forms h/v, the long forms, and the no-arg
+# default must all be ACCEPTED by the axis guard. They fail later on the (absent)
+# window/D-Bus call, but must NOT hit the "Invalid axis" branch. Regression guard
+# for the h|horizontal / v|vertical / both|"" arms in cmd_center -- previously
+# covered only by the removed scripts/test-tile-center.sh live harness.
+expect_not_reason() {
+    # expect_not_reason "<forbidden message>" <wctl args...>
+    # The command is expected to fail here (no live window), but NOT for <reason>.
+    local forbidden="$1"; shift
+    local out
+    out=$("$WCTL" "$@" 2>&1)
+    if [[ "$out" != *"$forbidden"* ]]; then
+        pass "wctl $*  ->  axis accepted (not '$forbidden')"
+    else
+        fail "wctl $*  ->  unexpectedly rejected as '$forbidden' (out='$out')"
+    fi
+}
+expect_not_reason "Invalid axis" center 123 h
+expect_not_reason "Invalid axis" center 123 v
+expect_not_reason "Invalid axis" center 123 horizontal
+expect_not_reason "Invalid axis" center 123 vertical
+expect_not_reason "Invalid axis" center 123 both
+expect_not_reason "Invalid axis" center 123
 
 # ---------------------------------------------------------------------------
 # Generated shell-completion scripts must be syntactically valid.
@@ -142,10 +170,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Command-inventory drift guard: the command list is authored in four places
-# (help, main dispatch, bash completion, zsh completion). Nothing cross-checks
-# them at runtime, so assert here that they agree with one expected inventory.
-# Adding/renaming a command must update this list too.
+# Command-inventory drift guard: the command list is authored in several places
+# (help text, main dispatch, bash completion, zsh completion). This guard
+# cross-checks the help text and both completions against one expected inventory.
+# (Dispatch itself is exercised functionally by the argument-guard tests above --
+# an unwired command falls through to "Unknown command" and fails those.)
+# Adding/renaming a command must update EXPECTED_COMMANDS too.
 # ---------------------------------------------------------------------------
 info "Command-inventory consistency (help / dispatch / completions)"
 
