@@ -19,13 +19,11 @@ run_wctl list
 
 assert_exit_code 0 "$WCTL_EXIT_CODE" "wctl list exits with code 0"
 
-# Test: Output contains header row
-assert_contains "$WCTL_OUTPUT" "ID" "Header contains ID column"
-assert_contains "$WCTL_OUTPUT" "TITLE" "Header contains TITLE column"
-assert_contains "$WCTL_OUTPUT" "CLASS" "Header contains CLASS column"
-assert_contains "$WCTL_OUTPUT" "WS" "Header contains WS (workspace) column"
-assert_contains "$WCTL_OUTPUT" "MON" "Header contains MON (monitor) column"
-assert_contains "$WCTL_OUTPUT" "F" "Header contains F (focused) column"
+# Test: header row has all columns in order. Anchoring the whole header (rather
+# than asserting single tokens like "F", which match any window title) means a
+# dropped or renamed column actually fails the test.
+header_line=$(echo "$WCTL_OUTPUT" | head -1)
+assert_matches "$header_line" "ID.*TITLE.*CLASS.*WS.*MON.*F" "Header row has all columns in order (ID TITLE CLASS WS MON F)"
 
 # Test: At least one window should exist (the terminal running this test)
 # Count lines (excluding header and separator)

@@ -35,10 +35,24 @@ TOTAL_FAILED=0
 TOTAL_SKIPPED=0
 SCRIPTS_RUN=0
 SCRIPTS_FAILED=0
+SCRIPTS_WITH_TESTS=0
 
 echo -e "${BOLD}Running all wctl query tests (read-only)${RESET}"
 echo "========================================"
 echo
+
+# The query suites are read-only D-Bus tests that need the extension running.
+# If it is down they all self-skip, and a green "PASSED" over zero executed
+# tests would be a false signal -- so gate on the extension up front and report
+# SKIPPED distinctly. (The pure-logic and help suites run headlessly via
+# `bash tests/test-logic.sh`; they are not the query gate.)
+if ! gdbus call --session --dest org.gnome.Shell \
+        --object-path /org/gnome/Shell/Extensions/WindowControl \
+        --method org.gnome.Shell.Extensions.WindowControl.GetFocused >/dev/null 2>&1; then
+    echo -e "${YELLOW}NO QUERY TESTS EXECUTED${RESET} - the Window Control extension is not running."
+    echo "Enable it with: gnome-extensions enable window-control@hko9890"
+    exit 0
+fi
 
 # Find and run all test scripts (excluding helper and modification tests)
 for test_script in "$SCRIPT_DIR"/test-*.sh; do
@@ -66,9 +80,18 @@ for test_script in "$SCRIPT_DIR"/test-*.sh; do
     TOTAL_FAILED=$((TOTAL_FAILED + failed))
     TOTAL_SKIPPED=$((TOTAL_SKIPPED + skipped))
     
+    # A script that produced any pass/fail actually exercised something. One that
+    # exited 0 with zero counts self-skipped (e.g. extension not running) and must
+    # NOT be reported as a pass.
+    if (( passed + failed > 0 )); then
+        ((SCRIPTS_WITH_TESTS++))
+    fi
+
     # Show result for this script
     script_name=$(basename "$test_script")
-    if [[ $exit_code -eq 0 && $failed -eq 0 ]]; then
+    if [[ $exit_code -eq 0 && $failed -eq 0 && $((passed + failed)) -eq 0 ]]; then
+        echo -e "${YELLOW}⊘${RESET} ${script_name}: no tests executed (skipped)"
+    elif [[ $exit_code -eq 0 && $failed -eq 0 ]]; then
         echo -e "${GREEN}✓${RESET} ${script_name}: ${passed} passed, ${skipped} skipped"
     else
         echo -e "${RED}✗${RESET} ${script_name}: ${passed} passed, ${failed} failed, ${skipped} skipped"
@@ -92,6 +115,11 @@ echo "========================================"
 if [[ $TOTAL_FAILED -gt 0 || $SCRIPTS_FAILED -gt 0 ]]; then
     echo -e "\n${RED}FAILED${RESET}"
     exit 1
+elif [[ $SCRIPTS_WITH_TESTS -eq 0 ]]; then
+    # Nothing actually ran (extension not running?). A green "PASSED" here would be
+    # a false signal, so report SKIPPED distinctly.
+    echo -e "\n${YELLOW}NO QUERY TESTS EXECUTED${RESET} - is the extension enabled? (gnome-extensions enable window-control@hko9890)"
+    exit 0
 else
     echo -e "\n${GREEN}ALL QUERY TESTS PASSED${RESET}"
     exit 0

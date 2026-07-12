@@ -8,6 +8,11 @@
 
 source "$(dirname "$0")/test-helper.sh"
 
+# Reuse wctl's own pure helpers (parse_workarea_rect, resolve_tile_geometry) so
+# the tests verify against the exact parser/formula the CLI ships, not a second
+# copy. wctl's source-guard keeps main() from running when sourced.
+source "$WCTL"
+
 # ============================================================================
 # Test window management
 # ============================================================================
@@ -15,6 +20,10 @@ source "$(dirname "$0")/test-helper.sh"
 TEST_WINDOW_TITLE="auto-test:stop-gap"
 TEST_WINDOW_PID=""
 TEST_WINDOW_ID=""
+
+# Pixel tolerance for geometry assertions. Window managers may nudge position/size
+# by a few pixels (decorations, snapping); a band still fails on a wrong result.
+GEOM_TOLERANCE=10
 
 # Spawn a test window
 spawn_test_window() {
@@ -106,15 +115,8 @@ run_wctl move "$TEST_WINDOW_ID" 100 100
 wait_for_change
 x=$(get_window_field '.frame_rect.x')
 y=$(get_window_field '.frame_rect.y')
-# Note: Window managers may adjust position, so we check if move had any effect
-if [[ "$x" == "100" && "$y" == "100" ]]; then
-    pass "move: Window moved to (100, 100)"
-elif [[ -n "$x" && -n "$y" ]]; then
-    # Some WMs may not allow exact positioning - just check command succeeded
-    pass "move: Move command executed (position: $x, $y)"
-else
-    fail "move: Could not verify position change"
-fi
+assert_within "$x" 100 "$GEOM_TOLERANCE" "move: window x is at 100"
+assert_within "$y" 100 "$GEOM_TOLERANCE" "move: window y is at 100"
 
 # Test: resize
 info "Testing: resize"
@@ -122,13 +124,8 @@ run_wctl resize "$TEST_WINDOW_ID" 800 600
 wait_for_change
 width=$(get_window_field '.frame_rect.width')
 height=$(get_window_field '.frame_rect.height')
-if [[ "$width" == "800" && "$height" == "600" ]]; then
-    pass "resize: Window resized to 800x600"
-elif [[ -n "$width" && -n "$height" ]]; then
-    pass "resize: Resize command executed (size: ${width}x${height})"
-else
-    fail "resize: Could not verify size change"
-fi
+assert_within "$width" 800 "$GEOM_TOLERANCE" "resize: window width is 800"
+assert_within "$height" 600 "$GEOM_TOLERANCE" "resize: window height is 600"
 
 # Test: move-resize
 info "Testing: move-resize"
@@ -138,13 +135,10 @@ x=$(get_window_field '.frame_rect.x')
 y=$(get_window_field '.frame_rect.y')
 width=$(get_window_field '.frame_rect.width')
 height=$(get_window_field '.frame_rect.height')
-if [[ "$x" == "200" && "$y" == "200" && "$width" == "900" && "$height" == "700" ]]; then
-    pass "move-resize: Window moved and resized correctly"
-elif [[ -n "$x" && -n "$y" && -n "$width" && -n "$height" ]]; then
-    pass "move-resize: Move-resize command executed (pos: $x,$y size: ${width}x${height})"
-else
-    fail "move-resize: Could not verify move-resize"
-fi
+assert_within "$x" 200 "$GEOM_TOLERANCE" "move-resize: window x is at 200"
+assert_within "$y" 200 "$GEOM_TOLERANCE" "move-resize: window y is at 200"
+assert_within "$width" 900 "$GEOM_TOLERANCE" "move-resize: window width is 900"
+assert_within "$height" 700 "$GEOM_TOLERANCE" "move-resize: window height is 700"
 
 # Test: place
 info "Testing: place"
@@ -161,25 +155,88 @@ workarea=$(gdbus call --session \
     --method org.gnome.Shell.Extensions.WindowControl.GetWorkarea \
     "$monitor_index" 2>/dev/null || echo "")
 
-if [[ -n "$workarea" && "$workarea" =~ ^\(([0-9-]+),\ ([0-9-]+),\ ([0-9]+),\ ([0-9]+)\)$ ]]; then
-    wa_x="${BASH_REMATCH[1]}"
-    wa_y="${BASH_REMATCH[2]}"
-    wa_w="${BASH_REMATCH[3]}"
-    wa_h="${BASH_REMATCH[4]}"
+# Parse the workarea with wctl's canonical parser (not a second inline regex).
+parsed_wa=""
+[[ -n "$workarea" ]] && parsed_wa=$(parse_workarea_rect "$workarea" 2>/dev/null || echo "")
+if [[ -z "$parsed_wa" ]]; then
+    fail "place: Could not read/parse workarea for verification (got: '$workarea')"
+else
+    read -r wa_x wa_y wa_w wa_h <<< "$parsed_wa"
     expected_width=$((wa_w / 2))
     expected_height="$wa_h"
     expected_x=$((wa_x + (wa_w - expected_width) / 2))
     expected_y="$wa_y"
 
-    if [[ "$x" == "$expected_x" && "$y" == "$expected_y" && "$width" == "$expected_width" && "$height" == "$expected_height" ]]; then
-        pass "place: Window placed at centered half-width/full-height workarea layout"
-    elif [[ -n "$x" && -n "$y" && -n "$width" && -n "$height" ]]; then
-        pass "place: Command executed (pos: $x,$y size: ${width}x${height})"
-    else
-        fail "place: Could not verify place command"
-    fi
+    assert_within "$x" "$expected_x" "$GEOM_TOLERANCE" "place: x centered (expected $expected_x)"
+    assert_within "$y" "$expected_y" "$GEOM_TOLERANCE" "place: y at workarea top (expected $expected_y)"
+    assert_within "$width" "$expected_width" "$GEOM_TOLERANCE" "place: half workarea width (expected $expected_width)"
+    assert_within "$height" "$expected_height" "$GEOM_TOLERANCE" "place: full workarea height (expected $expected_height)"
+fi
+
+echo ""
+echo "--- Tile/Center Tests ---"
+
+# Read the workarea for the test window's monitor once, via wctl's parser.
+tc_monitor=$(get_window_field '.monitor_index')
+tc_workarea_raw=$(gdbus call --session \
+    --dest org.gnome.Shell \
+    --object-path /org/gnome/Shell/Extensions/WindowControl \
+    --method org.gnome.Shell.Extensions.WindowControl.GetWorkarea \
+    "$tc_monitor" 2>/dev/null || echo "")
+tc_wa=""
+[[ -n "$tc_workarea_raw" ]] && tc_wa=$(parse_workarea_rect "$tc_workarea_raw" 2>/dev/null || echo "")
+
+if [[ -z "$tc_wa" ]]; then
+    skip "tile/center: could not read workarea (GetWorkarea unavailable?)"
 else
-    fail "place: Could not read workarea for verification"
+    read -r tc_wa_x tc_wa_y tc_wa_w tc_wa_h <<< "$tc_wa"
+
+    # tile: verify each of the 9 grid cells lands where resolve_tile_geometry says.
+    # resolve_tile_geometry is independently pinned to hardcoded pixels in
+    # test-logic.sh, so reusing it here checks the D-Bus/WM round-trip, not the
+    # formula against itself.
+    for pos in top-left top-center top-right left center right bottom-left bottom-center bottom-right; do
+        info "Testing: tile $pos"
+        run_wctl tile "$TEST_WINDOW_ID" "$pos"
+        wait_for_change
+        read -r exp_x exp_y exp_w exp_h <<< "$(resolve_tile_geometry "$pos" "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h")"
+        tx=$(get_window_field '.frame_rect.x')
+        ty=$(get_window_field '.frame_rect.y')
+        tw=$(get_window_field '.frame_rect.width')
+        th=$(get_window_field '.frame_rect.height')
+        assert_within "$tx" "$exp_x" "$GEOM_TOLERANCE" "tile $pos: x (expected $exp_x)"
+        assert_within "$ty" "$exp_y" "$GEOM_TOLERANCE" "tile $pos: y (expected $exp_y)"
+        assert_within "$tw" "$exp_w" "$GEOM_TOLERANCE" "tile $pos: width (expected $exp_w)"
+        assert_within "$th" "$exp_h" "$GEOM_TOLERANCE" "tile $pos: height (expected $exp_h)"
+    done
+
+    # center: move off-center first, then verify the centered axis lands on the
+    # workarea center for both/horizontal/vertical.
+    for mode in both horizontal vertical; do
+        info "Testing: center $mode"
+        run_wctl move "$TEST_WINDOW_ID" 50 50
+        wait_for_change
+        run_wctl center "$TEST_WINDOW_ID" "$mode"
+        wait_for_change
+        cw=$(get_window_field '.frame_rect.width')
+        ch=$(get_window_field '.frame_rect.height')
+        cx=$(get_window_field '.frame_rect.x')
+        cy=$(get_window_field '.frame_rect.y')
+        exp_cx=$((tc_wa_x + (tc_wa_w - cw) / 2))
+        exp_cy=$((tc_wa_y + (tc_wa_h - ch) / 2))
+        case "$mode" in
+            horizontal)
+                assert_within "$cx" "$exp_cx" "$GEOM_TOLERANCE" "center $mode: x centered (expected $exp_cx)"
+                ;;
+            vertical)
+                assert_within "$cy" "$exp_cy" "$GEOM_TOLERANCE" "center $mode: y centered (expected $exp_cy)"
+                ;;
+            both)
+                assert_within "$cx" "$exp_cx" "$GEOM_TOLERANCE" "center $mode: x centered (expected $exp_cx)"
+                assert_within "$cy" "$exp_cy" "$GEOM_TOLERANCE" "center $mode: y centered (expected $exp_cy)"
+                ;;
+        esac
+    done
 fi
 
 echo ""
@@ -328,9 +385,10 @@ fi
 info "Testing: activate by class"
 run_wctl activate -c "kitty"
 wait_for_change
-# Note: This activates any kitty window, which might be our test window or another
-# Just verify the command succeeded
-assert_exit_code 0 "$WCTL_EXIT_CODE" "activate -c: Command should succeed"
+# activate -c kitty may pick any kitty window, but the focused window must then
+# have wm_class kitty -- otherwise the command no-op'd or focused the wrong window.
+focused_class=$("$WCTL" focused --json 2>/dev/null | jq -r '.wm_class // empty' 2>/dev/null)
+assert_equals "$focused_class" "kitty" "activate -c: focused window is a kitty window"
 
 # Test: focus
 info "Testing: focus"
@@ -340,8 +398,9 @@ if [[ -n "$other_id" ]]; then
 fi
 run_wctl focus "$TEST_WINDOW_ID"
 wait_for_change
-# Focus may or may not change has_focus depending on WM behavior
-assert_exit_code 0 "$WCTL_EXIT_CODE" "focus: Command should succeed"
+# focus must actually give our test window keyboard focus, not merely exit 0.
+focused_id=$("$WCTL" focused --json 2>/dev/null | jq -r '.id // empty' 2>/dev/null)
+assert_equals "$focused_id" "$TEST_WINDOW_ID" "focus: test window has focus after focus command"
 
 echo ""
 echo "--- Close Test ---"
@@ -351,14 +410,13 @@ info "Testing: close"
 run_wctl close "$TEST_WINDOW_ID"
 wait_for_change
 
-# Verify window is gone
-window_exists=$("$WCTL" list --json 2>/dev/null | jq -r --arg id "$TEST_WINDOW_ID" '.[] | select(.id == ($id | tonumber)) | .id' 2>/dev/null || echo "")
-if [[ -z "$window_exists" ]]; then
-    pass "close: Window was closed"
-    # Clear ID so cleanup doesn't try to close again
+# Verify the window's ID is gone from the window list (space-padded so it can't
+# match as a substring of another id).
+list_ids=$("$WCTL" list --json 2>/dev/null | jq -r '.[].id' 2>/dev/null | tr '\n' ' ')
+assert_not_contains " $list_ids " " $TEST_WINDOW_ID " "close: window ID no longer in window list"
+if [[ " $list_ids " != *" $TEST_WINDOW_ID "* ]]; then
+    # Closed successfully; clear ID so the cleanup trap doesn't try to close again.
     TEST_WINDOW_ID=""
-else
-    fail "close: Window still exists after close"
 fi
 
 # Print summary

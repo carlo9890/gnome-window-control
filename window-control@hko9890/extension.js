@@ -2,285 +2,10 @@
 // D-Bus interface for listing and controlling windows
 
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 
-// D-Bus interface XML definition
-const DBUS_INTERFACE_XML = `
-<node>
-  <interface name="org.gnome.Shell.Extensions.WindowControl">
-    <!--
-      List: Get all windows as array of tuples
-      Returns: a(tssssbiiii)
-        t - window ID (uint64)
-        s - title
-        s - wm_class
-        s - wm_class_instance
-        s - sandboxed_app_id
-        b - is_focused
-        i - workspace index (-1 if on all)
-        i - monitor index
-        i - PID
-        i - window type enum value
-    -->
-    <method name="List">
-      <arg type="a(tssssbiiii)" direction="out" name="windows"/>
-    </method>
-
-    <!--
-      ListDetailed: Get all windows as JSON string with full details
-      Returns: s - JSON string
-    -->
-    <method name="ListDetailed">
-      <arg type="s" direction="out" name="windows_json"/>
-    </method>
-
-
-    <!--
-      ListMonitors: Get all monitors with their properties
-      Returns: s - JSON array of monitor objects
-    -->
-    <method name="ListMonitors">
-      <arg type="s" direction="out" name="monitors_json"/>
-    </method>
-    <!--
-      Activate: Activate (focus and raise) a window by ID
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Activate">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      ActivateByTitle: Activate window by exact title match
-      Args: s - title (exact match)
-      Returns: b - success
-    -->
-    <method name="ActivateByTitle">
-      <arg type="s" direction="in" name="title"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      ActivateByTitleSubstring: Activate window by title substring
-      Args: s - substring to match
-      Returns: b - success
-    -->
-    <method name="ActivateByTitleSubstring">
-      <arg type="s" direction="in" name="substring"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      ActivateByWmClass: Activate window by WM class
-      Args: s - wm_class (exact match)
-      Returns: b - success
-    -->
-    <method name="ActivateByWmClass">
-      <arg type="s" direction="in" name="wm_class"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      ActivateByPid: Activate window by PID
-      Args: i - process ID
-      Returns: b - success
-    -->
-    <method name="ActivateByPid">
-      <arg type="i" direction="in" name="pid"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Focus: Focus a window by ID (without raising)
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Focus">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      GetFocused: Get the currently focused window
-      Returns: (tss)
-        t - window ID (0 if none)
-        s - title
-        s - wm_class
-    -->
-    <method name="GetFocused">
-      <arg type="t" direction="out" name="window_id"/>
-      <arg type="s" direction="out" name="title"/>
-      <arg type="s" direction="out" name="wm_class"/>
-    </method>
-
-    <!-- Geometry Methods -->
-
-    <!--
-      Move: Move window to position
-      Args: t - window ID, i - x, i - y
-      Returns: b - success
-    -->
-    <method name="Move">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="i" direction="in" name="x"/>
-      <arg type="i" direction="in" name="y"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Resize: Resize window
-      Args: t - window ID, i - width, i - height
-      Returns: b - success
-    -->
-    <method name="Resize">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="i" direction="in" name="width"/>
-      <arg type="i" direction="in" name="height"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      MoveResize: Move and resize window atomically
-      Args: t - window ID, i - x, i - y, i - width, i - height
-      Returns: b - success
-    -->
-    <method name="MoveResize">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="i" direction="in" name="x"/>
-      <arg type="i" direction="in" name="y"/>
-      <arg type="i" direction="in" name="width"/>
-      <arg type="i" direction="in" name="height"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      GetGeometry: Get window geometry
-      Args: t - window ID
-      Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if not found)
-    -->
-    <method name="GetGeometry">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="i" direction="out" name="x"/>
-      <arg type="i" direction="out" name="y"/>
-      <arg type="i" direction="out" name="width"/>
-      <arg type="i" direction="out" name="height"/>
-    </method>
-
-
-    <!--
-      GetWorkarea: Get usable workspace area for a monitor
-      Args: i - monitor index
-      Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if invalid)
-    -->
-    <method name="GetWorkarea">
-      <arg type="i" direction="in" name="monitor_index"/>
-      <arg type="i" direction="out" name="x"/>
-      <arg type="i" direction="out" name="y"/>
-      <arg type="i" direction="out" name="width"/>
-      <arg type="i" direction="out" name="height"/>
-    </method>
-    <!-- State Methods -->
-
-    <!--
-      Minimize: Minimize window
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Minimize">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Unminimize: Unminimize (restore) window
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Unminimize">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Maximize: Maximize window
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Maximize">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Unmaximize: Unmaximize window
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Unmaximize">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Fullscreen: Make window fullscreen
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Fullscreen">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Unfullscreen: Exit fullscreen mode
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Unfullscreen">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      SetAbove: Set window always-on-top state
-      Args: t - window ID, b - above (true = always on top)
-      Returns: b - success
-    -->
-    <method name="SetAbove">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="in" name="above"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      SetSticky: Set window sticky state (on all workspaces)
-      Args: t - window ID, b - sticky
-      Returns: b - success
-    -->
-    <method name="SetSticky">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="in" name="sticky"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      Close: Close window (polite request, allows save dialogs)
-      Args: t - window ID
-      Returns: b - success
-    -->
-    <method name="Close">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-  </interface>
-</node>
-`;
-
-const DBUS_SERVICE_NAME = 'org.gnome.Shell.Extensions.WindowControl';
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 
 // Window type enum to string mapping
@@ -379,6 +104,25 @@ class WindowControlService {
         return null;
     }
 
+    // Helper: Look up a window by ID and run an action on it, with the uniform
+    // find / try-catch / result contract shared by the simple boolean handlers.
+    // Returns true on success, false if the window is missing or the action throws.
+    _actOnWindow(windowId, label, action) {
+        try {
+            const win = this._findWindowById(windowId);
+            if (!win) {
+                console.log(`[Window Control] ${label}(${windowId}) -> false (window not found)`);
+                return false;
+            }
+            action(win);
+            console.log(`[Window Control] ${label}(${windowId}) -> true`);
+            return true;
+        } catch (e) {
+            console.error(`[Window Control] ${label}() error: ${e.message}`);
+            return false;
+        }
+    }
+
     // List: Get all windows as array of tuples
     List() {
         console.log(`[Window Control] List() called`);
@@ -404,7 +148,7 @@ class WindowControlService {
             return result;
         } catch (e) {
             console.error(`[Window Control] List() error: ${e.message}`);
-            return [[]];
+            return [];
         }
     }
 
@@ -429,7 +173,11 @@ class WindowControlService {
                     sandboxed_app_id: win.get_sandboxed_app_id() || '',
                     gtk_application_id: win.get_gtk_application_id() || '',
                     has_focus: win.has_focus(),
-                    appears_focused: win.has_focus(),
+                    // appears-focused is a distinct Meta.Window property (e.g. true when
+                    // an attached modal dialog holds focus); keep it separate from has_focus.
+                    // It is a GObject property, not a method -- accessed without parens.
+                    // Fall back to has_focus() defensively if the property is ever absent.
+                    appears_focused: win.appears_focused ?? win.has_focus(),
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
                     is_maximized: _isFullyMaximized(win),
@@ -493,20 +241,8 @@ class WindowControlService {
 
     // Activate: Activate (focus and raise) a window by ID
     Activate(windowId) {
-        console.log(`[Window Control] Activate(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.activate(global.get_current_time());
-                console.log(`[Window Control] Activate(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Activate(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Activate() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Activate',
+            win => win.activate(global.get_current_time()));
     }
 
     // ActivateByTitle: Activate window by exact title match
@@ -586,20 +322,8 @@ class WindowControlService {
 
     // Focus: Focus a window by ID (without raising)
     Focus(windowId) {
-        console.log(`[Window Control] Focus(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.focus(global.get_current_time());
-                console.log(`[Window Control] Focus(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Focus(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Focus() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Focus',
+            win => win.focus(global.get_current_time()));
     }
 
     // GetFocused: Get the currently focused window
@@ -750,172 +474,50 @@ class WindowControlService {
 
     // Minimize: Minimize window
     Minimize(windowId) {
-        console.log(`[Window Control] Minimize(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.minimize();
-                console.log(`[Window Control] Minimize(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Minimize(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Minimize() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Minimize', win => win.minimize());
     }
 
     // Unminimize: Unminimize (restore) window
     Unminimize(windowId) {
-        console.log(`[Window Control] Unminimize(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.unminimize();
-                console.log(`[Window Control] Unminimize(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Unminimize(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Unminimize() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Unminimize', win => win.unminimize());
     }
 
     // Maximize: Maximize window
     Maximize(windowId) {
-        console.log(`[Window Control] Maximize(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                _maximizeWindow(win);
-                console.log(`[Window Control] Maximize(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Maximize(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Maximize() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Maximize', win => _maximizeWindow(win));
     }
 
     // Unmaximize: Unmaximize window
     Unmaximize(windowId) {
-        console.log(`[Window Control] Unmaximize(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                _unmaximizeWindow(win);
-                console.log(`[Window Control] Unmaximize(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Unmaximize(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Unmaximize() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Unmaximize', win => _unmaximizeWindow(win));
     }
 
     // Fullscreen: Make window fullscreen
     Fullscreen(windowId) {
-        console.log(`[Window Control] Fullscreen(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.make_fullscreen();
-                console.log(`[Window Control] Fullscreen(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Fullscreen(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Fullscreen() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Fullscreen', win => win.make_fullscreen());
     }
 
     // Unfullscreen: Exit fullscreen mode
     Unfullscreen(windowId) {
-        console.log(`[Window Control] Unfullscreen(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.unmake_fullscreen();
-                console.log(`[Window Control] Unfullscreen(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Unfullscreen(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Unfullscreen() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Unfullscreen', win => win.unmake_fullscreen());
     }
 
     // SetAbove: Set window always-on-top state
     SetAbove(windowId, above) {
-        console.log(`[Window Control] SetAbove(${windowId}, ${above}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                if (above) {
-                    win.make_above();
-                } else {
-                    win.unmake_above();
-                }
-                console.log(`[Window Control] SetAbove(${windowId}, ${above}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] SetAbove(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] SetAbove() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'SetAbove',
+            win => above ? win.make_above() : win.unmake_above());
     }
 
     // SetSticky: Set window sticky state (on all workspaces)
     SetSticky(windowId, sticky) {
-        console.log(`[Window Control] SetSticky(${windowId}, ${sticky}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                if (sticky) {
-                    win.stick();
-                } else {
-                    win.unstick();
-                }
-                console.log(`[Window Control] SetSticky(${windowId}, ${sticky}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] SetSticky(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] SetSticky() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'SetSticky',
+            win => sticky ? win.stick() : win.unstick());
     }
 
     // Close: Close window (polite request)
     Close(windowId) {
-        console.log(`[Window Control] Close(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.delete(global.get_current_time());
-                console.log(`[Window Control] Close(${windowId}) -> true`);
-                return true;
-            }
-            console.log(`[Window Control] Close(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Close() error: ${e.message}`);
-            return false;
-        }
+        return this._actOnWindow(windowId, 'Close',
+            win => win.delete(global.get_current_time()));
     }
 
     export() {

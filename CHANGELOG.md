@@ -1,5 +1,50 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `wctl resize`/`move-resize` now reject a width or height of `0` (the validator
+  previously accepted `0` despite the "must be a positive number" message)
+- `List` D-Bus method returns an empty array `[]` (not `[[]]`, a phantom
+  zero-field window) on error, matching `ListDetailed`/`ListMonitors`
+- `ListDetailed`'s `appears_focused` field now reads the distinct
+  `win.appears_focused` property (a GObject property, accessed without parens)
+  instead of duplicating `has_focus`
+- `wctl` no longer reports "Window not found" with two different wordings; all
+  commands report `Window not found: <id>`, and the "extension not running" hint
+  is now emitted consistently across both D-Bus transports
+
+### Added
+- `wctl tile` and `wctl center` now offer shell completion (bash and zsh)
+- Headless test coverage (`tests/test-logic.sh`): tile-grid geometry (incl.
+  workarea width not divisible by 4), placement boundaries (negative / >100%),
+  `resize 0`, near-miss workarea parsing, and a command-inventory drift guard
+- CI runs `node --check` on all extension JS as a gate; `build.sh validate` does
+  the same locally
+
+### Changed
+- Extracted the D-Bus interface XML into `window-control@hko9890/dbus-interface.js`
+- Deduplicated `wctl` (shared `report_result`/`validate_id`/`cmd_bool_state`
+  helpers; `tile`/`center` geometry as pure, unit-tested functions) and
+  `extension.js` (shared `_actOnWindow` helper for the simple handlers)
+- Modification tests assert geometry within a pixel tolerance instead of
+  accepting any non-empty result; the standalone `scripts/test-tile-center.sh`
+  harness was removed, its tile/center geometry checks folded into
+  `tests/test-modifications.sh` (verified against the canonical geometry helpers)
+  and its axis/usage guards into the headless `tests/test-logic.sh`
+- Query/modification runners now report "no tests executed" as SKIPPED rather
+  than a false pass
+
+### Documentation
+- Restructured the developer docs to the canonical topic layout: `AGENTS.md` is a
+  routing layer, `docs/OVERVIEW.md` is the architecture/findability map, and topic
+  guides live under `docs/` (CODING, TESTING, RUNNING, MONITORING, RELEASING,
+  CHANGE-WORKFLOW); `README.md`/`CONTRIBUTING.md` route to them instead of
+  restating, so each procedure has one canonical home
+- Reconciled the project-structure trees, documented the headless CI-gate test
+  suite and the `0.N.0 ↔ vN` version mapping, filled in the packaged extension
+  README's usage section, and clarified the tiling non-goal
+
 ## v7 (2026-07-05)
 
 ### Added

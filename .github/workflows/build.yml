@@ -34,6 +34,13 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Check extension JavaScript syntax (node --check)
+        run: |
+          for js in window-control@hko9890/*.js; do
+            echo "node --check $js"
+            node --check "$js"
+          done
+
       - name: Run pure-logic tests (no extension required)
         run: |
           chmod +x wctl tests/*.sh

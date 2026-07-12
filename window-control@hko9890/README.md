@@ -44,22 +44,44 @@ gnome-extensions info window-control@hko9890
 
 ## Usage
 
-Once enabled, the extension provides a D-Bus interface for window control operations.
+Once enabled, the extension exports a D-Bus interface on GNOME Shell's own bus
+connection:
+
+- **Bus name (dest):** `org.gnome.Shell`
+- **Object path:** `/org/gnome/Shell/Extensions/WindowControl`
+- **Interface:** `org.gnome.Shell.Extensions.WindowControl`
+
+Call a method with `gdbus`, e.g. list all windows as JSON:
+
+```bash
+gdbus call --session \
+  --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/WindowControl \
+  --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
+```
+
+The full method table and the `wctl` CLI wrapper (a friendlier front end for all
+of these methods) are documented in the project's top-level
+[README](https://github.com/carlo9890/gnome-window-control#readme), which is not
+shipped inside this extension zip.
 
 ## Development
 
 ### Enable Debug Logging
 
-View extension logs:
+View this extension's log lines (filtered by its `Window Control` tag):
 ```bash
-journalctl -f -o cat /usr/bin/gnome-shell
+journalctl --user -b -g "Window Control" -f
 ```
+
+`console.log()` output is DEBUG level and hidden unless GNOME Shell is started
+with `G_MESSAGES_DEBUG=all`.
 
 ### Reload Extension
 
-`gnome-extensions disable`/`enable` does NOT reload the JavaScript from disk. To
-apply changes to `extension.js`, restart GNOME Shell (log out/in on Wayland;
-`Alt+F2` `r` on X11), or use a nested GNOME Shell session for testing.
+`gnome-extensions disable`/`enable` does NOT reload the JavaScript from disk. See
+[docs/RUNNING.md](https://github.com/carlo9890/gnome-window-control/blob/main/docs/RUNNING.md)
+for the reload workflow (restart GNOME Shell, or use a nested session).
 
 ## License
 
