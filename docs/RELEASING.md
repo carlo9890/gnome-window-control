@@ -59,3 +59,35 @@ Constraints the review enforces, which the code must keep satisfying:
 EGO assigns its own integer `version` on upload and ignores the one in
 `metadata.json`. `version-name` is what users see, so keep it in step with the
 `vN` release number.
+
+### If the reviewer asks about the unauthenticated interface
+
+Expect this question. It is the one substantive objection to the extension. A
+draft answer:
+
+> The interface is deliberately open to every application in the session, and the
+> extension does not claim otherwise. There is no trust boundary to enforce: the
+> session bus does not distinguish between processes of the same user, so a PID
+> allowlist is both racy and useless here (the reference client is a shell
+> script, so the caller is `bash`), and a token file is readable by anything that
+> can read the user's files. Rather than ship a mechanism that implies a
+> guarantee it cannot provide, the extension makes the exposure explicit and
+> lets the user decide:
+>
+> - The EGO description states, before install, exactly what is registered on
+>   D-Bus and that the interface has no access control.
+> - README.md has a "Security model" section that says the same at length.
+> - Enabling the extension is the consent gate. It is off until the user turns
+>   it on, and `disable()` unexports the object completely.
+> - No window title or caller-supplied string is ever written to the log, at any
+>   level, and per-call logging is `console.debug()`, gated behind
+>   `G_MESSAGES_DEBUG`. Titles are the sensitive data here, and they do not
+>   outlive the call.
+> - `session-modes` is unset, so the extension does not run on the lock screen
+>   and the interface cannot be queried while the session is locked.
+>
+> This restores on Wayland a capability that every X11 application already had
+> with no gate at all. The difference is that here it is opt-in.
+
+Do not answer by proposing a caller allowlist or a shared secret. Both are
+theater, and offering one invites a longer review.

@@ -59,7 +59,17 @@ function _unmaximizeWindow(win) {
     }
 }
 
-// D-Bus service implementation
+// D-Bus service implementation.
+//
+// Logging invariant: every per-call line below uses console.debug(), never
+// console.log(). GJS maps console.log() to G_LOG_LEVEL_MESSAGE, which journald
+// records at priority 5 (notice) and shows WITHOUT G_MESSAGES_DEBUG set — so a
+// console.log() here writes a line to the user's journal on every D-Bus call,
+// and those lines persist across the session. console.debug() is priority 7 and
+// stays gated behind G_MESSAGES_DEBUG. For the same reason, no log line may
+// contain a window title or a caller-supplied match string: titles leak document
+// names, URLs and message contents into a log that outlives the process that
+// asked for them. Log the method name and the outcome, not the content.
 class WindowControlService {
     constructor() {
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
@@ -80,7 +90,7 @@ class WindowControlService {
             }
         }
         
-        console.log(`[Window Control] _getAllWindows(): found ${actors.length} actors, ${windows.length} normal windows`);
+        console.debug(`[Window Control] _getAllWindows(): found ${actors.length} actors, ${windows.length} normal windows`);
         return windows;
     }
 
@@ -113,11 +123,11 @@ class WindowControlService {
         try {
             const win = this._findWindowById(windowId);
             if (!win) {
-                console.log(`[Window Control] ${label}(${windowId}) -> false (window not found)`);
+                console.debug(`[Window Control] ${label}(${windowId}) -> false (window not found)`);
                 return false;
             }
             action(win);
-            console.log(`[Window Control] ${label}(${windowId}) -> true`);
+            console.debug(`[Window Control] ${label}(${windowId}) -> true`);
             return true;
         } catch (e) {
             console.error(`[Window Control] ${label}() error: ${e.message}`);
@@ -127,7 +137,7 @@ class WindowControlService {
 
     // List: Get all windows as array of tuples
     List() {
-        console.log(`[Window Control] List() called`);
+        console.debug(`[Window Control] List() called`);
         try {
             const windows = this._getAllWindows();
             const result = windows.map(win => {
@@ -146,7 +156,7 @@ class WindowControlService {
                     win.get_window_type(),                     // i - window type enum
                 ];
             });
-            console.log(`[Window Control] List() returning ${result.length} windows`);
+            console.debug(`[Window Control] List() returning ${result.length} windows`);
             return result;
         } catch (e) {
             console.error(`[Window Control] List() error: ${e.message}`);
@@ -156,7 +166,7 @@ class WindowControlService {
 
     // ListDetailed: Get all windows as JSON string with full details
     ListDetailed() {
-        console.log(`[Window Control] ListDetailed() called`);
+        console.debug(`[Window Control] ListDetailed() called`);
         try {
             const windows = this._getAllWindows();
             const result = [];
@@ -201,7 +211,7 @@ class WindowControlService {
                 });
             }
             
-            console.log(`[Window Control] ListDetailed() returning ${result.length} windows`);
+            console.debug(`[Window Control] ListDetailed() returning ${result.length} windows`);
             return JSON.stringify(result);
         } catch (e) {
             console.error(`[Window Control] ListDetailed() error: ${e.message}`);
@@ -211,7 +221,7 @@ class WindowControlService {
 
     // ListMonitors: Get all monitors with their properties
     ListMonitors() {
-        console.log(`[Window Control] ListMonitors() called`);
+        console.debug(`[Window Control] ListMonitors() called`);
         try {
             const numMonitors = global.display.get_n_monitors();
             const primaryMonitor = global.display.get_primary_monitor();
@@ -233,7 +243,7 @@ class WindowControlService {
                 });
             }
 
-            console.log(`[Window Control] ListMonitors() returning ${result.length} monitors`);
+            console.debug(`[Window Control] ListMonitors() returning ${result.length} monitors`);
             return JSON.stringify(result);
         } catch (e) {
             console.error(`[Window Control] ListMonitors() error: ${e.message}`);
@@ -249,15 +259,15 @@ class WindowControlService {
 
     // ActivateByTitle: Activate window by exact title match
     ActivateByTitle(title) {
-        console.log(`[Window Control] ActivateByTitle("${title}") called`);
+        console.debug('[Window Control] ActivateByTitle() called');
         try {
             const win = this._findWindowByPredicate(w => w.get_title() === title);
             if (win) {
                 win.activate(global.get_current_time());
-                console.log(`[Window Control] ActivateByTitle("${title}") -> true`);
+                console.debug('[Window Control] ActivateByTitle() -> true');
                 return true;
             }
-            console.log(`[Window Control] ActivateByTitle("${title}") -> false (not found)`);
+            console.debug('[Window Control] ActivateByTitle() -> false (not found)');
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByTitle() error: ${e.message}`);
@@ -267,7 +277,7 @@ class WindowControlService {
 
     // ActivateByTitleSubstring: Activate window by title substring
     ActivateByTitleSubstring(substring) {
-        console.log(`[Window Control] ActivateByTitleSubstring("${substring}") called`);
+        console.debug('[Window Control] ActivateByTitleSubstring() called');
         try {
             const win = this._findWindowByPredicate(w => {
                 const title = w.get_title();
@@ -275,10 +285,10 @@ class WindowControlService {
             });
             if (win) {
                 win.activate(global.get_current_time());
-                console.log(`[Window Control] ActivateByTitleSubstring("${substring}") -> true`);
+                console.debug('[Window Control] ActivateByTitleSubstring() -> true');
                 return true;
             }
-            console.log(`[Window Control] ActivateByTitleSubstring("${substring}") -> false (not found)`);
+            console.debug('[Window Control] ActivateByTitleSubstring() -> false (not found)');
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByTitleSubstring() error: ${e.message}`);
@@ -288,15 +298,15 @@ class WindowControlService {
 
     // ActivateByWmClass: Activate window by WM class (exact match)
     ActivateByWmClass(wmClass) {
-        console.log(`[Window Control] ActivateByWmClass("${wmClass}") called`);
+        console.debug(`[Window Control] ActivateByWmClass("${wmClass}") called`);
         try {
             const win = this._findWindowByPredicate(w => w.get_wm_class() === wmClass);
             if (win) {
                 win.activate(global.get_current_time());
-                console.log(`[Window Control] ActivateByWmClass("${wmClass}") -> true`);
+                console.debug(`[Window Control] ActivateByWmClass("${wmClass}") -> true`);
                 return true;
             }
-            console.log(`[Window Control] ActivateByWmClass("${wmClass}") -> false (not found)`);
+            console.debug(`[Window Control] ActivateByWmClass("${wmClass}") -> false (not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByWmClass() error: ${e.message}`);
@@ -306,15 +316,15 @@ class WindowControlService {
 
     // ActivateByPid: Activate window by PID
     ActivateByPid(pid) {
-        console.log(`[Window Control] ActivateByPid(${pid}) called`);
+        console.debug(`[Window Control] ActivateByPid(${pid}) called`);
         try {
             const win = this._findWindowByPredicate(w => w.get_pid() === pid);
             if (win) {
                 win.activate(global.get_current_time());
-                console.log(`[Window Control] ActivateByPid(${pid}) -> true`);
+                console.debug(`[Window Control] ActivateByPid(${pid}) -> true`);
                 return true;
             }
-            console.log(`[Window Control] ActivateByPid(${pid}) -> false (not found)`);
+            console.debug(`[Window Control] ActivateByPid(${pid}) -> false (not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByPid() error: ${e.message}`);
@@ -330,17 +340,17 @@ class WindowControlService {
 
     // GetFocused: Get the currently focused window
     GetFocused() {
-        console.log(`[Window Control] GetFocused() called`);
+        console.debug(`[Window Control] GetFocused() called`);
         try {
             const win = this._findWindowByPredicate(w => w.has_focus());
             if (win) {
                 const id = win.get_id();
                 const title = win.get_title() || '';
                 const wmClass = win.get_wm_class() || '';
-                console.log(`[Window Control] GetFocused() -> ${id}, "${title}", "${wmClass}"`);
+                console.debug(`[Window Control] GetFocused() -> ${id}, "${wmClass}"`);
                 return [id, title, wmClass];
             }
-            console.log(`[Window Control] GetFocused() -> no focused window`);
+            console.debug(`[Window Control] GetFocused() -> no focused window`);
             return [0, '', ''];
         } catch (e) {
             console.error(`[Window Control] GetFocused() error: ${e.message}`);
@@ -350,22 +360,22 @@ class WindowControlService {
 
     // Move: Move window to position
     Move(windowId, x, y) {
-        console.log(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
+        console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         try {
             // Validate coordinates are reasonable numbers
             if (typeof x !== 'number' || typeof y !== 'number' ||
                 !Number.isFinite(x) || !Number.isFinite(y)) {
-                console.log(`[Window Control] Move: Invalid coordinates`);
+                console.debug(`[Window Control] Move: Invalid coordinates`);
                 return false;
             }
             
             const win = this._findWindowById(windowId);
             if (win) {
                 win.move_frame(true, x, y);
-                console.log(`[Window Control] Move(${windowId}, ${x}, ${y}) -> true`);
+                console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) -> true`);
                 return true;
             }
-            console.log(`[Window Control] Move(${windowId}) -> false (window not found)`);
+            console.debug(`[Window Control] Move(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Move() error: ${e.message}`);
@@ -375,13 +385,13 @@ class WindowControlService {
 
     // Resize: Resize window (keeps position)
     Resize(windowId, width, height) {
-        console.log(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
+        console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         try {
             // Validate dimensions are positive finite numbers
             if (typeof width !== 'number' || typeof height !== 'number' ||
                 !Number.isFinite(width) || !Number.isFinite(height) ||
                 width <= 0 || height <= 0) {
-                console.log(`[Window Control] Resize: Invalid dimensions (must be positive)`);
+                console.debug(`[Window Control] Resize: Invalid dimensions (must be positive)`);
                 return false;
             }
             
@@ -389,10 +399,10 @@ class WindowControlService {
             if (win) {
                 const rect = win.get_frame_rect();
                 win.move_resize_frame(true, rect.x, rect.y, width, height);
-                console.log(`[Window Control] Resize(${windowId}, ${width}, ${height}) -> true`);
+                console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) -> true`);
                 return true;
             }
-            console.log(`[Window Control] Resize(${windowId}) -> false (window not found)`);
+            console.debug(`[Window Control] Resize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] Resize() error: ${e.message}`);
@@ -402,7 +412,7 @@ class WindowControlService {
 
     // MoveResize: Move and resize window atomically
     MoveResize(windowId, x, y, width, height) {
-        console.log(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
+        console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         try {
             // Validate all parameters
             if (typeof x !== 'number' || typeof y !== 'number' ||
@@ -410,17 +420,17 @@ class WindowControlService {
                 !Number.isFinite(x) || !Number.isFinite(y) ||
                 !Number.isFinite(width) || !Number.isFinite(height) ||
                 width <= 0 || height <= 0) {
-                console.log(`[Window Control] MoveResize: Invalid parameters`);
+                console.debug(`[Window Control] MoveResize: Invalid parameters`);
                 return false;
             }
             
             const win = this._findWindowById(windowId);
             if (win) {
                 win.move_resize_frame(true, x, y, width, height);
-                console.log(`[Window Control] MoveResize(${windowId}) -> true`);
+                console.debug(`[Window Control] MoveResize(${windowId}) -> true`);
                 return true;
             }
-            console.log(`[Window Control] MoveResize(${windowId}) -> false (window not found)`);
+            console.debug(`[Window Control] MoveResize(${windowId}) -> false (window not found)`);
             return false;
         } catch (e) {
             console.error(`[Window Control] MoveResize() error: ${e.message}`);
@@ -430,15 +440,15 @@ class WindowControlService {
 
     // GetGeometry: Get window geometry
     GetGeometry(windowId) {
-        console.log(`[Window Control] GetGeometry(${windowId}) called`);
+        console.debug(`[Window Control] GetGeometry(${windowId}) called`);
         try {
             const win = this._findWindowById(windowId);
             if (win) {
                 const rect = win.get_frame_rect();
-                console.log(`[Window Control] GetGeometry(${windowId}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
+                console.debug(`[Window Control] GetGeometry(${windowId}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
                 return [rect.x, rect.y, rect.width, rect.height];
             }
-            console.log(`[Window Control] GetGeometry(${windowId}) -> not found`);
+            console.debug(`[Window Control] GetGeometry(${windowId}) -> not found`);
             return [-1, -1, -1, -1];
         } catch (e) {
             console.error(`[Window Control] GetGeometry() error: ${e.message}`);
@@ -448,7 +458,7 @@ class WindowControlService {
 
     // GetWorkarea: Get usable workspace area for a monitor
     GetWorkarea(monitorIndex) {
-        console.log(`[Window Control] GetWorkarea(${monitorIndex}) called`);
+        console.debug(`[Window Control] GetWorkarea(${monitorIndex}) called`);
         try {
             // Validate monitor index
             const numMonitors = global.display.get_n_monitors();
@@ -456,7 +466,7 @@ class WindowControlService {
                 !Number.isFinite(monitorIndex) ||
                 monitorIndex < 0 ||
                 monitorIndex >= numMonitors) {
-                console.log(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors-1})`);
+                console.debug(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors-1})`);
                 return [-1, -1, -1, -1];
             }
 
@@ -466,7 +476,7 @@ class WindowControlService {
             // Get work area for the specified monitor
             const rect = workspace.get_work_area_for_monitor(monitorIndex);
 
-            console.log(`[Window Control] GetWorkarea(${monitorIndex}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
+            console.debug(`[Window Control] GetWorkarea(${monitorIndex}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
             return [rect.x, rect.y, rect.width, rect.height];
         } catch (e) {
             console.error(`[Window Control] GetWorkarea() error: ${e.message}`);

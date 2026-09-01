@@ -17,6 +17,19 @@
 - SPDX license headers in `extension.js` and `dbus-interface.js`; a copy of
   `LICENSE` now ships inside the extension zip.
 
+### Fixed
+- Window titles no longer reach the journal. Per-call D-Bus handler logging moved
+  from `console.log()` to `console.debug()` (42 calls), and the seven messages
+  that interpolated a window title or a caller-supplied match string now log only
+  the method name and outcome. GJS maps `console.log()` to journald priority 5
+  (notice), which is visible without `G_MESSAGES_DEBUG` — so every `wctl` call
+  was appending window titles to a log that outlives the session. The
+  enable/disable lifecycle lines stay at `console.log()`; they carry no window
+  content and fire twice per session.
+- `docs/MONITORING.md` claimed `console.log()` maps to DEBUG and is "filtered
+  out". It does not, and it is not. The level table is corrected against measured
+  journald priorities, with the command to reproduce it.
+
 ## v7 (2026-07-12)
 
 ### Added

@@ -34,8 +34,12 @@ Any task that modifies JS code must include:
 - Simple "find window by id, do one action, return bool" handlers should go
   through the shared `_actOnWindow(windowId, label, action)` helper rather than
   re-implementing the find/try-catch/log skeleton.
-- Use `console.log()` for informational messages and `console.error()` ONLY in
-  catch blocks (see [MONITORING.md](MONITORING.md) for why the level matters).
+- Use `console.debug()` for per-call handler logging, `console.log()` only for
+  the enable/disable lifecycle, and `console.error()` ONLY in catch blocks.
+  `console.log()` is journald priority 5 and IS visible by default — it is not
+  filtered. See [MONITORING.md](MONITORING.md) for the verified level table.
+- Never log a window title or a caller-supplied match string, at any level. Log
+  the method name and the outcome.
 
 ## Bash style (wctl)
 
