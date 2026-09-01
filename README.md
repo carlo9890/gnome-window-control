@@ -26,7 +26,7 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 2. Install the downloaded zip file:
    ```bash
-   gnome-extensions install window-control@hko9890_v*.zip --force
+   gnome-extensions install window-control@carlo9890.github.io_v*.zip --force
    ```
 
 3. Restart GNOME Shell:
@@ -35,8 +35,22 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 4. Enable the extension:
    ```bash
-   gnome-extensions enable window-control@hko9890
+   gnome-extensions enable window-control@carlo9890.github.io
    ```
+
+#### Upgrading from window-control@hko9890
+
+The extension UUID changed to `window-control@carlo9890.github.io`. GNOME treats
+the new UUID as a separate extension, so the old one keeps running until you
+remove it. Both register the same D-Bus object, so do not leave both enabled.
+
+```bash
+gnome-extensions disable window-control@hko9890
+gnome-extensions uninstall window-control@hko9890
+gnome-extensions install window-control@carlo9890.github.io_v*.zip --force
+# restart GNOME Shell (Alt+F2 r on X11, log out and back in on Wayland)
+gnome-extensions enable window-control@carlo9890.github.io
+```
 
 #### From Source (For Development)
 

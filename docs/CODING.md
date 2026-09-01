@@ -9,8 +9,8 @@ When modifying any JavaScript file you **MUST** validate its syntax before
 finishing:
 
 ```bash
-node --check window-control@hko9890/extension.js
-node --check window-control@hko9890/dbus-interface.js
+node --check window-control@carlo9890.github.io/extension.js
+node --check window-control@carlo9890.github.io/dbus-interface.js
 ```
 
 If either fails, the code has a syntax error and must not be committed.
@@ -55,14 +55,16 @@ Any task that modifies JS code must include:
 ./scripts/build.sh install     # copy the extension into place for local testing
 ```
 
-The zip lands in `dist/window-control@hko9890_v<version>.zip` and includes every
-file in the extension directory (`extension.js`, `dbus-interface.js`,
-`metadata.json`, `README.md`).
+The zip lands in `dist/window-control@carlo9890.github.io_v<version>.zip` and
+includes every file in the extension directory (`extension.js`,
+`dbus-interface.js`, `metadata.json`, `README.md`, `LICENSE`). The directory name
+must stay identical to the `uuid` in `metadata.json` — `build.sh validate`
+hard-fails if they diverge.
 
 ## Adding a new D-Bus method
 
 1. Add the method signature to the interface XML in
-   `window-control@hko9890/dbus-interface.js`:
+   `window-control@carlo9890.github.io/dbus-interface.js`:
 
    ```xml
    <method name="YourNewMethod">

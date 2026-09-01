@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 hko9890
+// SPDX-License-Identifier: MIT
 // D-Bus interface XML for the Window Control extension.
 // Kept in its own module so the declarative interface contract can be read and
 // diffed independently of the handler implementations in extension.js.

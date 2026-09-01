@@ -1,0 +1,16 @@
+{
+  "uuid": "window-control@carlo9890.github.io",
+  "name": "Window Control",
+  "description": "Exposes a D-Bus interface for listing and controlling windows, so scripts and applications can do on Wayland what wmctrl does on X11.\n\nList open windows with their ID, title, WM class, PID, workspace, monitor and geometry. Activate or focus a window by ID, title, WM class or PID. Move, resize, minimize, maximize, fullscreen, set above, set sticky or close a window.\n\nThe extension has no user interface and adds nothing to the panel. It only registers the D-Bus object /org/gnome/Shell/Extensions/WindowControl on the org.gnome.Shell bus name, and removes it again when you disable the extension.\n\nIMPORTANT: the interface has no access control. Any application in your session can call it to read window titles and to control your windows. This is necessary for the intended use from shell scripts. Do not enable the extension if that is not acceptable to you.\n\nA command-line client, wctl, is available from the project page. It is not part of this extension and is not installed with it.",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50"
+  ],
+  "url": "https://github.com/carlo9890/gnome-window-control",
+  "version": 7,
+  "version-name": "7"
+}

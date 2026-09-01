@@ -29,7 +29,7 @@ errors so the CRITICAL stream stays meaningful.
 ## Interpreting common signals
 
 - **`wctl` prints "extension is not running"** — the D-Bus destination isn't
-  answering; enable it (`gnome-extensions enable window-control@hko9890`). Both
+  answering; enable it (`gnome-extensions enable window-control@carlo9890.github.io`). Both
   `wctl` transports classify this the same way via `is_extension_not_running`.
 - **`wctl list`/`info`/`focused` return empty or error** — check the log for a
   JavaScript exception in `ListDetailed`; the handler returns `'[]'` on any throw.

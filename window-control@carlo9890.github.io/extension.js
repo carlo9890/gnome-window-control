@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 hko9890
+// SPDX-License-Identifier: MIT
 // Window Control Extension for GNOME Shell
 // D-Bus interface for listing and controlling windows
 
