@@ -43,9 +43,12 @@ In extension code:
 - Per-call D-Bus handler logging MUST use `console.debug()`. At `console.log()`
   every `wctl` invocation would append lines to the journal that outlive the
   session. `extension.js` states this invariant above `WindowControlService`.
-- No log line may contain a window title or a caller-supplied match string, at
-  any level. Titles leak document names, URLs and message contents into a log
-  that outlives the process that asked. Log the method name and outcome instead.
+- No log line may contain window content or a caller-supplied match value, at any
+  level — not a title, and not a WM class. Titles leak document names, URLs and
+  message contents into a log that outlives the process that asked, and a class
+  says which applications the user runs. Log the method name and outcome instead.
+  `WaitForWindow` is the one exception: it logs its `kind` argument, a fixed
+  keyword (`class|title|substring|pid`), and elides the value matched against.
 - `console.log()` is reserved for the enable/disable lifecycle, which fires twice
   per session and carries no window content.
 - Reserve `console.error()` for actual errors so the CRITICAL stream stays
