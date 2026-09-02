@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Changed
+- `wctl` is now a Rust binary (crate in `cli/`, D-Bus via zbus) instead of a
+  bash script. The CLI contract is unchanged: same commands, same output, same
+  usage text, same exit codes. What changes is that it is faster and has no
+  runtime dependencies -- `jq`, `busctl` and `gdbus` are no longer needed to run
+  it, and the release asset is a statically linked x86_64 binary.
+  Measured on GNOME 46 against the bash client: `wctl list` 10.2 ms to 2.4 ms,
+  `wctl focused` 15.8 ms to 2.3 ms. The floor is process startup; the D-Bus work
+  itself is about 0.3 ms per call.
+- `wctl focused` now exits 1 when the extension is not running. The bash client
+  called `die` inside a command substitution, which only exited the subshell, so
+  it printed the error and then "No window focused" and exited 0.
+- Shell completions no longer shell out to `jq` to list window IDs.
+- The Rust toolchain is pinned in `.mise.toml`; `mise run ci` is the gate
+  (`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, release build).
+  The headless bash suite `tests/test-logic.sh` is gone; its 138 cases are now
+  unit tests in the crate and argument-guard tests in `cli/tests/cli.rs`.
+
 ### Added
 - Workspace control: D-Bus methods `ListWorkspaces`, `ActivateWorkspace`, and
   `MoveToWorkspace`; `wctl workspaces [--json]`, `wctl workspace <N>`, and

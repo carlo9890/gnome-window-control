@@ -3,8 +3,8 @@
 ## Repository purpose
 
 A GNOME Shell extension exposing a D-Bus interface for listing and controlling
-windows on Wayland, plus `wctl`, a bash CLI over that interface. Extension code is
-GJS; the CLI is bash; targets GNOME Shell 45-50.
+windows on Wayland, plus `wctl`, a CLI over that interface. Extension code is
+GJS; the CLI is Rust (crate in `cli/`); targets GNOME Shell 45-50.
 
 ## Use-case routing
 

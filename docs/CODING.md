@@ -41,16 +41,25 @@ Any task that modifies JS code must include:
 - Never log a window title or a caller-supplied match string, at any level. Log
   the method name and the outcome.
 
-## Bash style (wctl)
+## Rust style (cli/)
 
-- `#!/usr/bin/env bash` shebang; `set -euo pipefail`.
-- Quote variables: `"$var"`.
-- Use `[[ ]]` for conditionals.
-- Validate arguments before D-Bus calls via `validate_id` and the inline guards,
-  and report outcomes through the shared `report_result` helper so every command
-  behaves and reports identically.
-- Keep pure, testable logic (geometry math, token resolution) in standalone
-  functions so `tests/test-logic.sh` can unit-test them headlessly.
+- The toolchain is pinned in `.mise.toml`. Run the gates through mise:
+  `mise run fmt`, `mise run lint`, `mise run test`, `mise run build`, or
+  `mise run ci` for all of them.
+- `cargo fmt` is authoritative; `cargo clippy --all-targets -- -D warnings` must
+  be clean. Both are CI gates.
+- Validate arguments before any D-Bus call. The session connection is opened
+  lazily in `dbus.rs`, so a usage error must never reach it — that is what keeps
+  the guard tests headless.
+- Report failure through `Fail`: `Fail::error` for the `Error: ...` on stderr,
+  `Fail::plain` for the extension-said-no message on stdout. Every command ends
+  in `report()` so they all behave the same way.
+- Keep pure, testable logic (geometry math, token resolution, selector parsing)
+  in `geometry.rs` and `selector.rs` with `#[cfg(test)]` unit tests that pin
+  **hardcoded** expected values.
+- The CLI grammar is a frozen contract: output strings, usage text and exit
+  codes are asserted by the live suites. Do not reword a message without
+  changing the suite that pins it.
 
 ## Building for distribution
 
@@ -90,28 +99,24 @@ hard-fails if they diverge.
    > precision above 2^53. Mutter window IDs are well within that range, but if a
    > method ever handles larger uint64 values, use `BigInt`/`GLib.Variant`.
 
-3. Add the corresponding command to `wctl`, reusing the shared helpers:
+3. Add the corresponding command to the crate, reusing the shared helpers.
+   A simple boolean action is one line in `cli/src/commands/state.rs`:
 
-   ```bash
-   cmd_your_new_command() {
-       local id="${1:-}"
-       [[ -z "$id" ]] && die "Usage: wctl your-new-command <ID>"
-       validate_id "$id"
-
-       local raw
-       raw=$(dbus_call "YourNewMethod" "$id")
-       report_result "$raw" "Did the thing" "$id"
+   ```rust
+   pub fn your_new_command(ctx: &mut Ctx, args: &[String]) -> Result<()> {
+       let (id, _) = selector::resolve(ctx, 0, "Usage: wctl your-new-command <WINDOW>", args)?;
+       let ok = ctx.bus.call_bool("YourNewMethod", &(id,))?;
+       report(ok, "Did the thing", not_found(id))
    }
    ```
 
-   Wire it into `main()`'s dispatch `case`.
+   Wire it into the `match` in `cli/src/main.rs`.
 
-4. Update the help text **and both shell completions** in `wctl`. The
-   command-inventory test in `tests/test-logic.sh` cross-checks the help text and
-   both completions against its `EXPECTED_COMMANDS` list, so update that list too.
-   (Dispatch is covered functionally by the argument-guard tests — an unwired
-   command falls through to "Unknown command" and fails them.)
+4. Add it to `COMMANDS` in `cli/src/main.rs`, to the help text in
+   `cli/src/help.rs`, and to **both** completion scripts in `cli/completions/`.
+   The inventory unit tests cross-check all four, so a command that is missing
+   from any of them fails `cargo test`.
 
 5. Update the method table in `README.md`.
 
-6. Run `bash tests/test-logic.sh` and `node --check` before committing.
+6. Run `mise run ci` and `node --check` before committing.

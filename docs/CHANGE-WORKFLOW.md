@@ -5,7 +5,7 @@
 Before committing or opening a PR:
 
 - Modified JavaScript passes `node --check` (see [CODING.md](CODING.md)) — a CI gate.
-- `bash tests/test-logic.sh` passes (headless; the CI gate).
+- `mise run ci` passes (headless; the CI gate).
 - Extension-dependent changes: `./tests/run-all-query-tests.sh` passes; run the
   modification suite for state-changing changes (see [TESTING.md](TESTING.md)).
 - Code changes to `extension.js` are actually reloaded and exercised in a running
@@ -44,7 +44,7 @@ The regex accepted 0 despite the "must be a positive number" message.
 `.github/workflows/build.yml` runs on every push and PR:
 
 - `node --check` on every extension `*.js`
-- `bash tests/test-logic.sh`
+- `mise run ci`
 - `./scripts/build.sh all` (validate + package)
 
 All must be green. Releases are a separate flow — see [RELEASING.md](RELEASING.md).

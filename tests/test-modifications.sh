@@ -8,10 +8,10 @@
 
 source "$(dirname "$0")/test-helper.sh"
 
-# Reuse wctl's own pure helpers (parse_workarea_rect, resolve_tile_geometry) so
-# the tests verify against the exact parser/formula the CLI ships, not a second
-# copy. wctl's source-guard keeps main() from running when sourced.
-source "$WCTL"
+# The expected workarea parsing and grid geometry live in their own helper: it
+# is an independent oracle for what the CLI should produce, and the same
+# expectations are pinned to hardcoded pixels in the crate's unit tests.
+source "$(dirname "$0")/geometry-helper.sh"
 
 # ============================================================================
 # Test window management
@@ -156,7 +156,7 @@ workarea=$(gdbus call --session \
     --method org.gnome.Shell.Extensions.WindowControl.GetWorkarea \
     "$monitor_index" 2>/dev/null || echo "")
 
-# Parse the workarea with wctl's canonical parser (not a second inline regex).
+# Parse the workarea with the helper's parser (not a second inline regex).
 parsed_wa=""
 [[ -n "$workarea" ]] && parsed_wa=$(parse_workarea_rect "$workarea" 2>/dev/null || echo "")
 if [[ -z "$parsed_wa" ]]; then
@@ -177,7 +177,7 @@ fi
 echo ""
 echo "--- Tile/Center Tests ---"
 
-# Read the workarea for the test window's monitor once, via wctl's parser.
+# Read the workarea for the test window's monitor once, via the helper's parser.
 tc_monitor=$(get_window_field '.monitor_index')
 tc_workarea_raw=$(gdbus call --session \
     --dest org.gnome.Shell \
@@ -193,9 +193,8 @@ else
     read -r tc_wa_x tc_wa_y tc_wa_w tc_wa_h <<< "$tc_wa"
 
     # tile: verify each of the 9 grid cells lands where resolve_tile_geometry says.
-    # resolve_tile_geometry is independently pinned to hardcoded pixels in
-    # test-logic.sh, so reusing it here checks the D-Bus/WM round-trip, not the
-    # formula against itself.
+    # The same pixels are pinned by hand in the crate's unit tests, so this
+    # checks the D-Bus/WM round-trip, not the formula against itself.
     for pos in top-left top-center top-right left center right bottom-left bottom-center bottom-right; do
         info "Testing: tile $pos"
         run_wctl tile "$TEST_WINDOW_ID" "$pos"

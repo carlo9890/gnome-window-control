@@ -18,11 +18,12 @@ from [AGENTS.md](AGENTS.md) instead.)
 5. Commit, branch, and open a PR — see [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md).
 
 Prerequisites: GNOME Shell 45-50, the `gnome-extensions` CLI, `node` (for the
-`node --check` gate), `jq`, and `gdbus`/`busctl`.
+`node --check` gate), and `jq` plus `gdbus` (used by the live test suites, not by
+`wctl` itself).
 
 The Rust toolchain for the `wctl` CLI comes from [mise](https://mise.jdx.dev);
 `.mise.toml` pins the exact version. Run `mise install` in the repository root
-to get it.
+to get it, then `mise run ci` to run the gates.
 
 ## Before you open a PR
 
