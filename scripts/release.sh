@@ -11,11 +11,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-EXTENSION_DIR="$PROJECT_ROOT/window-control@hko9890"
+EXTENSION_DIR="$PROJECT_ROOT/window-control@carlo9890.github.io"
 DIST_DIR="$PROJECT_ROOT/dist"
 
 # Extension metadata
-EXTENSION_UUID="window-control@hko9890"
+EXTENSION_UUID="window-control@carlo9890.github.io"
 
 # Colors for output
 # Colors (disabled if not a tty)
@@ -57,7 +57,7 @@ GNOME Window Control Release Script
 Usage: $0 [options]
 
 Creates a GitHub release with all required assets:
-  - Extension zip file (dist/window-control@hko9890_v<version>.zip)
+  - Extension zip file (dist/window-control@carlo9890.github.io_v<version>.zip)
   - wctl CLI script
   - install-wctl.sh installer
 
@@ -71,7 +71,7 @@ Options:
     -h, --help    Show this help message
 
 Release Process:
-    1a. Update version in window-control@hko9890/metadata.json
+    1a. Update version in window-control@carlo9890.github.io/metadata.json
     1b. Update VERSION in wctl to match (e.g., "0.X.0" for metadata version X)
     2. Update CHANGELOG.md with release notes
     3. Commit: git commit -am "chore: bump version to vX"

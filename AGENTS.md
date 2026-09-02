@@ -49,5 +49,5 @@ Load [docs/RELEASING.md](docs/RELEASING.md) to cut a release. Releases MUST use
 
 `gnome-window-control-extension-requirements.md` is the original design spec. The
 authoritative D-Bus surface is the interface XML in
-`window-control@hko9890/dbus-interface.js` and the method table in
+`window-control@carlo9890.github.io/dbus-interface.js` and the method table in
 [README.md](README.md).

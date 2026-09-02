@@ -18,7 +18,7 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
 
 2. Install the extension by copying it into the extensions directory:
    ```bash
-   cp -r window-control@hko9890 ~/.local/share/gnome-shell/extensions/
+   cp -r window-control@carlo9890.github.io ~/.local/share/gnome-shell/extensions/
    ```
 
 3. Restart GNOME Shell:
@@ -27,7 +27,7 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
 
 4. Enable the extension:
    ```bash
-   gnome-extensions enable window-control@hko9890
+   gnome-extensions enable window-control@carlo9890.github.io
    ```
 
 ### Verify Installation
@@ -39,7 +39,7 @@ gnome-extensions list | grep window-control
 
 Check extension status:
 ```bash
-gnome-extensions info window-control@hko9890
+gnome-extensions info window-control@carlo9890.github.io
 ```
 
 ## Usage

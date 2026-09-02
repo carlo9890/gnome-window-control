@@ -8,11 +8,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-EXTENSION_DIR="$PROJECT_ROOT/window-control@hko9890"
+EXTENSION_DIR="$PROJECT_ROOT/window-control@carlo9890.github.io"
 DIST_DIR="$PROJECT_ROOT/dist"
 
 # Extension metadata
-EXTENSION_UUID="window-control@hko9890"
+EXTENSION_UUID="window-control@carlo9890.github.io"
 
 # Colors for output
 # Colors (disabled if not a tty)

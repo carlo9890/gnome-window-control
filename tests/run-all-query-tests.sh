@@ -50,7 +50,7 @@ if ! gdbus call --session --dest org.gnome.Shell \
         --object-path /org/gnome/Shell/Extensions/WindowControl \
         --method org.gnome.Shell.Extensions.WindowControl.GetFocused >/dev/null 2>&1; then
     echo -e "${YELLOW}NO QUERY TESTS EXECUTED${RESET} - the Window Control extension is not running."
-    echo "Enable it with: gnome-extensions enable window-control@hko9890"
+    echo "Enable it with: gnome-extensions enable window-control@carlo9890.github.io"
     exit 0
 fi
 
@@ -118,7 +118,7 @@ if [[ $TOTAL_FAILED -gt 0 || $SCRIPTS_FAILED -gt 0 ]]; then
 elif [[ $SCRIPTS_WITH_TESTS -eq 0 ]]; then
     # Nothing actually ran (extension not running?). A green "PASSED" here would be
     # a false signal, so report SKIPPED distinctly.
-    echo -e "\n${YELLOW}NO QUERY TESTS EXECUTED${RESET} - is the extension enabled? (gnome-extensions enable window-control@hko9890)"
+    echo -e "\n${YELLOW}NO QUERY TESTS EXECUTED${RESET} - is the extension enabled? (gnome-extensions enable window-control@carlo9890.github.io)"
     exit 0
 else
     echo -e "\n${GREEN}ALL QUERY TESTS PASSED${RESET}"

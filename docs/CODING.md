@@ -9,8 +9,8 @@ When modifying any JavaScript file you **MUST** validate its syntax before
 finishing:
 
 ```bash
-node --check window-control@hko9890/extension.js
-node --check window-control@hko9890/dbus-interface.js
+node --check window-control@carlo9890.github.io/extension.js
+node --check window-control@carlo9890.github.io/dbus-interface.js
 ```
 
 If either fails, the code has a syntax error and must not be committed.
@@ -34,8 +34,12 @@ Any task that modifies JS code must include:
 - Simple "find window by id, do one action, return bool" handlers should go
   through the shared `_actOnWindow(windowId, label, action)` helper rather than
   re-implementing the find/try-catch/log skeleton.
-- Use `console.log()` for informational messages and `console.error()` ONLY in
-  catch blocks (see [MONITORING.md](MONITORING.md) for why the level matters).
+- Use `console.debug()` for per-call handler logging, `console.log()` only for
+  the enable/disable lifecycle, and `console.error()` ONLY in catch blocks.
+  `console.log()` is journald priority 5 and IS visible by default — it is not
+  filtered. See [MONITORING.md](MONITORING.md) for the verified level table.
+- Never log a window title or a caller-supplied match string, at any level. Log
+  the method name and the outcome.
 
 ## Bash style (wctl)
 
@@ -55,14 +59,16 @@ Any task that modifies JS code must include:
 ./scripts/build.sh install     # copy the extension into place for local testing
 ```
 
-The zip lands in `dist/window-control@hko9890_v<version>.zip` and includes every
-file in the extension directory (`extension.js`, `dbus-interface.js`,
-`metadata.json`, `README.md`).
+The zip lands in `dist/window-control@carlo9890.github.io_v<version>.zip` and
+includes every file in the extension directory (`extension.js`,
+`dbus-interface.js`, `metadata.json`, `README.md`, `LICENSE`). The directory name
+must stay identical to the `uuid` in `metadata.json` — `build.sh validate`
+hard-fails if they diverge.
 
 ## Adding a new D-Bus method
 
 1. Add the method signature to the interface XML in
-   `window-control@hko9890/dbus-interface.js`:
+   `window-control@carlo9890.github.io/dbus-interface.js`:
 
    ```xml
    <method name="YourNewMethod">

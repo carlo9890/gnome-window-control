@@ -25,7 +25,7 @@ isolated from your main session; all logs go to the launching terminal):
 ./scripts/build.sh install        # copy updated files into the extensions dir
 ./scripts/start-nested.sh         # launch a nested shell in a window
 # inside the nested session's terminal:
-gnome-extensions enable window-control@hko9890
+gnome-extensions enable window-control@carlo9890.github.io
 ```
 
 Otherwise restart GNOME Shell directly: log out/in on Wayland, or `Alt+F2` → `r` →
@@ -34,7 +34,7 @@ Enter on X11.
 ## Check extension status
 
 ```bash
-gnome-extensions info window-control@hko9890    # installed / enabled?
+gnome-extensions info window-control@carlo9890.github.io    # installed / enabled?
 gnome-extensions list | grep window-control     # if absent, a restart is needed
 ```
 

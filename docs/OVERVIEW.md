@@ -7,10 +7,11 @@ GNOME Shell 45-50.
 ## Repository layout
 
 ```
-window-control@hko9890/    GNOME Shell extension
+window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── extension.js           D-Bus service + method handlers (WindowControlService)
 ├── dbus-interface.js      D-Bus interface XML (imported by extension.js)
-├── metadata.json          extension metadata (uuid, shell-version, version)
+├── metadata.json          extension metadata (uuid, shell-version, url, version)
+├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
 wctl                       CLI wrapper; also holds the pure helper functions
 scripts/                   build.sh, release.sh, start-nested.sh, debug-dbus.sh
@@ -49,10 +50,10 @@ gnome-window-control-extension-requirements.md   original design spec
 
 ```bash
 # A D-Bus method's XML signature
-grep -n 'method name=' window-control@hko9890/dbus-interface.js
+grep -n 'method name=' window-control@carlo9890.github.io/dbus-interface.js
 
 # A method's handler implementation
-grep -n 'MethodName(' window-control@hko9890/extension.js
+grep -n 'MethodName(' window-control@carlo9890.github.io/extension.js
 
 # A wctl subcommand's implementation and its dispatch
 grep -n 'cmd_<name>\|^\s*<name>)' wctl
