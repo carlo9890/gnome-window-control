@@ -20,6 +20,10 @@ from [AGENTS.md](AGENTS.md) instead.)
 Prerequisites: GNOME Shell 45-50, the `gnome-extensions` CLI, `node` (for the
 `node --check` gate), `jq`, and `gdbus`/`busctl`.
 
+The Rust toolchain for the `wctl` CLI comes from [mise](https://mise.jdx.dev);
+`.mise.toml` pins the exact version. Run `mise install` in the repository root
+to get it.
+
 ## Before you open a PR
 
 - Modified JavaScript passes `node --check` and has been reloaded and exercised in
