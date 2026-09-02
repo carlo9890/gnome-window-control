@@ -1,6 +1,13 @@
 [tools]
 rust = "1.98.0"
 
+# rustup's minimal profile ships neither clippy nor rustfmt, and which profile a
+# machine installed with is not something the pin controls. Adding them is
+# idempotent and costs nothing when they are already there.
+[tasks.components]
+description = "Ensure clippy and rustfmt are present for the pinned toolchain"
+run = "rustup component add clippy rustfmt"
+
 [tasks."fmt"]
 description = "Format the wctl crate"
 dir = "{{config_root}}/cli"
@@ -8,11 +15,13 @@ run = "cargo fmt"
 
 [tasks."fmt:check"]
 description = "Check formatting of the wctl crate"
+depends = ["components"]
 dir = "{{config_root}}/cli"
 run = "cargo fmt --check"
 
 [tasks.lint]
 description = "Clippy with warnings as errors"
+depends = ["components"]
 dir = "{{config_root}}/cli"
 run = "cargo clippy --all-targets -- -D warnings"
 
