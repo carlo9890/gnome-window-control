@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Workspace control: D-Bus methods `ListWorkspaces`, `ActivateWorkspace`, and
+  `MoveToWorkspace`; `wctl workspaces [--json]`, `wctl workspace <N>`, and
+  `wctl move-to-workspace <WINDOW> <N>`. `ActivateWorkspace` hides the
+  Activities overview before switching, because `Meta.Workspace.activate()`
+  leaves the active workspace unchanged while the overview is shown (verified
+  on GNOME 46), and it returns whether the switch actually took effect.
+- Monitor control: D-Bus method `MoveToMonitor`; `wctl monitors [--json]` (over
+  the existing `ListMonitors`) and `wctl move-to-monitor <WINDOW> <N>`.
+- Window selectors: every `wctl` command that took an `<ID>` now also accepts
+  `focused`, `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`, or `-p <PID>`. A selector
+  must match exactly one window; on ambiguity `wctl` lists the candidates and
+  exits 1. A numeric ID still makes no extra D-Bus call, and a match selector
+  costs one `ListDetailed` call that the command reuses. `wctl activate` keeps
+  its first-match behaviour.
+- `wctl wait -c|-t|-s|-p <VALUE> [--timeout <SECONDS>]` prints the ID of the
+  matching window as soon as it is shown (default timeout 10 s, exit 1 on
+  timeout). Backed by the new async D-Bus method `WaitForWindow(ssi) -> t`,
+  which defers its reply until a matching window has been mapped and placed by
+  mutter, so there is no polling and the shell main loop is never blocked. It
+  deliberately does not reply at `window-created`: a geometry request on a
+  window that exists but is not yet shown is overridden by mutter's initial
+  placement, which is exactly the "launch, then place" script this command is
+  for. Pending calls fail with
+  `org.gnome.Shell.Extensions.WindowControl.Disabled` when the extension is
+  disabled.
+- `wctl list` filters: `--workspace <N>` (sticky windows included), `--monitor
+  <N>`, `--class <CLASS>`; they apply to the table and to `--json`.
+- Shell completions (bash and zsh) cover the new commands and selector options.
+
+### Changed
+- `wctl info` now requires the window selector before `--json`
+  (`wctl info <WINDOW> [--json]`).
+
 ## v8 (2026-09-02)
 
 ### Changed

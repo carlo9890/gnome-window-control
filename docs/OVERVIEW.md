@@ -43,6 +43,24 @@ gnome-window-control-extension-requirements.md   original design spec
   `tests/test-logic.sh` can unit-test them headlessly — this is the CI gate.
 - A single `extension.js` runs across GNOME 45-50 via runtime API detection for
   the maximize path (`get_maximized()` vs `get_maximize_flags()`).
+- `WaitForWindow` is the one **async** handler (`WaitForWindowAsync(params,
+  invocation)`, the GJS convention): it keeps the `Gio.DBusMethodInvocation` in
+  `_waiters` and replies from a `window-created` handler or a `GLib.timeout_add`
+  source. The display signal is connected only while a waiter is pending, and a
+  new window is re-evaluated on `notify::wm-class` / `notify::title` (on
+  Wayland those can arrive after creation) and on `shown`. A window only
+  satisfies a waiter once it is shown (`_isUnshown`): before mutter maps and
+  places it, any geometry request is overridden by the initial placement, so
+  replying earlier would break the "launch, then place" script. `unexport()`
+  fails every pending call and drops all handlers, so `disable()` leaves nothing
+  behind.
+- `wctl` addresses windows through one **selector resolver**
+  (`resolve_window_selector <MIN_AFTER> <USAGE> "$@"` → `SEL_ID`, `SEL_SHIFT`):
+  a numeric ID needs no D-Bus call, `focused` costs one `GetFocused`, and
+  `-c/-t/-s/-p` cost one `ListDetailed` whose reply is cached in `SEL_JSON` for
+  the command that follows. The argument-count check runs before any D-Bus call
+  so usage errors stay headless. The pure halves (`parse_window_selector`,
+  `select_window_id_from_json`, `filter_windows_json`) are unit-tested.
 - `disable`/`enable` does **not** reload JS from disk; code changes need a shell
   restart or nested session (see [RUNNING.md](RUNNING.md)).
 
@@ -59,7 +77,7 @@ grep -n 'MethodName(' window-control@carlo9890.github.io/extension.js
 grep -n 'cmd_<name>\|^\s*<name>)' wctl
 
 # The pure helper functions that are unit-tested headlessly
-grep -n 'resolve_\|parse_workarea\|validate_id\|report_result' wctl
+grep -n 'resolve_\|parse_workarea\|validate_id\|report_result\|parse_window_selector\|select_window_id_from_json\|filter_windows_json\|parse_uint64_reply' wctl
 
 # The authoritative method list
 sed -n '/## Methods/,/## /p' README.md
