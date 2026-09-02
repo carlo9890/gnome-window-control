@@ -8,9 +8,11 @@
   usage text, same exit codes. What changes is that it is faster and has no
   runtime dependencies -- `jq`, `busctl` and `gdbus` are no longer needed to run
   it, and the release asset is a statically linked x86_64 binary.
-  Measured on GNOME 46 against the bash client: `wctl list` 10.2 ms to 2.4 ms,
-  `wctl focused` 15.8 ms to 2.3 ms. The floor is process startup; the D-Bus work
-  itself is about 0.3 ms per call.
+  Measured against the bash client on GNOME 46, both against the same shell,
+  median of 21 runs: `list` 10.1 ms to 1.7 ms, `focused` 11.8 ms to 1.3 ms,
+  `info` 7.7 ms to 1.4 ms, `tile` 16.0 ms to 2.0 ms, `help` 3.1 ms to 1.0 ms.
+  The floor is process startup (0.86 ms for `/bin/true` on the same machine);
+  the D-Bus work itself is about 0.3 ms per call.
 - `wctl focused` now exits 1 when the extension is not running. The bash client
   called `die` inside a command substitution, which only exited the subshell, so
   it printed the error and then "No window focused" and exited 0.
