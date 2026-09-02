@@ -8,15 +8,20 @@
   usage text, same exit codes. What changes is that it is faster and has no
   runtime dependencies -- `jq`, `busctl` and `gdbus` are no longer needed to run
   it, and the release asset is a statically linked x86_64 binary.
-  Measured against the bash client on GNOME 46, both against the same shell,
-  median of 21 runs: `list` 10.1 ms to 1.7 ms, `focused` 11.8 ms to 1.3 ms,
-  `info` 7.7 ms to 1.4 ms, `tile` 16.0 ms to 2.0 ms, `help` 3.1 ms to 1.0 ms.
-  The floor is process startup (0.86 ms for `/bin/true` on the same machine);
-  the D-Bus work itself is about 0.3 ms per call.
+  Measured against the bash client on a GNOME 46 desktop session with 20
+  windows, median of 21 runs each: `list` 11.7 ms to 1.8 ms, `list --json`
+  6.9 ms to 1.7 ms, `focused` 12.8 ms to 1.6 ms, `info` 8.3 ms to 1.6 ms,
+  `help` 2.5 ms to 0.8 ms. `wctl list` is now faster than a bare `gdbus call`
+  (2.3 ms). The floor is process startup: `/bin/true` is 0.70 ms on the same
+  machine, and the D-Bus work itself is about 0.3 ms per call.
 - `wctl focused` now exits 1 when the extension is not running. The bash client
   called `die` inside a command substitution, which only exited the subshell, so
   it printed the error and then "No window focused" and exited 0.
 - Shell completions no longer shell out to `jq` to list window IDs.
+- The D-Bus error text for a method the loaded extension does not have now
+  carries the error name (`org.freedesktop.DBus.Error.UnknownMethod: No such
+  method "X"`) where gdbus printed `Call failed: No such method "X"`. Same exit
+  code, same cause.
 - The Rust toolchain is pinned in `.mise.toml`; `mise run ci` is the gate
   (`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, release build).
   The headless bash suite `tests/test-logic.sh` is gone; its 138 cases are now
