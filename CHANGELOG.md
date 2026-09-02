@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v8 (2026-09-02)
 
 ### Changed
 - **BREAKING:** The extension UUID is now `window-control@carlo9890.github.io`
