@@ -16,7 +16,8 @@ reload:
 | Change | Reload |
 |--------|--------|
 | `extension.js` / `dbus-interface.js` / `metadata.json` / new files | **Required** |
-| `wctl` / tests / scripts | None (run fresh each invocation) |
+| `cli/` (wctl) | Rebuild: `mise run build` |
+| tests / scripts | None (run fresh each invocation) |
 
 Reload without logging out via a **nested GNOME Shell session** (runs in a window,
 isolated from your main session; all logs go to the launching terminal):
@@ -87,13 +88,14 @@ gnome-extensions list | grep window-control     # if absent, a restart is needed
 
 ## Drive it
 
-Via `wctl`:
+Via `wctl` (build it first with `mise run build`):
 
 ```bash
-./wctl list          # enumerate windows
-./wctl focused       # focused-window details
-./wctl move <ID> 100 100
-./wctl tile <ID> top-left
+W=cli/target/release/wctl
+$W list              # enumerate windows
+$W focused           # focused-window details
+$W move <ID> 100 100
+$W tile <ID> top-left
 ```
 
 Or call the D-Bus interface directly (destination `org.gnome.Shell`):
@@ -111,14 +113,14 @@ gdbus call --session --dest org.gnome.Shell \
 1. Reload the current code as above (a nested session keeps it off your main
    desktop).
 2. Spawn a target window if needed (`kitty --title test &`), find its id with
-   `./wctl list --json`.
+   `$W list --json`.
 3. Replay the exact `wctl` command / D-Bus call from the report and read the
-   window state back with `./wctl info <ID> --json`.
+   window state back with `$W info <ID> --json`.
 
 ## Verify a change
 
 Re-run the affected command against a live window and confirm the observed
-geometry/state, e.g. after a `tile`/`place`/`move`, read `./wctl info <ID> --json`
+geometry/state, e.g. after a `tile`/`place`/`move`, read `$W info <ID> --json`
 and compare `frame_rect`. For a full sweep, run the modification suite
 ([TESTING.md](TESTING.md)) — it spawns its own window and asserts geometry within
 a tolerance.

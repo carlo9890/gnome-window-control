@@ -5,8 +5,9 @@ on:
     branches: [main]
     paths:
       - 'window-control@carlo9890.github.io/**'
+      - 'cli/**'
+      - '.mise.toml'
       - 'scripts/**'
-      - 'wctl'
       - 'install-wctl.sh'
       - 'tests/**'
       - '.github/workflows/build.yml'
@@ -14,17 +15,18 @@ on:
     branches: [main]
     paths:
       - 'window-control@carlo9890.github.io/**'
+      - 'cli/**'
+      - '.mise.toml'
       - 'scripts/**'
-      - 'wctl'
       - 'install-wctl.sh'
       - 'tests/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  build:
+  extension:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,11 +43,6 @@ jobs:
             node --check "$js"
           done
 
-      - name: Run pure-logic tests (no extension required)
-        run: |
-          chmod +x wctl tests/*.sh
-          bash tests/test-logic.sh
-
       - name: Make build script executable
         run: chmod +x scripts/build.sh
 
@@ -59,16 +56,32 @@ jobs:
           path: dist/*.zip
           retention-days: 30
 
-      - name: Upload wctl artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wctl
-          path: wctl
-          retention-days: 30
-
       - name: Upload install script artifact
         uses: actions/upload-artifact@v4
         with:
           name: install-wctl
           path: install-wctl.sh
+          retention-days: 30
+
+  cli:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install the pinned toolchain
+        uses: jdx/mise-action@v2
+
+      # Formatting, clippy (warnings are errors), unit tests, argument-guard
+      # tests and the release build. None of it needs a GNOME session: every
+      # test case fails before wctl opens the session bus.
+      - name: Run the CLI gates
+        run: mise run ci
+
+      - name: Upload wctl artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wctl
+          path: cli/target/release/wctl
           retention-days: 30

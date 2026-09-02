@@ -1,8 +1,8 @@
 # Overview
 
 GNOME Shell extension that exposes a D-Bus interface for listing and controlling
-windows on Wayland, plus `wctl`, a bash CLI wrapper over that interface. Targets
-GNOME Shell 45-50.
+windows on Wayland, plus `wctl`, a Rust CLI over that interface. Targets GNOME
+Shell 45-50.
 
 ## Repository layout
 
@@ -13,7 +13,15 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
-wctl                       CLI wrapper; also holds the pure helper functions
+cli/                       wctl, the CLI (Rust, zbus)
+├── Cargo.toml             crate manifest; its version gates the release
+├── src/main.rs            argument dispatch, command inventory, help/version
+├── src/dbus.rs            the D-Bus client (lazy session connection)
+├── src/selector.rs        the <WINDOW> selector and the list filters
+├── src/geometry.rs        place tokens, tile grid, centring
+├── src/commands/          one module per command group
+├── completions/           hand-written bash and zsh completions (embedded)
+└── tests/cli.rs           argument-guard tests, run against the real binary
 scripts/                   build.sh, release.sh, start-nested.sh, debug-dbus.sh
 tests/                     test suites (see docs/TESTING.md)
 docs/                      developer topic docs (this directory)
@@ -32,14 +40,16 @@ gnome-window-control-extension-requirements.md   original design spec
 - `extension.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
   lives in `dbus-interface.js` and is imported into `extension.js`.
-- `wctl` reaches the single service through **two client transports** by design:
-  `gdbus` for scalar/tuple returns (`dbus_call`) and `busctl --json | jq` for the
-  JSON-string returns (`dbus_call_json`, used because `gdbus` mangles the JSON
-  string). Both funnel failures through `is_extension_not_running` for a
-  consistent hint.
-- Pure, D-Bus-free logic in `wctl` (geometry math, token/tile resolution,
-  argument validation) is factored into standalone functions so
-  `tests/test-logic.sh` can unit-test them headlessly — this is the CI gate.
+- `wctl` speaks D-Bus directly through **zbus's blocking API** — no gdbus, no
+  busctl, no jq, and no async runtime. It has no runtime dependencies at all: the
+  release asset is a static musl binary. Failures funnel through
+  `is_extension_not_running` in `dbus.rs` for a consistent hint.
+- The session connection is opened **lazily**, so every argument-validation error
+  is reported without touching the bus. That is what keeps the guard tests in
+  `cli/tests/cli.rs` headless, and it is the CI gate.
+- Window documents stay as `serde_json::Value` (with serde_json's
+  `preserve_order`), because `list --json` and `info --json` must emit the
+  extension's document unchanged, key order included.
 - A single `extension.js` runs across GNOME 45-50 via runtime API detection for
   the maximize path (`get_maximized()` vs `get_maximize_flags()`).
 - `WaitForWindow` is the one **async** handler (`WaitForWindowAsync(params,
@@ -54,12 +64,11 @@ gnome-window-control-extension-requirements.md   original design spec
   fails every pending call and drops all handlers, so `disable()` leaves nothing
   behind.
 - `wctl` addresses windows through one **selector resolver**
-  (`resolve_window_selector <MIN_AFTER> <USAGE> "$@"` → `SEL_ID`, `SEL_SHIFT`):
-  a numeric ID needs no D-Bus call, `focused` costs one `GetFocused`, and
-  `-c/-t/-s/-p` cost one `ListDetailed` whose reply is cached in `SEL_JSON` for
-  the command that follows. The argument-count check runs before any D-Bus call
-  so usage errors stay headless. The pure halves (`parse_window_selector`,
-  `select_window_id_from_json`, `filter_windows_json`) are unit-tested.
+  (`selector::resolve(ctx, min_after, usage, args)` → id and shift): a numeric ID
+  needs no D-Bus call, `focused` costs one `GetFocused`, and `-c/-t/-s/-p` cost
+  one `ListDetailed` cached in `Ctx` for the command that follows. The
+  argument-count check runs before any D-Bus call so usage errors stay headless.
+  The pure halves (`selector::parse`, `select_id`, `filter`) are unit-tested.
 - `disable`/`enable` does **not** reload JS from disk; code changes need a shell
   restart or nested session (see [RUNNING.md](RUNNING.md)).
 
@@ -73,10 +82,13 @@ grep -n 'method name=' window-control@carlo9890.github.io/dbus-interface.js
 grep -n 'MethodName(' window-control@carlo9890.github.io/extension.js
 
 # A wctl subcommand's implementation and its dispatch
-grep -n 'cmd_<name>\|^\s*<name>)' wctl
+grep -rn '"<name>" =>' cli/src/main.rs cli/src/commands/
 
-# The pure helper functions that are unit-tested headlessly
-grep -n 'resolve_\|parse_workarea\|validate_id\|report_result\|parse_window_selector\|select_window_id_from_json\|filter_windows_json\|parse_uint64_reply' wctl
+# Every command wctl knows about
+grep -n -A32 'pub const COMMANDS' cli/src/main.rs
+
+# The pure helpers that are unit-tested headlessly
+grep -n '^pub fn' cli/src/geometry.rs cli/src/selector.rs
 
 # The authoritative method list
 sed -n '/## Methods/,/## /p' README.md

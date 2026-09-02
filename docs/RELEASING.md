@@ -8,13 +8,13 @@
 ```
 
 The script guarantees all three assets are attached (extension zip, `wctl`,
-`install-wctl.sh`), that the `metadata.json` and `wctl` versions match, that git
+`install-wctl.sh`), that the `metadata.json` and `cli/Cargo.toml` versions match, that git
 tags exist and are pushed, and that the release notes come from `CHANGELOG.md`.
 
 ## Release checklist
 
 1. Update the version in `window-control@carlo9890.github.io/metadata.json`.
-2. Bump `VERSION` in `wctl` to the matching `0.<N>.0` form (see Version format
+2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version format
    below). `scripts/release.sh` hard-fails if it does not match `metadata.json`.
 3. Move the `CHANGELOG.md` `Unreleased` section under a new `vN` heading.
 4. Commit: `git commit -am "chore: bump version to vN"`.
@@ -49,6 +49,11 @@ Constraints the review enforces, which the code must keep satisfying:
   and loses every existing user.
 - No `eval()`, no `Function()`, no `GLib.spawn` or any other subprocess, and no
   bundled binaries. `wctl` is a separate asset and MUST stay out of the zip.
+- `wctl` is published as a **statically linked x86_64 binary**, built by
+  `release.sh` with `cargo build --release --target x86_64-unknown-linux-musl`.
+  The script refuses to publish a dynamically linked one. aarch64 is not
+  published; on other architectures users build from source
+  (`./install-wctl.sh --local`).
 - `disable()` must undo everything `enable()` did: unexport the D-Bus object,
   disconnect every signal, and remove every timeout. The extension currently has
   no signals and no timers, so keep it that way, or extend `disable()`.
@@ -69,7 +74,7 @@ draft answer:
 > extension does not claim otherwise. There is no trust boundary to enforce: the
 > session bus does not distinguish between processes of the same user, so a PID
 > allowlist is both racy and useless here (the reference client is a shell
-> script, so the caller is `bash`), and a token file is readable by anything that
+> script, so the caller is not the user's own program), and a token file is readable by anything that
 > can read the user's files. Rather than ship a mechanism that implies a
 > guarantee it cannot provide, the extension makes the exposure explicit and
 > lets the user decide:

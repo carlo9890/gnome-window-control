@@ -60,7 +60,7 @@ gdbus call --session \
   --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
 ```
 
-The full method table and the `wctl` CLI wrapper (a friendlier front end for all
+The full method table and the `wctl` CLI (a friendlier front end for all
 of these methods) are documented in the project's top-level
 [README](https://github.com/carlo9890/gnome-window-control#readme), which is not
 shipped inside this extension zip.

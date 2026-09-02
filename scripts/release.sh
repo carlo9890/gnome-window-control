@@ -13,6 +13,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 EXTENSION_DIR="$PROJECT_ROOT/window-control@carlo9890.github.io"
 DIST_DIR="$PROJECT_ROOT/dist"
+# The wctl release asset is a static x86_64 binary. aarch64 is not published.
+CLI_TARGET="x86_64-unknown-linux-musl"
+CLI_BINARY="$PROJECT_ROOT/cli/target/$CLI_TARGET/release/wctl"
 
 # Extension metadata
 EXTENSION_UUID="window-control@carlo9890.github.io"
@@ -58,7 +61,7 @@ Usage: $0 [options]
 
 Creates a GitHub release with all required assets:
   - Extension zip file (dist/window-control@carlo9890.github.io_v<version>.zip)
-  - wctl CLI script
+  - wctl CLI binary (statically linked, x86_64)
   - install-wctl.sh installer
 
 Prerequisites:
@@ -72,7 +75,7 @@ Options:
 
 Release Process:
     1a. Update version in window-control@carlo9890.github.io/metadata.json
-    1b. Update VERSION in wctl to match (e.g., "0.X.0" for metadata version X)
+    1b. Update version in cli/Cargo.toml to match (e.g., "0.X.0" for metadata version X)
     2. Update CHANGELOG.md with release notes
     3. Commit: git commit -am "chore: bump version to vX"
     4. Create tag: git tag vX
@@ -156,37 +159,37 @@ get_version() {
     log_info "Version: $VERSION (tag: $TAG)"
 }
 
-# Check wctl VERSION matches metadata.json version
+# Check the wctl crate version matches metadata.json version
 check_wctl_version() {
     log_step "Checking wctl version..."
-    
-    local wctl_path="$PROJECT_ROOT/wctl"
-    
-    if [[ ! -f "$wctl_path" ]]; then
-        log_error "wctl not found at $wctl_path"
+
+    local manifest="$PROJECT_ROOT/cli/Cargo.toml"
+
+    if [[ ! -f "$manifest" ]]; then
+        log_error "cli/Cargo.toml not found at $manifest"
         exit 1
     fi
-    
-    # Extract VERSION from wctl (line like: VERSION="0.4.0")
+
+    # Extract the package version (first `version = "..."` under [package])
     local wctl_version
-    wctl_version=$(grep -E '^VERSION=' "$wctl_path" | cut -d'"' -f2)
-    
+    wctl_version=$(awk -F'"' '/^\[package\]/{p=1; next} /^\[/{p=0} p && /^version[[:space:]]*=/{print $2; exit}' "$manifest")
+
     if [[ -z "$wctl_version" ]]; then
-        log_error "Could not extract VERSION from wctl"
+        log_error "Could not extract version from cli/Cargo.toml"
         exit 1
     fi
-    
+
     # Expected version is 0.<metadata_version>.0
     local expected_version="0.${VERSION}.0"
-    
+
     if [[ "$wctl_version" != "$expected_version" ]]; then
         log_error "wctl version mismatch!"
-        log_error "  wctl VERSION: $wctl_version"
-        log_error "  Expected:     $expected_version"
-        log_error "Update VERSION in wctl before releasing."
+        log_error "  cli/Cargo.toml: $wctl_version"
+        log_error "  Expected:       $expected_version"
+        log_error "Update the version in cli/Cargo.toml before releasing."
         exit 1
     fi
-    
+
     log_info "wctl version matches: $wctl_version"
 }
 
@@ -203,6 +206,40 @@ check_tag_exists() {
     fi
     
     log_info "Tag $TAG exists"
+}
+
+# Build the wctl binary as a static x86_64 executable.
+#
+# Static, because the release asset must run on any distribution without
+# matching a glibc version; musl is the only target that gives that, and zbus
+# is pure Rust so it needs no C toolchain.
+build_cli() {
+    log_step "Building wctl (x86_64-unknown-linux-musl)..."
+
+    if ! command -v mise &> /dev/null; then
+        log_error "mise is not installed; it provides the pinned Rust toolchain."
+        log_error "Install it from: https://mise.jdx.dev"
+        exit 1
+    fi
+
+    mise install
+    mise exec -- rustup target add "$CLI_TARGET"
+    (cd "$PROJECT_ROOT/cli" && mise exec -- cargo build --release --target "$CLI_TARGET")
+
+    if [[ ! -f "$CLI_BINARY" ]]; then
+        log_error "Build failed: $CLI_BINARY not found"
+        exit 1
+    fi
+
+    # A dynamically linked asset would break on any host with an older glibc,
+    # so refuse to publish one.
+    if ! file "$CLI_BINARY" | grep -q "statically linked"; then
+        log_error "wctl is not statically linked:"
+        log_error "  $(file "$CLI_BINARY")"
+        exit 1
+    fi
+
+    log_info "Build successful: $CLI_BINARY ($(du -h "$CLI_BINARY" | cut -f1), statically linked)"
 }
 
 # Build the extension
@@ -234,11 +271,11 @@ validate_assets() {
     fi
     
     # Check wctl
-    if [[ ! -f "$PROJECT_ROOT/wctl" ]]; then
-        log_error "Missing: wctl"
+    if [[ ! -f "$CLI_BINARY" ]]; then
+        log_error "Missing: $CLI_BINARY"
         missing=1
     else
-        log_info "Found: wctl"
+        log_info "Found: $CLI_BINARY"
     fi
     
     # Check install-wctl.sh
@@ -336,7 +373,7 @@ curl -fsSL https://github.com/$repo_name/releases/download/$TAG/install-wctl.sh 
 \`\`\`
 
 **Manual install:**
-1. Download \`wctl\` below
+1. Download \`wctl\` below (statically linked, x86_64)
 2. Make executable: \`chmod +x wctl\`
 3. Move to PATH: \`sudo mv wctl /usr/local/bin/\`
 
@@ -345,7 +382,7 @@ curl -fsSL https://github.com/$repo_name/releases/download/$TAG/install-wctl.sh 
 | File | Description |
 |------|-------------|
 | \`$ZIP_NAME\` | GNOME Shell extension (installable zip) |
-| \`wctl\` | Command-line interface for window control |
+| \`wctl\` | Command-line interface for window control (static x86_64 binary) |
 | \`install-wctl.sh\` | One-line installer script for wctl |
 EOF
     )
@@ -355,7 +392,7 @@ EOF
         --title "GNOME Window Control $TAG" \
         --notes "$body" \
         "$ZIP_PATH" \
-        "$PROJECT_ROOT/wctl" \
+        "$CLI_BINARY" \
         "$PROJECT_ROOT/install-wctl.sh"
     
     log_info "Release $TAG created!"
@@ -416,8 +453,9 @@ main() {
     check_wctl_version
     check_tag_exists
     
-    # Step 3: Build the extension
+    # Step 3: Build the release artifacts
     build_extension
+    build_cli
     
     # Step 4: Validate all assets
     validate_assets

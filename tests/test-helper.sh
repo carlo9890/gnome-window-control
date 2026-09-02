@@ -14,13 +14,15 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 TESTS_SKIPPED=0
 
-# Find the wctl script (relative to test directory)
+# Find the wctl binary (relative to the test directory). Set WCTL to test a
+# different build, e.g. an installed one: WCTL=$(command -v wctl) ...
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WCTL="${SCRIPT_DIR}/../wctl"
+WCTL="${WCTL:-${SCRIPT_DIR}/../cli/target/release/wctl}"
 
 # Verify wctl exists
 if [[ ! -x "$WCTL" ]]; then
-    echo "Error: wctl script not found or not executable at: $WCTL" >&2
+    echo "Error: wctl binary not found or not executable at: $WCTL" >&2
+    echo "Build it first: mise run build" >&2
     exit 1
 fi
 

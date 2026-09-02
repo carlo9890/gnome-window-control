@@ -7,22 +7,35 @@ by hand see [RUNNING.md](RUNNING.md).
 
 | Layer | Suite | Needs extension? | Command |
 |-------|-------|------------------|---------|
-| Pure logic (CI gate) | `tests/test-logic.sh` | No — headless | `bash tests/test-logic.sh` |
+| Crate tests (CI gate) | `cli/src/**` + `cli/tests/cli.rs` | No — headless | `mise run test` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
 
-## Pure-logic tests (the CI gate)
+The shell suites run the release binary at `cli/target/release/wctl`, so build it
+first (`mise run build`). Set `WCTL` to test a different one, for example the
+installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
 
-`tests/test-logic.sh` sources `wctl`'s pure helper functions (geometry math,
-tile-grid math, argument validation, completion generation) and needs no
-extension, GNOME Shell, or D-Bus. **`.github/workflows/build.yml` runs it on every
-push and PR** on a bare `ubuntu-latest` runner, so it is the automated gate.
+## Crate tests (the CI gate)
 
-Run it after any change to `wctl` logic. It also asserts the command inventory
-stays in sync across help, dispatch, and both shell completions, so a command that
-isn't wired into all of them fails the suite. When adding a `wctl` command or pure
-helper, add a case here with **hardcoded** expected values (not values recomputed
-from the implementation's own formula).
+`mise run ci` runs `cargo fmt --check`, `cargo clippy --all-targets -D warnings`,
+`cargo test` and the release build. **`.github/workflows/build.yml` runs it on
+every push and PR** on a bare `ubuntu-latest` runner, so it is the automated gate.
+None of it needs an extension, a GNOME session, or D-Bus.
+
+Two kinds of test live there:
+
+- **Unit tests** next to the code (`cli/src/geometry.rs`, `cli/src/selector.rs`)
+  cover the geometry math, the tile grid, selector parsing and the list filters.
+  Expected values are **hardcoded**, never recomputed from the implementation's
+  own formula.
+- **Argument-guard tests** (`cli/tests/cli.rs`) run the real binary with
+  `DBUS_SESSION_BUS_ADDRESS` pointed at a socket that does not exist, so any case
+  that reached the bus would report a connection error instead of the expected
+  message. That is what proves validation happens before the call.
+
+The suite also asserts the command inventory stays in sync across the dispatch
+table, the help text and both shell completions, so a command that is not wired
+into all of them fails `cargo test`.
 
 ## Query and modification tests
 
@@ -44,12 +57,15 @@ If the extension is not running the suites self-skip and the runner reports
 
 `tests/test-helper.sh` holds the shared assertions (`assert_equals`,
 `assert_within`, `assert_contains`, ...). Reuse them rather than re-implementing
-pass/fail logic in a suite.
+pass/fail logic in a suite. `tests/geometry-helper.sh` holds the expected
+workarea parsing and tile geometry for the modification suite: it is an
+independent oracle, and the same pixels are pinned by hand in the crate's unit
+tests, so the two cannot drift silently.
 
 ## Minimum checks before a PR
 
-| Action | Pure-logic | Query | Modification |
-|--------|-----------|-------|--------------|
+| Action | `mise run ci` | Query | Modification |
+|--------|---------------|-------|--------------|
 | Before commit | **MUST pass** | **MUST pass** | Optional |
 | Before push | **MUST pass** | **MUST pass** | Optional |
 | Before release | **MUST pass** | **MUST pass** | **MUST pass** |

@@ -1,0 +1,56 @@
+// SPDX-FileCopyrightText: 2026 hko9890
+// SPDX-License-Identifier: MIT
+//! The commands, grouped the way `wctl help` groups them.
+
+pub mod completion;
+pub mod geometry;
+pub mod query;
+pub mod state;
+pub mod wait;
+pub mod wsmon;
+
+use serde_json::Value;
+
+use crate::fail::{Fail, Result};
+
+/// Report the result of a boolean D-Bus action.
+///
+/// The extension answers `false` for a window it cannot find, so the failure
+/// message goes to stdout and the exit code is 1 -- the shape the bash client's
+/// `report_result` had, and the shape the suites assert.
+pub fn report(ok: bool, success: &str, failure: impl Into<String>) -> Result<()> {
+    if ok {
+        println!("{success}");
+        Ok(())
+    } else {
+        Err(Fail::plain(failure.into()))
+    }
+}
+
+pub fn not_found(id: u64) -> String {
+    format!("Window not found: {id}")
+}
+
+/// Parse the lone optional `--json` flag shared by several commands.
+pub fn parse_json_flag(args: &[String]) -> Result<bool> {
+    let mut json = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            other if other.starts_with('-') => {
+                return Err(Fail::error(format!("Unknown option: {other}")))
+            }
+            other => return Err(Fail::error(format!("Unexpected argument: {other}"))),
+        }
+    }
+    Ok(json)
+}
+
+/// Render a JSON scalar the way `jq -r` renders it, for table cells.
+pub fn cell(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Null) | None => "null".to_string(),
+        Some(other) => other.to_string(),
+    }
+}

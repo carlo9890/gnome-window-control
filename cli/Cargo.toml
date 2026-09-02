@@ -1,0 +1,26 @@
+[package]
+name = "wctl"
+version = "0.8.0"
+edition = "2021"
+description = "Command-line client for the GNOME Window Control shell extension"
+license = "MIT"
+repository = "https://github.com/carlo9890/gnome-window-control"
+
+[[bin]]
+name = "wctl"
+path = "src/main.rs"
+
+[dependencies]
+serde = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+unicode-width = "0.2"
+zbus = "5"
+
+[dev-dependencies]
+assert_cmd = "2"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

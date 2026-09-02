@@ -1,0 +1,180 @@
+#compdef wctl
+# Zsh completion for wctl
+# Install: wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
+
+# Window ids with their titles as descriptions, read from the compact JSON list.
+# No jq: wctl has no runtime dependencies and its completion must not add one.
+# The extension emits "id" and "title" adjacently, so one substitution per
+# window object is enough.
+_wctl_window_ids() {
+    local -a windows
+    local line id title
+
+    while IFS= read -r line; do
+        [[ "$line" == *'"id":'* ]] || continue
+        id="${line#*\"id\":}"
+        id="${id%%,*}"
+        title="${line#*\"title\":\"}"
+        title="${title%%\",\"wm_class\"*}"
+        if [[ ${#title} -gt 50 ]]; then
+            title="${title:0:47}..."
+        fi
+        windows+=("$id:$title")
+    done < <(wctl list --json 2>/dev/null | sed 's/},{/}\n{/g')
+
+    windows+=("focused:Focused window")
+    _describe -t windows 'window' windows
+}
+
+# Option form of the <WINDOW> selector, shared by every window-taking command.
+_wctl_selector_opts=(
+    '(-c -t -s -p 1)-c[Select window by WM class]:class:'
+    '(-c -t -s -p 1)-t[Select window by exact title]:title:'
+    '(-c -t -s -p 1)-s[Select window by title substring]:substring:'
+    '(-c -t -s -p 1)-p[Select window by PID]:pid:'
+)
+
+_wctl() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    local -a commands=(
+        'list:List all windows'
+        'focused:Show focused window info'
+        'info:Show detailed window info'
+        'workspaces:List workspaces'
+        'monitors:List monitors'
+        'activate:Activate a window'
+        'focus:Focus window without raising'
+        'wait:Wait for a matching window and print its ID'
+        'move:Move window to position'
+        'resize:Resize window'
+        'move-resize:Move and resize window'
+        'place:Place window with relative sizing'
+        'tile:Tile window to a preset grid position'
+        'center:Center window on screen'
+        'workspace:Switch to a workspace'
+        'move-to-workspace:Move window to a workspace'
+        'move-to-monitor:Move window to a monitor'
+        'minimize:Minimize window'
+        'unminimize:Restore from minimize'
+        'maximize:Maximize window'
+        'unmaximize:Restore from maximize'
+        'fullscreen:Make window fullscreen'
+        'unfullscreen:Exit fullscreen'
+        'above:Set always-on-top state'
+        'sticky:Set sticky (all workspaces) state'
+        'close:Close window'
+        'help:Show help message'
+        'completion:Output shell completion script'
+    )
+
+    _arguments -C \
+        '1:command:->command' \
+        '*::args:->args'
+
+    case $state in
+        command)
+            _describe -t commands 'wctl command' commands
+            ;;
+        args)
+            case $words[1] in
+                list)
+                    _arguments \
+                        '--json[Output as JSON]' \
+                        '--workspace[Only windows on this workspace]:index:' \
+                        '--monitor[Only windows on this monitor]:index:' \
+                        '--class[Only windows with this WM class]:class:'
+                    ;;
+                focused|workspaces|monitors)
+                    _arguments '--json[Output as JSON]'
+                    ;;
+                info)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '--json[Output as JSON]'
+                    ;;
+                wait)
+                    _arguments \
+                        '(-c -t -s -p)-c[Wait for a window with this WM class]:class:' \
+                        '(-c -t -s -p)-t[Wait for a window with this exact title]:title:' \
+                        '(-c -t -s -p)-s[Wait for a window whose title contains this]:substring:' \
+                        '(-c -t -s -p)-p[Wait for a window owned by this PID]:pid:' \
+                        '--timeout[Seconds to wait (default 10)]:seconds:'
+                    ;;
+                workspace)
+                    _arguments '1:workspace index:'
+                    ;;
+                move-to-workspace)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:workspace index:'
+                    ;;
+                move-to-monitor)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:monitor index:'
+                    ;;
+                activate)
+                    _arguments \
+                        '(-t -s -c -p)1:window id:_wctl_window_ids' \
+                        '(-s -c -p)-t[Activate by exact title]:title:' \
+                        '(-t -c -p)-s[Activate by title substring]:substring:' \
+                        '(-t -s -p)-c[Activate by WM class]:class:' \
+                        '(-t -s -c)-p[Activate by PID]:pid:'
+                    ;;
+                focus|minimize|unminimize|maximize|unmaximize|fullscreen|unfullscreen|close)
+                    _arguments "${_wctl_selector_opts[@]}" '1:window:_wctl_window_ids'
+                    ;;
+                move)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:x position:' \
+                        '3:y position:'
+                    ;;
+                resize)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:width:' \
+                        '3:height:'
+                    ;;
+                move-resize)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:x position:' \
+                        '3:y position:' \
+                        '4:width:' \
+                        '5:height:'
+                    ;;
+                place)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:x position or keyword:(left center right)' \
+                        '3:y position or keyword:(top center bottom)' \
+                        '4:width or percentage:' \
+                        '5:height or percentage:'
+                    ;;
+                tile)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:position:(top-left top-center top-right left center right bottom-left bottom-center bottom-right)'
+                    ;;
+                center)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:axis:(horizontal vertical both)'
+                    ;;
+                above|sticky)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '1:window:_wctl_window_ids' \
+                        '2:state:(on off)'
+                    ;;
+                completion)
+                    _arguments '1:shell:(bash zsh)'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_wctl "$@"

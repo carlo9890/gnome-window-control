@@ -3,9 +3,12 @@
 # install-wctl.sh - Install wctl to ~/.local/bin
 #
 # Usage:
-#   ./install-wctl.sh              # Install from local directory or download from GitHub
-#   ./install-wctl.sh --local      # Force local install (wctl must be in same directory)
+#   ./install-wctl.sh              # Install a local build if there is one, else download
+#   ./install-wctl.sh --local      # Force local install (builds cli/ if needed)
 #   ./install-wctl.sh --download   # Force download from GitHub releases
+#
+# wctl is a statically linked binary. The published asset is x86_64 only; on any
+# other architecture, build it from source with --local.
 #
 
 set -euo pipefail
@@ -14,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 GITHUB_REPO="carlo9890/gnome-window-control"
 GITHUB_RELEASE_URL="https://github.com/$GITHUB_REPO/releases/latest/download/wctl"
+LOCAL_BINARY="$SCRIPT_DIR/cli/target/release/wctl"
 
 # Colors for output (disabled if not a tty)
 if [[ -t 1 ]]; then
@@ -44,24 +48,44 @@ if [[ ! -d "$INSTALL_DIR" ]]; then
     mkdir -p "$INSTALL_DIR"
 fi
 
+# Build the binary from the checkout. The Rust toolchain is pinned in
+# .mise.toml, so the build goes through mise.
+build_local() {
+    if [[ ! -f "$SCRIPT_DIR/cli/Cargo.toml" ]]; then
+        echo -e "${RED}Error:${RESET} no wctl source at $SCRIPT_DIR/cli"
+        echo "Run this script from a checkout of the repository, or use --download."
+        exit 1
+    fi
+
+    if ! command -v mise &> /dev/null; then
+        echo -e "${RED}Error:${RESET} mise is not installed; it provides the pinned Rust toolchain."
+        echo "Install it from https://mise.jdx.dev, or use --download."
+        exit 1
+    fi
+
+    echo "Building wctl from source..."
+    (cd "$SCRIPT_DIR" && mise run build)
+}
+
 # Determine source
 WCTL_SOURCE=""
 
 if [[ "$MODE" == "local" ]]; then
-    # Force local
-    if [[ -f "$SCRIPT_DIR/wctl" ]]; then
-        WCTL_SOURCE="$SCRIPT_DIR/wctl"
+    # Force local: build unless a binary is already there
+    [[ -f "$LOCAL_BINARY" ]] || build_local
+    if [[ -f "$LOCAL_BINARY" ]]; then
+        WCTL_SOURCE="$LOCAL_BINARY"
     else
-        echo -e "${RED}Error:${RESET} wctl not found in $SCRIPT_DIR"
+        echo -e "${RED}Error:${RESET} wctl not found at $LOCAL_BINARY after building"
         exit 1
     fi
 elif [[ "$MODE" == "download" ]]; then
     # Force download
     WCTL_SOURCE="download"
 elif [[ "$MODE" == "auto" ]]; then
-    # Auto: try local first, then download
-    if [[ -f "$SCRIPT_DIR/wctl" ]]; then
-        WCTL_SOURCE="$SCRIPT_DIR/wctl"
+    # Auto: use a local build if there is one, else download
+    if [[ -f "$LOCAL_BINARY" ]]; then
+        WCTL_SOURCE="$LOCAL_BINARY"
     else
         WCTL_SOURCE="download"
     fi
@@ -69,6 +93,14 @@ fi
 
 # Install from source
 if [[ "$WCTL_SOURCE" == "download" ]]; then
+    # The published asset is a static x86_64 binary; nothing else is built yet.
+    arch=$(uname -m)
+    if [[ "$arch" != "x86_64" ]]; then
+        echo -e "${RED}Error:${RESET} no published wctl binary for $arch (x86_64 only)."
+        echo "Build it from a checkout instead: ./install-wctl.sh --local"
+        exit 1
+    fi
+
     echo "Downloading wctl from GitHub releases..."
     
     # Check for curl or wget

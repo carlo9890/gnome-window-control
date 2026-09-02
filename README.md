@@ -12,7 +12,7 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
 - **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
 - **Wait for a window** - Block until a matching window is shown, without polling
-- **CLI-friendly** - Easy to use from bash scripts via `gdbus` or the included `wctl` wrapper
+- **CLI-friendly** - Easy to use from shell scripts via `gdbus` or the included `wctl` client, a single static binary with no runtime dependencies
 
 ## Compatibility
 
@@ -60,18 +60,30 @@ gnome-extensions enable window-control@carlo9890.github.io
 Building and installing from source is a contributor task — see
 [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/CODING.md](docs/CODING.md).
 
-### wctl CLI Wrapper (Optional)
+### wctl CLI (Optional)
 
-Use the install script:
+`wctl` is a statically linked binary. It needs nothing at runtime — no shell,
+no `jq`, no `gdbus`.
+
+Use the install script, which downloads the current release into
+`~/.local/bin`:
 ```bash
 ./install-wctl.sh
 ```
 
-Or manually copy to your PATH:
+Or download `wctl` from the [releases page](https://github.com/carlo9890/gnome-window-control/releases)
+and put it on your PATH:
 ```bash
-cp wctl ~/.local/bin/
+chmod +x wctl
+mv wctl ~/.local/bin/
 # or
-sudo cp wctl /usr/local/bin/
+sudo mv wctl /usr/local/bin/
+```
+
+The published binary is x86_64. On another architecture, build it from a
+checkout (needs [mise](https://mise.jdx.dev) for the pinned Rust toolchain):
+```bash
+./install-wctl.sh --local
 ```
 
 ## Usage
@@ -270,7 +282,7 @@ window titles and move, resize or close your windows.
 
 There is no way to fix this from inside the extension. Same-user processes have
 no trust boundary on the session bus: an allowlist keyed on the caller's PID is
-useless here (`wctl` is a shell script, so the caller is `bash`) and defeated by
+useless here (the caller is whatever program invoked the client) and defeated by
 the confused deputy, and a shared secret in a file is readable by anything that
 can read your files. Any mechanism claiming otherwise would be theater. So the
 extension does not pretend to have one — it states plainly what it exposes, and
