@@ -71,9 +71,13 @@ function _unmaximizeWindow(win) {
 // console.log() here writes a line to the user's journal on every D-Bus call,
 // and those lines persist across the session. console.debug() is priority 7 and
 // stays gated behind G_MESSAGES_DEBUG. For the same reason, no log line may
-// contain a window title or a caller-supplied match string: titles leak document
-// names, URLs and message contents into a log that outlives the process that
-// asked for them. Log the method name and the outcome, not the content.
+// contain window content or a caller-supplied match value — not a title, and not
+// a WM class: titles leak document names, URLs and message contents into a log
+// that outlives the process that asked for them, and a class says which
+// applications the user runs. Log the method name and the outcome, not the
+// content. WaitForWindow is the one exception: it logs its `kind` argument
+// because that is a fixed keyword (class|title|substring|pid), and it elides the
+// `value` matched against.
 class WindowControlService {
     constructor() {
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
@@ -345,15 +349,15 @@ class WindowControlService {
 
     // ActivateByWmClass: Activate window by WM class (exact match)
     ActivateByWmClass(wmClass) {
-        console.debug(`[Window Control] ActivateByWmClass("${wmClass}") called`);
+        console.debug('[Window Control] ActivateByWmClass() called');
         try {
             const win = this._findWindowByPredicate(w => w.get_wm_class() === wmClass);
             if (win) {
                 win.activate(global.get_current_time());
-                console.debug(`[Window Control] ActivateByWmClass("${wmClass}") -> true`);
+                console.debug('[Window Control] ActivateByWmClass() -> true');
                 return true;
             }
-            console.debug(`[Window Control] ActivateByWmClass("${wmClass}") -> false (not found)`);
+            console.debug('[Window Control] ActivateByWmClass() -> false (not found)');
             return false;
         } catch (e) {
             console.error(`[Window Control] ActivateByWmClass() error: ${e.message}`);
@@ -394,7 +398,7 @@ class WindowControlService {
                 const id = win.get_id();
                 const title = win.get_title() || '';
                 const wmClass = win.get_wm_class() || '';
-                console.debug(`[Window Control] GetFocused() -> ${id}, "${wmClass}"`);
+                console.debug(`[Window Control] GetFocused() -> ${id}`);
                 return [id, title, wmClass];
             }
             console.debug(`[Window Control] GetFocused() -> no focused window`);

@@ -36,6 +36,15 @@
 - `wctl info` now requires the window selector before `--json`
   (`wctl info <WINDOW> [--json]`).
 
+### Fixed
+- WM classes no longer reach the journal. The v8 pass that removed window titles
+  from the log left four lines that still interpolated a class: the three
+  `ActivateByWmClass()` lines, where it is the caller-supplied match value, and
+  `GetFocused()`, where it is content read off the focused window. Both are now
+  logged as method name and outcome only. The logging invariant in
+  `extension.js`, `docs/CODING.md` and `docs/MONITORING.md` now names WM class
+  explicitly, and records why `WaitForWindow` may keep logging its `kind`.
+
 ## v8 (2026-09-02)
 
 ### Changed
