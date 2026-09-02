@@ -10,6 +10,3 @@ dist/
 
 # Debug output
 output/
-
-# taskmgr runtime lock
-.tasks/.lock

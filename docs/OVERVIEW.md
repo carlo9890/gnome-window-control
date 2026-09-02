@@ -18,7 +18,6 @@ scripts/                   build.sh, release.sh, start-nested.sh, debug-dbus.sh
 tests/                     test suites (see docs/TESTING.md)
 docs/                      developer topic docs (this directory)
 .github/workflows/         CI (build.yml)
-.tasks/                    committed taskmgr issue tracker
 dist/                      build output (generated zips)
 install-wctl.sh            wctl installer
 gnome-window-control-extension-requirements.md   original design spec
