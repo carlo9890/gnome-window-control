@@ -75,8 +75,14 @@ Options:
 
 Release Process:
     1a. Update version in window-control@carlo9890.github.io/metadata.json
+        (both "version" and "version-name")
     1b. Update version in cli/Cargo.toml to match (e.g., "0.X.0" for metadata version X)
-    2. Update CHANGELOG.md with release notes
+    1c. Refresh cli/Cargo.lock so it agrees with the manifest:
+        (cd cli && cargo update -p wctl)
+        Skipping this leaves the tag shipping a lock that pins the old version,
+        and the release build rewrites it afterwards, dirtying the tree.
+    2. Update CHANGELOG.md with release notes under a "## v<version>" heading
+       (this script only reads notes from that heading, never from "## Unreleased")
     3. Commit: git commit -am "chore: bump version to vX"
     4. Create tag: git tag vX
     5. Push: git push && git push --tags
@@ -232,10 +238,16 @@ build_cli() {
     fi
 
     # A dynamically linked asset would break on any host with an older glibc,
-    # so refuse to publish one.
-    if ! file "$CLI_BINARY" | grep -q "statically linked"; then
+    # so refuse to publish one. The musl target produces a static PIE, which
+    # `file` reports as "static-pie linked", not "statically linked" -- match
+    # both, and reject the dynamic case by its own marker so a future `file`
+    # wording change fails loudly here rather than shipping a dynamic binary.
+    local linkage
+    linkage=$(file "$CLI_BINARY")
+    if [[ "$linkage" == *"dynamically linked"* ]] ||
+       ! [[ "$linkage" == *"statically linked"* || "$linkage" == *"static-pie linked"* ]]; then
         log_error "wctl is not statically linked:"
-        log_error "  $(file "$CLI_BINARY")"
+        log_error "  $linkage"
         exit 1
     fi
 

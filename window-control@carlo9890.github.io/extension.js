@@ -40,11 +40,15 @@ const WINDOW_TYPE_NAMES = {
 // window.h). global.get_window_actors() and the rest of the Meta.Window API used
 // here are unchanged across GNOME 45-50. Detect the pre-49 API via the removed
 // get_maximized() method so a single extension.js works on all supported shells.
-function _isFullyMaximized(win) {
+function _maximizeFlags(win) {
     if (typeof win.get_maximized === 'function') {
-        return win.get_maximized() === Meta.MaximizeFlags.BOTH;      // GNOME <= 48
+        return win.get_maximized();                                  // GNOME <= 48
     }
-    return win.get_maximize_flags() === Meta.MaximizeFlags.BOTH;     // GNOME 49+
+    return win.get_maximize_flags();                                 // GNOME 49+
+}
+
+function _isFullyMaximized(win) {
+    return _maximizeFlags(win) === Meta.MaximizeFlags.BOTH;
 }
 
 function _maximizeWindow(win) {
@@ -75,9 +79,12 @@ function _unmaximizeWindow(win) {
 // a WM class: titles leak document names, URLs and message contents into a log
 // that outlives the process that asked for them, and a class says which
 // applications the user runs. Log the method name and the outcome, not the
-// content. WaitForWindow is the one exception: it logs its `kind` argument
-// because that is a fixed keyword (class|title|substring|pid), and it elides the
-// `value` matched against.
+// content. WaitForWindow is the one exception: it logs its `kind` argument, and
+// elides the `value` matched against. `kind` is only safe to log AFTER
+// _matchPredicate() has proved it is one of the four keywords
+// (class|title|substring|pid) -- before that it is an arbitrary caller-supplied
+// string, and logging it would let any process on the session bus write what it
+// likes, newlines included, into the user's journal.
 class WindowControlService {
     constructor() {
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
@@ -89,6 +96,10 @@ class WindowControlService {
         this._waiters = [];
         this._windowCreatedId = 0;
         this._trackedWindows = new Map();   // Meta.Window -> [signal handler ids]
+        // Mutter exposes no "has been mapped" getter, so record it: a window
+        // seen unhidden once has been placed, and that never becomes untrue.
+        this._shownWindows = new WeakSet();
+        this._createdWhileWatching = new WeakSet();
     }
 
     // Helper: Get all windows (NORMAL type only)
@@ -135,14 +146,32 @@ class WindowControlService {
     }
 
     // Helper: true when mutter will drop a frame geometry request outright.
-    // A fully maximized or fullscreen window is held at its constrained size:
     // move_frame()/move_resize_frame() return without error and the frame does
     // not move, so a handler that reports true would be claiming a move that
-    // never happened. Only the states that pin BOTH axes are refused here; a
-    // window maximized on one axis still honours the other, and refusing it
-    // would report a failure that did not occur.
+    // never happened.
+    //
+    // Any maximize flag counts, not just BOTH. Measured on GNOME 46 in a nested
+    // session, moving a window to (150, 300):
+    //
+    //   maximized BOTH      x and y both pinned      nothing moves
+    //   tiled side by side  x, y, width, height all overwritten by
+    //                       constrain_tiling()       nothing moves
+    //   maximized VERTICAL  x honoured, y pinned     the move HALF happens
+    //
+    // A tiled window reports MAXIMIZE_VERTICAL and nothing else, and GJS has no
+    // tiled predicate, so the vertical case cannot be told from the tiled one.
+    // Both are refused. For a genuinely tiled window that is exactly right; for
+    // a merely vertically-maximized one it refuses a request that would have
+    // been half-applied -- and half-applied while reporting plain success is
+    // the very thing this guard exists to stop. A refusal the caller can act on
+    // beats a success that moved the window somewhere it did not ask for.
+    //
+    // Verifying instead of refusing is not available: move_resize_frame() is
+    // asynchronous, and get_frame_rect() read in the same handler still returns
+    // the OLD rect even for a move that succeeds (measured), so a post-call
+    // comparison would report failure for every successful call.
     _frameIsPinned(win) {
-        return win.is_fullscreen() || _isFullyMaximized(win);
+        return win.is_fullscreen() || _maximizeFlags(win) !== 0;
     }
 
     // Helper: Build the match predicate for a (kind, value) selector as used by
@@ -166,15 +195,42 @@ class WindowControlService {
         }
     }
 
+    // Helper: has mutter mapped and placed this window at least once?
+    // Recorded rather than inferred -- a window seen unhidden has been placed,
+    // and that never stops being true, whereas is_hidden() flips with minimize
+    // and workspace changes.
+    _hasBeenShown(win) {
+        if (this._shownWindows.has(win))
+            return true;
+        if (!win.is_hidden()) {
+            this._shownWindows.add(win);
+            return true;
+        }
+        return false;
+    }
+
     // Helper: true for a window that mutter has created but not yet mapped and
-    // placed. Such a window reports is_hidden(), but so do minimized windows
-    // and windows on another workspace, which are placed and must count as
-    // existing; only the never-shown case is hidden while unminimized on the
-    // active workspace. A geometry request on an unshown window is overridden by
-    // mutter's initial placement, so WaitForWindow must not reply before it is
-    // shown.
+    // placed. A geometry request on such a window is overridden by mutter's
+    // initial placement, so WaitForWindow must not reply before it is shown.
+    //
+    // is_hidden() alone cannot answer this: minimized windows and windows on
+    // another workspace are hidden too, and both are placed. For a window
+    // watched since 'window-created' the answer is known outright -- if it has
+    // never been seen unhidden it has never been mapped, whatever the reason it
+    // is hidden now. That is the case the old test got wrong: a window created
+    // on a non-active workspace, or created minimized, failed its
+    // minimized/workspace clauses and was called shown while mutter had not yet
+    // placed it.
+    //
+    // A window that predates the current watch has no such history, so it falls
+    // back to the old reading: hidden while unminimized and on the active
+    // workspace is the only shape a not-yet-mapped window can have.
     _isUnshown(win) {
-        return win.is_hidden() && !win.minimized &&
+        if (this._hasBeenShown(win))
+            return false;
+        if (this._createdWhileWatching.has(win))
+            return true;
+        return !win.minimized &&
             win.located_on_workspace(global.workspace_manager.get_active_workspace());
     }
 
@@ -612,14 +668,35 @@ class WindowControlService {
         }
     }
 
-    // MoveToWorkspace: Move a window to a workspace by index
+    // MoveToWorkspace: Move a window to a workspace by index.
+    // change_workspace_by_index() returns void and declines silently for a
+    // window mutter holds on all workspaces -- and with the GNOME default
+    // workspaces-only-on-primary=true that is every window on a secondary
+    // monitor. Reporting the call as a success there would claim a move that
+    // never happened, so the workspace is read back, the way ActivateWorkspace
+    // reads back its switch. The assignment is synchronous, so this sees the
+    // final state.
     MoveToWorkspace(windowId, workspaceIndex) {
-        if (!this._isValidIndex(workspaceIndex, global.workspace_manager.get_n_workspaces())) {
-            console.debug(`[Window Control] MoveToWorkspace(${windowId}, ${workspaceIndex}) -> false (invalid index)`);
+        console.debug(`[Window Control] MoveToWorkspace(${windowId}, ${workspaceIndex}) called`);
+        try {
+            if (!this._isValidIndex(workspaceIndex, global.workspace_manager.get_n_workspaces())) {
+                console.debug(`[Window Control] MoveToWorkspace(${windowId}) -> false (invalid index)`);
+                return false;
+            }
+            const win = this._findWindowById(windowId);
+            if (!win) {
+                console.debug(`[Window Control] MoveToWorkspace(${windowId}) -> false (window not found)`);
+                return false;
+            }
+            win.change_workspace_by_index(workspaceIndex, false);
+            const moved = !win.is_on_all_workspaces() &&
+                win.get_workspace()?.index() === workspaceIndex;
+            console.debug(`[Window Control] MoveToWorkspace(${windowId}) -> ${moved}`);
+            return moved;
+        } catch (e) {
+            console.error(`[Window Control] MoveToWorkspace() error: ${e.message}`);
             return false;
         }
-        return this._actOnWindow(windowId, 'MoveToWorkspace',
-            win => win.change_workspace_by_index(workspaceIndex, false));
     }
 
     // MoveToMonitor: Move a window to a monitor by index
@@ -638,15 +715,22 @@ class WindowControlService {
     // shell main loop is never blocked; the reply is sent from a signal handler
     // or the timeout source.
     WaitForWindowAsync([kind, value, timeoutMs], invocation) {
-        console.debug(`[Window Control] WaitForWindow(${kind}, ..., ${timeoutMs}) called`);
+        // `kind` is NOT logged yet: it is caller-supplied and unvalidated here,
+        // so interpolating it would write an arbitrary remote string -- embedded
+        // newlines included -- into the journal, which is exactly what the
+        // logging invariant above forbids. It is logged only once
+        // _matchPredicate() has proved it is one of the four keywords.
+        console.debug(`[Window Control] WaitForWindow() called`);
+        let waiter = null;
         try {
             const predicate = this._matchPredicate(kind, value);
             if (!predicate || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-                console.debug(`[Window Control] WaitForWindow(${kind}) -> InvalidArgs`);
+                console.debug(`[Window Control] WaitForWindow() -> InvalidArgs`);
                 invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
                     `WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0`);
                 return;
             }
+            console.debug(`[Window Control] WaitForWindow(${kind}, ..., ${timeoutMs}) validated`);
 
             const existing = this._findWindowByPredicate(w => predicate(w) && !this._isUnshown(w));
             if (existing) {
@@ -655,7 +739,7 @@ class WindowControlService {
                 return;
             }
 
-            const waiter = { predicate, invocation, timeoutId: 0 };
+            waiter = { predicate, invocation, timeoutId: 0 };
             waiter.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
                 waiter.timeoutId = 0;
                 console.debug(`[Window Control] WaitForWindow(${kind}) -> 0 (timeout)`);
@@ -664,10 +748,16 @@ class WindowControlService {
             });
             this._waiters.push(waiter);
             this._startWatching();
-            this._trackUnshownWindows();
+            this._trackExistingWindows();
         } catch (e) {
             console.error(`[Window Control] WaitForWindow() error: ${e.message}`);
-            invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', e.message);
+            // Once the waiter is registered it owns the invocation and its
+            // timeout will reply, so answering here too would reply twice on the
+            // same invocation. Retire it instead, which replies exactly once.
+            if (waiter && this._waiters.includes(waiter))
+                this._failWaiter(waiter, e.message);
+            else
+                invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', e.message);
         }
     }
 
@@ -696,12 +786,21 @@ class WindowControlService {
     // shown. Handlers are dropped once the window matched, was unmanaged, or no
     // waiter is left.
     _onWindowCreated(win) {
+        // Remember that this window was watched from creation: _isUnshown()
+        // needs to tell "mutter has not mapped it yet" from "mapped, currently
+        // hidden", and for a window seen from the start that is knowable.
+        this._createdWhileWatching.add(win);
         this._trackWindow(win);
     }
 
     _trackWindow(win) {
         const evaluate = () => {
-            if (this._evaluateWindow(win) || this._waiters.length === 0)
+            this._evaluateWindow(win);
+            // Handlers stay connected while ANY waiter is pending: a waiter this
+            // window did not satisfy may still be waiting for a title or class
+            // that changes later. _finishWaiter() untracks everything through
+            // _stopWatching() once the last waiter is gone.
+            if (this._waiters.length === 0)
                 this._untrackWindow(win);
         };
         const ids = [
@@ -714,16 +813,23 @@ class WindowControlService {
         evaluate();
     }
 
-    // Catch the window that was created in the gap before this waiter
-    // registered. 'window-created' has already fired for it, so _startWatching()
-    // will never see it, and _isUnshown() keeps it out of the immediate match --
-    // without this it is never re-evaluated and the wait times out even though
-    // the window appears a moment later. The predicate is not applied here: on
-    // Wayland the wm_class and title arrive after creation, so a window that
-    // cannot match yet may still match once 'notify::wm-class' fires.
-    _trackUnshownWindows() {
+    // Track every window that already exists when a waiter registers.
+    //
+    // 'window-created' only fires for windows created after _startWatching(),
+    // so without this two cases never wake a waiter: the window created in the
+    // gap just before the call, which has already missed the signal and is
+    // still unshown; and any window already on screen whose title or class
+    // changes later -- `wait -t 'Report.pdf - LibreOffice Writer'` against an
+    // already-open LibreOffice, or `wait -c` against a Wayland client whose
+    // app_id lands after mapping.
+    //
+    // The predicate is deliberately not applied: on Wayland wm_class and title
+    // arrive after creation, so a window that cannot match yet may match once
+    // 'notify::wm-class' fires. Handlers cost four connections per window and
+    // only exist while a wait is pending.
+    _trackExistingWindows() {
         for (const win of this._getAllWindows()) {
-            if (this._isUnshown(win) && !this._trackedWindows.has(win))
+            if (!this._trackedWindows.has(win))
                 this._trackWindow(win);
         }
     }
@@ -754,14 +860,28 @@ class WindowControlService {
     }
 
     _finishWaiter(waiter, windowId) {
+        this._retireWaiter(waiter);
+        waiter.invocation.return_value(new GLib.Variant('(t)', [windowId]));
+        if (this._waiters.length === 0)
+            this._stopWatching();
+    }
+
+    // Retire a registered waiter with a D-Bus error instead of a window ID.
+    _failWaiter(waiter, message) {
+        this._retireWaiter(waiter);
+        waiter.invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', message);
+        if (this._waiters.length === 0)
+            this._stopWatching();
+    }
+
+    // Drop a waiter's timeout source and remove it from the pending list, so
+    // exactly one reply can still be sent on its invocation.
+    _retireWaiter(waiter) {
         if (waiter.timeoutId) {
             GLib.source_remove(waiter.timeoutId);
             waiter.timeoutId = 0;
         }
         this._waiters = this._waiters.filter(w => w !== waiter);
-        waiter.invocation.return_value(new GLib.Variant('(t)', [windowId]));
-        if (this._waiters.length === 0)
-            this._stopWatching();
     }
 
     // Fail every pending WaitForWindow call and drop all signal handlers and

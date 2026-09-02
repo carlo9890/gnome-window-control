@@ -89,9 +89,15 @@ get_window_field() {
     get_window_info | jq -r "$field" 2>/dev/null
 }
 
-# Wait a moment for state changes to take effect
+# Wait a moment for state changes to take effect.
+#
+# Geometry lands asynchronously: move_resize_frame() returns before the client
+# has acked the new size, so every assertion needs a settle first. 0.5 s is
+# enough on a real desktop. Under the software rendering of a nested session it
+# is not, and the geometry assertions fail at random -- set WCTL_TEST_SETTLE=1.5
+# there (see docs/RUNNING.md).
 wait_for_change() {
-    sleep 0.5
+    sleep "${WCTL_TEST_SETTLE:-0.5}"
 }
 
 # ============================================================================
@@ -578,6 +584,30 @@ if [[ "$n_monitors" -ge 2 ]]; then
     run_wctl move-to-monitor "$TEST_WINDOW_ID" "$orig_mon"
     wait_for_change
     assert_equals "$(get_window_field '.monitor_index')" "$orig_mon" "move-to-monitor: window is back on monitor $orig_mon"
+
+    # move-to-workspace must not claim a move mutter refused. With the GNOME
+    # default workspaces-only-on-primary, a window on a non-primary monitor is
+    # held on all workspaces and change_workspace_by_index() declines silently.
+    # MoveToWorkspace used to return true regardless.
+    primary_mon=$("$WCTL" monitors --json 2>/dev/null | jq -r 'map(select(.is_primary))[0].index // 0')
+    secondary_mon=0
+    [[ "$primary_mon" -eq 0 ]] && secondary_mon=1
+    info "Testing: move-to-workspace is refused on a non-primary monitor"
+    run_wctl move-to-monitor "$TEST_WINDOW_ID" "$secondary_mon"
+    wait_for_change
+    if [[ "$(get_window_field '.is_on_all_workspaces')" == "true" ]]; then
+        ws_before=$(get_window_field '.workspace_index')
+        run_wctl move-to-workspace "$TEST_WINDOW_ID" 0
+        assert_exit_code 1 "$WCTL_EXIT_CODE" "move-to-workspace on a non-primary monitor: exits 1"
+        assert_contains "$WCTL_OUTPUT" "all workspaces" "move-to-workspace on a non-primary monitor: says why"
+        wait_for_change
+        assert_equals "$(get_window_field '.workspace_index')" "$ws_before" \
+            "move-to-workspace on a non-primary monitor: workspace unchanged"
+    else
+        skip "move-to-workspace refusal: workspaces-only-on-primary is not in effect"
+    fi
+    run_wctl move-to-monitor "$TEST_WINDOW_ID" "$orig_mon"
+    wait_for_change
 else
     skip "move-to-monitor across monitors: only $n_monitors monitor available"
 fi

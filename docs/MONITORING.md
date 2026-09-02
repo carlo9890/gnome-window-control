@@ -47,8 +47,11 @@ In extension code:
   level — not a title, and not a WM class. Titles leak document names, URLs and
   message contents into a log that outlives the process that asked, and a class
   says which applications the user runs. Log the method name and outcome instead.
-  `WaitForWindow` is the one exception: it logs its `kind` argument, a fixed
-  keyword (`class|title|substring|pid`), and elides the value matched against.
+  `WaitForWindow` is the one exception: it logs its `kind` argument and elides
+  the value matched against. It logs `kind` only after validating it against the
+  four keywords (`class|title|substring|pid`) — logging it before that would let
+  any process on the session bus write arbitrary text, newlines included, into
+  the journal.
 - `console.log()` is reserved for the enable/disable lifecycle, which fires twice
   per session and carries no window content.
 - Reserve `console.error()` for actual errors so the CRITICAL stream stays

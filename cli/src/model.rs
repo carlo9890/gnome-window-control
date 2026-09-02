@@ -77,6 +77,15 @@ impl Ctx {
         Ok(windows)
     }
 
+    /// Discard the cached window list so the next `windows()` refetches.
+    ///
+    /// Needed when a call has already been made against the extension and the
+    /// answer says the world changed: the cache was taken before that call, so
+    /// reusing it would diagnose the failure from stale data.
+    pub fn invalidate_windows(&mut self) {
+        self.windows = None;
+    }
+
     /// Find a window by ID, with the bash client's "Error: Window not found"
     /// wording (used by the commands that need the window's own geometry).
     pub fn window_by_id(&mut self, id: u64) -> Result<Window> {

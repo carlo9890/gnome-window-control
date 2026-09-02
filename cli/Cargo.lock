@@ -828,6 +828,7 @@ name = "wctl"
 version = "0.8.0"
 dependencies = [
  "assert_cmd",
+ "libc",
  "serde",
  "serde_json",
  "unicode-width",

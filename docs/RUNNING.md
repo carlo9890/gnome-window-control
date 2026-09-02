@@ -71,9 +71,21 @@ Three more nested-session pitfalls, all observed on GNOME 46:
 - **Clients are slow under software rendering.** kitty takes 1-6 s to show its
   first frame in a nested session, and a window that exists but is not yet
   shown ignores geometry requests (mutter's initial placement overrides them).
-  Use `wctl wait` rather than polling `wctl list`, and expect the modification
-  suite's 0.5 s settle to be too short there; a copy with `sleep 1.5` and a
-  30 s spawn timeout passes.
+  Use `wctl wait` rather than polling `wctl list`. The modification suite's
+  0.5 s settle is also too short there, and its geometry assertions then fail at
+  random — run it with `WCTL_TEST_SETTLE=1.5`:
+
+  ```bash
+  WCTL_TEST_SETTLE=1.5 WAYLAND_DISPLAY=wayland-1 \
+    DBUS_SESSION_BUS_ADDRESS=<nested bus> \
+    WCTL="$PWD/cli/target/release/wctl" ./tests/run-all-modification-tests.sh
+  ```
+
+- **A second monitor can be faked.** `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2` gives
+  the nested shell two outputs, which is the only way to reach the
+  multi-monitor paths (`move-to-monitor` across monitors, and the
+  `workspaces-only-on-primary` refusal in `move-to-workspace`). Without it the
+  suite skips them.
 
 - **Dynamic workspaces shift indices.** Switching away from an empty
   workspace lets GNOME remove it, so the index you switched to can change a

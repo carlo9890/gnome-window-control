@@ -60,7 +60,25 @@ pub const COMMANDS: [&str; 28] = [
     "completion",
 ];
 
+/// Restore the default SIGPIPE disposition.
+///
+/// Rust ignores SIGPIPE at startup, so a write to a closed pipe returns EPIPE,
+/// which print!/println! turn into a panic -- and this crate builds with
+/// `panic = "abort"`, so the process dies on SIGABRT with a panic dump on
+/// stderr. `wctl list --json | head` is an ordinary thing to type, and the bash
+/// client it replaced exited quietly on SIGPIPE. Restoring SIG_DFL brings that
+/// behaviour back: the kernel terminates the process on the signal, which is
+/// what every other CLI in a pipeline does.
+fn restore_sigpipe() {
+    // Safety: signal() with SIG_DFL for SIGPIPE is async-signal-safe and this
+    // runs before any thread is spawned.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
 fn main() {
+    restore_sigpipe();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Err(failure) = run(&args) {
         std::process::exit(failure.report());

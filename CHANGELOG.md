@@ -56,12 +56,59 @@
 - `wctl list` filters: `--workspace <N>` (sticky windows included), `--monitor
   <N>`, `--class <CLASS>`; they apply to the table and to `--json`.
 - Shell completions (bash and zsh) cover the new commands and selector options.
-
-### Changed
-- `wctl info` now requires the window selector before `--json`
-  (`wctl info <WINDOW> [--json]`).
+- `WCTL_TEST_SETTLE` sets the modification suite's settle time (default 0.5 s),
+  so a nested session no longer needs a hand-edited copy of the suite.
+- `scripts/release.sh` accepts the `static-pie linked` that the musl target
+  actually produces. The gate matched only `statically linked`, so the first
+  release of the Rust CLI would have aborted after a successful build. Its
+  documented bump steps now also cover `version-name` and `cli/Cargo.lock`.
+- A failing assertion no longer aborts a shell suite. The helpers run under
+  `set -euo pipefail`, so returning non-zero killed the script at the first
+  failure — skipping every later case and the suite's own diagnostics, and
+  leaving the runner reporting "no tests executed" instead of a failure.
 
 ### Fixed
+- `wctl info --json <WINDOW>` works again. The rewrite resolved the window
+  selector from the first argument, so `--json` before it was rejected as an
+  unknown option, although the bash client accepted either order and the
+  rewrite's own note claimed the CLI contract was unchanged. `wctl focus -1`
+  also reported `Unknown option: -1` where the bash client said `Window ID must
+  be a number`; a negative number is a bad ID, not an option.
+- `move-to-workspace` no longer claims a move mutter refused. `MoveToWorkspace`
+  returned true whenever `change_workspace_by_index()` did not throw, but that
+  function returns void and declines silently for a window held on all
+  workspaces — which, with the GNOME default `workspaces-only-on-primary`, is
+  every window on a secondary monitor. The workspace is now read back, and
+  `wctl` names that cause instead of blaming a missing window or workspace.
+- `wctl` no longer dies with SIGABRT and a Rust panic dump when its output pipe
+  closes early (`wctl list --json | head`). Rust ignores SIGPIPE, turning the
+  write into an EPIPE panic, and `panic = "abort"` made that an abort; the
+  default disposition is now restored at startup, as the bash client had.
+- Every `wctl` command now has a 25 s D-Bus reply timeout. zbus applies none by
+  default, so a shell that was on the bus but wedged hung wctl forever, where
+  gdbus and busctl both gave the bash client 25 s. `wait` keeps its own longer
+  bound so a long `--timeout` is not cut short.
+- `list --workspace` / `--monitor` no longer ignore an index too large for i64.
+  The parse fell back to "no filter", so `--workspace 99999999999999999999`
+  listed every window and exited 0.
+- A control character in a window title can no longer break `wctl list`. Titles
+  are arbitrary client text, and a newline split the row, so `wctl list | wc -l`
+  over-counted and the first field of the extra line was not a window ID. jq's
+  `@tsv` had escaped these for the bash client.
+- `WaitForWindow` no longer writes its unvalidated `kind` argument to the
+  journal. It was logged before being checked against the four keywords, so any
+  process on the session bus could write arbitrary text, newlines included, into
+  a log that outlives it.
+- `WaitForWindow` no longer misses a window whose title or class changes after
+  it is already on screen (`wait -t 'Report.pdf - LibreOffice Writer'` against an
+  open LibreOffice), no longer drops the tracking that a second concurrent
+  waiter still needs, no longer treats a window created on another workspace or
+  created minimized as already shown, and no longer answers twice on one
+  invocation when registration fails.
+- `move`, `resize`, `move-resize`, `place`, `tile` and `center` now also refuse a
+  window that is maximized on one axis. A side-by-side tiled window reports
+  exactly that, and mutter overwrites its geometry outright, so testing only for
+  a fully maximized window let the second most common window state through.
 - `move`, `resize`, `move-resize`, `place`, `tile` and `center` no longer report
   success when nothing moved. Mutter drops a frame geometry request on a fully
   maximized or fullscreen window, but `Move`/`Resize`/`MoveResize` ran it anyway

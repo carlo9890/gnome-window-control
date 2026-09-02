@@ -73,6 +73,19 @@ info() {
 
 # ============================================================================
 # Assertion helpers
+#
+# A failing assertion returns 0, not 1.
+#
+# Every suite runs under `set -e` (set at the top of this file), so an assertion
+# that returned non-zero would abort the suite on the spot: the remaining cases
+# would never run, any diagnostic the suite prints after the assertion would be
+# unreachable, and the runner would see a script that exited without a summary
+# and report "no tests executed" rather than a failure. That is a false SKIPPED
+# on the very run that found a bug.
+#
+# A failure records itself in TESTS_FAILED, and the summary -- not the exit
+# status of an individual assertion -- is what the runner reads. Do not branch
+# on an assertion's return value; test the value yourself before asserting.
 # ============================================================================
 
 # assert_equals VALUE EXPECTED [MESSAGE]
@@ -89,7 +102,7 @@ assert_equals() {
         fail "$msg"
         echo "  Expected: '$expected'"
         echo "  Actual:   '$actual'"
-        return 1
+        return 0
     fi
 }
 
@@ -107,7 +120,7 @@ assert_contains() {
         fail "$msg"
         echo "  Expected to contain: '$needle'"
         echo "  Actual output: '$haystack'"
-        return 1
+        return 0
     fi
 }
 
@@ -125,7 +138,7 @@ assert_not_contains() {
         fail "$msg"
         echo "  Should not contain: '$needle'"
         echo "  Actual output: '$haystack'"
-        return 1
+        return 0
     fi
 }
 
@@ -143,7 +156,7 @@ assert_exit_code() {
         fail "$msg"
         echo "  Expected exit code: $expected"
         echo "  Actual exit code:   $actual"
-        return 1
+        return 0
     fi
 }
 
@@ -164,7 +177,7 @@ assert_json_valid() {
     else
         fail "$msg"
         echo "  Invalid JSON: $json"
-        return 1
+        return 0
     fi
 }
 
@@ -182,7 +195,7 @@ assert_matches() {
         fail "$msg"
         echo "  Pattern: '$pattern'"
         echo "  Actual:  '$actual'"
-        return 1
+        return 0
     fi
 }
 
@@ -200,7 +213,7 @@ assert_within() {
     if [[ ! "$actual" =~ ^-?[0-9]+$ ]]; then
         fail "$msg"
         echo "  Expected a number within +/-$tol of $expected, got: '$actual'"
-        return 1
+        return 0
     fi
 
     local diff=$((actual - expected))
@@ -213,7 +226,7 @@ assert_within() {
         fail "$msg"
         echo "  Expected: $expected (+/-$tol)"
         echo "  Actual:   $actual (off by $diff)"
-        return 1
+        return 0
     fi
 }
 
