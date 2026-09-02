@@ -27,10 +27,17 @@ from the implementation's own formula).
 ## Query and modification tests
 
 Both need the extension enabled and running. Query tests are read-only.
-Modification tests spawn a kitty window and exercise every state-changing command
+Modification tests spawn a kitty window (found through `wctl wait -p`, which
+replies once the window is shown) and exercise every state-changing command
 (move, resize, move-resize, place, tile, center, minimize/maximize, fullscreen,
-above, sticky, activate, focus, close), asserting geometry within a pixel
-tolerance. **They disrupt your desktop** (create/move/focus/close a window).
+above, sticky, activate, focus, move-to-workspace, move-to-monitor, wait, the
+selector forms, close), asserting geometry within a pixel tolerance. **They
+disrupt your desktop** (create/move/focus/close a window, switch workspace).
+
+`tests/test-workspaces-monitors.sh` (query) covers `workspaces`, `monitors`,
+the `list` filters and the read-only selector forms. Both suites need the
+extension build that has the workspace/monitor/wait methods loaded; against an
+older loaded build they fail on "No such method" rather than skipping.
 
 If the extension is not running the suites self-skip and the runner reports
 `NO ... TESTS EXECUTED` (a distinct SKIPPED state), never a false pass.

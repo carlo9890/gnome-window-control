@@ -89,6 +89,80 @@ assert_equals "$(parse_workarea_rect "(-10, 0, 1920, 1080)")" "-10 0 1920 1080" 
 ( parse_workarea_rect "(0, 0, -5, 10)" ) >/dev/null 2>&1; assert_exit_code 1 $? "parse_workarea_rect: negative width rejected -> die"
 
 # ---------------------------------------------------------------------------
+# parse_uint64_reply "<RAW_GVARIANT>"
+# ---------------------------------------------------------------------------
+assert_equals "$(parse_uint64_reply "(uint64 42,)")" "42" "parse_uint64_reply: single-value tuple"
+assert_equals "$(parse_uint64_reply "(uint64 7, 'title', 'class')")" "7" "parse_uint64_reply: leading value of a wider tuple"
+assert_equals "$(parse_uint64_reply "(uint64 0,)")" "0" "parse_uint64_reply: zero passes through"
+( parse_uint64_reply "(true,)" ) >/dev/null 2>&1; assert_exit_code 1 $? "parse_uint64_reply: boolean tuple -> die"
+( parse_uint64_reply "garbage" ) >/dev/null 2>&1; assert_exit_code 1 $? "parse_uint64_reply: garbage -> die"
+
+# ---------------------------------------------------------------------------
+# selector_kind_for_option / parse_window_selector "$@"
+# parse_window_selector sets SEL_KIND / SEL_VALUE / SEL_SHIFT in the caller's
+# shell, so call it directly (not in a subshell) for the accepted cases.
+# ---------------------------------------------------------------------------
+assert_equals "$(selector_kind_for_option -c)" "class"     "selector_kind_for_option: -c"
+assert_equals "$(selector_kind_for_option -t)" "title"     "selector_kind_for_option: -t"
+assert_equals "$(selector_kind_for_option -s)" "substring" "selector_kind_for_option: -s"
+assert_equals "$(selector_kind_for_option -p)" "pid"       "selector_kind_for_option: -p"
+( selector_kind_for_option -x ) >/dev/null 2>&1; assert_exit_code 1 $? "selector_kind_for_option: unknown option -> die"
+
+parse_window_selector 12345 left
+assert_equals "$SEL_KIND $SEL_VALUE $SEL_SHIFT" "id 12345 1" "parse_window_selector: numeric id occupies one argument"
+parse_window_selector focused
+assert_equals "$SEL_KIND $SEL_SHIFT" "focused 1" "parse_window_selector: focused occupies one argument"
+parse_window_selector -c kitty left
+assert_equals "$SEL_KIND $SEL_VALUE $SEL_SHIFT" "class kitty 2" "parse_window_selector: -c occupies two arguments"
+parse_window_selector -t "My Doc - Editor" 1 2
+assert_equals "$SEL_KIND|$SEL_VALUE|$SEL_SHIFT" "title|My Doc - Editor|2" "parse_window_selector: -t keeps spaces in the value"
+parse_window_selector -s Doc
+assert_equals "$SEL_KIND $SEL_VALUE $SEL_SHIFT" "substring Doc 2" "parse_window_selector: -s"
+parse_window_selector -p 4242
+assert_equals "$SEL_KIND $SEL_VALUE $SEL_SHIFT" "pid 4242 2" "parse_window_selector: -p"
+
+( parse_window_selector -p abc ) >/dev/null 2>&1;  assert_exit_code 1 $? "parse_window_selector: -p non-numeric -> die"
+( parse_window_selector -c ) >/dev/null 2>&1;      assert_exit_code 1 $? "parse_window_selector: -c without value -> die"
+( parse_window_selector -x foo ) >/dev/null 2>&1;  assert_exit_code 1 $? "parse_window_selector: unknown option -> die"
+( parse_window_selector abc ) >/dev/null 2>&1;     assert_exit_code 1 $? "parse_window_selector: non-numeric id -> die"
+
+# ---------------------------------------------------------------------------
+# select_window_id_from_json <JSON> <KIND> <VALUE>
+# filter_windows_json <JSON> <WORKSPACE> <MONITOR> <CLASS>
+# Fixture: three windows; id 3 is sticky (workspace_index -1, on all workspaces).
+# ---------------------------------------------------------------------------
+WIN_JSON='[
+ {"id":1,"title":"Doc A","wm_class":"kitty","pid":100,"workspace_index":0,"monitor_index":0,"is_on_all_workspaces":false},
+ {"id":2,"title":"Doc B","wm_class":"kitty","pid":200,"workspace_index":1,"monitor_index":1,"is_on_all_workspaces":false},
+ {"id":3,"title":"Mail","wm_class":"thunderbird","pid":300,"workspace_index":-1,"monitor_index":0,"is_on_all_workspaces":true}
+]'
+
+assert_equals "$(select_window_id_from_json "$WIN_JSON" class thunderbird)" "3" "select_window_id_from_json: unique class match"
+assert_equals "$(select_window_id_from_json "$WIN_JSON" title "Doc B")"     "2" "select_window_id_from_json: exact title match"
+assert_equals "$(select_window_id_from_json "$WIN_JSON" substring Mai)"     "3" "select_window_id_from_json: title substring match"
+assert_equals "$(select_window_id_from_json "$WIN_JSON" pid 200)"           "2" "select_window_id_from_json: pid match"
+
+out=$( select_window_id_from_json "$WIN_JSON" class kitty 2>&1 ); rc=$?
+assert_exit_code 1 "$rc" "select_window_id_from_json: ambiguous class -> die"
+assert_contains "$out" "matches 2 windows" "select_window_id_from_json: ambiguity message reports the count"
+assert_contains "$out" "Doc A" "select_window_id_from_json: ambiguity message lists the candidates"
+out=$( select_window_id_from_json "$WIN_JSON" substring Doc 2>&1 ); rc=$?
+assert_exit_code 1 "$rc" "select_window_id_from_json: ambiguous substring -> die"
+out=$( select_window_id_from_json "$WIN_JSON" class nope 2>&1 ); rc=$?
+assert_exit_code 1 "$rc" "select_window_id_from_json: no match -> die"
+assert_contains "$out" "No window matches" "select_window_id_from_json: no-match message"
+( select_window_id_from_json "$WIN_JSON" bogus x ) >/dev/null 2>&1; assert_exit_code 1 $? "select_window_id_from_json: unknown kind -> die"
+
+ids() { jq -c 'map(.id)'; }
+assert_equals "$(filter_windows_json "$WIN_JSON" "" "" "" | ids)"        "[1,2,3]" "filter_windows_json: no filter keeps everything"
+assert_equals "$(filter_windows_json "$WIN_JSON" 1 "" "" | ids)"         "[2,3]"   "filter_windows_json: workspace filter includes sticky windows"
+assert_equals "$(filter_windows_json "$WIN_JSON" 0 "" "" | ids)"         "[1,3]"   "filter_windows_json: workspace 0"
+assert_equals "$(filter_windows_json "$WIN_JSON" "" 0 "" | ids)"         "[1,3]"   "filter_windows_json: monitor filter"
+assert_equals "$(filter_windows_json "$WIN_JSON" "" "" kitty | ids)"     "[1,2]"   "filter_windows_json: class filter"
+assert_equals "$(filter_windows_json "$WIN_JSON" 0 "" kitty | ids)"      "[1]"     "filter_windows_json: filters combine with AND"
+assert_equals "$(filter_windows_json "$WIN_JSON" 7 "" "" | ids)"         "[3]"     "filter_windows_json: unknown workspace keeps only sticky windows"
+
+# ---------------------------------------------------------------------------
 # CLI argument-validation guards (run wctl as a subprocess; each of these dies
 # during validation, before any D-Bus call, so they work with no extension).
 # ---------------------------------------------------------------------------
@@ -131,6 +205,38 @@ expect_die "Unknown command"                  no-such-command
 expect_die "Usage: wctl center"               center
 expect_die "Usage: wctl tile"                 tile
 expect_die "Usage: wctl tile"                 tile 123
+# A selector option occupies two arguments; the count check still happens
+# before any D-Bus call, so these die with usage headlessly.
+expect_die "Usage: wctl tile"                 tile -c kitty
+expect_die "Usage: wctl move"                 move -s Doc 100
+expect_die "Usage: wctl above"                above focused
+expect_die "Usage: wctl place"                place focused left top 50%
+expect_die "Usage: wctl place"                place 123 left top 50% 100% extra
+expect_die "Unknown option: -x"               tile -x left
+expect_die "Option -c requires an argument"   tile -c
+expect_die "PID must be a number"             tile -p abc left
+# Workspace / monitor / wait / list-filter guards.
+expect_die "Usage: wctl workspace"            workspace
+expect_die "Workspace index must be a number" workspace abc
+expect_die "Usage: wctl move-to-workspace"    move-to-workspace 123
+expect_die "Workspace index must be a number" move-to-workspace 123 abc
+expect_die "Usage: wctl move-to-monitor"      move-to-monitor
+expect_die "Monitor index must be a number"   move-to-monitor 123 -1
+expect_die "Usage: wctl wait"                 wait
+expect_die "Usage: wctl wait"                 wait -c a -t b
+expect_die "Usage: wctl wait"                 wait 123
+expect_die "PID must be a number"             wait -p abc
+expect_die "Timeout must be a positive"       wait -c kitty --timeout 0
+expect_die "Timeout must be a positive"       wait -c kitty --timeout abc
+expect_die "Option --timeout requires a value" wait -c kitty --timeout
+expect_die "Option -c requires an argument"   wait -c
+expect_die "Workspace index must be a number" list --workspace abc
+expect_die "Monitor index must be a number"   list --monitor x
+expect_die "Option --class requires an argument" list --class
+expect_die "Unknown option"                   list --bogus
+expect_die "Unexpected argument"              list extra
+expect_die "Unknown option"                   workspaces --bogus
+expect_die "Unknown option"                   monitors --bogus
 
 # center axis normalization: the short forms h/v, the long forms, and the no-arg
 # default must all be ACCEPTED by the axis guard. They fail later on the (absent)
@@ -179,7 +285,7 @@ fi
 # ---------------------------------------------------------------------------
 info "Command-inventory consistency (help / dispatch / completions)"
 
-EXPECTED_COMMANDS="list focused info activate focus move resize move-resize place tile center minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
+EXPECTED_COMMANDS="list focused info workspaces monitors activate focus wait move resize move-resize place tile center workspace move-to-workspace move-to-monitor minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
 
 bash_commands=$("$WCTL" completion bash 2>/dev/null | grep -oP 'local commands="\K[^"]+' | head -1)
 assert_equals "$bash_commands" "$EXPECTED_COMMANDS" "bash completion command list matches expected inventory"

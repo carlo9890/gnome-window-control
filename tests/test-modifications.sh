@@ -38,23 +38,24 @@ spawn_test_window() {
     # Spawn kitty in background
     kitty --title "$TEST_WINDOW_TITLE" &
     TEST_WINDOW_PID=$!
-    
-    # Wait for window to appear (up to 5 seconds)
-    local attempts=0
-    local max_attempts=50
-    while [[ $attempts -lt $max_attempts ]]; do
-        sleep 0.1
-        TEST_WINDOW_ID=$("$WCTL" list --json 2>/dev/null | jq -r --arg title "$TEST_WINDOW_TITLE" '[.[] | select(.title == $title)] | .[0].id // empty' 2>/dev/null || echo "")
-        if [[ -n "$TEST_WINDOW_ID" ]]; then
-            info "Test window spawned with ID: $TEST_WINDOW_ID"
-            return 0
-        fi
-        attempts=$((attempts + 1))
-    done
-    
-    echo -e "${RED}ERROR${RESET}: Failed to find test window after 5 seconds"
-    cleanup_test_window
-    exit 1
+
+    # wctl wait replies once the window is shown (mapped and placed), which is
+    # the earliest moment a geometry command sticks: a move issued before that
+    # is overridden by mutter's initial placement. Polling list --json would
+    # return the window while it is still unshown.
+    TEST_WINDOW_ID=$("$WCTL" wait -p "$TEST_WINDOW_PID" --timeout 10 2>/dev/null || echo "")
+    if [[ -z "$TEST_WINDOW_ID" ]]; then
+        echo -e "${RED}ERROR${RESET}: Failed to find test window after 10 seconds"
+        cleanup_test_window
+        exit 1
+    fi
+    info "Test window spawned with ID: $TEST_WINDOW_ID"
+
+    # mutter auto-maximizes a new window that covers most of a small workarea
+    # (e.g. a nested session), and a maximized window ignores move/resize.
+    # Start every geometry test from a normal state.
+    "$WCTL" unmaximize "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
+    wait_for_change
 }
 
 # Cleanup test window
@@ -401,6 +402,175 @@ wait_for_change
 # focus must actually give our test window keyboard focus, not merely exit 0.
 focused_id=$("$WCTL" focused --json 2>/dev/null | jq -r '.id // empty' 2>/dev/null)
 assert_equals "$focused_id" "$TEST_WINDOW_ID" "focus: test window has focus after focus command"
+
+echo ""
+echo "--- Selector Tests ---"
+
+# Every window-taking command goes through the same resolver, so one geometry
+# command per selector form is enough to prove the resolution; the geometry
+# itself is covered above.
+info "Testing: tile -t <title> (title selector)"
+run_wctl tile -t "$TEST_WINDOW_TITLE" top-left
+assert_exit_code 0 "$WCTL_EXIT_CODE" "tile -t: exits 0 with a unique title"
+wait_for_change
+if [[ -n "$tc_wa" ]]; then
+    read -r exp_x exp_y exp_w exp_h <<< "$(resolve_tile_geometry top-left "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h")"
+    assert_within "$(get_window_field '.frame_rect.x')" "$exp_x" "$GEOM_TOLERANCE" "tile -t: resolved the test window (x)"
+    assert_within "$(get_window_field '.frame_rect.width')" "$exp_w" "$GEOM_TOLERANCE" "tile -t: resolved the test window (width)"
+fi
+
+info "Testing: move -s <substring> (substring selector)"
+run_wctl move -s "auto-test:stop" 120 140
+assert_exit_code 0 "$WCTL_EXIT_CODE" "move -s: exits 0 with a unique substring"
+wait_for_change
+assert_within "$(get_window_field '.frame_rect.x')" 120 "$GEOM_TOLERANCE" "move -s: window x is at 120"
+assert_within "$(get_window_field '.frame_rect.y')" 140 "$GEOM_TOLERANCE" "move -s: window y is at 140"
+
+info "Testing: above focused on (focused selector)"
+"$WCTL" activate "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
+wait_for_change
+run_wctl above focused on
+assert_exit_code 0 "$WCTL_EXIT_CODE" "above focused: exits 0"
+wait_for_change
+assert_equals "$(get_window_field '.is_above')" "true" "above focused on: the focused (test) window is above"
+run_wctl above focused off
+wait_for_change
+assert_equals "$(get_window_field '.is_above')" "false" "above focused off: cleared again"
+
+info "Testing: ambiguous selector is refused"
+run_wctl minimize -c kitty
+kitty_count=$("$WCTL" list --json 2>/dev/null | jq '[.[] | select(.wm_class == "kitty")] | length')
+if [[ "$kitty_count" -gt 1 ]]; then
+    assert_exit_code 1 "$WCTL_EXIT_CODE" "minimize -c kitty: exits 1 with $kitty_count kitty windows"
+    assert_contains "$WCTL_OUTPUT" "matches $kitty_count windows" "minimize -c kitty: lists the match count"
+    assert_equals "$(get_window_field '.is_minimized')" "false" "minimize -c kitty: nothing was minimized"
+else
+    # Only the test window is a kitty window: the selector is unique and acts.
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "minimize -c kitty: unique kitty window, exits 0"
+    "$WCTL" unminimize "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
+    wait_for_change
+fi
+
+echo ""
+echo "--- Wait Test ---"
+
+# Spawn a second window AFTER arming wait, so the reply must come from the
+# window-created path, not from the "already exists" shortcut.
+info "Testing: wait -p <pid> for a window that appears later"
+WAIT_TITLE="auto-test:wait-target"
+wait_started=$(date +%s%N)
+kitty --title "$WAIT_TITLE" &
+WAIT_KITTY_PID=$!
+run_wctl wait -p "$WAIT_KITTY_PID" --timeout 10
+wait_elapsed_ms=$(( ($(date +%s%N) - wait_started) / 1000000 ))
+assert_exit_code 0 "$WCTL_EXIT_CODE" "wait -p: exits 0 once the window appears (${wait_elapsed_ms} ms)"
+assert_matches "$WCTL_OUTPUT" "^[0-9]+$" "wait -p: prints a numeric window id"
+WAIT_WINDOW_ID="$WCTL_OUTPUT"
+wait_title=$("$WCTL" info "$WAIT_WINDOW_ID" --json 2>/dev/null | jq -r '.title')
+assert_equals "$wait_title" "$WAIT_TITLE" "wait -p: the id belongs to the window that appeared"
+
+info "Testing: wait -t for an already existing window returns at once"
+run_wctl wait -t "$WAIT_TITLE" --timeout 5
+assert_exit_code 0 "$WCTL_EXIT_CODE" "wait -t existing: exits 0"
+assert_equals "$WCTL_OUTPUT" "$WAIT_WINDOW_ID" "wait -t existing: prints the same id"
+
+"$WCTL" close "$WAIT_WINDOW_ID" >/dev/null 2>&1 || true
+kill "$WAIT_KITTY_PID" 2>/dev/null || true
+wait_for_change
+
+echo ""
+echo "--- Workspace Tests ---"
+
+ws_json=$("$WCTL" workspaces --json 2>/dev/null)
+n_workspaces=$(echo "$ws_json" | jq 'length')
+active_ws=$(echo "$ws_json" | jq -r '.[] | select(.is_active) | .index')
+orig_ws=$(get_window_field '.workspace_index')
+
+if [[ "$n_workspaces" -lt 2 ]]; then
+    skip "workspace tests: only $n_workspaces workspace(s) available"
+else
+    # Pick a workspace that is not the window's current one.
+    target_ws=0
+    [[ "$orig_ws" -eq 0 ]] && target_ws=1
+
+    # The test window has focus here (the focus test above asserts it), so use
+    # the focused selector for the outbound move; the way back goes by id
+    # because a window on another workspace does not have focus.
+    info "Testing: move-to-workspace $target_ws via focused selector"
+    "$WCTL" activate "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
+    wait_for_change
+    if [[ "$(get_window_field '.has_focus')" == "true" ]]; then
+        run_wctl move-to-workspace focused "$target_ws"
+        assert_exit_code 0 "$WCTL_EXIT_CODE" "move-to-workspace focused: exits 0"
+    else
+        skip "move-to-workspace focused: test window did not get focus; moving by id"
+        run_wctl move-to-workspace "$TEST_WINDOW_ID" "$target_ws"
+    fi
+    wait_for_change
+    assert_equals "$(get_window_field '.workspace_index')" "$target_ws" "move-to-workspace: window is on workspace $target_ws"
+
+    info "Testing: list --workspace $target_ws contains the moved window"
+    in_list=$("$WCTL" list --workspace "$target_ws" --json 2>/dev/null | jq --arg id "$TEST_WINDOW_ID" '[.[] | select(.id == ($id | tonumber))] | length')
+    assert_equals "$in_list" "1" "list --workspace: moved window is listed on workspace $target_ws"
+
+    info "Testing: workspace $target_ws (switch) and back to $active_ws"
+    run_wctl workspace "$target_ws"
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "workspace: exits 0"
+    wait_for_change
+    now_active=$("$WCTL" workspaces --json 2>/dev/null | jq -r '.[] | select(.is_active) | .index')
+    assert_equals "$now_active" "$target_ws" "workspace: workspace $target_ws is active"
+    run_wctl workspace "$active_ws"
+    wait_for_change
+    now_active=$("$WCTL" workspaces --json 2>/dev/null | jq -r '.[] | select(.is_active) | .index')
+    assert_equals "$now_active" "$active_ws" "workspace: switched back to workspace $active_ws"
+
+    info "Testing: move-to-workspace back to $orig_ws"
+    run_wctl move-to-workspace "$TEST_WINDOW_ID" "$orig_ws"
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "move-to-workspace back: exits 0"
+    wait_for_change
+    assert_equals "$(get_window_field '.workspace_index')" "$orig_ws" "move-to-workspace: window is back on workspace $orig_ws"
+fi
+
+info "Testing: move-to-workspace with an invalid index"
+run_wctl move-to-workspace "$TEST_WINDOW_ID" 9999
+assert_exit_code 1 "$WCTL_EXIT_CODE" "move-to-workspace 9999: exits 1"
+assert_contains "$WCTL_OUTPUT" "does not exist" "move-to-workspace 9999: names the missing workspace"
+
+info "Testing: workspace with an invalid index"
+run_wctl workspace 9999
+assert_exit_code 1 "$WCTL_EXIT_CODE" "workspace 9999: exits 1"
+assert_contains "$WCTL_OUTPUT" "Cannot switch to workspace 9999" "workspace 9999: reports the failed switch"
+
+echo ""
+echo "--- Monitor Tests ---"
+
+n_monitors=$("$WCTL" monitors --json 2>/dev/null | jq 'length')
+orig_mon=$(get_window_field '.monitor_index')
+
+info "Testing: move-to-monitor $orig_mon (current monitor)"
+run_wctl move-to-monitor "$TEST_WINDOW_ID" "$orig_mon"
+assert_exit_code 0 "$WCTL_EXIT_CODE" "move-to-monitor: exits 0 for the current monitor"
+wait_for_change
+assert_equals "$(get_window_field '.monitor_index')" "$orig_mon" "move-to-monitor: window stays on monitor $orig_mon"
+
+if [[ "$n_monitors" -ge 2 ]]; then
+    target_mon=0
+    [[ "$orig_mon" -eq 0 ]] && target_mon=1
+    info "Testing: move-to-monitor $target_mon and back"
+    run_wctl move-to-monitor "$TEST_WINDOW_ID" "$target_mon"
+    wait_for_change
+    assert_equals "$(get_window_field '.monitor_index')" "$target_mon" "move-to-monitor: window is on monitor $target_mon"
+    run_wctl move-to-monitor "$TEST_WINDOW_ID" "$orig_mon"
+    wait_for_change
+    assert_equals "$(get_window_field '.monitor_index')" "$orig_mon" "move-to-monitor: window is back on monitor $orig_mon"
+else
+    skip "move-to-monitor across monitors: only $n_monitors monitor available"
+fi
+
+info "Testing: move-to-monitor with an invalid index"
+run_wctl move-to-monitor "$TEST_WINDOW_ID" 9999
+assert_exit_code 1 "$WCTL_EXIT_CODE" "move-to-monitor 9999: exits 1"
+assert_contains "$WCTL_OUTPUT" "does not exist" "move-to-monitor 9999: names the missing monitor"
 
 echo ""
 echo "--- Close Test ---"

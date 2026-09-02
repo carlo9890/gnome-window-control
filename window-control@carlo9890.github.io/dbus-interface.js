@@ -273,6 +273,73 @@ export const DBUS_INTERFACE_XML = `
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+    <!-- Workspace and Monitor Methods -->
+
+    <!--
+      ListWorkspaces: Get all workspaces
+      Returns: s - JSON array of {index, name, is_active, window_count}
+    -->
+    <method name="ListWorkspaces">
+      <arg type="s" direction="out" name="workspaces_json"/>
+    </method>
+
+    <!--
+      ActivateWorkspace: Switch to a workspace
+      Args: i - workspace index
+      Returns: b - success (false if the index does not exist or the switch
+               did not take effect). Hides the Activities overview first,
+               because the switch is ignored while the overview is shown.
+    -->
+    <method name="ActivateWorkspace">
+      <arg type="i" direction="in" name="workspace_index"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+
+    <!--
+      MoveToWorkspace: Move a window to a workspace
+      Args: t - window ID, i - workspace index
+      Returns: b - success (false if the window or the index does not exist)
+    -->
+    <method name="MoveToWorkspace">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="i" direction="in" name="workspace_index"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+
+    <!--
+      MoveToMonitor: Move a window to a monitor
+      Args: t - window ID, i - monitor index
+      Returns: b - success (false if the window or the index does not exist)
+    -->
+    <method name="MoveToMonitor">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="i" direction="in" name="monitor_index"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+
+    <!-- Event Methods -->
+
+    <!--
+      WaitForWindow: Block until a window matching the selector is shown
+      Args: s - kind: "class" | "title" | "substring" | "pid"
+            s - value to match
+            i - timeout in milliseconds (> 0)
+      Returns: t - window ID (0 on timeout)
+      The reply is deferred until a matching window has been shown (mapped and
+      placed by mutter) or the timeout elapses; the shell main loop is never
+      blocked. Replying only once the window is shown matters: a geometry
+      request on a window that exists but is not yet shown is overridden by
+      mutter's initial placement. An already existing matching window returns
+      immediately. Invalid arguments raise
+      org.freedesktop.DBus.Error.InvalidArgs; disabling the extension while a
+      call is pending raises org.gnome.Shell.Extensions.WindowControl.Disabled.
+    -->
+    <method name="WaitForWindow">
+      <arg type="s" direction="in" name="kind"/>
+      <arg type="s" direction="in" name="value"/>
+      <arg type="i" direction="in" name="timeout_ms"/>
+      <arg type="t" direction="out" name="window_id"/>
+    </method>
   </interface>
 </node>
 `;

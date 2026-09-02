@@ -4,11 +4,14 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 ## Features
 
-- **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.)
-- **Window info** - Get detailed information about any window by ID
+- **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
+- **Window info** - Get detailed information about any window
+- **Window selectors** - Address a window by ID, `focused`, WM class, title, title substring, or PID in every `wctl` command
 - **Activate windows** - Focus/raise windows by ID, title, WM class, or PID
 - **Move/resize windows** - Position and size windows programmatically
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
+- **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
+- **Wait for a window** - Block until a matching window is shown, without polling
 - **CLI-friendly** - Easy to use from bash scripts via `gdbus` or the included `wctl` wrapper
 
 ## Compatibility
@@ -82,11 +85,23 @@ wctl list
 # List windows as JSON
 wctl list --json
 
+# Filter the list by workspace, monitor, or WM class
+wctl list --workspace 1
+wctl list --class kitty --json
+
 # Get focused window
 wctl focused
 
 # Get focused window as JSON
 wctl focused --json
+
+# Every command that takes a window accepts a selector instead of an ID:
+#   <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
+# A selector must match exactly one window; otherwise wctl lists the
+# candidates and exits 1.
+wctl info focused
+wctl tile -c kitty left
+wctl close -s "Untitled"
 
 # Activate window by ID
 wctl activate 12345
@@ -145,9 +160,30 @@ wctl sticky 12345 on     # show on all workspaces
 # Close window (polite - allows save dialogs)
 wctl close 12345
 
+# Workspaces
+wctl workspaces                     # list (index, name, window count, active)
+wctl workspace 2                    # switch to workspace 2 (closes the overview if open)
+wctl move-to-workspace 12345 2      # move a window to workspace 2
+
+# Monitors
+wctl monitors                       # list (index, geometry, scale, primary)
+wctl move-to-monitor focused 1      # move the focused window to monitor 1
+
+# Wait for a window to be shown and print its ID (default timeout 10 s, exit 1 on
+# timeout). wait returns only once mutter has mapped and placed the window, so
+# the geometry command that follows sticks instead of being overridden by the
+# initial placement.
+kitty &
+id=$(wctl wait -p $! --timeout 5)
+wctl tile "$id" right
+
 # Help
 wctl --help
 ```
+
+`wctl activate` keeps the extension's first-match rule for `-t`/`-s`/`-c`/`-p`
+(useful for run-or-raise scripts). Every other command requires the selector to
+be unambiguous.
 
 `wctl place` is a higher-level CLI convenience built on top of the existing
 geometry methods. X and Y accept either absolute pixel coordinates or
@@ -216,6 +252,11 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Unfullscreen` | `(t) -> b` | Exit fullscreen |
 | `SetAbove` | `(tb) -> b` | Set/unset always-on-top |
 | `SetSticky` | `(tb) -> b` | Set/unset sticky (all workspaces) |
+| `ListWorkspaces` | `() -> s` | List workspaces as JSON (`index`, `name`, `is_active`, `window_count`) |
+| `ActivateWorkspace` | `(i) -> b` | Switch to a workspace. Hides the Activities overview first (the switch is ignored while it is shown) and returns whether the switch took effect |
+| `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
+| `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
+| `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked. |
 
 ## Security model
 
@@ -239,7 +280,7 @@ What this means in practice:
 
 - **Window titles are the sensitive part.** They carry document names, URLs, and
   message subjects. `List`, `ListDetailed` and `GetFocused` return them, and
-  `ActivateByTitleSubstring` leaks them by probing.
+  `ActivateByTitleSubstring` and `WaitForWindow` leak them by probing.
 - **The extension never writes titles to the journal.** Per-call logging is
   `console.debug()`, gated behind `G_MESSAGES_DEBUG`, and no log line contains a
   title or a caller-supplied match string at any level. See

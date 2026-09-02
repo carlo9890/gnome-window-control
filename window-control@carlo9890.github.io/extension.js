@@ -4,11 +4,15 @@
 // D-Bus interface for listing and controlling windows
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
+const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
+const DBUS_ERROR_INVALID_ARGS = 'org.freedesktop.DBus.Error.InvalidArgs';
 
 // Window type enum to string mapping
 const WINDOW_TYPE_NAMES = {
@@ -76,6 +80,11 @@ class WindowControlService {
             DBUS_INTERFACE_XML,
             this
         );
+        // WaitForWindow state. The 'window-created' handler is connected only
+        // while at least one waiter is pending, so an idle extension costs nothing.
+        this._waiters = [];
+        this._windowCreatedId = 0;
+        this._trackedWindows = new Map();   // Meta.Window -> [signal handler ids]
     }
 
     // Helper: Get all windows (NORMAL type only)
@@ -114,6 +123,44 @@ class WindowControlService {
             }
         }
         return null;
+    }
+
+    // Helper: true if value is an integer in [0, count)
+    _isValidIndex(value, count) {
+        return Number.isInteger(value) && value >= 0 && value < count;
+    }
+
+    // Helper: Build the match predicate for a (kind, value) selector as used by
+    // WaitForWindow. Returns null for an unknown kind or a non-numeric pid.
+    _matchPredicate(kind, value) {
+        switch (kind) {
+        case 'class':
+            return w => w.get_wm_class() === value;
+        case 'title':
+            return w => w.get_title() === value;
+        case 'substring':
+            return w => (w.get_title() || '').includes(value);
+        case 'pid': {
+            const pid = Number(value);
+            if (!Number.isInteger(pid) || pid <= 0)
+                return null;
+            return w => w.get_pid() === pid;
+        }
+        default:
+            return null;
+        }
+    }
+
+    // Helper: true for a window that mutter has created but not yet mapped and
+    // placed. Such a window reports is_hidden(), but so do minimized windows
+    // and windows on another workspace, which are placed and must count as
+    // existing; only the never-shown case is hidden while unminimized on the
+    // active workspace. A geometry request on an unshown window is overridden by
+    // mutter's initial placement, so WaitForWindow must not reply before it is
+    // shown.
+    _isUnshown(win) {
+        return win.is_hidden() && !win.minimized &&
+            win.located_on_workspace(global.workspace_manager.get_active_workspace());
     }
 
     // Helper: Look up a window by ID and run an action on it, with the uniform
@@ -484,6 +531,208 @@ class WindowControlService {
         }
     }
 
+    // ListWorkspaces: Get all workspaces as JSON string
+    ListWorkspaces() {
+        console.debug(`[Window Control] ListWorkspaces() called`);
+        try {
+            const manager = global.workspace_manager;
+            const numWorkspaces = manager.get_n_workspaces();
+            const activeIndex = manager.get_active_workspace_index();
+            const windows = this._getAllWindows();
+            const result = [];
+
+            for (let i = 0; i < numWorkspaces; i++) {
+                const workspace = manager.get_workspace_by_index(i);
+                result.push({
+                    index: i,
+                    name: Meta.prefs_get_workspace_name(i) || '',
+                    is_active: i === activeIndex,
+                    // located_on_workspace() is true on every workspace for a sticky window
+                    window_count: windows.filter(w => w.located_on_workspace(workspace)).length,
+                });
+            }
+
+            console.debug(`[Window Control] ListWorkspaces() returning ${result.length} workspaces`);
+            return JSON.stringify(result);
+        } catch (e) {
+            console.error(`[Window Control] ListWorkspaces() error: ${e.message}`);
+            return '[]';
+        }
+    }
+
+    // ActivateWorkspace: Switch to a workspace by index.
+    // While the Activities overview is shown, Meta.Workspace.activate() leaves
+    // the active workspace unchanged (verified on GNOME 46), so the overview is
+    // hidden first. The result is read back rather than assumed, so a switch
+    // that did not take effect reports false.
+    ActivateWorkspace(workspaceIndex) {
+        console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) called`);
+        try {
+            const manager = global.workspace_manager;
+            if (!this._isValidIndex(workspaceIndex, manager.get_n_workspaces())) {
+                console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> false (invalid index)`);
+                return false;
+            }
+            if (Main.overview.visible)
+                Main.overview.hide();
+            manager.get_workspace_by_index(workspaceIndex).activate(global.get_current_time());
+            const switched = manager.get_active_workspace_index() === workspaceIndex;
+            console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> ${switched}`);
+            return switched;
+        } catch (e) {
+            console.error(`[Window Control] ActivateWorkspace() error: ${e.message}`);
+            return false;
+        }
+    }
+
+    // MoveToWorkspace: Move a window to a workspace by index
+    MoveToWorkspace(windowId, workspaceIndex) {
+        if (!this._isValidIndex(workspaceIndex, global.workspace_manager.get_n_workspaces())) {
+            console.debug(`[Window Control] MoveToWorkspace(${windowId}, ${workspaceIndex}) -> false (invalid index)`);
+            return false;
+        }
+        return this._actOnWindow(windowId, 'MoveToWorkspace',
+            win => win.change_workspace_by_index(workspaceIndex, false));
+    }
+
+    // MoveToMonitor: Move a window to a monitor by index
+    MoveToMonitor(windowId, monitorIndex) {
+        if (!this._isValidIndex(monitorIndex, global.display.get_n_monitors())) {
+            console.debug(`[Window Control] MoveToMonitor(${windowId}, ${monitorIndex}) -> false (invalid index)`);
+            return false;
+        }
+        return this._actOnWindow(windowId, 'MoveToMonitor',
+            win => win.move_to_monitor(monitorIndex));
+    }
+
+    // WaitForWindow: Reply with the ID of a shown window matching (kind, value),
+    // either immediately if one exists or when one appears, or 0 after timeoutMs.
+    // Async handler (GJS convention: <Method>Async(params, invocation)) so the
+    // shell main loop is never blocked; the reply is sent from a signal handler
+    // or the timeout source.
+    WaitForWindowAsync([kind, value, timeoutMs], invocation) {
+        console.debug(`[Window Control] WaitForWindow(${kind}, ..., ${timeoutMs}) called`);
+        try {
+            const predicate = this._matchPredicate(kind, value);
+            if (!predicate || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+                console.debug(`[Window Control] WaitForWindow(${kind}) -> InvalidArgs`);
+                invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
+                    `WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0`);
+                return;
+            }
+
+            const existing = this._findWindowByPredicate(w => predicate(w) && !this._isUnshown(w));
+            if (existing) {
+                console.debug(`[Window Control] WaitForWindow(${kind}) -> ${existing.get_id()} (already present)`);
+                invocation.return_value(new GLib.Variant('(t)', [existing.get_id()]));
+                return;
+            }
+
+            const waiter = { predicate, invocation, timeoutId: 0 };
+            waiter.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
+                waiter.timeoutId = 0;
+                console.debug(`[Window Control] WaitForWindow(${kind}) -> 0 (timeout)`);
+                this._finishWaiter(waiter, 0);
+                return GLib.SOURCE_REMOVE;
+            });
+            this._waiters.push(waiter);
+            this._startWatching();
+        } catch (e) {
+            console.error(`[Window Control] WaitForWindow() error: ${e.message}`);
+            invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', e.message);
+        }
+    }
+
+    // Connect 'window-created' (idempotent).
+    _startWatching() {
+        if (this._windowCreatedId)
+            return;
+        this._windowCreatedId = global.display.connect('window-created',
+            (display, win) => this._onWindowCreated(win));
+    }
+
+    // Disconnect 'window-created' and every per-window handler.
+    _stopWatching() {
+        if (this._windowCreatedId) {
+            global.display.disconnect(this._windowCreatedId);
+            this._windowCreatedId = 0;
+        }
+        for (const win of [...this._trackedWindows.keys()])
+            this._untrackWindow(win);
+    }
+
+    // A new window may not carry its wm_class or title yet when 'window-created'
+    // fires (on Wayland the app id arrives with a later commit), and it is not
+    // shown (mapped and placed) until the client commits its first buffer, so
+    // evaluate now and again when either property is set and when the window is
+    // shown. Handlers are dropped once the window matched, was unmanaged, or no
+    // waiter is left.
+    _onWindowCreated(win) {
+        const evaluate = () => {
+            if (this._evaluateWindow(win) || this._waiters.length === 0)
+                this._untrackWindow(win);
+        };
+        const ids = [
+            win.connect('notify::wm-class', evaluate),
+            win.connect('notify::title', evaluate),
+            win.connect('shown', evaluate),
+            win.connect('unmanaged', () => this._untrackWindow(win)),
+        ];
+        this._trackedWindows.set(win, ids);
+        evaluate();
+    }
+
+    _untrackWindow(win) {
+        const ids = this._trackedWindows.get(win);
+        if (!ids)
+            return;
+        for (const id of ids)
+            win.disconnect(id);
+        this._trackedWindows.delete(win);
+    }
+
+    // Reply to every waiter the window satisfies. Returns true if any did.
+    // An unshown window never satisfies a waiter (see _isUnshown).
+    _evaluateWindow(win) {
+        if (win.get_window_type() !== Meta.WindowType.NORMAL || this._isUnshown(win))
+            return false;
+        let matched = false;
+        for (const waiter of [...this._waiters]) {
+            if (waiter.predicate(win)) {
+                console.debug(`[Window Control] WaitForWindow -> ${win.get_id()} (window appeared)`);
+                this._finishWaiter(waiter, win.get_id());
+                matched = true;
+            }
+        }
+        return matched;
+    }
+
+    _finishWaiter(waiter, windowId) {
+        if (waiter.timeoutId) {
+            GLib.source_remove(waiter.timeoutId);
+            waiter.timeoutId = 0;
+        }
+        this._waiters = this._waiters.filter(w => w !== waiter);
+        waiter.invocation.return_value(new GLib.Variant('(t)', [windowId]));
+        if (this._waiters.length === 0)
+            this._stopWatching();
+    }
+
+    // Fail every pending WaitForWindow call and drop all signal handlers and
+    // timeout sources. Called from disable(); leaves nothing behind.
+    _cancelWaiters() {
+        const pending = this._waiters;
+        this._waiters = [];
+        for (const waiter of pending) {
+            if (waiter.timeoutId)
+                GLib.source_remove(waiter.timeoutId);
+            waiter.invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'Window Control extension disabled');
+        }
+        this._stopWatching();
+        if (pending.length > 0)
+            console.debug(`[Window Control] cancelled ${pending.length} pending WaitForWindow call(s)`);
+    }
+
     // Minimize: Minimize window
     Minimize(windowId) {
         return this._actOnWindow(windowId, 'Minimize', win => win.minimize());
@@ -537,6 +786,7 @@ class WindowControlService {
     }
 
     unexport() {
+        this._cancelWaiters();
         this._dbusImpl.unexport();
     }
 }
