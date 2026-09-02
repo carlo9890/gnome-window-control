@@ -27,6 +27,19 @@ pub fn report(ok: bool, success: &str, failure: impl Into<String>) -> Result<()>
     }
 }
 
+/// `report` for a failure message that costs something to build.
+///
+/// The geometry commands have to ask the extension why it refused, so the
+/// message must not be built on the success path.
+pub fn report_with(ok: bool, success: &str, failure: impl FnOnce() -> String) -> Result<()> {
+    if ok {
+        println!("{success}");
+        Ok(())
+    } else {
+        Err(Fail::plain(failure()))
+    }
+}
+
 pub fn not_found(id: u64) -> String {
     format!("Window not found: {id}")
 }

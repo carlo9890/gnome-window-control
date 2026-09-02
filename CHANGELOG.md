@@ -62,6 +62,24 @@
   (`wctl info <WINDOW> [--json]`).
 
 ### Fixed
+- `move`, `resize`, `move-resize`, `place`, `tile` and `center` no longer report
+  success when nothing moved. Mutter drops a frame geometry request on a fully
+  maximized or fullscreen window, but `Move`/`Resize`/`MoveResize` ran it anyway
+  and returned true, so `wctl` printed "Window moved" and exited 0 while the
+  window stayed put -- a caller could not detect it. The three handlers now
+  refuse a pinned frame, and `wctl` says which state is in the way and how to
+  clear it (`Window 123 is maximized; run 'wctl unmaximize 123' first`) instead
+  of the misleading "Window not found". A window maximized on only one axis is
+  untouched: it still honours the other axis, so refusing it would report a
+  failure that did not happen.
+- `wctl wait` no longer times out on a window that was created in the moment
+  before the call. `WaitForWindow` matched an existing window only if it was
+  already shown, and installed its tracking from `window-created` -- so a window
+  that had been created but had not yet committed its first buffer fell through
+  both and was never re-evaluated, and the wait ran to its timeout even though
+  the window appeared moments later. That is exactly the "launch, then wait"
+  case the command exists for. Such windows are now tracked when the waiter
+  registers.
 - WM classes no longer reach the journal. The v8 pass that removed window titles
   from the log left four lines that still interpolated a class: the three
   `ActivateByWmClass()` lines, where it is the caller-supplied match value, and

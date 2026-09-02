@@ -134,6 +134,17 @@ class WindowControlService {
         return Number.isInteger(value) && value >= 0 && value < count;
     }
 
+    // Helper: true when mutter will drop a frame geometry request outright.
+    // A fully maximized or fullscreen window is held at its constrained size:
+    // move_frame()/move_resize_frame() return without error and the frame does
+    // not move, so a handler that reports true would be claiming a move that
+    // never happened. Only the states that pin BOTH axes are refused here; a
+    // window maximized on one axis still honours the other, and refusing it
+    // would report a failure that did not occur.
+    _frameIsPinned(win) {
+        return win.is_fullscreen() || _isFullyMaximized(win);
+    }
+
     // Helper: Build the match predicate for a (kind, value) selector as used by
     // WaitForWindow. Returns null for an unknown kind or a non-numeric pid.
     _matchPredicate(kind, value) {
@@ -422,6 +433,10 @@ class WindowControlService {
             
             const win = this._findWindowById(windowId);
             if (win) {
+                if (this._frameIsPinned(win)) {
+                    console.debug(`[Window Control] Move(${windowId}) -> false (frame pinned)`);
+                    return false;
+                }
                 win.move_frame(true, x, y);
                 console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) -> true`);
                 return true;
@@ -448,6 +463,10 @@ class WindowControlService {
             
             const win = this._findWindowById(windowId);
             if (win) {
+                if (this._frameIsPinned(win)) {
+                    console.debug(`[Window Control] Resize(${windowId}) -> false (frame pinned)`);
+                    return false;
+                }
                 const rect = win.get_frame_rect();
                 win.move_resize_frame(true, rect.x, rect.y, width, height);
                 console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) -> true`);
@@ -477,6 +496,10 @@ class WindowControlService {
             
             const win = this._findWindowById(windowId);
             if (win) {
+                if (this._frameIsPinned(win)) {
+                    console.debug(`[Window Control] MoveResize(${windowId}) -> false (frame pinned)`);
+                    return false;
+                }
                 win.move_resize_frame(true, x, y, width, height);
                 console.debug(`[Window Control] MoveResize(${windowId}) -> true`);
                 return true;
@@ -641,6 +664,7 @@ class WindowControlService {
             });
             this._waiters.push(waiter);
             this._startWatching();
+            this._trackUnshownWindows();
         } catch (e) {
             console.error(`[Window Control] WaitForWindow() error: ${e.message}`);
             invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', e.message);
@@ -672,6 +696,10 @@ class WindowControlService {
     // shown. Handlers are dropped once the window matched, was unmanaged, or no
     // waiter is left.
     _onWindowCreated(win) {
+        this._trackWindow(win);
+    }
+
+    _trackWindow(win) {
         const evaluate = () => {
             if (this._evaluateWindow(win) || this._waiters.length === 0)
                 this._untrackWindow(win);
@@ -684,6 +712,20 @@ class WindowControlService {
         ];
         this._trackedWindows.set(win, ids);
         evaluate();
+    }
+
+    // Catch the window that was created in the gap before this waiter
+    // registered. 'window-created' has already fired for it, so _startWatching()
+    // will never see it, and _isUnshown() keeps it out of the immediate match --
+    // without this it is never re-evaluated and the wait times out even though
+    // the window appears a moment later. The predicate is not applied here: on
+    // Wayland the wm_class and title arrive after creation, so a window that
+    // cannot match yet may still match once 'notify::wm-class' fires.
+    _trackUnshownWindows() {
+        for (const win of this._getAllWindows()) {
+            if (this._isUnshown(win) && !this._trackedWindows.has(win))
+                this._trackWindow(win);
+        }
     }
 
     _untrackWindow(win) {

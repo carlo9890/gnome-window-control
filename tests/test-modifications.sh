@@ -274,6 +274,22 @@ wait_for_change
 maximized=$(get_window_field '.is_maximized')
 assert_equals "$maximized" "true" "maximize: Window should be maximized"
 
+# Test: a geometry command on a maximized window must refuse, not claim success.
+# mutter drops the frame request while the window is maximized; the extension
+# used to run it anyway and answer true, so wctl printed "Window moved" and
+# exited 0 while nothing moved.
+info "Testing: geometry refused while maximized"
+before_rect=$(get_window_field '.frame_rect | "\(.x),\(.y),\(.width),\(.height)"')
+# set -e is on, and this command is expected to fail, so capture the status
+# through || rather than letting the assignment abort the suite.
+pinned_status=0
+pinned_output=$("$WCTL" move "$TEST_WINDOW_ID" 100 100 2>&1) || pinned_status=$?
+assert_equals "$pinned_status" "1" "move while maximized: should exit 1"
+assert_contains "$pinned_output" "is maximized" "move while maximized: should say why"
+wait_for_change
+after_rect=$(get_window_field '.frame_rect | "\(.x),\(.y),\(.width),\(.height)"')
+assert_equals "$after_rect" "$before_rect" "move while maximized: geometry unchanged"
+
 # Test: unmaximize
 info "Testing: unmaximize"
 run_wctl unmaximize "$TEST_WINDOW_ID"

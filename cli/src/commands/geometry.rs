@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //! move, resize, move-resize, place, tile and center.
 
-use crate::commands::{not_found, report};
+use crate::commands::{not_found, report_with};
 use crate::fail::{Fail, Result};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
@@ -58,13 +58,34 @@ fn as_i32(value: i64) -> i32 {
     value.clamp(i32::MIN as i64, i32::MAX as i64) as i32
 }
 
+/// Why a geometry call came back `false`.
+///
+/// The extension answers `false` both for a window it cannot find and for one
+/// whose frame is pinned by maximize or fullscreen, and "Window not found" is
+/// wrong -- and unactionable -- in the second case. The window list is already
+/// cached whenever a selector or a workarea lookup ran, so this costs a call
+/// only for a bare numeric ID, and only on the failure path.
+fn geometry_failure(ctx: &mut Ctx, id: u64) -> String {
+    match ctx.window_by_id(id) {
+        Ok(window) => {
+            let (state, remedy) = if model::flag(&window, "is_fullscreen") {
+                ("fullscreen", "unfullscreen")
+            } else {
+                ("maximized", "unmaximize")
+            };
+            format!("Window {id} is {state}; run 'wctl {remedy} {id}' first")
+        }
+        Err(_) => not_found(id),
+    }
+}
+
 pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (id, shift) = selector::resolve(ctx, 2, "Usage: wctl move <WINDOW> <X> <Y>", args)?;
     let x = coordinate(&args[shift], "X")?;
     let y = coordinate(&args[shift + 1], "Y")?;
 
     let ok = ctx.bus.call_bool("Move", &(id, x, y))?;
-    report(ok, "Window moved", not_found(id))
+    report_with(ok, "Window moved", || geometry_failure(ctx, id))
 }
 
 pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -74,7 +95,7 @@ pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let height = extent(&args[shift + 1], "Height")?;
 
     let ok = ctx.bus.call_bool("Resize", &(id, width, height))?;
-    report(ok, "Window resized", not_found(id))
+    report_with(ok, "Window resized", || geometry_failure(ctx, id))
 }
 
 pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -88,7 +109,7 @@ pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let ok = ctx
         .bus
         .call_bool("MoveResize", &(id, x, y, width, height))?;
-    report(ok, "Window moved and resized", not_found(id))
+    report_with(ok, "Window moved and resized", || geometry_failure(ctx, id))
 }
 
 pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -111,7 +132,7 @@ pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         "MoveResize",
         &(id, as_i32(x), as_i32(y), as_i32(width), as_i32(height)),
     )?;
-    report(ok, "Window placed", not_found(id))
+    report_with(ok, "Window placed", || geometry_failure(ctx, id))
 }
 
 pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -133,7 +154,9 @@ pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             as_i32(cell.height),
         ),
     )?;
-    report(ok, &format!("Window tiled to {position}"), not_found(id))
+    report_with(ok, &format!("Window tiled to {position}"), || {
+        geometry_failure(ctx, id)
+    })
 }
 
 pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -174,5 +197,5 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
 
     let ok = ctx.bus.call_bool("Move", &(id, as_i32(x), as_i32(y)))?;
-    report(ok, message, not_found(id))
+    report_with(ok, message, || geometry_failure(ctx, id))
 }
