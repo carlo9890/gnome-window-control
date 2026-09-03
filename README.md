@@ -232,7 +232,7 @@ matching the message text:
 | 2 | The window, workspace or monitor does not exist |
 | 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, or the window is held on all workspaces |
 | 4 | Timed out waiting for a window, or for the shell to reply |
-| 5 | The Window Control extension is not running |
+| 5 | The extension is not usable: not running, or a version this `wctl` cannot rely on |
 
 Code 1 stays the catch-all it always was, so a script that only tests for a
 non-zero status is unaffected.
@@ -275,6 +275,37 @@ settles a few pixels off, so a comparison against it still needs a tolerance.
 
 `move`, `resize` and `move-resize` have no `--json`: they take literal pixels
 and resolve nothing to report.
+
+#### Waiting for the frame to settle
+
+A geometry request is applied asynchronously, and a client may resize itself
+again once it has been placed, so the frame can still be moving when `wctl`
+exits. `--settled` returns only once it has stopped:
+
+```bash
+wctl place focused center top 50% 100% --settled --json
+# ... "target":{...},"placed":true,"settled":true,"observed":{...}}
+```
+
+The shell watches its own `size-changed`/`position-changed` signals to decide
+this, which is the only place it can be decided: `get_frame_rect()` read right
+after a move still returns the old rect, so a client outside the shell can only
+sample and guess. It is still a quiet period rather than a promise — a client
+is free to resize itself again later. The window is placed either way; a frame
+that never settles exits 4 and still reports `"placed":true`.
+
+#### Checking the extension version
+
+```bash
+wctl version               # just this binary, no D-Bus call
+wctl version --json
+# {"wctl":"0.10.0","expects_extension":"10","extension":"10","compatible":true}
+```
+
+`--json` asks the **running shell** what it has loaded. That is the useful
+question: on Wayland an install lands on disk while the shell keeps serving the
+old code until you log out, so `metadata.json` can say 10 while the answer here
+is still 9. A mismatch exits 5.
 
 `wctl place` is a higher-level CLI convenience built on top of the existing
 geometry methods. X and Y accept either absolute pixel coordinates or
@@ -330,11 +361,12 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Focus` | `(t) -> b` | Focus window (without raising) |
 | `Close` | `(t) -> b` | Close window (polite) |
 | `GetFocused` | `() -> (tss)` | Get focused window (id, title, class) |
-| `Move` | `(tii) -> b` | Move window to (x, y) |
-| `Resize` | `(tii) -> b` | Resize window to (width, height) |
-| `MoveResize` | `(tiiii) -> b` | Move and resize window |
+| `Move` | `(tii) -> ()` | Move window to (x, y). Raises on failure — see **Errors** below |
+| `Resize` | `(tii) -> ()` | Resize window to (width, height). Raises on failure |
+| `MoveResize` | `(tiiii) -> ()` | Move and resize window. Raises on failure |
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
 | `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area |
+| `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |
 | `Minimize` | `(t) -> b` | Minimize window |
 | `Unminimize` | `(t) -> b` | Restore minimized window |
 | `Maximize` | `(t) -> b` | Maximize window |
@@ -348,6 +380,27 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
 | `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
 | `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked. |
+| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms`, up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked. |
+
+### Errors
+
+`Move`, `Resize` and `MoveResize` return nothing and raise instead. A boolean
+could not say *which* failure happened, and a client outside the shell cannot
+work it out for itself: it can read `is_maximized` and `is_fullscreen`, but
+mutter exposes no tiled predicate at all.
+
+| Error name | Meaning |
+|------------|---------|
+| `org.gnome.Shell.Extensions.WindowControl.NotFound` | No window has that ID (also `WaitForGeometry`, if the window closes while waiting) |
+| `org.gnome.Shell.Extensions.WindowControl.Refused` | The frame is pinned by fullscreen, maximize or tiling — the message names which |
+| `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
+| `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending |
+| `org.freedesktop.DBus.Error.InvalidArgs` | An argument was not a finite number, or a size was not positive |
+
+**Breaking change in extension version 10.** Before it, those three methods
+returned `b success`. A client written against the old signature cannot parse
+the new reply, so extension and `wctl` must be upgraded together — which is what
+`wctl version --json` checks.
 
 ## Security model
 

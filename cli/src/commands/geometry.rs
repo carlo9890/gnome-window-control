@@ -1,11 +1,20 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 //! move, resize, move-resize, place, tile, center and resolve-place.
+//!
+//! The four geometry methods raise a NAMED D-Bus error instead of answering
+//! false, so there is no failure to diagnose here any more: `dbus::map_err`
+//! turns the name straight into the right message and exit code. What this
+//! module used to do -- refetch the window and guess which state was in the way
+//! -- is gone, and with it the guess it could never get right for a tiled
+//! window.
+
+use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::commands::{not_found, primary_monitor, report_with, workarea_of};
-use crate::fail::{Fail, Result, EXIT_REFUSED};
+use crate::commands::{primary_monitor, workarea_of};
+use crate::fail::{Fail, Result, EXIT_TIMEOUT};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -16,7 +25,9 @@ WIDTH:  positive number or percentage like 50%
 HEIGHT: positive number or percentage like 100%";
 
 fn place_usage() -> String {
-    format!("Usage: wctl place <WINDOW> <X> <Y> <WIDTH> <HEIGHT> [--json]\n{PLACE_TOKENS}")
+    format!(
+        "Usage: wctl place <WINDOW> <X> <Y> <WIDTH> <HEIGHT> [--json] [--settled]\n{PLACE_TOKENS}"
+    )
 }
 
 fn resolve_place_usage() -> String {
@@ -26,7 +37,7 @@ fn resolve_place_usage() -> String {
 }
 
 fn tile_usage() -> String {
-    format!("Usage: wctl tile <WINDOW> <position>\n{TILE_USAGE}")
+    format!("Usage: wctl tile <WINDOW> <position> [--json] [--settled]\n{TILE_USAGE}")
 }
 
 /// Parse a signed pixel coordinate.
@@ -55,44 +66,6 @@ fn extent(token: &str, label: &str) -> Result<i32> {
 
 fn as_i32(value: i64) -> i32 {
     value.clamp(i32::MIN as i64, i32::MAX as i64) as i32
-}
-
-/// Why a geometry call came back `false`.
-///
-/// The extension answers `false` for a window it cannot find and for one whose
-/// frame is pinned by maximize or fullscreen, and "Window not found" is wrong
-/// and unactionable in the second case.
-///
-/// Every state named here is READ, never assumed: the window may also have gone
-/// away between the call and now, or the handler may have failed for a reason
-/// this client cannot see, and claiming "is maximized" for those would send the
-/// caller after a state that is not there. The cache is dropped first because it
-/// was filled before the failing call, so it can no longer describe the window.
-/// That refetch happens only on the failure path.
-fn geometry_failure(ctx: &mut Ctx, id: u64) -> Fail {
-    ctx.invalidate_windows();
-    let Ok(window) = ctx.window_by_id(id) else {
-        return not_found(id);
-    };
-    let refused = |message: String| Fail::plain(message).with_code(EXIT_REFUSED);
-    if model::flag(&window, "is_fullscreen") {
-        return refused(format!(
-            "Window {id} is fullscreen; run 'wctl unfullscreen {id}' first"
-        ));
-    }
-    if model::flag(&window, "is_maximized") {
-        return refused(format!(
-            "Window {id} is maximized; run 'wctl unmaximize {id}' first"
-        ));
-    }
-    // Tiled windows report neither flag in ListDetailed (is_maximized is only
-    // true for BOTH axes) but are still refused by the extension, and so is a
-    // window whose handler threw. Say what is known rather than inventing a
-    // state. EXIT_REFUSED is still right for both: the window is there and did
-    // not move, which is the distinction the code exists to draw.
-    refused(format!(
-        "Window {id} could not be moved; it may be tiled or maximized"
-    ))
 }
 
 fn rect_json(rect: Rect) -> Value {
@@ -139,8 +112,14 @@ impl Placement {
         println!("Size:      {} x {}", self.target.width, self.target.height);
     }
 
-    /// The document a geometry command emits under `--json`, on either outcome.
-    fn outcome(&self, id: u64, placed: bool, message: Option<&str>) -> Value {
+    /// The document a geometry command emits under `--json`, on any outcome.
+    fn outcome(
+        &self,
+        id: u64,
+        placed: bool,
+        settle: Option<Settle>,
+        message: Option<&str>,
+    ) -> Value {
         let mut doc = serde_json::json!({
             "window_id": id,
             "monitor_index": self.monitor_index,
@@ -148,6 +127,17 @@ impl Placement {
             "target": rect_json(self.target),
             "placed": placed,
         });
+        // The settle fields appear only with --settled, so a caller can tell
+        // "the frame did not settle" from "nobody waited for it to".
+        if let Some(settle) = settle {
+            match settle {
+                Settle::Observed(rect) => {
+                    doc["settled"] = Value::Bool(true);
+                    doc["observed"] = rect_json(rect);
+                }
+                Settle::Unsettled => doc["settled"] = Value::Bool(false),
+            }
+        }
         if let Some(message) = message {
             doc["message"] = Value::String(message.to_string());
         }
@@ -155,44 +145,130 @@ impl Placement {
     }
 }
 
+/// The outcome of a `--settled` wait.
+#[derive(Clone, Copy)]
+enum Settle {
+    /// The frame stopped changing, and this is where it stopped.
+    Observed(Rect),
+    /// It was still moving when the wait gave up.
+    Unsettled,
+}
+
+/// How long a frame must hold still before `--settled` calls it settled.
+///
+/// Measured, not guessed: across eight fresh kitty launches placed immediately
+/// after `wctl wait`, the largest gap between two consecutive frame changes was
+/// 16 ms (typically 5-7 ms). A quiet period has to outlast that gap or it would
+/// report "settled" mid-move, so this is roughly nine times the worst observed
+/// case. The signals do the watching, so a generous value costs only latency on
+/// the last placement, not round trips.
+const SETTLE_QUIET_MS: i32 = 150;
+
+/// How long `--settled` waits in total before giving up. A client that keeps
+/// resizing itself past this is not going to settle.
+const SETTLE_TIMEOUT_MS: i32 = 2000;
+
+/// Seconds the client waits beyond the extension's own settle timeout, as a
+/// guard against a shell that never replies at all. Same role as `wait`'s.
+const SETTLE_GRACE_SECONDS: u64 = 5;
+
+/// Wait for the frame to stop changing, after a placement was applied.
+///
+/// A failure to SETTLE is not a failure to place: the window did move. So the
+/// caller is told both, and the exit code reports the settle timeout.
+fn settle(ctx: &mut Ctx, id: u64) -> Result<Rect> {
+    let bound =
+        Duration::from_millis(SETTLE_TIMEOUT_MS as u64) + Duration::from_secs(SETTLE_GRACE_SECONDS);
+    let (x, y, width, height) =
+        ctx.bus
+            .wait_for_geometry(id, SETTLE_QUIET_MS, SETTLE_TIMEOUT_MS, bound)?;
+    Ok(Rect {
+        x: x as i64,
+        y: y as i64,
+        width: width as i64,
+        height: height as i64,
+    })
+}
+
 /// Report a geometry command that resolved a rectangle first.
 ///
-/// Under `--json` stdout carries a document on BOTH outcomes, so a caller never
+/// Under `--json` stdout carries a document on EVERY outcome, so a caller never
 /// has to parse an English sentence off the same stream; the exit code still
 /// classifies the failure. Without it, nothing about the existing output moves.
 fn report_placement(
     ctx: &mut Ctx,
     id: u64,
     placement: &Placement,
-    ok: bool,
+    applied: Result<()>,
+    settled: bool,
     success: &str,
     json_output: bool,
 ) -> Result<()> {
-    if !json_output {
-        return report_with(ok, success, || geometry_failure(ctx, id));
+    // The placement itself failed: the extension named the reason, so there is
+    // nothing to work out here.
+    if let Err(failure) = applied {
+        if !json_output {
+            return Err(failure);
+        }
+        let document = placement.outcome(id, false, None, Some(&failure.to_string()));
+        return Err(Fail::plain(document.to_string()).with_code(failure.code()));
     }
-    if ok {
-        println!("{}", placement.outcome(id, true, None));
+
+    if !settled {
+        if json_output {
+            println!("{}", placement.outcome(id, true, None, None));
+        } else {
+            println!("{success}");
+        }
         return Ok(());
     }
-    let failure = geometry_failure(ctx, id);
-    let document = placement.outcome(id, false, Some(&failure.to_string()));
-    Err(Fail::plain(document.to_string()).with_code(failure.code()))
+
+    match settle(ctx, id) {
+        Ok(observed) => {
+            if json_output {
+                println!(
+                    "{}",
+                    placement.outcome(id, true, Some(Settle::Observed(observed)), None)
+                );
+            } else {
+                println!("{success}");
+                println!(
+                    "Settled:   {}, {} ({} x {})",
+                    observed.x, observed.y, observed.width, observed.height
+                );
+            }
+            Ok(())
+        }
+        Err(failure) => {
+            // Placed, but still moving. Say both.
+            if !json_output {
+                return Err(failure);
+            }
+            let document = placement.outcome(
+                id,
+                true,
+                Some(Settle::Unsettled),
+                Some(&failure.to_string()),
+            );
+            Err(Fail::plain(document.to_string()).with_code(EXIT_TIMEOUT))
+        }
+    }
 }
 
-/// Split `--json` out of an argument list.
+/// Split the flags that may appear anywhere out of an argument list.
 ///
-/// The `<WINDOW>` slot shifts every positional after it, so the flag has to be
-/// removed before the selector resolver runs. `info` set the precedent: it is
-/// accepted on either side of the selector.
-fn take_json_flag(args: &[String]) -> (bool, Vec<String>) {
+/// The `<WINDOW>` slot shifts every positional after it, so these have to be
+/// removed before the selector resolver runs. `info` set the precedent: a flag
+/// is accepted on either side of the selector.
+fn take_output_flags(args: &[String]) -> (bool, bool, Vec<String>) {
     let json_output = args.iter().any(|arg| arg == "--json");
+    let settled = args.iter().any(|arg| arg == "--settled");
     let rest = args
         .iter()
-        .filter(|arg| *arg != "--json")
+        .filter(|arg| *arg != "--json" && *arg != "--settled")
         .cloned()
         .collect();
-    (json_output, rest)
+    (json_output, settled, rest)
 }
 
 pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -200,8 +276,9 @@ pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let x = coordinate(&args[shift], "X")?;
     let y = coordinate(&args[shift + 1], "Y")?;
 
-    let ok = ctx.bus.call_bool("Move", &(id, x, y))?;
-    report_with(ok, "Window moved", || geometry_failure(ctx, id))
+    ctx.bus.call_unit("Move", &(id, x, y))?;
+    println!("Window moved");
+    Ok(())
 }
 
 pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -210,8 +287,9 @@ pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let width = extent(&args[shift], "Width")?;
     let height = extent(&args[shift + 1], "Height")?;
 
-    let ok = ctx.bus.call_bool("Resize", &(id, width, height))?;
-    report_with(ok, "Window resized", || geometry_failure(ctx, id))
+    ctx.bus.call_unit("Resize", &(id, width, height))?;
+    println!("Window resized");
+    Ok(())
 }
 
 pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -222,15 +300,15 @@ pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let width = extent(&args[shift + 2], "Width")?;
     let height = extent(&args[shift + 3], "Height")?;
 
-    let ok = ctx
-        .bus
-        .call_bool("MoveResize", &(id, x, y, width, height))?;
-    report_with(ok, "Window moved and resized", || geometry_failure(ctx, id))
+    ctx.bus
+        .call_unit("MoveResize", &(id, x, y, width, height))?;
+    println!("Window moved and resized");
+    Ok(())
 }
 
 pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = place_usage();
-    let (json_output, args) = take_json_flag(args);
+    let (json_output, settled, args) = take_output_flags(args);
     let (id, shift) = selector::resolve(ctx, 4, &usage, &args)?;
     let rest = &args[shift..];
     if rest.len() != 4 {
@@ -242,7 +320,7 @@ pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let workarea = workarea_of(ctx, monitor_index)?;
     let target = geometry::resolve_place_rect([&rest[0], &rest[1], &rest[2], &rest[3]], workarea)?;
 
-    let ok = ctx.bus.call_bool(
+    let applied = ctx.bus.call_unit(
         "MoveResize",
         &(
             id,
@@ -251,13 +329,21 @@ pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             as_i32(target.width),
             as_i32(target.height),
         ),
-    )?;
+    );
     let placement = Placement {
         monitor_index,
         workarea,
         target,
     };
-    report_placement(ctx, id, &placement, ok, "Window placed", json_output)
+    report_placement(
+        ctx,
+        id,
+        &placement,
+        applied,
+        settled,
+        "Window placed",
+        json_output,
+    )
 }
 
 /// Resolve a placement without applying it, and without a window.
@@ -329,7 +415,7 @@ pub fn resolve_place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = tile_usage();
-    let (json_output, args) = take_json_flag(args);
+    let (json_output, settled, args) = take_output_flags(args);
     let (id, shift) = selector::resolve(ctx, 1, &usage, &args)?;
     let position = args[shift].clone();
 
@@ -338,7 +424,7 @@ pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let workarea = workarea_of(ctx, monitor_index)?;
     let target = geometry::resolve_tile_geometry(&position, workarea)?;
 
-    let ok = ctx.bus.call_bool(
+    let applied = ctx.bus.call_unit(
         "MoveResize",
         &(
             id,
@@ -347,7 +433,7 @@ pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             as_i32(target.width),
             as_i32(target.height),
         ),
-    )?;
+    );
     let placement = Placement {
         monitor_index,
         workarea,
@@ -357,15 +443,16 @@ pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         ctx,
         id,
         &placement,
-        ok,
+        applied,
+        settled,
         &format!("Window tiled to {position}"),
         json_output,
     )
 }
 
 pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-    let usage = "Usage: wctl center <WINDOW> [horizontal|vertical|both] [--json]";
-    let (json_output, args) = take_json_flag(args);
+    let usage = "Usage: wctl center <WINDOW> [horizontal|vertical|both] [--json] [--settled]";
+    let (json_output, settled, args) = take_output_flags(args);
     let (id, shift) = selector::resolve(ctx, 0, usage, &args)?;
     let axis = args.get(shift).map(String::as_str).unwrap_or("both");
 
@@ -402,7 +489,7 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         )?;
     }
 
-    let ok = ctx.bus.call_bool("Move", &(id, as_i32(x), as_i32(y)))?;
+    let applied = ctx.bus.call_unit("Move", &(id, as_i32(x), as_i32(y)));
     let placement = Placement {
         monitor_index,
         workarea,
@@ -414,5 +501,5 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             height: win_h,
         },
     };
-    report_placement(ctx, id, &placement, ok, message, json_output)
+    report_placement(ctx, id, &placement, applied, settled, message, json_output)
 }

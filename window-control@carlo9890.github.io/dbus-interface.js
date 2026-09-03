@@ -117,33 +117,53 @@ export const DBUS_INTERFACE_XML = `
     <!-- Geometry Methods -->
 
     <!--
+      ERRORS RAISED BY THE GEOMETRY METHODS
+
+      Move, Resize and MoveResize do not return a success flag. They complete,
+      or they raise one of the names below, because a bare boolean could not say
+      WHICH failure happened and every caller had to guess it back by refetching
+      the window and reading its flags -- a guess that cannot see tiling at all.
+
+        org.gnome.Shell.Extensions.WindowControl.NotFound
+            no window has that id
+        org.gnome.Shell.Extensions.WindowControl.Refused
+            the window exists and mutter will drop the request: the frame is
+            pinned by fullscreen, maximize or tiling. The message names which.
+        org.freedesktop.DBus.Error.InvalidArgs
+            an argument was not a finite number, or a size was not positive
+        org.freedesktop.DBus.Error.Failed
+            the handler raised something unexpected
+
+      BREAKING: before extension version 10 these three returned 'b success'.
+      A client written against the old signature fails to parse the reply.
+    -->
+
+    <!--
       Move: Move window to position
       Args: t - window ID, i - x, i - y
-      Returns: b - success
+      Returns: nothing; raises on failure (see ERRORS above)
     -->
     <method name="Move">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="in" name="x"/>
       <arg type="i" direction="in" name="y"/>
-      <arg type="b" direction="out" name="success"/>
     </method>
 
     <!--
       Resize: Resize window
       Args: t - window ID, i - width, i - height
-      Returns: b - success
+      Returns: nothing; raises on failure (see ERRORS above)
     -->
     <method name="Resize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="in" name="width"/>
       <arg type="i" direction="in" name="height"/>
-      <arg type="b" direction="out" name="success"/>
     </method>
 
     <!--
       MoveResize: Move and resize window atomically
       Args: t - window ID, i - x, i - y, i - width, i - height
-      Returns: b - success
+      Returns: nothing; raises on failure (see ERRORS above)
     -->
     <method name="MoveResize">
       <arg type="t" direction="in" name="window_id"/>
@@ -151,7 +171,6 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="in" name="y"/>
       <arg type="i" direction="in" name="width"/>
       <arg type="i" direction="in" name="height"/>
-      <arg type="b" direction="out" name="success"/>
     </method>
 
     <!--
@@ -167,6 +186,17 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="out" name="height"/>
     </method>
 
+
+    <!--
+      GetVersion: The extension version, as loaded by the running shell
+      Returns: s - the integer 'version' from metadata.json, as a string
+      This is the number the SHELL is running, which is what makes it useful:
+      metadata.json on disk can already be a newer version that the shell has
+      not loaded, and on Wayland it stays that way until the user logs out.
+    -->
+    <method name="GetVersion">
+      <arg type="s" direction="out" name="version"/>
+    </method>
 
     <!--
       GetWorkarea: Get usable workspace area for a monitor
@@ -339,6 +369,35 @@ export const DBUS_INTERFACE_XML = `
       <arg type="s" direction="in" name="value"/>
       <arg type="i" direction="in" name="timeout_ms"/>
       <arg type="t" direction="out" name="window_id"/>
+    </method>
+
+    <!--
+      WaitForGeometry: Block until a window's frame has stopped changing
+      Args: t - window ID
+            i - quiet_ms: how long the frame must hold still (> 0)
+            i - timeout_ms: give up after this (>= quiet_ms)
+      Returns: (iiii) - the settled frame rect
+      The reply is deferred until size-changed and position-changed have both
+      been silent for quiet_ms, then carries the frame as it then stands. Only
+      the compositor can do this: move_resize_frame() is asynchronous and
+      get_frame_rect() read straight after it still returns the OLD rect, so a
+      client outside the shell can only sample and guess. Watching the signals
+      replaces that guess with the compositor's own account -- but "stopped
+      changing" is still a quiet period, not a promise: a client is free to
+      resize itself again later.
+      Raises WindowControl.NotFound if the window does not exist or closes
+      while waiting, WindowControl.Timeout if the frame never settles,
+      org.freedesktop.DBus.Error.InvalidArgs for bad arguments, and
+      WindowControl.Disabled if the extension is disabled while pending.
+    -->
+    <method name="WaitForGeometry">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="i" direction="in" name="quiet_ms"/>
+      <arg type="i" direction="in" name="timeout_ms"/>
+      <arg type="i" direction="out" name="x"/>
+      <arg type="i" direction="out" name="y"/>
+      <arg type="i" direction="out" name="width"/>
+      <arg type="i" direction="out" name="height"/>
     </method>
   </interface>
 </node>

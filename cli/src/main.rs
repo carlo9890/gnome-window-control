@@ -27,12 +27,21 @@ use model::Ctx;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The extension version this build expects the shell to have loaded.
+///
+/// `scripts/release.sh` refuses to run unless `cli/Cargo.toml` is `0.<N>.0`
+/// where N is the integer `version` in the extension's `metadata.json`. That
+/// makes wctl's MINOR version the extension version it was built against --
+/// until now an implicit convention, and what `wctl version --json` now
+/// asserts as `compatible`.
+pub const EXPECTED_EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION_MINOR");
+
 /// Every command wctl dispatches, in the order the help text introduces them.
 ///
 /// The help text and both completion scripts are authored by hand, so a unit
 /// test cross-checks all three against this list. Adding a command means adding
 /// it here.
-pub const COMMANDS: [&str; 30] = [
+pub const COMMANDS: [&str; 31] = [
     "list",
     "focused",
     "info",
@@ -61,6 +70,7 @@ pub const COMMANDS: [&str; 30] = [
     "above",
     "sticky",
     "close",
+    "version",
     "help",
     "completion",
 ];
@@ -158,7 +168,11 @@ fn run(args: &[String]) -> Result<()> {
             print!("{}", help::text());
             return Ok(());
         }
-        "version" | "--version" | "-v" => {
+        // The bare form must stay headless -- the guard tests pin that it
+        // needs no bus. `version --json` asks the SHELL what it loaded, which
+        // is the whole point of it, so that form falls through to the dispatch
+        // below where a connection exists.
+        "version" | "--version" | "-v" if rest.is_empty() => {
             println!("wctl {VERSION}");
             return Ok(());
         }
@@ -174,6 +188,7 @@ fn run(args: &[String]) -> Result<()> {
         "workspaces" => query::workspaces(&mut ctx, rest),
         "monitors" => query::monitors(&mut ctx, rest),
         "workarea" => query::workarea(&mut ctx, rest),
+        "version" | "--version" | "-v" => query::version(&mut ctx, rest),
 
         "activate" => state::activate(&mut ctx, rest),
         "focus" => state::focus(&mut ctx, rest),

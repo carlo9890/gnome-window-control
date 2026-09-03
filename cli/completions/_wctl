@@ -67,6 +67,7 @@ _wctl() {
         'above:Set always-on-top state'
         'sticky:Set sticky (all workspaces) state'
         'close:Close window'
+        'version:Show wctl and loaded extension versions'
         'help:Show help message'
         'completion:Output shell completion script'
     )
@@ -89,7 +90,7 @@ _wctl() {
                         '--monitor[Only windows on this monitor]:index:' \
                         '--class[Only windows with this WM class]:class:'
                     ;;
-                focused|workspaces|monitors)
+                focused|workspaces|monitors|version)
                     _arguments '--json[Output as JSON]'
                     ;;
                 workarea)
@@ -161,7 +162,8 @@ _wctl() {
                         '3:y position or keyword:(top center bottom)' \
                         '4:width or percentage:' \
                         '5:height or percentage:' \
-                        '--json[Output as JSON]'
+                        '--json[Output as JSON]' \
+                        '--settled[Return only once the frame stops changing]'
                     ;;
                 resolve-place)
                     _arguments \
@@ -176,13 +178,15 @@ _wctl() {
                     _arguments "${_wctl_selector_opts[@]}" \
                         '1:window:_wctl_window_ids' \
                         '2:position:(top-left top-center top-right left center right bottom-left bottom-center bottom-right)' \
-                        '--json[Output as JSON]'
+                        '--json[Output as JSON]' \
+                        '--settled[Return only once the frame stops changing]'
                     ;;
                 center)
                     _arguments "${_wctl_selector_opts[@]}" \
                         '1:window:_wctl_window_ids' \
                         '2:axis:(horizontal vertical both)' \
-                        '--json[Output as JSON]'
+                        '--json[Output as JSON]' \
+                        '--settled[Return only once the frame stops changing]'
                     ;;
                 above|sticky)
                     _arguments "${_wctl_selector_opts[@]}" \
