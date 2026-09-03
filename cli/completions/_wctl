@@ -70,6 +70,7 @@ _wctl() {
     )
 
     _arguments -C \
+        '--timeout[Seconds to wait for GNOME Shell to reply (default 25)]:seconds:' \
         '1:command:->command' \
         '*::args:->args'
 

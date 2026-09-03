@@ -8,6 +8,7 @@
 //! would have to mirror every field to round-trip it.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -60,9 +61,9 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn new() -> Self {
+    pub fn new(timeout: Duration) -> Self {
         Ctx {
-            bus: Bus::new(),
+            bus: Bus::new(timeout),
             windows: None,
         }
     }

@@ -22,13 +22,16 @@ pub const IFACE: &str = "org.gnome.Shell.Extensions.WindowControl";
 
 const NOT_RUNNING: &str = "Window Control extension is not running. Enable it in GNOME Extensions.";
 
-/// Reply timeout for every method call except `wait`, which sets its own.
+/// Default reply timeout for every method call except `wait`, which sets its
+/// own.
 ///
 /// zbus defaults to no timeout at all, so a shell that is on the bus but whose
 /// main loop is wedged would hang wctl forever. The bash client inherited 25 s
 /// from both gdbus and busctl, and a hang is worse than an error here: these
-/// commands run from keybindings and scripts.
-const METHOD_TIMEOUT: Duration = Duration::from_secs(25);
+/// commands run from keybindings and scripts. 25 s is right for a batch script
+/// and far too long for a keybinding, so `--timeout`/`WCTL_TIMEOUT` overrides
+/// it (see `main::global_options`).
+pub const DEFAULT_TIMEOUT_SECONDS: u64 = 25;
 
 /// Classify a failed call as "the extension is not running".
 ///
@@ -82,10 +85,6 @@ fn map_err(err: zbus::Error) -> Fail {
     }
 }
 
-fn connect() -> Result<Connection> {
-    session_connection(METHOD_TIMEOUT)
-}
-
 /// A session connection whose method calls give up after `timeout`.
 fn session_connection(timeout: Duration) -> Result<Connection> {
     Builder::session()
@@ -99,21 +98,26 @@ fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
     Proxy::new(conn, DEST, PATH, IFACE).map_err(map_err)
 }
 
-#[derive(Default)]
 pub struct Bus {
     conn: OnceCell<Connection>,
+    /// How long a method call waits for the shell to reply. Stored rather than
+    /// applied at construction, because the connection is opened lazily.
+    timeout: Duration,
 }
 
 impl Bus {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(timeout: Duration) -> Self {
+        Bus {
+            conn: OnceCell::new(),
+            timeout,
+        }
     }
 
     fn conn(&self) -> Result<&Connection> {
         if let Some(conn) = self.conn.get() {
             return Ok(conn);
         }
-        let conn = connect()?;
+        let conn = session_connection(self.timeout)?;
         // set() cannot fail: get() above returned None and we are single threaded.
         let _ = self.conn.set(conn);
         Ok(self.conn.get().expect("connection was just stored"))
@@ -157,8 +161,9 @@ impl Bus {
     /// expires. The client bound is only a guard against a shell that never
     /// replies at all, which is what the bash client bought with gdbus
     /// `--timeout`. This call gets its OWN connection, because the shared one
-    /// gives up after METHOD_TIMEOUT and a `wait --timeout 60` is entitled to
-    /// block far longer than that.
+    /// gives up after the reply timeout and a `wait --timeout 60` is entitled
+    /// to block far longer than that. The global `--timeout` therefore does not
+    /// shorten a wait.
     pub fn wait_for_window(
         &self,
         kind: &str,

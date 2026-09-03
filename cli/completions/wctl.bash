@@ -19,18 +19,31 @@ _wctl() {
 
     local commands="list focused info workspaces monitors activate focus wait move resize move-resize place tile center workspace move-to-workspace move-to-monitor minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
 
-    # Complete command names
-    if [[ $cword -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+    # A global option before the command shifts every position right.
+    local off=0
+    [[ "${words[1]:-}" == "--timeout" ]] && off=2
+
+    # Complete command names, plus the global options that may precede them.
+    if [[ $cword -eq $((1 + off)) ]]; then
+        COMPREPLY=($(compgen -W "$commands --timeout" -- "$cur"))
         return
     fi
 
-    local cmd="${words[1]}"
+    # The --timeout value is a number; there is nothing to offer.
+    [[ $off -eq 2 && $cword -eq 2 ]] && return
 
-    # A -c/-t/-s/-p selector occupies two words, so the arguments after the
-    # <WINDOW> slot sit one position further right.
-    local pos=$cword
-    [[ "${words[2]:-}" == -[ctsp] ]] && pos=$((cword - 1))
+    local cmd="${words[$((1 + off))]}"
+
+    # Position of the word being completed, counted from the command: slot 2 is
+    # the <WINDOW> slot for every command that takes one.
+    local slot=$((cword - off))
+
+    # A -c/-t/-s/-p selector occupies two words, so the arguments AFTER the
+    # <WINDOW> slot sit one position further right. The <WINDOW> slot itself
+    # still uses `slot`, because the selector option is the word being typed
+    # there and shifting on it would offer nothing at all.
+    local pos=$slot
+    [[ "${words[$((2 + off))]:-}" == -[ctsp] ]] && pos=$((slot - 1))
 
     case "$cmd" in
         list)
@@ -40,14 +53,14 @@ _wctl() {
             COMPREPLY=($(compgen -W "--json" -- "$cur"))
             ;;
         info)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "--json" -- "$cur"))
             fi
             ;;
         place)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "left center right" -- "$cur"))
@@ -56,21 +69,21 @@ _wctl() {
             fi
             ;;
         tile)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "top-left top-center top-right left center right bottom-left bottom-center bottom-right" -- "$cur"))
             fi
             ;;
         center)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "horizontal vertical both" -- "$cur"))
             fi
             ;;
         activate)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then
                     COMPREPLY=($(compgen -W "-t -s -c -p" -- "$cur"))
                 else
@@ -82,19 +95,19 @@ _wctl() {
             COMPREPLY=($(compgen -W "-c -t -s -p --timeout" -- "$cur"))
             ;;
         above|sticky)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "on off" -- "$cur"))
             fi
             ;;
         completion)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "bash zsh" -- "$cur"))
             fi
             ;;
         focus|move|resize|move-resize|move-to-workspace|move-to-monitor|minimize|unminimize|maximize|unmaximize|fullscreen|unfullscreen|close)
-            if [[ $cword -eq 2 ]]; then
+            if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             fi
             ;;

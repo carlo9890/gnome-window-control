@@ -200,6 +200,20 @@ wctl --help
 (useful for run-or-raise scripts). Every other command requires the selector to
 be unambiguous.
 
+#### Global options
+
+```bash
+# Bound how long a call waits for GNOME Shell to reply. The default is 25 s,
+# which is right for a batch script and far too long for a keybinding.
+wctl --timeout 2 place focused center top 50% 100%
+
+# Or set it once for a whole script.
+export WCTL_TIMEOUT=2
+```
+
+`--timeout` must come before the command, and it does not change how long
+`wctl wait` waits for a window -- that is `wait --timeout`.
+
 #### Exit codes
 
 A failing `wctl` classifies itself, so a script can tell the cases apart without

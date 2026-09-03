@@ -39,6 +39,8 @@ assert_contains "$WCTL_OUTPUT" "ACTIVATION COMMANDS:" "Help contains ACTIVATION 
 assert_contains "$WCTL_OUTPUT" "GEOMETRY COMMANDS:" "Help contains GEOMETRY COMMANDS section"
 assert_contains "$WCTL_OUTPUT" "STATE COMMANDS:" "Help contains STATE COMMANDS section"
 assert_contains "$WCTL_OUTPUT" "EXAMPLES:" "Help contains EXAMPLES section"
+assert_contains "$WCTL_OUTPUT" "GLOBAL OPTIONS:" "Help contains GLOBAL OPTIONS section"
+assert_contains "$WCTL_OUTPUT" "--timeout <SECONDS>" "Help documents the global --timeout"
 assert_contains "$WCTL_OUTPUT" "EXIT CODES:" "Help contains EXIT CODES section"
 assert_contains "$WCTL_OUTPUT" "ENVIRONMENT:" "Help contains ENVIRONMENT section"
 

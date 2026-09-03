@@ -10,7 +10,14 @@
 const HELP: &str = r#"wctl {VERSION} - Window Control CLI
 
 USAGE:
-    wctl <COMMAND> [OPTIONS]
+    wctl [GLOBAL OPTIONS] <COMMAND> [OPTIONS]
+
+GLOBAL OPTIONS:
+    --timeout <SECONDS>   How long to wait for GNOME Shell to reply
+                          (default 25, or $WCTL_TIMEOUT). Must come before
+                          the command. This is NOT how long `wctl wait`
+                          waits for a window -- that is `wait --timeout`,
+                          and a global timeout does not shorten it.
 
 WINDOW SELECTOR:
     Every command that takes a <WINDOW> accepts one of:
@@ -124,6 +131,10 @@ EXIT CODES:
 
 ENVIRONMENT:
     The Window Control GNOME Shell extension must be enabled.
+
+    WCTL_TIMEOUT   Reply timeout in seconds, as for --timeout, which
+                   overrides it. Set it once for a script that must not
+                   stall on a wedged shell.
 
 "#;
 
