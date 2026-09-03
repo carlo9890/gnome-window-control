@@ -12,7 +12,35 @@ import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
+const DBUS_ERROR_NOT_FOUND = 'org.gnome.Shell.Extensions.WindowControl.NotFound';
+const DBUS_ERROR_REFUSED = 'org.gnome.Shell.Extensions.WindowControl.Refused';
+const DBUS_ERROR_TIMEOUT = 'org.gnome.Shell.Extensions.WindowControl.Timeout';
 const DBUS_ERROR_INVALID_ARGS = 'org.freedesktop.DBus.Error.InvalidArgs';
+const DBUS_ERROR_FAILED = 'org.freedesktop.DBus.Error.Failed';
+
+// A failure that must reach the caller as a specific D-Bus error NAME.
+//
+// Throwing a GLib.Error does not work for this. GJS answers a thrown GLib.Error
+// with g_dbus_method_invocation_return_gerror(), and an error whose domain is
+// not registered goes on the wire as
+// org.gtk.GDBus.UnmappedGError.Quark._g_2dio_2derror_2dquark.Code36 with the
+// real name buried in the message text (measured against GNOME 46) -- so no
+// caller can switch on it, which is the entire point. The handlers therefore
+// catch this and answer with return_dbus_error(), which sends the name itself.
+class NamedError extends Error {
+    constructor(name, message) {
+        super(message);
+        this.dbusName = name;
+    }
+}
+
+function _areFiniteNumbers(values) {
+    return values.every(v => typeof v === 'number' && Number.isFinite(v));
+}
+
+function _arePositiveNumbers(values) {
+    return _areFiniteNumbers(values) && values.every(v => v > 0);
+}
 
 // Window type enum to string mapping
 const WINDOW_TYPE_NAMES = {
@@ -86,11 +114,16 @@ function _unmaximizeWindow(win) {
 // string, and logging it would let any process on the session bus write what it
 // likes, newlines included, into the user's journal.
 class WindowControlService {
-    constructor() {
+    constructor(metadata) {
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
             DBUS_INTERFACE_XML,
             this
         );
+        // Reported by GetVersion. Read from the metadata the SHELL loaded, not
+        // from metadata.json on disk: those two disagreeing is the whole point
+        // of the method, because on Wayland an install lands on disk and the
+        // shell keeps running the old copy until the user logs out.
+        this._version = String(metadata.version);
         // WaitForWindow state. The 'window-created' handler is connected only
         // while at least one waiter is pending, so an idle extension costs nothing.
         this._waiters = [];
@@ -100,6 +133,8 @@ class WindowControlService {
         // seen unhidden once has been placed, and that never becomes untrue.
         this._shownWindows = new WeakSet();
         this._createdWhileWatching = new WeakSet();
+        // WaitForGeometry state, one entry per pending call.
+        this._geometryWatchers = [];
     }
 
     // Helper: Get all windows (NORMAL type only)
@@ -169,9 +204,61 @@ class WindowControlService {
     // Verifying instead of refusing is not available: move_resize_frame() is
     // asynchronous, and get_frame_rect() read in the same handler still returns
     // the OLD rect even for a move that succeeds (measured), so a post-call
-    // comparison would report failure for every successful call.
-    _frameIsPinned(win) {
-        return win.is_fullscreen() || _maximizeFlags(win) !== 0;
+    // comparison would report failure for every successful call. (Waiting for
+    // it to settle IS available -- see WaitForGeometry -- but that is a
+    // separate call, deliberately: a geometry request must stay cheap.)
+    //
+    // Returns the reason as a phrase, or null when the frame is free. Naming
+    // the state is the point: a client outside the shell can read
+    // is_maximized/is_fullscreen for itself but has no tiled predicate at all,
+    // so it could never tell the third case from the second.
+    _frameRefusal(win) {
+        if (win.is_fullscreen())
+            return 'the window is fullscreen; unfullscreen it first';
+        const flags = _maximizeFlags(win);
+        if (flags === Meta.MaximizeFlags.BOTH)
+            return 'the window is maximized; unmaximize it first';
+        if (flags !== 0)
+            return 'the window is tiled or maximized on one axis; unmaximize it first';
+        return null;
+    }
+
+    // Shared preamble for the geometry handlers: find the window and check the
+    // frame, raising a NAMED error for either failure.
+    _geometryTarget(windowId, label) {
+        const win = this._findWindowById(windowId);
+        if (!win) {
+            console.debug(`[Window Control] ${label}(${windowId}) -> NotFound`);
+            throw new NamedError(DBUS_ERROR_NOT_FOUND, `No window with id ${windowId}`);
+        }
+        const refusal = this._frameRefusal(win);
+        if (refusal) {
+            console.debug(`[Window Control] ${label}(${windowId}) -> Refused`);
+            throw new NamedError(DBUS_ERROR_REFUSED,
+                `Cannot change the geometry of window ${windowId}: ${refusal}`);
+        }
+        return win;
+    }
+
+    // Run a geometry handler body and answer the invocation: an empty reply on
+    // success, a named error otherwise.
+    //
+    // The three geometry methods are async (GJS convention:
+    // <Method>Async(params, invocation)) only so they can call
+    // return_dbus_error(). They do no waiting -- see NamedError for why the
+    // synchronous throw could not carry a name.
+    _geometryCall(invocation, label, body) {
+        try {
+            body();
+            invocation.return_value(null);
+        } catch (e) {
+            if (e instanceof NamedError) {
+                invocation.return_dbus_error(e.dbusName, e.message);
+                return;
+            }
+            console.error(`[Window Control] ${label}() error: ${e.message}`);
+            invocation.return_dbus_error(DBUS_ERROR_FAILED, e.message);
+        }
     }
 
     // Helper: Build the match predicate for a (kind, value) selector as used by
@@ -476,96 +563,48 @@ class WindowControlService {
         }
     }
 
-    // Move: Move window to position
-    Move(windowId, x, y) {
+    // Move: Move window to position. Raises instead of returning a flag; see
+    // the ERRORS block in dbus-interface.js.
+    MoveAsync([windowId, x, y], invocation) {
         console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
-        try {
-            // Validate coordinates are reasonable numbers
-            if (typeof x !== 'number' || typeof y !== 'number' ||
-                !Number.isFinite(x) || !Number.isFinite(y)) {
-                console.debug(`[Window Control] Move: Invalid coordinates`);
-                return false;
+        this._geometryCall(invocation, 'Move', () => {
+            if (!_areFiniteNumbers([x, y])) {
+                throw new NamedError(DBUS_ERROR_INVALID_ARGS,
+                    'Move: x and y must be finite numbers');
             }
-            
-            const win = this._findWindowById(windowId);
-            if (win) {
-                if (this._frameIsPinned(win)) {
-                    console.debug(`[Window Control] Move(${windowId}) -> false (frame pinned)`);
-                    return false;
-                }
-                win.move_frame(true, x, y);
-                console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) -> true`);
-                return true;
-            }
-            console.debug(`[Window Control] Move(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Move() error: ${e.message}`);
-            return false;
-        }
+            const win = this._geometryTarget(windowId, 'Move');
+            win.move_frame(true, x, y);
+            console.debug(`[Window Control] Move(${windowId}) -> ok`);
+        });
     }
 
-    // Resize: Resize window (keeps position)
-    Resize(windowId, width, height) {
+    // Resize: Resize window (keeps position). Raises on failure.
+    ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
-        try {
-            // Validate dimensions are positive finite numbers
-            if (typeof width !== 'number' || typeof height !== 'number' ||
-                !Number.isFinite(width) || !Number.isFinite(height) ||
-                width <= 0 || height <= 0) {
-                console.debug(`[Window Control] Resize: Invalid dimensions (must be positive)`);
-                return false;
+        this._geometryCall(invocation, 'Resize', () => {
+            if (!_arePositiveNumbers([width, height])) {
+                throw new NamedError(DBUS_ERROR_INVALID_ARGS,
+                    'Resize: width and height must be positive finite numbers');
             }
-            
-            const win = this._findWindowById(windowId);
-            if (win) {
-                if (this._frameIsPinned(win)) {
-                    console.debug(`[Window Control] Resize(${windowId}) -> false (frame pinned)`);
-                    return false;
-                }
-                const rect = win.get_frame_rect();
-                win.move_resize_frame(true, rect.x, rect.y, width, height);
-                console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) -> true`);
-                return true;
-            }
-            console.debug(`[Window Control] Resize(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] Resize() error: ${e.message}`);
-            return false;
-        }
+            const win = this._geometryTarget(windowId, 'Resize');
+            const rect = win.get_frame_rect();
+            win.move_resize_frame(true, rect.x, rect.y, width, height);
+            console.debug(`[Window Control] Resize(${windowId}) -> ok`);
+        });
     }
 
-    // MoveResize: Move and resize window atomically
-    MoveResize(windowId, x, y, width, height) {
+    // MoveResize: Move and resize window atomically. Raises on failure.
+    MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
-        try {
-            // Validate all parameters
-            if (typeof x !== 'number' || typeof y !== 'number' ||
-                typeof width !== 'number' || typeof height !== 'number' ||
-                !Number.isFinite(x) || !Number.isFinite(y) ||
-                !Number.isFinite(width) || !Number.isFinite(height) ||
-                width <= 0 || height <= 0) {
-                console.debug(`[Window Control] MoveResize: Invalid parameters`);
-                return false;
+        this._geometryCall(invocation, 'MoveResize', () => {
+            if (!_areFiniteNumbers([x, y]) || !_arePositiveNumbers([width, height])) {
+                throw new NamedError(DBUS_ERROR_INVALID_ARGS,
+                    'MoveResize: x and y must be finite and width and height positive');
             }
-            
-            const win = this._findWindowById(windowId);
-            if (win) {
-                if (this._frameIsPinned(win)) {
-                    console.debug(`[Window Control] MoveResize(${windowId}) -> false (frame pinned)`);
-                    return false;
-                }
-                win.move_resize_frame(true, x, y, width, height);
-                console.debug(`[Window Control] MoveResize(${windowId}) -> true`);
-                return true;
-            }
-            console.debug(`[Window Control] MoveResize(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] MoveResize() error: ${e.message}`);
-            return false;
-        }
+            const win = this._geometryTarget(windowId, 'MoveResize');
+            win.move_resize_frame(true, x, y, width, height);
+            console.debug(`[Window Control] MoveResize(${windowId}) -> ok`);
+        });
     }
 
     // GetGeometry: Get window geometry
@@ -584,6 +623,17 @@ class WindowControlService {
             console.error(`[Window Control] GetGeometry() error: ${e.message}`);
             return [-1, -1, -1, -1];
         }
+    }
+
+    // GetVersion: the extension version the RUNNING shell has loaded.
+    //
+    // Deliberately not read from metadata.json: that file is what is on disk,
+    // and on Wayland an install lands there while the shell keeps serving the
+    // old code until the user logs out. Reporting the loaded value is what lets
+    // a caller detect exactly that.
+    GetVersion() {
+        console.debug(`[Window Control] GetVersion() -> ${this._version}`);
+        return this._version;
     }
 
     // GetWorkarea: Get usable workspace area for a monitor
@@ -759,6 +809,128 @@ class WindowControlService {
             else
                 invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', e.message);
         }
+    }
+
+    // WaitForGeometry: reply once the window's frame has held still for
+    // quiet_ms, with the rect as it then stands.
+    //
+    // Async (GJS convention: <Method>Async(params, invocation)) for the same
+    // reason WaitForWindow is: the reply comes from a signal handler or a timer
+    // and the shell main loop is never blocked.
+    //
+    // The quiet period is a heuristic and is meant to be. What it removes is
+    // the SAMPLING: a client outside the shell can only poll get_frame_rect()
+    // and compare, which costs a round trip per sample and still races the
+    // compositor. Here every change is a signal, so the timer only has to
+    // outlast the gap between two of them.
+    WaitForGeometryAsync([windowId, quietMs, timeoutMs], invocation) {
+        console.debug(`[Window Control] WaitForGeometry(${windowId}, ${quietMs}, ${timeoutMs}) called`);
+        let watcher = null;
+        try {
+            if (!Number.isInteger(quietMs) || quietMs <= 0 ||
+                !Number.isInteger(timeoutMs) || timeoutMs < quietMs) {
+                console.debug(`[Window Control] WaitForGeometry() -> InvalidArgs`);
+                invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
+                    'WaitForGeometry: quiet_ms > 0 and timeout_ms >= quiet_ms');
+                return;
+            }
+
+            const win = this._findWindowById(windowId);
+            if (!win) {
+                console.debug(`[Window Control] WaitForGeometry(${windowId}) -> NotFound`);
+                invocation.return_dbus_error(DBUS_ERROR_NOT_FOUND,
+                    `No window with id ${windowId}`);
+                return;
+            }
+
+            watcher = { win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [] };
+            const bump = () => this._restartQuietPeriod(watcher);
+            watcher.signalIds = [
+                win.connect('size-changed', bump),
+                win.connect('position-changed', bump),
+                win.connect('unmanaged', () => this._failGeometryWatcher(
+                    watcher, DBUS_ERROR_NOT_FOUND,
+                    `Window ${windowId} closed while waiting for its frame to settle`)),
+            ];
+            watcher.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
+                watcher.timeoutId = 0;
+                console.debug(`[Window Control] WaitForGeometry(${windowId}) -> Timeout`);
+                this._failGeometryWatcher(watcher, DBUS_ERROR_TIMEOUT,
+                    `Window ${windowId} frame did not settle within ${timeoutMs} ms`);
+                return GLib.SOURCE_REMOVE;
+            });
+            this._geometryWatchers.push(watcher);
+            // Start the clock now: a frame that is ALREADY still settles after
+            // one quiet period rather than waiting for a change that never comes.
+            this._restartQuietPeriod(watcher);
+        } catch (e) {
+            console.error(`[Window Control] WaitForGeometry() error: ${e.message}`);
+            // Once registered the watcher owns the invocation and one of its
+            // timers will reply, so answering here too would reply twice.
+            if (watcher && this._geometryWatchers.includes(watcher))
+                this._failGeometryWatcher(watcher, DBUS_ERROR_FAILED, e.message);
+            else
+                invocation.return_dbus_error(DBUS_ERROR_FAILED, e.message);
+        }
+    }
+
+    // Every frame change restarts the quiet timer, so it only fires once the
+    // frame has been still for the whole period.
+    _restartQuietPeriod(watcher) {
+        if (watcher.quietId)
+            GLib.source_remove(watcher.quietId);
+        watcher.quietId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, watcher.quietMs, () => {
+            watcher.quietId = 0;
+            this._settleGeometryWatcher(watcher);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // Drop a watcher's timers, signal handlers and list entry. Returns false if
+    // it was already retired, which is what keeps the quiet timer, the overall
+    // timeout and 'unmanaged' from replying twice when they race.
+    _retireGeometryWatcher(watcher) {
+        const index = this._geometryWatchers.indexOf(watcher);
+        if (index === -1)
+            return false;
+        this._geometryWatchers.splice(index, 1);
+        if (watcher.quietId) {
+            GLib.source_remove(watcher.quietId);
+            watcher.quietId = 0;
+        }
+        if (watcher.timeoutId) {
+            GLib.source_remove(watcher.timeoutId);
+            watcher.timeoutId = 0;
+        }
+        for (const id of watcher.signalIds)
+            watcher.win.disconnect(id);
+        watcher.signalIds = [];
+        return true;
+    }
+
+    _settleGeometryWatcher(watcher) {
+        if (!this._retireGeometryWatcher(watcher))
+            return;
+        const rect = watcher.win.get_frame_rect();
+        console.debug(`[Window Control] WaitForGeometry(${watcher.windowId}) -> settled`);
+        watcher.invocation.return_value(
+            new GLib.Variant('(iiii)', [rect.x, rect.y, rect.width, rect.height]));
+    }
+
+    _failGeometryWatcher(watcher, name, message) {
+        if (!this._retireGeometryWatcher(watcher))
+            return;
+        watcher.invocation.return_dbus_error(name, message);
+    }
+
+    _cancelGeometryWatchers() {
+        const pending = [...this._geometryWatchers];
+        for (const watcher of pending) {
+            this._failGeometryWatcher(watcher, DBUS_ERROR_DISABLED,
+                'Window Control extension disabled');
+        }
+        if (pending.length > 0)
+            console.debug(`[Window Control] cancelled ${pending.length} pending WaitForGeometry call(s)`);
     }
 
     // Connect 'window-created' (idempotent).
@@ -953,6 +1125,7 @@ class WindowControlService {
 
     unexport() {
         this._cancelWaiters();
+        this._cancelGeometryWatchers();
         this._dbusImpl.unexport();
     }
 }
@@ -962,7 +1135,7 @@ export default class WindowControlExtension extends Extension {
         console.log(`[${this.metadata.name}] Enabling extension...`);
 
         try {
-            this._service = new WindowControlService();
+            this._service = new WindowControlService(this.metadata);
             this._service.export();
             console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
         } catch (e) {

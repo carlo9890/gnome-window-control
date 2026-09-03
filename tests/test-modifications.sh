@@ -208,6 +208,37 @@ else
     run_wctl unmaximize "$TEST_WINDOW_ID"
     wait_for_change
 
+    # --settled must return only once the frame has stopped moving, so reading
+    # the frame straight afterwards -- with no settle delay of our own -- must
+    # already match what it reported. That is the whole point of waiting.
+    info "Testing: place --settled"
+    run_wctl place "$TEST_WINDOW_ID" left top 40% 80% --settled --json
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "place --settled exits 0"
+    assert_json_valid "$WCTL_OUTPUT" "place --settled --json is valid JSON"
+    settled_json="$WCTL_OUTPUT"
+    assert_equals "$(echo "$settled_json" | jq -r '.placed')" "true" "place --settled reports placed=true"
+    assert_equals "$(echo "$settled_json" | jq -r '.settled')" "true" "place --settled reports settled=true"
+    assert_equals "$(echo "$settled_json" | jq -r '.observed.x')" "$(get_window_field '.frame_rect.x')" \
+        "place --settled: observed.x is the live frame"
+    assert_equals "$(echo "$settled_json" | jq -r '.observed.y')" "$(get_window_field '.frame_rect.y')" \
+        "place --settled: observed.y is the live frame"
+    assert_equals "$(echo "$settled_json" | jq -r '.observed.width')" "$(get_window_field '.frame_rect.width')" \
+        "place --settled: observed.width is the live frame"
+    assert_equals "$(echo "$settled_json" | jq -r '.observed.height')" "$(get_window_field '.frame_rect.height')" \
+        "place --settled: observed.height is the live frame"
+
+    # Without --settled there is no settle verdict at all, so a caller can tell
+    # "did not settle" from "nobody waited".
+    run_wctl place "$TEST_WINDOW_ID" left top 40% 80% --json
+    assert_equals "$(echo "$WCTL_OUTPUT" | jq -r 'has("settled")')" "false" \
+        "place --json without --settled reports no settle verdict"
+
+    # A frame that is already still settles too, rather than waiting for a
+    # change that will never come.
+    run_wctl tile "$TEST_WINDOW_ID" top-left --settled
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "tile --settled exits 0"
+    assert_contains "$WCTL_OUTPUT" "Settled:" "tile --settled reports where the frame stopped"
+
     # And the same rectangle must come back with no window and nothing moved.
     info "Testing: resolve-place agrees with place"
     run_wctl resolve-place --monitor "$monitor_index" center top 50% 100% --json
@@ -327,7 +358,7 @@ before_rect=$(get_window_field '.frame_rect | "\(.x),\(.y),\(.width),\(.height)"
 # through || rather than letting the assignment abort the suite.
 pinned_status=0
 pinned_output=$("$WCTL" move "$TEST_WINDOW_ID" 100 100 2>&1) || pinned_status=$?
-assert_equals "$pinned_status" "1" "move while maximized: should exit 1"
+assert_equals "$pinned_status" "3" "move while maximized: should exit 3 (refused)"
 assert_contains "$pinned_output" "is maximized" "move while maximized: should say why"
 wait_for_change
 after_rect=$(get_window_field '.frame_rect | "\(.x),\(.y),\(.width),\(.height)"')

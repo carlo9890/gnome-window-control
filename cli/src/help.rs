@@ -67,9 +67,12 @@ GEOMETRY COMMANDS:
     move-resize <WINDOW> <X> <Y> <W> <H>    Move and resize atomically
 
 TILING & POSITIONING:
-    place <WINDOW> <X> <Y> <W> <H> [--json] Place window using pixels and workarea-relative tokens
-    tile <WINDOW> <position> [--json]       Tile window to 4x2 grid position
-    center <WINDOW> [horizontal|vertical|both] [--json]  Center window on screen
+    place <WINDOW> <X> <Y> <W> <H> [--json] [--settled]
+                                            Place window using pixels and workarea-relative tokens
+    tile <WINDOW> <position> [--json] [--settled]
+                                            Tile window to 4x2 grid position
+    center <WINDOW> [horizontal|vertical|both] [--json] [--settled]
+                                            Center window on screen
     resolve-place [--monitor <N>] <X> <Y> <W> <H> [--json]
                             Resolve a placement WITHOUT applying it and without
                             a window, against the primary monitor's workarea or
@@ -82,6 +85,14 @@ TILING & POSITIONING:
     REQUESTED rectangle: mutter still clamps to size hints, and a client that
     quantises its own size settles a few pixels off. move, resize and
     move-resize have no --json -- they resolve nothing to report.
+
+    --settled returns only once the frame has stopped changing, and reports
+    where it stopped. The shell watches its own size-changed/position-changed
+    signals for this, which is the only place it can be done: a geometry
+    request is applied asynchronously, so a client outside the shell can only
+    sample and guess. It is still a quiet period, not a promise -- a client is
+    free to resize itself again later. A window that is placed but never
+    settles exits 4 and still reports placed=true.
 
 WORKSPACE & MONITOR COMMANDS:
     workspace <N>                       Switch to workspace N
@@ -100,6 +111,12 @@ STATE COMMANDS:
     close <WINDOW>              Close window (polite request)
 
 OTHER:
+    version [--json]        Show the wctl version. With --json, also the
+                            extension version the SHELL has loaded and whether
+                            the two match; exits non-zero when they do not.
+                            Reads the loaded version, not metadata.json on disk,
+                            so an install that GNOME has not picked up yet shows
+                            as a mismatch instead of looking fine.
     help                    Show this help message
     completion <SHELL>      Output shell completion script (bash or zsh)
 
@@ -124,6 +141,8 @@ EXAMPLES:
     wctl center 12345 horizontal      # Center horizontally only
     wctl place focused center top 50% 100% --json   # Place, and report the rectangle used
     wctl resolve-place center top 50% 100% --json   # Same rectangle, nothing placed
+    wctl place focused center top 50% 100% --settled  # Return once the frame stops moving
+    wctl version --json               # Do wctl and the loaded extension agree?
     wctl workspaces                   # List workspaces
     wctl workspace 2                  # Switch to workspace 2
     wctl move-to-workspace -c Firefox 2   # Move the Firefox window to workspace 2
@@ -148,7 +167,8 @@ EXIT CODES:
     3   The shell refused: the frame is pinned by maximize, fullscreen or
         tiling, or the window is held on all workspaces
     4   Timed out waiting for a window, or for the shell to reply
-    5   The Window Control extension is not running
+    5   The extension is not usable: not running, or a version this wctl
+        cannot rely on (see wctl version --json)
 
 ENVIRONMENT:
     The Window Control GNOME Shell extension must be enabled.

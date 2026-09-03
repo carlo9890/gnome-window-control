@@ -17,6 +17,11 @@ without them.
 1. Update the version in `window-control@carlo9890.github.io/metadata.json`.
 2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version format
    below). `scripts/release.sh` hard-fails if it does not match `metadata.json`.
+
+   This pairing is a contract, not a convention: `wctl` compiles its own minor
+   version in as `EXPECTED_EXTENSION_VERSION` and `wctl version --json` reports
+   `compatible: false` when the shell has a different extension version loaded.
+   Bumping one without the other makes every install report a mismatch.
 3. Commit: `git commit -am "chore: bump version to vN"`.
 4. Tag: `git tag vN`.
 5. Push: `git push && git push --tags`.

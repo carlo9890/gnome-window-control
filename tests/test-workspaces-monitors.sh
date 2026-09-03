@@ -69,6 +69,34 @@ header_line=$(echo "$WCTL_OUTPUT" | head -1)
 assert_matches "$header_line" "IDX.*X.*Y.*WIDTH.*HEIGHT.*SCALE.*PRIMARY" "monitors table header has all columns"
 
 # ---------------------------------------------------------------------------
+# version
+# ---------------------------------------------------------------------------
+run_wctl version
+assert_exit_code 0 "$WCTL_EXIT_CODE" "version (plain) exits 0"
+assert_matches "$WCTL_OUTPUT" "^wctl [0-9]+\.[0-9]+\.[0-9]+$" "version (plain) prints only the wctl version"
+
+run_wctl version --json
+assert_json_valid "$WCTL_OUTPUT" "version --json is valid JSON"
+version_json="$WCTL_OUTPUT"
+version_status="$WCTL_EXIT_CODE"
+expects_extension=$(echo "$version_json" | jq -r '.expects_extension')
+loaded_extension=$(echo "$version_json" | jq -r '.extension')
+
+# The suite runs against whatever extension the shell has loaded, which is not
+# always the one this build expects -- on Wayland an upgrade sits on disk until
+# the user logs out. So assert the RELATIONSHIP, which is the claim the field
+# actually makes, rather than a version number.
+if [[ "$loaded_extension" == "$expects_extension" ]]; then
+    assert_equals "$(echo "$version_json" | jq -r '.compatible')" "true" \
+        "version --json: a matching loaded extension reports compatible"
+    assert_exit_code 0 "$version_status" "version --json exits 0 when the versions match"
+else
+    assert_equals "$(echo "$version_json" | jq -r '.compatible')" "false" \
+        "version --json: a differing loaded extension reports incompatible"
+    assert_exit_code 5 "$version_status" "version --json exits 5 when the versions differ"
+fi
+
+# ---------------------------------------------------------------------------
 # workarea
 # ---------------------------------------------------------------------------
 primary_index=$(echo "$mon_json" | jq -r 'map(select(.is_primary))[0].index')

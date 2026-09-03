@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-//! The read-only commands: list, focused, info, workspaces, monitors, workarea.
+//! The read-only commands: list, focused, info, workspaces, monitors,
+//! workarea and version.
 
 use std::io::IsTerminal;
 
 use serde_json::Value;
 
 use crate::commands::{cell, parse_json_flag, primary_monitor, workarea_of};
-use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_NO_EXTENSION};
 use crate::model::{self, Ctx, Window};
 use crate::selector;
 use crate::table;
@@ -355,4 +356,57 @@ pub fn workarea(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     println!("Position:  {}, {}", rect.x, rect.y);
     println!("Size:      {} x {}", rect.width, rect.height);
     Ok(())
+}
+
+/// Report this wctl's version and the extension version the SHELL has loaded.
+///
+/// The bare form is handled in `main::run` and never touches the bus. This one
+/// runs only for `--json`, and asking the shell is the point: `metadata.json`
+/// on disk can already be newer than what is loaded, and on Wayland it stays
+/// that way until the user logs out. Reading the version off disk -- or out of
+/// `gnome-extensions info`, which reports the same loaded value but needs two
+/// more programs and the extension UUID -- is what this replaces.
+///
+/// `compatible` asserts the release rule spelled out at
+/// `crate::EXPECTED_EXTENSION_VERSION`: wctl's minor version is the extension
+/// version it was built against. A mismatch exits non-zero, because the fix is
+/// the same one a missing extension needs.
+pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
+    if !parse_json_flag(args)? {
+        println!("wctl {}", crate::VERSION);
+        return Ok(());
+    }
+
+    let mut document = serde_json::json!({
+        "wctl": crate::VERSION,
+        "expects_extension": crate::EXPECTED_EXTENSION_VERSION,
+    });
+
+    match ctx.bus.get_version() {
+        Ok(loaded) => {
+            let compatible = loaded == crate::EXPECTED_EXTENSION_VERSION;
+            document["extension"] = Value::String(loaded);
+            document["compatible"] = Value::Bool(compatible);
+            if compatible {
+                println!("{document}");
+                return Ok(());
+            }
+            document["message"] = Value::String(format!(
+                "wctl {} expects extension version {}. Install the matching extension and \
+                 restart GNOME Shell (log out and back in on Wayland).",
+                crate::VERSION,
+                crate::EXPECTED_EXTENSION_VERSION
+            ));
+            Err(Fail::plain(document.to_string()).with_code(EXIT_NO_EXTENSION))
+        }
+        // Not running, or too old to answer GetVersion at all -- which is the
+        // very state this command exists to name. Still a document, so a caller
+        // parses one shape on every outcome.
+        Err(failure) => {
+            document["extension"] = Value::Null;
+            document["compatible"] = Value::Bool(false);
+            document["message"] = Value::String(failure.to_string());
+            Err(Fail::plain(document.to_string()).with_code(failure.code()))
+        }
+    }
 }

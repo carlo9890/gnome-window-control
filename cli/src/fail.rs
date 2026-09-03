@@ -36,8 +36,10 @@ pub const EXIT_REFUSED: i32 = 3;
 /// The reply did not arrive in time: `wait` expired, or the shell's main loop
 /// is wedged.
 pub const EXIT_TIMEOUT: i32 = 4;
-/// Nothing is serving the interface: the extension is disabled or not
-/// installed.
+/// The extension is not usable: nothing is serving the interface, or what the
+/// shell has loaded is a version this wctl cannot rely on. Both have the same
+/// fix -- install the matching extension and restart the shell -- which is why
+/// they share a code.
 pub const EXIT_NO_EXTENSION: i32 = 5;
 
 /// Which stream the message belongs on.

@@ -25,6 +25,14 @@ syntax error fails the build.
 - Use template literals for string interpolation.
 - Wrap D-Bus method implementations in try/catch and return graceful defaults on
   error (empty array, `false`, etc.) — never let an exception escape a handler.
+  **Exception: `Move`, `Resize` and `MoveResize` raise named D-Bus errors
+  instead.** A boolean cannot say *which* failure happened, and a client outside
+  the shell cannot work it out — it can read `is_maximized`/`is_fullscreen` but
+  has no tiled predicate at all. Those three go through `_geometry()`, which
+  still catches an unexpected exception and re-raises it as
+  `org.freedesktop.DBus.Error.Failed`, so nothing escapes untyped. The error
+  names are listed in the ERRORS block in `dbus-interface.js`; add to that list
+  rather than inventing a name at the throw site.
 - Simple "find window by id, do one action, return bool" handlers should go
   through the shared `_actOnWindow(windowId, label, action)` helper rather than
   re-implementing the find/try-catch/log skeleton.
@@ -96,6 +104,11 @@ hard-fails if they diverge.
    > GJS quirk: D-Bus `t` (uint64) args arrive as plain JS numbers, which lose
    > precision above 2^53. Mutter window IDs are well within that range, but if a
    > method ever handles larger uint64 values, use `BigInt`/`GLib.Variant`.
+
+   > A method that can fail for more than one reason should raise a named error
+   > (see the JS style rules above) and declare no `success` out-arg. Add the
+   > name to `ERROR_*` in `cli/src/dbus.rs` so `map_err` maps it to the right
+   > exit code, and call it with `call_unit` rather than `call_bool`.
 
 3. Add the corresponding command to the crate, reusing the shared helpers.
    A simple boolean action is one line in `cli/src/commands/state.rs`:
