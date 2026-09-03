@@ -28,7 +28,7 @@ syntax error fails the build.
   **Exception: `Move`, `Resize` and `MoveResize` raise named D-Bus errors
   instead.** A boolean cannot say *which* failure happened, and a client outside
   the shell cannot work it out — it can read `is_maximized`/`is_fullscreen` but
-  has no tiled predicate at all. Those three go through `_geometry()`, which
+  has no tiled predicate at all. Those three go through `_geometryCall()`, which
   still catches an unexpected exception and re-raises it as
   `org.freedesktop.DBus.Error.Failed`, so nothing escapes untyped. The error
   names are listed in the ERRORS block in `dbus-interface.js`; add to that list

@@ -20,13 +20,18 @@ const DBUS_ERROR_FAILED = 'org.freedesktop.DBus.Error.Failed';
 
 // A failure that must reach the caller as a specific D-Bus error NAME.
 //
-// Throwing a GLib.Error does not work for this. GJS answers a thrown GLib.Error
-// with g_dbus_method_invocation_return_gerror(), and an error whose domain is
-// not registered goes on the wire as
-// org.gtk.GDBus.UnmappedGError.Quark._g_2dio_2derror_2dquark.Code36 with the
-// real name buried in the message text (measured against GNOME 46) -- so no
-// caller can switch on it, which is the entire point. The handlers therefore
-// catch this and answer with return_dbus_error(), which sends the name itself.
+// Do NOT reach for Gio.DBusError.new_for_dbus_error() here. That returns a
+// GLib.Error, and GJS answers a thrown GLib.Error with
+// g_dbus_method_invocation_return_gerror(); an unregistered domain then goes on
+// the wire as org.gtk.GDBus.UnmappedGError.Quark._g_2dio_2derror_2dquark.Code36
+// with the real name buried in the message text, where no caller can switch on
+// it (measured against GNOME 46).
+//
+// A plain Error is not subject to that: GJS's synchronous dispatch forwards
+// `e.name` verbatim once it contains a dot. The handlers are async anyway, and
+// answer with return_dbus_error() themselves, for a different reason -- that
+// same synchronous path also calls logError(), which would write a journal
+// WARNING for every ordinary refusal and break this file's logging invariant.
 class NamedError extends Error {
     constructor(name, message) {
         super(message);
@@ -244,9 +249,9 @@ class WindowControlService {
     // success, a named error otherwise.
     //
     // The three geometry methods are async (GJS convention:
-    // <Method>Async(params, invocation)) only so they can call
-    // return_dbus_error(). They do no waiting -- see NamedError for why the
-    // synchronous throw could not carry a name.
+    // <Method>Async(params, invocation)) only so they can answer here rather
+    // than by throwing. They do no waiting -- see NamedError for why throwing
+    // is the wrong shape for a routine refusal.
     _geometryCall(invocation, label, body) {
         try {
             body();
