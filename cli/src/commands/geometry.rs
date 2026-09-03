@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::commands::{primary_monitor, workarea_of};
+use crate::commands::{monitor_index, primary_monitor, workarea_of};
 use crate::fail::{Fail, Result};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
@@ -113,6 +113,11 @@ impl Placement {
     }
 
     /// The document a geometry command emits under `--json`, on any outcome.
+    ///
+    /// Built FROM `document()` rather than restating its three keys, so
+    /// `resolve-place` and `place --json` cannot describe the same placement
+    /// differently. `window_id` is inserted first for readability; with
+    /// serde_json's preserve_order the rest keep the order `document()` set.
     fn outcome(
         &self,
         id: u64,
@@ -120,13 +125,13 @@ impl Placement {
         settle: Option<Settle>,
         message: Option<&str>,
     ) -> Value {
-        let mut doc = serde_json::json!({
-            "window_id": id,
-            "monitor_index": self.monitor_index,
-            "workarea": rect_json(self.workarea),
-            "target": rect_json(self.target),
-            "placed": placed,
-        });
+        let mut doc = serde_json::json!({ "window_id": id });
+        if let Some(fields) = self.document().as_object() {
+            for (key, value) in fields {
+                doc[key] = value.clone();
+            }
+        }
+        doc["placed"] = Value::Bool(placed);
         // The settle fields appear only with --settled, so a caller can tell
         // "the frame did not settle" from "nobody waited for it to".
         if let Some(settle) = settle {
@@ -372,14 +377,7 @@ pub fn resolve_place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                 let Some(value) = args.get(index + 1) else {
                     return Err(Fail::error("Option --monitor requires an argument"));
                 };
-                if !selector::is_window_id(value) {
-                    return Err(Fail::error("Monitor index must be a number"));
-                }
-                monitor = Some(
-                    value
-                        .parse::<i32>()
-                        .map_err(|_| Fail::error("Monitor index must be a number"))?,
-                );
+                monitor = Some(monitor_index(value)?);
                 index += 2;
             }
             // Only long options are options here: X and Y accept a negative
