@@ -7,7 +7,7 @@ use std::io::IsTerminal;
 use serde_json::Value;
 
 use crate::commands::{cell, parse_json_flag};
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 use crate::model::{self, Ctx, Window};
 use crate::selector;
 use crate::table;
@@ -167,7 +167,7 @@ pub fn info(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let windows = ctx.windows()?;
     let Some(window) = windows.iter().find(|w| model::id(w) == id) else {
         // The bash client printed this one on stdout, not through die().
-        return Err(Fail::plain(format!("Window not found: {id}")));
+        return Err(Fail::plain(format!("Window not found: {id}")).with_code(EXIT_NOT_FOUND));
     };
 
     print_window(window, json_output);

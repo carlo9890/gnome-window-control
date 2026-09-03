@@ -170,7 +170,7 @@ fi
 start=$(date +%s)
 run_wctl wait -c "no-such-class-$$" --timeout 1
 elapsed=$(( $(date +%s) - start ))
-assert_exit_code 1 "$WCTL_EXIT_CODE" "wait --timeout 1 with no match exits 1"
+assert_exit_code 4 "$WCTL_EXIT_CODE" "wait --timeout 1 with no match exits 4 (timeout)"
 assert_contains "$WCTL_OUTPUT" "Timed out" "wait timeout message"
 if (( elapsed >= 1 && elapsed <= 3 )); then
     pass "wait timed out after about 1 s (${elapsed}s)"

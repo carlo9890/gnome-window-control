@@ -184,7 +184,7 @@ wctl move-to-workspace 12345 2      # move a window to workspace 2
 wctl monitors                       # list (index, geometry, scale, primary)
 wctl move-to-monitor focused 1      # move the focused window to monitor 1
 
-# Wait for a window to be shown and print its ID (default timeout 10 s, exit 1 on
+# Wait for a window to be shown and print its ID (default timeout 10 s, exit 4 on
 # timeout). wait returns only once mutter has mapped and placed the window, so
 # the geometry command that follows sticks instead of being overridden by the
 # initial placement.
@@ -199,6 +199,23 @@ wctl --help
 `wctl activate` keeps the extension's first-match rule for `-t`/`-s`/`-c`/`-p`
 (useful for run-or-raise scripts). Every other command requires the selector to
 be unambiguous.
+
+#### Exit codes
+
+A failing `wctl` classifies itself, so a script can tell the cases apart without
+matching the message text:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Usage error, or a failure with no more specific code below |
+| 2 | The window, workspace or monitor does not exist |
+| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, or the window is held on all workspaces |
+| 4 | Timed out waiting for a window, or for the shell to reply |
+| 5 | The Window Control extension is not running |
+
+Code 1 stays the catch-all it always was, so a script that only tests for a
+non-zero status is unaffected.
 
 `wctl place` is a higher-level CLI convenience built on top of the existing
 geometry methods. X and Y accept either absolute pixel coordinates or

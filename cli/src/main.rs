@@ -214,6 +214,7 @@ mod tests {
             "STATE COMMANDS:",
             "EXAMPLES:",
             "SHELL COMPLETION:",
+            "EXIT CODES:",
             "ENVIRONMENT:",
         ] {
             assert!(help.contains(section), "help text is missing {section}");

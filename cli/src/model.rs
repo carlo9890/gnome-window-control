@@ -12,7 +12,7 @@ use std::rc::Rc;
 use serde_json::Value;
 
 use crate::dbus::Bus;
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 
 pub type Window = Value;
 
@@ -94,6 +94,6 @@ impl Ctx {
             .iter()
             .find(|w| crate::model::id(w) == id)
             .cloned()
-            .ok_or_else(|| Fail::error(format!("Window not found: {id}")))
+            .ok_or_else(|| Fail::error(format!("Window not found: {id}")).with_code(EXIT_NOT_FOUND))
     }
 }

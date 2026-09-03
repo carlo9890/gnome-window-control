@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_TIMEOUT};
 use crate::model::Ctx;
 use crate::selector;
 
@@ -68,7 +68,8 @@ pub fn wait(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if id == 0 {
         return Err(Fail::error(format!(
             "Timed out after {seconds}s waiting for a window ({kind}: {value})"
-        )));
+        ))
+        .with_code(EXIT_TIMEOUT));
     }
 
     println!("{id}");

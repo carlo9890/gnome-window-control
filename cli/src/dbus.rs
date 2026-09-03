@@ -14,7 +14,7 @@ use zbus::blocking::connection::Builder;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::DynamicType;
 
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NO_EXTENSION, EXIT_TIMEOUT};
 
 pub const DEST: &str = "org.gnome.Shell";
 pub const PATH: &str = "/org/gnome/Shell/Extensions/WindowControl";
@@ -46,10 +46,37 @@ fn is_extension_not_running(err: &str) -> bool {
         || err.contains("WindowControl.Disabled")
 }
 
+/// Classify a failed call as "the reply never came".
+///
+/// The client-side bound in `session_connection` gives up by racing a timer
+/// against the reply, and zbus reports that as an `io::Error` of kind
+/// `TimedOut` rather than a D-Bus error. `NoReply`/`Timeout` from the bus
+/// daemon mean the same thing from further away, so both classify the same.
+///
+/// This is matched on the error VALUE, not its text: unlike the
+/// not-running strings below, which had to keep matching the wording gdbus and
+/// busctl produced, nothing pins the shape of this one.
+fn is_timeout(err: &zbus::Error) -> bool {
+    match err {
+        zbus::Error::InputOutput(io) => io.kind() == std::io::ErrorKind::TimedOut,
+        zbus::Error::MethodError(name, _, _) => matches!(
+            name.as_str(),
+            "org.freedesktop.DBus.Error.NoReply" | "org.freedesktop.DBus.Error.Timeout"
+        ),
+        _ => false,
+    }
+}
+
 fn map_err(err: zbus::Error) -> Fail {
+    if is_timeout(&err) {
+        return Fail::error(
+            "GNOME Shell did not reply in time. Raise --timeout, or check that the shell is responding.",
+        )
+        .with_code(EXIT_TIMEOUT);
+    }
     let text = err.to_string();
     if is_extension_not_running(&text) {
-        Fail::error(NOT_RUNNING)
+        Fail::error(NOT_RUNNING).with_code(EXIT_NO_EXTENSION)
     } else {
         Fail::error(format!("D-Bus call failed: {text}"))
     }

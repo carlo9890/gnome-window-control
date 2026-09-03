@@ -554,12 +554,12 @@ fi
 
 info "Testing: move-to-workspace with an invalid index"
 run_wctl move-to-workspace "$TEST_WINDOW_ID" 9999
-assert_exit_code 1 "$WCTL_EXIT_CODE" "move-to-workspace 9999: exits 1"
+assert_exit_code 2 "$WCTL_EXIT_CODE" "move-to-workspace 9999: exits 2 (not found)"
 assert_contains "$WCTL_OUTPUT" "does not exist" "move-to-workspace 9999: names the missing workspace"
 
 info "Testing: workspace with an invalid index"
 run_wctl workspace 9999
-assert_exit_code 1 "$WCTL_EXIT_CODE" "workspace 9999: exits 1"
+assert_exit_code 2 "$WCTL_EXIT_CODE" "workspace 9999: exits 2 (not found)"
 assert_contains "$WCTL_OUTPUT" "Cannot switch to workspace 9999" "workspace 9999: reports the failed switch"
 
 echo ""
@@ -598,7 +598,7 @@ if [[ "$n_monitors" -ge 2 ]]; then
     if [[ "$(get_window_field '.is_on_all_workspaces')" == "true" ]]; then
         ws_before=$(get_window_field '.workspace_index')
         run_wctl move-to-workspace "$TEST_WINDOW_ID" 0
-        assert_exit_code 1 "$WCTL_EXIT_CODE" "move-to-workspace on a non-primary monitor: exits 1"
+        assert_exit_code 3 "$WCTL_EXIT_CODE" "move-to-workspace on a non-primary monitor: exits 3 (refused)"
         assert_contains "$WCTL_OUTPUT" "all workspaces" "move-to-workspace on a non-primary monitor: says why"
         wait_for_change
         assert_equals "$(get_window_field '.workspace_index')" "$ws_before" \
@@ -614,7 +614,7 @@ fi
 
 info "Testing: move-to-monitor with an invalid index"
 run_wctl move-to-monitor "$TEST_WINDOW_ID" 9999
-assert_exit_code 1 "$WCTL_EXIT_CODE" "move-to-monitor 9999: exits 1"
+assert_exit_code 2 "$WCTL_EXIT_CODE" "move-to-monitor 9999: exits 2 (not found)"
 assert_contains "$WCTL_OUTPUT" "does not exist" "move-to-monitor 9999: names the missing monitor"
 
 echo ""

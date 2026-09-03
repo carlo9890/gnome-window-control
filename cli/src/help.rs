@@ -41,7 +41,7 @@ ACTIVATION COMMANDS:
     focus <WINDOW>          Focus window (without raising)
     wait -c|-t|-s|-p <VALUE> [--timeout <SECONDS>]
                             Wait until a matching window is shown and print its ID
-                            (default timeout 10 s; exits 1 on timeout). Returns
+                            (default timeout 10 s; exits 4 on timeout). Returns
                             only once the window is mapped and placed, so a
                             geometry command issued right after it sticks.
 
@@ -112,6 +112,15 @@ EXAMPLES:
 SHELL COMPLETION:
     Bash: wctl completion bash > ~/.local/share/bash-completion/completions/wctl
     Zsh:  wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
+
+EXIT CODES:
+    0   Success
+    1   Usage error, or a failure with no more specific code below
+    2   The window, workspace or monitor does not exist
+    3   The shell refused: the frame is pinned by maximize, fullscreen or
+        tiling, or the window is held on all workspaces
+    4   Timed out waiting for a window, or for the shell to reply
+    5   The Window Control extension is not running
 
 ENVIRONMENT:
     The Window Control GNOME Shell extension must be enabled.

@@ -3,7 +3,7 @@
 //! move, resize, move-resize, place, tile and center.
 
 use crate::commands::{not_found, report_with};
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_REFUSED};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -70,22 +70,30 @@ fn as_i32(value: i64) -> i32 {
 /// caller after a state that is not there. The cache is dropped first because it
 /// was filled before the failing call, so it can no longer describe the window.
 /// That refetch happens only on the failure path.
-fn geometry_failure(ctx: &mut Ctx, id: u64) -> String {
+fn geometry_failure(ctx: &mut Ctx, id: u64) -> Fail {
     ctx.invalidate_windows();
     let Ok(window) = ctx.window_by_id(id) else {
         return not_found(id);
     };
+    let refused = |message: String| Fail::plain(message).with_code(EXIT_REFUSED);
     if model::flag(&window, "is_fullscreen") {
-        return format!("Window {id} is fullscreen; run 'wctl unfullscreen {id}' first");
+        return refused(format!(
+            "Window {id} is fullscreen; run 'wctl unfullscreen {id}' first"
+        ));
     }
     if model::flag(&window, "is_maximized") {
-        return format!("Window {id} is maximized; run 'wctl unmaximize {id}' first");
+        return refused(format!(
+            "Window {id} is maximized; run 'wctl unmaximize {id}' first"
+        ));
     }
     // Tiled windows report neither flag in ListDetailed (is_maximized is only
     // true for BOTH axes) but are still refused by the extension, and so is a
     // window whose handler threw. Say what is known rather than inventing a
-    // state.
-    format!("Window {id} could not be moved; it may be tiled or maximized")
+    // state. EXIT_REFUSED is still right for both: the window is there and did
+    // not move, which is the distinction the code exists to draw.
+    refused(format!(
+        "Window {id} could not be moved; it may be tiled or maximized"
+    ))
 }
 
 pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
