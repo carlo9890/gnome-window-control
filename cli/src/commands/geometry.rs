@@ -278,7 +278,8 @@ fn take_output_flags(args: &[String]) -> (bool, bool, Vec<String>) {
 }
 
 pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-    let (id, shift) = selector::resolve(ctx, 2, "Usage: wctl move <WINDOW> <X> <Y>", args)?;
+    let usage = "Usage: wctl move <WINDOW> <X> <Y>";
+    let (id, shift) = selector::resolve_exact(ctx, 2, usage, args)?;
     let x = coordinate(&args[shift], "X")?;
     let y = coordinate(&args[shift + 1], "Y")?;
 
@@ -288,8 +289,8 @@ pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 }
 
 pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-    let (id, shift) =
-        selector::resolve(ctx, 2, "Usage: wctl resize <WINDOW> <WIDTH> <HEIGHT>", args)?;
+    let usage = "Usage: wctl resize <WINDOW> <WIDTH> <HEIGHT>";
+    let (id, shift) = selector::resolve_exact(ctx, 2, usage, args)?;
     let width = extent(&args[shift], "Width")?;
     let height = extent(&args[shift + 1], "Height")?;
 
@@ -300,7 +301,7 @@ pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl move-resize <WINDOW> <X> <Y> <WIDTH> <HEIGHT>";
-    let (id, shift) = selector::resolve(ctx, 4, usage, args)?;
+    let (id, shift) = selector::resolve_exact(ctx, 4, usage, args)?;
     let x = coordinate(&args[shift], "X")?;
     let y = coordinate(&args[shift + 1], "Y")?;
     let width = extent(&args[shift + 2], "Width")?;
@@ -315,11 +316,8 @@ pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = place_usage();
     let (json_output, settled, args) = take_output_flags(args);
-    let (id, shift) = selector::resolve(ctx, 4, &usage, &args)?;
+    let (id, shift) = selector::resolve_exact(ctx, 4, &usage, &args)?;
     let rest = &args[shift..];
-    if rest.len() != 4 {
-        return Err(Fail::error(usage));
-    }
 
     let window = ctx.window_by_id(id)?;
     let monitor_index = model::number(&window, "monitor_index") as i32;
@@ -422,7 +420,7 @@ pub fn resolve_place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = tile_usage();
     let (json_output, settled, args) = take_output_flags(args);
-    let (id, shift) = selector::resolve(ctx, 1, &usage, &args)?;
+    let (id, shift) = selector::resolve_exact(ctx, 1, &usage, &args)?;
     let position = args[shift].clone();
 
     let window = ctx.window_by_id(id)?;
@@ -460,6 +458,10 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl center <WINDOW> [horizontal|vertical|both] [--json] [--settled]";
     let (json_output, settled, args) = take_output_flags(args);
     let (id, shift) = selector::resolve(ctx, 0, usage, &args)?;
+    // The axis is optional, so this is a maximum rather than an exact count.
+    if args.len() > shift + 1 {
+        return Err(Fail::error(usage));
+    }
     let axis = args.get(shift).map(String::as_str).unwrap_or("both");
 
     let (axis, message) = match axis {

@@ -75,6 +75,37 @@ fn global_timeout_guards() {
     assert!(out.contains("Window Control CLI"));
 }
 
+/// A bad WCTL_TIMEOUT must not break a command that never opens a connection.
+///
+/// `wctl completion bash` is the one that matters: it is run from a shell rc
+/// file, so an error there reaches every new shell and installs no completion.
+#[test]
+fn wctl_timeout_is_only_read_when_a_connection_is_needed() {
+    for args in [
+        vec!["help"],
+        vec!["--version"],
+        vec!["version"],
+        vec!["completion", "bash"],
+        vec!["completion", "zsh"],
+    ] {
+        let (out, code) = wctl_env(&args, Some("abc"));
+        assert_eq!(code, 0, "wctl {args:?} with a bad WCTL_TIMEOUT: {out}");
+        // Not "contains WCTL_TIMEOUT": `help` documents the variable, so the
+        // name appears in perfectly good output. The error text is the signal.
+        assert!(
+            !out.contains("WCTL_TIMEOUT must be"),
+            "wctl {args:?} should not validate WCTL_TIMEOUT, printed: {out}"
+        );
+    }
+
+    // An explicit flag is a usage error whatever the command, because the user
+    // typed it for this invocation.
+    expect_die(
+        "--timeout must be a positive number of seconds",
+        &["--timeout", "abc", "help"],
+    );
+}
+
 #[test]
 fn wctl_timeout_environment_guards() {
     for value in ["abc", "0", "2.5"] {
@@ -178,6 +209,33 @@ fn usage_guards_fire_before_any_bus_call() {
         &["place", "123", "left", "top", "50%", "100%", "extra"],
     );
     expect_die("Usage: wctl info", &["info"]);
+
+    // move/resize/move-resize take no flags, so anything past their arguments
+    // is a mistake -- most likely a --json or --settled copied from the
+    // neighbouring commands. They used to accept and ignore it.
+    expect_die("Usage: wctl move", &["move", "123", "0", "0", "--json"]);
+    expect_die("Usage: wctl move", &["move", "123", "0", "0", "extra"]);
+    expect_die(
+        "Usage: wctl resize",
+        &["resize", "123", "800", "600", "--settled"],
+    );
+    expect_die(
+        "Usage: wctl move-resize",
+        &["move-resize", "123", "0", "0", "800", "600", "--json"],
+    );
+    // The excess-argument check runs against the parsed selector shift, so it
+    // is headless even for an option selector -- which would otherwise cost a
+    // ListDetailed before reporting the typo.
+    expect_die(
+        "Usage: wctl move",
+        &["move", "-c", "kitty", "0", "0", "extra"],
+    );
+    expect_die("Usage: wctl tile", &["tile", "123", "left", "extra"]);
+    expect_die("Usage: wctl center", &["center", "123", "both", "extra"]);
+    expect_die(
+        "Usage: wctl place",
+        &["place", "-t", "Doc", "left", "top", "50%", "100%", "extra"],
+    );
 
     // --json is stripped before the selector runs, so the count check still
     // sees the real positionals on either side of it.

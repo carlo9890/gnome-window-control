@@ -56,7 +56,7 @@ _wctl() {
             if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
-                COMPREPLY=($(compgen -W "--json --settled" -- "$cur"))
+                COMPREPLY=($(compgen -W "--json" -- "$cur"))
             fi
             ;;
         place)

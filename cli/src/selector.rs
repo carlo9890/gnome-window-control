@@ -170,6 +170,28 @@ pub fn select_id(windows: &[Window], kind: Kind, value: &str) -> Result<u64> {
 /// Returns the ID and how many arguments the selector occupied. `usage` is
 /// reported when the selector is missing or fewer than `min_after` arguments
 /// follow it -- checked before any D-Bus call.
+/// `resolve`, for a command that takes an EXACT number of arguments after the
+/// selector rather than a minimum.
+///
+/// The count is checked against the parsed shift before delegating, so an
+/// excess argument is refused without a bus call -- the same rule every other
+/// usage error follows. Checking it after `resolve` returned would have cost a
+/// `ListDetailed` for an option selector before reporting the mistake.
+pub fn resolve_exact(
+    ctx: &mut Ctx,
+    after: usize,
+    usage: &str,
+    args: &[String],
+) -> Result<(u64, usize)> {
+    if args.is_empty() {
+        return Err(Fail::error(usage));
+    }
+    if args.len() - parse(args)?.shift != after {
+        return Err(Fail::error(usage));
+    }
+    resolve(ctx, after, usage, args)
+}
+
 pub fn resolve(
     ctx: &mut Ctx,
     min_after: usize,
