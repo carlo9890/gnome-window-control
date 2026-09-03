@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v9 (2026-09-03)
 
 ### Changed
 - `wctl` is now a Rust binary (crate in `cli/`, D-Bus via zbus) instead of a
