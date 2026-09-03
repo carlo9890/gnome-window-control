@@ -845,13 +845,28 @@ class WindowControlService {
 
             watcher = { win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [] };
             const bump = () => this._restartQuietPeriod(watcher);
-            watcher.signalIds = [
-                win.connect('size-changed', bump),
-                win.connect('position-changed', bump),
-                win.connect('unmanaged', () => this._failGeometryWatcher(
-                    watcher, DBUS_ERROR_NOT_FOUND,
-                    `Window ${windowId} closed while waiting for its frame to settle`)),
-            ];
+            // Each id is stored AS IT IS OBTAINED. Building the array first and
+            // assigning after would leak every handler connected before a throw:
+            // signalIds would still be empty, so _retireGeometryWatcher could
+            // never disconnect them and `bump` would keep arming timers for the
+            // window's whole life.
+            watcher.signalIds.push(win.connect('size-changed', bump));
+            watcher.signalIds.push(win.connect('position-changed', bump));
+            watcher.signalIds.push(win.connect('unmanaged', () => this._failGeometryWatcher(
+                watcher, DBUS_ERROR_NOT_FOUND,
+                `Window ${windowId} closed while waiting for its frame to settle`)));
+
+            this._geometryWatchers.push(watcher);
+
+            // The quiet period is attached BEFORE the overall timeout. A caller
+            // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
+            // sources of equal priority that come ready together in the order
+            // they were attached -- so with the timeout first, a frame that was
+            // never moving would answer Timeout instead of settling.
+            //
+            // Starting it now is also what lets an ALREADY still frame settle,
+            // rather than waiting for a change that never comes.
+            this._restartQuietPeriod(watcher);
             watcher.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
                 watcher.timeoutId = 0;
                 console.debug(`[Window Control] WaitForGeometry(${windowId}) -> Timeout`);
@@ -859,10 +874,6 @@ class WindowControlService {
                     `Window ${windowId} frame did not settle within ${timeoutMs} ms`);
                 return GLib.SOURCE_REMOVE;
             });
-            this._geometryWatchers.push(watcher);
-            // Start the clock now: a frame that is ALREADY still settles after
-            // one quiet period rather than waiting for a change that never comes.
-            this._restartQuietPeriod(watcher);
         } catch (e) {
             console.error(`[Window Control] WaitForGeometry() error: ${e.message}`);
             // Once registered the watcher owns the invocation and one of its
