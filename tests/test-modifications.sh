@@ -602,12 +602,23 @@ else
     in_list=$("$WCTL" list --workspace "$target_ws" --json 2>/dev/null | jq --arg id "$TEST_WINDOW_ID" '[.[] | select(.id == ($id | tonumber))] | length')
     assert_equals "$in_list" "1" "list --workspace: moved window is listed on workspace $target_ws"
 
+    # With dynamic workspaces (the GNOME default) an index is not a stable
+    # name. Moving the last window off a workspace lets mutter remove it the
+    # moment it stops being active, and every later index shifts down by one --
+    # so `workspace 1` can correctly land on a workspace that is called 0 a
+    # moment later. Observed here as workspace count 2 -> 3 -> 2 across the
+    # move and the switch.
+    #
+    # So assert what the switch is FOR: that the shell ended up on the
+    # workspace holding the window that was moved. The window and the active
+    # workspace renumber together, which an index comparison does not survive.
     info "Testing: workspace $target_ws (switch) and back to $active_ws"
     run_wctl workspace "$target_ws"
     assert_exit_code 0 "$WCTL_EXIT_CODE" "workspace: exits 0"
     wait_for_change
     now_active=$("$WCTL" workspaces --json 2>/dev/null | jq -r '.[] | select(.is_active) | .index')
-    assert_equals "$now_active" "$target_ws" "workspace: workspace $target_ws is active"
+    assert_equals "$now_active" "$(get_window_field '.workspace_index')" \
+        "workspace: switched onto the workspace holding the test window"
     run_wctl workspace "$active_ws"
     wait_for_change
     now_active=$("$WCTL" workspaces --json 2>/dev/null | jq -r '.[] | select(.is_active) | .index')
