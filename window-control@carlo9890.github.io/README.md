@@ -74,8 +74,9 @@ View this extension's log lines (filtered by its `Window Control` tag):
 journalctl --user -b -g "Window Control" -f
 ```
 
-`console.log()` output is DEBUG level and hidden unless GNOME Shell is started
-with `G_MESSAGES_DEBUG=all`.
+The lifecycle lines are `console.log()` and are visible by default. Per-call
+handler logging is `console.debug()`, which journald drops unless GNOME Shell is
+started with `G_MESSAGES_DEBUG=all`.
 
 ### Reload Extension
 

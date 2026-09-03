@@ -38,33 +38,18 @@ systemd-run --user --quiet --wait gjs -c 'console.debug("A"); console.log("B")'
 journalctl --user -b --since "1 min ago" -o json | grep -o '"PRIORITY":"[0-9]"'
 ```
 
-In extension code:
-
-- Per-call D-Bus handler logging MUST use `console.debug()`. At `console.log()`
-  every `wctl` invocation would append lines to the journal that outlive the
-  session. `extension.js` states this invariant above `WindowControlService`.
-- No log line may contain window content or a caller-supplied match value, at any
-  level — not a title, and not a WM class. Titles leak document names, URLs and
-  message contents into a log that outlives the process that asked, and a class
-  says which applications the user runs. Log the method name and outcome instead.
-  `WaitForWindow` is the one exception: it logs its `kind` argument and elides
-  the value matched against. It logs `kind` only after validating it against the
-  four keywords (`class|title|substring|pid`) — logging it before that would let
-  any process on the session bus write arbitrary text, newlines included, into
-  the journal.
-- `console.log()` is reserved for the enable/disable lifecycle, which fires twice
-  per session and carries no window content.
-- Reserve `console.error()` for actual errors so the CRITICAL stream stays
-  meaningful.
-
-To see the per-call `console.debug()` output, start GNOME Shell (or the nested
-session) with `G_MESSAGES_DEBUG=all`.
+Writing these lines is a coding rule, not a monitoring one — see
+[CODING.md](CODING.md) for which level a handler may use and what a line may
+contain.
 
 ## Interpreting common signals
 
 - **`wctl` prints "extension is not running"** — the D-Bus destination isn't
-  answering; enable it (`gnome-extensions enable window-control@carlo9890.github.io`). Both
-  `wctl` transports classify this the same way via `is_extension_not_running`.
+  answering; enable it
+  (`gnome-extensions enable window-control@carlo9890.github.io`).
+  `is_extension_not_running` in `cli/src/dbus.rs` lists the error strings that
+  produce this message, including the `WindowControl.Disabled` error the
+  extension returns when it is disabled while a `WaitForWindow` call is pending.
 - **`wctl list`/`info`/`focused` return empty or error** — check the log for a
   JavaScript exception in `ListDetailed`; the handler returns `'[]'` on any throw.
 - **A method silently no-ops** — the handler caught an exception and returned
