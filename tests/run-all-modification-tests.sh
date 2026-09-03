@@ -74,6 +74,10 @@ for test_name in "${MODIFICATION_TESTS[@]}"; do
         echo -e "${GREEN}✓${RESET} ${test_name}: ${passed} passed, ${skipped} skipped"
     else
         echo -e "${RED}✗${RESET} ${test_name}: ${passed} passed, ${failed} failed, ${skipped} skipped"
+        # Show WHAT failed. The child's output is captured to count results, so
+        # without this a failing run reports a number and nothing else -- which
+        # is all a CI log, or anyone reading it afterwards, would ever get.
+        echo "$output" | grep -A5 '^FAIL' | sed 's/^/    /'
         ((SCRIPTS_FAILED++))
     fi
 done
