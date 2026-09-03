@@ -96,10 +96,13 @@ validate() {
     # only shows up as a SyntaxError inside GJS when the shell loads it -- the
     # extension then reports state ERROR and serves nothing. Two delimiters are
     # expected; anything else is the bug.
+    #
+    # grep -o, not grep -c: -c counts matching LINES, so a second backtick on
+    # either delimiter line would leave the count at 2 and pass a broken file.
     local ticks
-    ticks=$(grep -c '`' "$EXTENSION_DIR/dbus-interface.js" || true)
+    ticks=$(grep -o '`' "$EXTENSION_DIR/dbus-interface.js" | wc -l)
     if [[ "$ticks" -ne 2 ]]; then
-        log_error "dbus-interface.js has $ticks backtick line(s), expected 2 (the template delimiters)."
+        log_error "dbus-interface.js has $ticks backtick(s), expected 2 (the template delimiters)."
         log_error "A backtick inside the XML ends the template literal early; use a single quote."
         exit 1
     fi
