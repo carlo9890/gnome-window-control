@@ -184,7 +184,13 @@ wctl move-to-workspace 12345 2      # move a window to workspace 2
 wctl monitors                       # list (index, geometry, scale, primary)
 wctl move-to-monitor focused 1      # move the focused window to monitor 1
 
-# Wait for a window to be shown and print its ID (default timeout 10 s, exit 1 on
+# Usable area of a monitor: its rectangle minus panels and docks. This, not the
+# monitor rectangle `monitors` reports, is what place and tile resolve
+# percentages against. With no index the primary monitor is used.
+wctl workarea                       # primary monitor
+wctl workarea 1 --json              # {"monitor_index":1,"x":...,"width":...}
+
+# Wait for a window to be shown and print its ID (default timeout 10 s, exit 4 on
 # timeout). wait returns only once mutter has mapped and placed the window, so
 # the geometry command that follows sticks instead of being overridden by the
 # initial placement.
@@ -199,6 +205,76 @@ wctl --help
 `wctl activate` keeps the extension's first-match rule for `-t`/`-s`/`-c`/`-p`
 (useful for run-or-raise scripts). Every other command requires the selector to
 be unambiguous.
+
+#### Global options
+
+```bash
+# Bound how long a call waits for GNOME Shell to reply. The default is 25 s,
+# which is right for a batch script and far too long for a keybinding.
+wctl --timeout 2 place focused center top 50% 100%
+
+# Or set it once for a whole script.
+export WCTL_TIMEOUT=2
+```
+
+`--timeout` must come before the command, and it does not change how long
+`wctl wait` waits for a window -- that is `wait --timeout`.
+
+#### Exit codes
+
+A failing `wctl` classifies itself, so a script can tell the cases apart without
+matching the message text:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Usage error, or a failure with no more specific code below |
+| 2 | The window, workspace or monitor does not exist |
+| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, or the window is held on all workspaces |
+| 4 | Timed out waiting for a window, or for the shell to reply |
+| 5 | The Window Control extension is not running |
+
+Code 1 stays the catch-all it always was, so a script that only tests for a
+non-zero status is unaffected.
+
+#### Reporting the rectangle a placement resolved to
+
+`place`, `tile` and `center` take `--json`. It reports the workarea used and
+the rectangle wctl computed, so a script can verify a placement by comparing
+against that instead of reimplementing the percentage arithmetic:
+
+```bash
+wctl place focused center top 50% 100% --json
+# {"window_id":42,"monitor_index":0,
+#  "workarea":{"x":0,"y":27,"width":1920,"height":1053},
+#  "target":{"x":480,"y":27,"width":960,"height":1053},
+#  "placed":true}
+```
+
+A refusal emits the same document with `"placed":false` and a `"message"`, so
+stdout carries JSON on both outcomes; the exit code says why (see below).
+
+`resolve-place` answers the same question without a window and without moving
+anything, which is what sizing a window *before* it exists needs:
+
+```bash
+# What would that placement be on the primary monitor?
+wctl resolve-place center top 50% 100% --json
+# {"monitor_index":0,
+#  "workarea":{"x":0,"y":27,"width":1920,"height":1053},
+#  "target":{"x":480,"y":27,"width":960,"height":1053}}
+
+# Size a terminal at launch so its first mapped frame is already final.
+read -r w h < <(wctl resolve-place center top 50% 100% --json |
+                jq -r '.target | "\(.width) \(.height)"')
+```
+
+Both report the rectangle wctl **requested**. Mutter still clamps to size
+hints, and a client that quantises its own size (a terminal, to whole cells)
+settles a few pixels off, so a comparison against it still needs a tolerance.
+
+`move`, `resize` and `move-resize` have no `--json`: they take literal pixels
+and resolve nothing to report.
 
 `wctl place` is a higher-level CLI convenience built on top of the existing
 geometry methods. X and Y accept either absolute pixel coordinates or

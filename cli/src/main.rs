@@ -18,7 +18,10 @@ mod model;
 mod selector;
 mod table;
 
+use std::time::Duration;
+
 use commands::{completion, geometry as geom, query, state, wait, wsmon};
+use dbus::DEFAULT_TIMEOUT_SECONDS;
 use fail::{Fail, Result};
 use model::Ctx;
 
@@ -29,12 +32,13 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The help text and both completion scripts are authored by hand, so a unit
 /// test cross-checks all three against this list. Adding a command means adding
 /// it here.
-pub const COMMANDS: [&str; 28] = [
+pub const COMMANDS: [&str; 30] = [
     "list",
     "focused",
     "info",
     "workspaces",
     "monitors",
+    "workarea",
     "activate",
     "focus",
     "wait",
@@ -44,6 +48,7 @@ pub const COMMANDS: [&str; 28] = [
     "place",
     "tile",
     "center",
+    "resolve-place",
     "workspace",
     "move-to-workspace",
     "move-to-monitor",
@@ -85,7 +90,62 @@ fn main() {
     }
 }
 
+/// Parse a whole number of seconds for the reply timeout.
+///
+/// `wait` has its own parser: its value feeds a millisecond D-Bus argument, so
+/// it carries an overflow bound this one does not need.
+fn timeout_seconds(token: &str, source: &str) -> Result<u64> {
+    let positive = token.starts_with(|c: char| c.is_ascii_digit() && c != '0')
+        && token.chars().all(|c| c.is_ascii_digit());
+    let seconds = if positive {
+        token.parse::<u64>().ok()
+    } else {
+        None
+    };
+    seconds.ok_or_else(|| Fail::error(format!("{source} must be a positive number of seconds")))
+}
+
+/// The reply timeout from the environment, or the default.
+///
+/// An unset or empty `WCTL_TIMEOUT` means "use the default"; anything else is
+/// parsed and a bad value is an error. Falling back to the default for a typo
+/// would leave a script silently waiting 25 s on the path where the whole point
+/// of setting it was not to.
+fn timeout_from_env() -> Result<Duration> {
+    let default = Duration::from_secs(DEFAULT_TIMEOUT_SECONDS);
+    match std::env::var("WCTL_TIMEOUT") {
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(_)) => Err(Fail::error(
+            "WCTL_TIMEOUT must be a positive number of seconds",
+        )),
+        Ok(value) if value.is_empty() => Ok(default),
+        Ok(value) => Ok(Duration::from_secs(timeout_seconds(
+            &value,
+            "WCTL_TIMEOUT",
+        )?)),
+    }
+}
+
+/// Take the options that must be settled before a bus connection exists, and
+/// return them with the arguments that are left.
+///
+/// They sit before the command because the `<WINDOW>` slot already shifts every
+/// positional after it; a global option that could appear anywhere would have
+/// to be stripped by each command's own parser.
+fn global_options(args: &[String]) -> Result<(Duration, &[String])> {
+    if args.first().map(String::as_str) == Some("--timeout") {
+        let Some(value) = args.get(1) else {
+            return Err(Fail::error("Option --timeout requires a value"));
+        };
+        let timeout = Duration::from_secs(timeout_seconds(value, "--timeout")?);
+        return Ok((timeout, &args[2..]));
+    }
+    Ok((timeout_from_env()?, args))
+}
+
 fn run(args: &[String]) -> Result<()> {
+    let (timeout, args) = global_options(args)?;
+
     let Some(command) = args.first().map(String::as_str) else {
         print!("{}", help::text());
         return Ok(());
@@ -106,13 +166,14 @@ fn run(args: &[String]) -> Result<()> {
         _ => {}
     }
 
-    let mut ctx = Ctx::new();
+    let mut ctx = Ctx::new(timeout);
     match command {
         "list" => query::list(&mut ctx, rest),
         "focused" => query::focused(&mut ctx, rest),
         "info" => query::info(&mut ctx, rest),
         "workspaces" => query::workspaces(&mut ctx, rest),
         "monitors" => query::monitors(&mut ctx, rest),
+        "workarea" => query::workarea(&mut ctx, rest),
 
         "activate" => state::activate(&mut ctx, rest),
         "focus" => state::focus(&mut ctx, rest),
@@ -124,6 +185,7 @@ fn run(args: &[String]) -> Result<()> {
         "place" => geom::place(&mut ctx, rest),
         "tile" => geom::tile(&mut ctx, rest),
         "center" => geom::center(&mut ctx, rest),
+        "resolve-place" => geom::resolve_place(&mut ctx, rest),
 
         "workspace" => wsmon::workspace(&mut ctx, rest),
         "move-to-workspace" => wsmon::move_to_workspace(&mut ctx, rest),
@@ -204,6 +266,7 @@ mod tests {
         let help = help::text();
         for section in [
             "USAGE:",
+            "GLOBAL OPTIONS:",
             "WINDOW SELECTOR:",
             "LISTING COMMANDS:",
             "ACTIVATION COMMANDS:",
@@ -214,6 +277,7 @@ mod tests {
             "STATE COMMANDS:",
             "EXAMPLES:",
             "SHELL COMPLETION:",
+            "EXIT CODES:",
             "ENVIRONMENT:",
         ] {
             assert!(help.contains(section), "help text is missing {section}");

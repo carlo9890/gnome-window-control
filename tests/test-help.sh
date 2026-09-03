@@ -39,6 +39,9 @@ assert_contains "$WCTL_OUTPUT" "ACTIVATION COMMANDS:" "Help contains ACTIVATION 
 assert_contains "$WCTL_OUTPUT" "GEOMETRY COMMANDS:" "Help contains GEOMETRY COMMANDS section"
 assert_contains "$WCTL_OUTPUT" "STATE COMMANDS:" "Help contains STATE COMMANDS section"
 assert_contains "$WCTL_OUTPUT" "EXAMPLES:" "Help contains EXAMPLES section"
+assert_contains "$WCTL_OUTPUT" "GLOBAL OPTIONS:" "Help contains GLOBAL OPTIONS section"
+assert_contains "$WCTL_OUTPUT" "--timeout <SECONDS>" "Help documents the global --timeout"
+assert_contains "$WCTL_OUTPUT" "EXIT CODES:" "Help contains EXIT CODES section"
 assert_contains "$WCTL_OUTPUT" "ENVIRONMENT:" "Help contains ENVIRONMENT section"
 
 # Test: Help documents each command via a distinctive fragment of its own help
@@ -53,11 +56,13 @@ assert_contains "$WCTL_OUTPUT" "move-resize <WINDOW> <X> <Y> <W> <H>" "Help docu
 assert_contains "$WCTL_OUTPUT" "place <WINDOW> <X> <Y> <W> <H>" "Help documents place command"
 assert_contains "$WCTL_OUTPUT" "tile <WINDOW> <position>" "Help documents tile command"
 assert_contains "$WCTL_OUTPUT" "center <WINDOW> [horizontal|vertical|both]" "Help documents center command"
+assert_contains "$WCTL_OUTPUT" "resolve-place [--monitor <N>] <X> <Y> <W> <H> [--json]" "Help documents resolve-place command"
 assert_contains "$WCTL_OUTPUT" "above <WINDOW> on|off" "Help documents above command"
 assert_contains "$WCTL_OUTPUT" "sticky <WINDOW> on|off" "Help documents sticky command"
 assert_contains "$WCTL_OUTPUT" "WINDOW SELECTOR:" "Help contains WINDOW SELECTOR section"
 assert_contains "$WCTL_OUTPUT" "workspaces [--json]" "Help documents workspaces command"
 assert_contains "$WCTL_OUTPUT" "monitors [--json]" "Help documents monitors command"
+assert_contains "$WCTL_OUTPUT" "workarea [<MONITOR>] [--json]" "Help documents workarea command"
 assert_contains "$WCTL_OUTPUT" "workspace <N>" "Help documents workspace command"
 assert_contains "$WCTL_OUTPUT" "move-to-workspace <WINDOW> <N>" "Help documents move-to-workspace command"
 assert_contains "$WCTL_OUTPUT" "move-to-monitor <WINDOW> <N>" "Help documents move-to-monitor command"

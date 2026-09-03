@@ -3,7 +3,7 @@
 //! Activation, focus and the window-state commands.
 
 use crate::commands::{not_found, report};
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 use crate::model::Ctx;
 use crate::selector;
 
@@ -71,7 +71,11 @@ pub fn activate(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         }
     };
 
-    report(ok, "Window activated", format!("Window not found: {value}"))
+    report(
+        ok,
+        "Window activated",
+        Fail::plain(format!("Window not found: {value}")).with_code(EXIT_NOT_FOUND),
+    )
 }
 
 pub fn focus(ctx: &mut Ctx, args: &[String]) -> Result<()> {

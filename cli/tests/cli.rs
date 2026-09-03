@@ -17,11 +17,20 @@ use assert_cmd::cargo::cargo_bin;
 const NO_BUS: &str = "unix:path=/nonexistent/wctl-test-bus";
 
 fn wctl(args: &[&str]) -> (String, i32) {
-    let output = Command::new(cargo_bin("wctl"))
-        .args(args)
-        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
-        .output()
-        .expect("wctl runs");
+    wctl_env(args, None)
+}
+
+/// `wctl` with an optional WCTL_TIMEOUT. The variable is removed when no value
+/// is given, so a developer who exports it in their own shell cannot change
+/// what this suite tests.
+fn wctl_env(args: &[&str], timeout: Option<&str>) -> (String, i32) {
+    let mut command = Command::new(cargo_bin("wctl"));
+    command.args(args).env("DBUS_SESSION_BUS_ADDRESS", NO_BUS);
+    match timeout {
+        Some(value) => command.env("WCTL_TIMEOUT", value),
+        None => command.env_remove("WCTL_TIMEOUT"),
+    };
+    let output = command.output().expect("wctl runs");
     let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
     combined.push_str(&String::from_utf8_lossy(&output.stderr));
     (combined, output.status.code().unwrap_or(-1))
@@ -43,6 +52,53 @@ fn expect_not(forbidden: &str, args: &[&str]) {
     assert!(
         !out.contains(forbidden),
         "wctl {args:?} should not mention {forbidden:?}, printed: {out}"
+    );
+}
+
+#[test]
+fn global_timeout_guards() {
+    expect_die("Option --timeout requires a value", &["--timeout"]);
+    for value in ["abc", "0", "-5", "2.5", ""] {
+        expect_die(
+            "--timeout must be a positive number of seconds",
+            &["--timeout", value, "list"],
+        );
+    }
+
+    // The flag must be settled before the bus is touched, like every other
+    // argument guard here.
+    let (out, code) = wctl(&["--timeout", "2", "help"]);
+    assert_eq!(
+        code, 0,
+        "--timeout should be accepted before a command: {out}"
+    );
+    assert!(out.contains("Window Control CLI"));
+}
+
+#[test]
+fn wctl_timeout_environment_guards() {
+    for value in ["abc", "0", "2.5"] {
+        let (out, code) = wctl_env(&["list"], Some(value));
+        assert_ne!(code, 0, "WCTL_TIMEOUT={value} should fail, printed: {out}");
+        assert!(
+            out.contains("WCTL_TIMEOUT must be a positive number of seconds"),
+            "WCTL_TIMEOUT={value} printed: {out}"
+        );
+    }
+
+    // Empty means "unset", so it must not be an error -- it reaches the bus and
+    // fails there instead.
+    let (out, _) = wctl_env(&["list"], Some(""));
+    assert!(
+        !out.contains("WCTL_TIMEOUT must be"),
+        "an empty WCTL_TIMEOUT should mean unset, printed: {out}"
+    );
+
+    // The flag wins over the variable, and is validated the same way.
+    let (out, _) = wctl_env(&["--timeout", "abc", "list"], Some("5"));
+    assert!(
+        out.contains("--timeout must be a positive number of seconds"),
+        "printed: {out}"
     );
 }
 
@@ -122,6 +178,46 @@ fn usage_guards_fire_before_any_bus_call() {
         &["place", "123", "left", "top", "50%", "100%", "extra"],
     );
     expect_die("Usage: wctl info", &["info"]);
+
+    // --json is stripped before the selector runs, so the count check still
+    // sees the real positionals on either side of it.
+    expect_die(
+        "Usage: wctl place",
+        &[
+            "place", "123", "left", "top", "50%", "100%", "extra", "--json",
+        ],
+    );
+    expect_die("Usage: wctl place", &["place", "--json", "123", "left"]);
+
+    expect_die("Usage: wctl resolve-place", &["resolve-place"]);
+    expect_die(
+        "Usage: wctl resolve-place",
+        &["resolve-place", "center", "top", "50%"],
+    );
+    expect_die(
+        "Usage: wctl resolve-place",
+        &["resolve-place", "center", "top", "50%", "100%", "extra"],
+    );
+    expect_die(
+        "Option --monitor requires an argument",
+        &["resolve-place", "center", "top", "50%", "100%", "--monitor"],
+    );
+    expect_die(
+        "Monitor index must be a number",
+        &[
+            "resolve-place",
+            "--monitor",
+            "abc",
+            "center",
+            "top",
+            "50%",
+            "100%",
+        ],
+    );
+    expect_die(
+        "Unknown option: --bogus",
+        &["resolve-place", "--bogus", "center", "top", "50%", "100%"],
+    );
 }
 
 #[test]
@@ -148,6 +244,15 @@ fn workspace_and_monitor_guards() {
         "Monitor index must be a number",
         &["move-to-monitor", "123", "-1"],
     );
+
+    expect_die("Monitor index must be a number", &["workarea", "abc"]);
+    expect_die("Unknown option: --bogus", &["workarea", "--bogus"]);
+    // A leading dash is an option everywhere in this CLI, so a negative index
+    // is reported as one rather than as a bad number. No monitor index is
+    // negative, and special-casing it would be the only place a positional
+    // could start with a dash.
+    expect_die("Unknown option: -1", &["workarea", "-1"]);
+    expect_die("Unexpected argument: 1", &["workarea", "0", "1"]);
 }
 
 #[test]

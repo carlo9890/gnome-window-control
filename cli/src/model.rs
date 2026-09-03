@@ -8,11 +8,12 @@
 //! would have to mirror every field to round-trip it.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use serde_json::Value;
 
 use crate::dbus::Bus;
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 
 pub type Window = Value;
 
@@ -60,9 +61,9 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn new() -> Self {
+    pub fn new(timeout: Duration) -> Self {
         Ctx {
-            bus: Bus::new(),
+            bus: Bus::new(timeout),
             windows: None,
         }
     }
@@ -94,6 +95,6 @@ impl Ctx {
             .iter()
             .find(|w| crate::model::id(w) == id)
             .cloned()
-            .ok_or_else(|| Fail::error(format!("Window not found: {id}")))
+            .ok_or_else(|| Fail::error(format!("Window not found: {id}")).with_code(EXIT_NOT_FOUND))
     }
 }

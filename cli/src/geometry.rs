@@ -97,6 +97,24 @@ pub fn resolve_place_position(
     }
 }
 
+/// Resolve the four `place` tokens against a workarea, in the order the sizes
+/// have to be known before the alignment keywords can use them.
+///
+/// The one implementation of that arithmetic: `place` applies the result and
+/// `resolve-place` only reports it, so the two cannot disagree.
+pub fn resolve_place_rect(tokens: [&str; 4], workarea: Rect) -> Result<Rect> {
+    let width = resolve_place_size(tokens[2], workarea.width, "WIDTH")?;
+    let height = resolve_place_size(tokens[3], workarea.height, "HEIGHT")?;
+    let x = resolve_place_position(tokens[0], Axis::X, workarea.x, workarea.width, width)?;
+    let y = resolve_place_position(tokens[1], Axis::Y, workarea.y, workarea.height, height)?;
+    Ok(Rect {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
 pub const TILE_USAGE: &str = "Valid positions:
   top-left, top-center, top-right
   left, center, right
@@ -229,6 +247,70 @@ mod tests {
         // top/bottom belong to Y, left/right to X; neither crosses over.
         assert!(resolve_place_position("top", Axis::X, 0, 1920, 800).is_err());
         assert!(resolve_place_position("left", Axis::Y, 0, 1080, 600).is_err());
+    }
+
+    #[test]
+    fn place_rect_resolves_all_four_tokens_together() {
+        // Sample workarea (0, 27, 1920, 1053), the same one the tile cases use.
+        let wa = Rect {
+            x: 0,
+            y: 27,
+            width: 1920,
+            height: 1053,
+        };
+
+        // Half width, full height, centred. The alignment needs the resolved
+        // SIZE, so a wrong order here would centre against the wrong width.
+        assert_eq!(
+            resolve_place_rect(["center", "top", "50%", "100%"], wa).unwrap(),
+            Rect {
+                x: 480,
+                y: 27,
+                width: 960,
+                height: 1053
+            }
+        );
+        // Pixels and keywords mix, and bottom-right lands flush with the edges.
+        assert_eq!(
+            resolve_place_rect(["right", "bottom", "800", "600"], wa).unwrap(),
+            Rect {
+                x: 1120,
+                y: 480,
+                width: 800,
+                height: 600
+            }
+        );
+        // A negative X is a coordinate, not an error.
+        assert_eq!(
+            resolve_place_rect(["-50", "100", "33%", "50%"], wa).unwrap(),
+            Rect {
+                x: -50,
+                y: 100,
+                width: 633,
+                height: 526
+            }
+        );
+    }
+
+    #[test]
+    fn place_rect_reports_the_first_bad_token() {
+        let wa = Rect {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        // Sizes resolve before positions, so a bad WIDTH wins over a bad X.
+        let err = resolve_place_rect(["sideways", "top", "abc", "100%"], wa).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Invalid WIDTH: abc. Use a positive number or percentage like 50%"
+        );
+        let err = resolve_place_rect(["sideways", "top", "50%", "100%"], wa).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Invalid X position: sideways. Use a number or left|center|right"
+        );
     }
 
     #[test]

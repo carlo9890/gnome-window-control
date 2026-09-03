@@ -10,7 +10,14 @@
 const HELP: &str = r#"wctl {VERSION} - Window Control CLI
 
 USAGE:
-    wctl <COMMAND> [OPTIONS]
+    wctl [GLOBAL OPTIONS] <COMMAND> [OPTIONS]
+
+GLOBAL OPTIONS:
+    --timeout <SECONDS>   How long to wait for GNOME Shell to reply
+                          (default 25, or $WCTL_TIMEOUT). Must come before
+                          the command. This is NOT how long `wctl wait`
+                          waits for a window -- that is `wait --timeout`,
+                          and a global timeout does not shorten it.
 
 WINDOW SELECTOR:
     Every command that takes a <WINDOW> accepts one of:
@@ -31,6 +38,11 @@ LISTING COMMANDS:
     focused [--json]        Show detailed info for the focused window
     workspaces [--json]     List workspaces
     monitors [--json]       List monitors
+    workarea [<MONITOR>] [--json]
+                            Usable area of a monitor (its rectangle minus
+                            panels and docks), defaulting to the primary one.
+                            This is what place and tile resolve percentages
+                            against; monitors reports raw monitor rectangles.
 
 ACTIVATION COMMANDS:
     activate <ID>           Activate by window ID
@@ -41,7 +53,7 @@ ACTIVATION COMMANDS:
     focus <WINDOW>          Focus window (without raising)
     wait -c|-t|-s|-p <VALUE> [--timeout <SECONDS>]
                             Wait until a matching window is shown and print its ID
-                            (default timeout 10 s; exits 1 on timeout). Returns
+                            (default timeout 10 s; exits 4 on timeout). Returns
                             only once the window is mapped and placed, so a
                             geometry command issued right after it sticks.
 
@@ -55,9 +67,21 @@ GEOMETRY COMMANDS:
     move-resize <WINDOW> <X> <Y> <W> <H>    Move and resize atomically
 
 TILING & POSITIONING:
-    place <WINDOW> <X> <Y> <W> <H>          Place window using pixels and workarea-relative tokens
-    tile <WINDOW> <position>                Tile window to 4x2 grid position
-    center <WINDOW> [horizontal|vertical|both]  Center window on screen
+    place <WINDOW> <X> <Y> <W> <H> [--json] Place window using pixels and workarea-relative tokens
+    tile <WINDOW> <position> [--json]       Tile window to 4x2 grid position
+    center <WINDOW> [horizontal|vertical|both] [--json]  Center window on screen
+    resolve-place [--monitor <N>] <X> <Y> <W> <H> [--json]
+                            Resolve a placement WITHOUT applying it and without
+                            a window, against the primary monitor's workarea or
+                            the one named. Use it to size a window before it
+                            exists.
+
+    --json on the four commands above reports the workarea used and the
+    rectangle wctl resolved, so a script can verify a placement by comparing
+    against it rather than recomputing the percentages itself. It is the
+    REQUESTED rectangle: mutter still clamps to size hints, and a client that
+    quantises its own size settles a few pixels off. move, resize and
+    move-resize have no --json -- they resolve nothing to report.
 
 WORKSPACE & MONITOR COMMANDS:
     workspace <N>                       Switch to workspace N
@@ -98,10 +122,14 @@ EXAMPLES:
     wctl tile 12345 center            # Tile to center of grid
     wctl center focused               # Center the focused window (both axes)
     wctl center 12345 horizontal      # Center horizontally only
+    wctl place focused center top 50% 100% --json   # Place, and report the rectangle used
+    wctl resolve-place center top 50% 100% --json   # Same rectangle, nothing placed
     wctl workspaces                   # List workspaces
     wctl workspace 2                  # Switch to workspace 2
     wctl move-to-workspace -c Firefox 2   # Move the Firefox window to workspace 2
     wctl monitors                     # List monitors
+    wctl workarea --json              # Usable area of the primary monitor
+    wctl workarea 1                   # Usable area of monitor 1
     wctl move-to-monitor focused 1    # Move the focused window to monitor 1
     kitty & wctl wait -c kitty        # Start kitty, print its window ID once it exists
     wctl tile "$(wctl wait -p $!)" right   # Wait for a child process's window, then tile it
@@ -113,8 +141,21 @@ SHELL COMPLETION:
     Bash: wctl completion bash > ~/.local/share/bash-completion/completions/wctl
     Zsh:  wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
 
+EXIT CODES:
+    0   Success
+    1   Usage error, or a failure with no more specific code below
+    2   The window, workspace or monitor does not exist
+    3   The shell refused: the frame is pinned by maximize, fullscreen or
+        tiling, or the window is held on all workspaces
+    4   Timed out waiting for a window, or for the shell to reply
+    5   The Window Control extension is not running
+
 ENVIRONMENT:
     The Window Control GNOME Shell extension must be enabled.
+
+    WCTL_TIMEOUT   Reply timeout in seconds, as for --timeout, which
+                   overrides it. Set it once for a script that must not
+                   stall on a wedged shell.
 
 "#;
 

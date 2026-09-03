@@ -81,7 +81,7 @@ fi
 # ============================================================================
 
 run_wctl info 99999999
-assert_exit_code 1 "$WCTL_EXIT_CODE" "info exits with code 1 for invalid ID"
+assert_exit_code 2 "$WCTL_EXIT_CODE" "info exits with code 2 (not found) for invalid ID"
 assert_contains "$WCTL_OUTPUT" "not found" "Error message mentions 'not found'"
 
 # ============================================================================
