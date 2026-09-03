@@ -237,6 +237,45 @@ matching the message text:
 Code 1 stays the catch-all it always was, so a script that only tests for a
 non-zero status is unaffected.
 
+#### Reporting the rectangle a placement resolved to
+
+`place`, `tile` and `center` take `--json`. It reports the workarea used and
+the rectangle wctl computed, so a script can verify a placement by comparing
+against that instead of reimplementing the percentage arithmetic:
+
+```bash
+wctl place focused center top 50% 100% --json
+# {"window_id":42,"monitor_index":0,
+#  "workarea":{"x":0,"y":27,"width":1920,"height":1053},
+#  "target":{"x":480,"y":27,"width":960,"height":1053},
+#  "placed":true}
+```
+
+A refusal emits the same document with `"placed":false` and a `"message"`, so
+stdout carries JSON on both outcomes; the exit code says why (see below).
+
+`resolve-place` answers the same question without a window and without moving
+anything, which is what sizing a window *before* it exists needs:
+
+```bash
+# What would that placement be on the primary monitor?
+wctl resolve-place center top 50% 100% --json
+# {"monitor_index":0,
+#  "workarea":{"x":0,"y":27,"width":1920,"height":1053},
+#  "target":{"x":480,"y":27,"width":960,"height":1053}}
+
+# Size a terminal at launch so its first mapped frame is already final.
+read -r w h < <(wctl resolve-place center top 50% 100% --json |
+                jq -r '.target | "\(.width) \(.height)"')
+```
+
+Both report the rectangle wctl **requested**. Mutter still clamps to size
+hints, and a client that quantises its own size (a terminal, to whole cells)
+settles a few pixels off, so a comparison against it still needs a tolerance.
+
+`move`, `resize` and `move-resize` have no `--json`: they take literal pixels
+and resolve nothing to report.
+
 `wctl place` is a higher-level CLI convenience built on top of the existing
 geometry methods. X and Y accept either absolute pixel coordinates or
 alignment keywords (`left|center|right` and `top|center|bottom`). Width and

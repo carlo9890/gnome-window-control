@@ -32,7 +32,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The help text and both completion scripts are authored by hand, so a unit
 /// test cross-checks all three against this list. Adding a command means adding
 /// it here.
-pub const COMMANDS: [&str; 29] = [
+pub const COMMANDS: [&str; 30] = [
     "list",
     "focused",
     "info",
@@ -48,6 +48,7 @@ pub const COMMANDS: [&str; 29] = [
     "place",
     "tile",
     "center",
+    "resolve-place",
     "workspace",
     "move-to-workspace",
     "move-to-monitor",
@@ -184,6 +185,7 @@ fn run(args: &[String]) -> Result<()> {
         "place" => geom::place(&mut ctx, rest),
         "tile" => geom::tile(&mut ctx, rest),
         "center" => geom::center(&mut ctx, rest),
+        "resolve-place" => geom::resolve_place(&mut ctx, rest),
 
         "workspace" => wsmon::workspace(&mut ctx, rest),
         "move-to-workspace" => wsmon::move_to_workspace(&mut ctx, rest),

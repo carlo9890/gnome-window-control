@@ -56,6 +56,7 @@ assert_contains "$WCTL_OUTPUT" "move-resize <WINDOW> <X> <Y> <W> <H>" "Help docu
 assert_contains "$WCTL_OUTPUT" "place <WINDOW> <X> <Y> <W> <H>" "Help documents place command"
 assert_contains "$WCTL_OUTPUT" "tile <WINDOW> <position>" "Help documents tile command"
 assert_contains "$WCTL_OUTPUT" "center <WINDOW> [horizontal|vertical|both]" "Help documents center command"
+assert_contains "$WCTL_OUTPUT" "resolve-place [--monitor <N>] <X> <Y> <W> <H> [--json]" "Help documents resolve-place command"
 assert_contains "$WCTL_OUTPUT" "above <WINDOW> on|off" "Help documents above command"
 assert_contains "$WCTL_OUTPUT" "sticky <WINDOW> on|off" "Help documents sticky command"
 assert_contains "$WCTL_OUTPUT" "WINDOW SELECTOR:" "Help contains WINDOW SELECTOR section"

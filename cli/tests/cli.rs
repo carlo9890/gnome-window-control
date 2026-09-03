@@ -178,6 +178,46 @@ fn usage_guards_fire_before_any_bus_call() {
         &["place", "123", "left", "top", "50%", "100%", "extra"],
     );
     expect_die("Usage: wctl info", &["info"]);
+
+    // --json is stripped before the selector runs, so the count check still
+    // sees the real positionals on either side of it.
+    expect_die(
+        "Usage: wctl place",
+        &[
+            "place", "123", "left", "top", "50%", "100%", "extra", "--json",
+        ],
+    );
+    expect_die("Usage: wctl place", &["place", "--json", "123", "left"]);
+
+    expect_die("Usage: wctl resolve-place", &["resolve-place"]);
+    expect_die(
+        "Usage: wctl resolve-place",
+        &["resolve-place", "center", "top", "50%"],
+    );
+    expect_die(
+        "Usage: wctl resolve-place",
+        &["resolve-place", "center", "top", "50%", "100%", "extra"],
+    );
+    expect_die(
+        "Option --monitor requires an argument",
+        &["resolve-place", "center", "top", "50%", "100%", "--monitor"],
+    );
+    expect_die(
+        "Monitor index must be a number",
+        &[
+            "resolve-place",
+            "--monitor",
+            "abc",
+            "center",
+            "top",
+            "50%",
+            "100%",
+        ],
+    );
+    expect_die(
+        "Unknown option: --bogus",
+        &["resolve-place", "--bogus", "center", "top", "50%", "100%"],
+    );
 }
 
 #[test]

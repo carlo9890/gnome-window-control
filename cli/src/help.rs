@@ -67,9 +67,21 @@ GEOMETRY COMMANDS:
     move-resize <WINDOW> <X> <Y> <W> <H>    Move and resize atomically
 
 TILING & POSITIONING:
-    place <WINDOW> <X> <Y> <W> <H>          Place window using pixels and workarea-relative tokens
-    tile <WINDOW> <position>                Tile window to 4x2 grid position
-    center <WINDOW> [horizontal|vertical|both]  Center window on screen
+    place <WINDOW> <X> <Y> <W> <H> [--json] Place window using pixels and workarea-relative tokens
+    tile <WINDOW> <position> [--json]       Tile window to 4x2 grid position
+    center <WINDOW> [horizontal|vertical|both] [--json]  Center window on screen
+    resolve-place [--monitor <N>] <X> <Y> <W> <H> [--json]
+                            Resolve a placement WITHOUT applying it and without
+                            a window, against the primary monitor's workarea or
+                            the one named. Use it to size a window before it
+                            exists.
+
+    --json on the four commands above reports the workarea used and the
+    rectangle wctl resolved, so a script can verify a placement by comparing
+    against it rather than recomputing the percentages itself. It is the
+    REQUESTED rectangle: mutter still clamps to size hints, and a client that
+    quantises its own size settles a few pixels off. move, resize and
+    move-resize have no --json -- they resolve nothing to report.
 
 WORKSPACE & MONITOR COMMANDS:
     workspace <N>                       Switch to workspace N
@@ -110,6 +122,8 @@ EXAMPLES:
     wctl tile 12345 center            # Tile to center of grid
     wctl center focused               # Center the focused window (both axes)
     wctl center 12345 horizontal      # Center horizontally only
+    wctl place focused center top 50% 100% --json   # Place, and report the rectangle used
+    wctl resolve-place center top 50% 100% --json   # Same rectangle, nothing placed
     wctl workspaces                   # List workspaces
     wctl workspace 2                  # Switch to workspace 2
     wctl move-to-workspace -c Firefox 2   # Move the Firefox window to workspace 2

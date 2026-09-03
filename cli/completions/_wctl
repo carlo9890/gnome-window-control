@@ -54,6 +54,7 @@ _wctl() {
         'place:Place window with relative sizing'
         'tile:Tile window to a preset grid position'
         'center:Center window on screen'
+        'resolve-place:Resolve a placement without applying it'
         'workspace:Switch to a workspace'
         'move-to-workspace:Move window to a workspace'
         'move-to-monitor:Move window to a monitor'
@@ -159,17 +160,29 @@ _wctl() {
                         '2:x position or keyword:(left center right)' \
                         '3:y position or keyword:(top center bottom)' \
                         '4:width or percentage:' \
-                        '5:height or percentage:'
+                        '5:height or percentage:' \
+                        '--json[Output as JSON]'
+                    ;;
+                resolve-place)
+                    _arguments \
+                        '--monitor[Monitor index (default: primary)]:index:' \
+                        '1:x position or keyword:(left center right)' \
+                        '2:y position or keyword:(top center bottom)' \
+                        '3:width or percentage:' \
+                        '4:height or percentage:' \
+                        '--json[Output as JSON]'
                     ;;
                 tile)
                     _arguments "${_wctl_selector_opts[@]}" \
                         '1:window:_wctl_window_ids' \
-                        '2:position:(top-left top-center top-right left center right bottom-left bottom-center bottom-right)'
+                        '2:position:(top-left top-center top-right left center right bottom-left bottom-center bottom-right)' \
+                        '--json[Output as JSON]'
                     ;;
                 center)
                     _arguments "${_wctl_selector_opts[@]}" \
                         '1:window:_wctl_window_ids' \
-                        '2:axis:(horizontal vertical both)'
+                        '2:axis:(horizontal vertical both)' \
+                        '--json[Output as JSON]'
                     ;;
                 above|sticky)
                     _arguments "${_wctl_selector_opts[@]}" \

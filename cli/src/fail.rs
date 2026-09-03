@@ -77,6 +77,10 @@ impl Fail {
         self
     }
 
+    pub fn code(&self) -> i32 {
+        self.code
+    }
+
     /// Write the message on the right stream and return the process exit code.
     pub fn report(&self) -> i32 {
         match self.stream {
