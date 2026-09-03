@@ -8,46 +8,47 @@ GJS; the CLI is Rust (crate in `cli/`); targets GNOME Shell 45-50.
 
 ## Use-case routing
 
-Depending on your goal, load the relevant document first.
+Every route below is mandatory, not advisory. Load the document BEFORE the first
+action of that kind — loading it afterwards does not count, and no route becomes
+skippable because the task looks small.
 
 ### Research, planning, analysis
 
-Load [docs/OVERVIEW.md](docs/OVERVIEW.md) for the architecture, repository layout,
-and search expressions for finding things.
+**MUST read [docs/OVERVIEW.md](docs/OVERVIEW.md) before searching this repository.**
+It is the map — layout, architecture, the D-Bus and selector concepts, and the
+expressions that locate a method or a command fast.
 
 ### Coding and file changes
 
-Load [docs/CODING.md](docs/CODING.md) before changing code — style, the mandatory
-`node --check` gate, building, and the recipe for adding a D-Bus method.
+**MUST read [docs/CODING.md](docs/CODING.md) before creating or editing ANY file
+under `window-control@carlo9890.github.io/` or `cli/`.** It owns the JS and Rust
+style rules, the mandatory `node --check` gate, and the recipe for adding a D-Bus
+method end to end.
 
 ### Testing and verification
 
-Load [docs/TESTING.md](docs/TESTING.md) for the test suites and CI gates.
+**MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test** or judging
+whether a change is verified. It owns the test layers, the CI gate, and the
+minimum checks per action.
 
 ### Run the extension to reproduce a bug or verify a change
 
-Load [docs/RUNNING.md](docs/RUNNING.md) to reload and drive the extension by hand —
-`disable`/`enable` does **not** reload JS from disk, so code changes need a shell
-restart or nested session.
+**MUST read [docs/RUNNING.md](docs/RUNNING.md) before reloading or driving the
+extension by hand.** It owns the reload path, the nested-session setup, and the
+pitfalls that cost hours when met blind.
 
 ### Analyze logs
 
-Load [docs/MONITORING.md](docs/MONITORING.md) for viewing logs, log levels, and
-interpreting common signals.
+**MUST read [docs/MONITORING.md](docs/MONITORING.md) before interpreting the
+extension's log output** — where the lines land, which levels are visible, and
+what a silent no-op means.
 
 ### Commit, branch, PR workflow
 
-Load [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before git operations or
-opening a PR.
+**MUST read [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before ANY git
+operation** — commit, branch, push, or opening a PR.
 
 ### Release
 
-Load [docs/RELEASING.md](docs/RELEASING.md) to cut a release. Releases MUST use
-`./scripts/release.sh`.
-
-### Requirements / design spec
-
-`gnome-window-control-extension-requirements.md` is the original design spec. The
-authoritative D-Bus surface is the interface XML in
-`window-control@carlo9890.github.io/dbus-interface.js` and the method table in
-[README.md](README.md).
+**MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release** or
+changing what the project ships.

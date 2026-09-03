@@ -18,8 +18,8 @@ from [AGENTS.md](AGENTS.md) instead.)
 5. Commit, branch, and open a PR — see [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md).
 
 Prerequisites: GNOME Shell 45-50, the `gnome-extensions` CLI, `node` (for the
-`node --check` gate), and `jq` plus `gdbus` (used by the live test suites, not by
-`wctl` itself).
+`node --check` gate), and — for the live test suites only, not for `wctl` itself
+— `jq`, `gdbus`, and `kitty` (the modification suite spawns a kitty window).
 
 The Rust toolchain for the `wctl` CLI comes from [mise](https://mise.jdx.dev);
 `.mise.toml` pins the exact version. Run `mise install` in the repository root
@@ -27,9 +27,9 @@ to get it, then `mise run ci` to run the gates.
 
 ## Before you open a PR
 
-- Modified JavaScript passes `node --check` and has been reloaded and exercised in
-  a running shell (see [docs/CODING.md](docs/CODING.md) and [docs/RUNNING.md](docs/RUNNING.md)).
-- The relevant test suites pass (see [docs/TESTING.md](docs/TESTING.md)).
+Work through the pre-handoff gates in
+[docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md); they name the checks each kind
+of change needs and where the commit and PR conventions live.
 
 ## Where things live
 

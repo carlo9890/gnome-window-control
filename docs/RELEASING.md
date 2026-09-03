@@ -55,8 +55,11 @@ Constraints the review enforces, which the code must keep satisfying:
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
 - `disable()` must undo everything `enable()` did: unexport the D-Bus object,
-  disconnect every signal, and remove every timeout. The extension currently has
-  no signals and no timers, so keep it that way, or extend `disable()`.
+  disconnect every signal, and remove every timeout. `WaitForWindow` connects
+  `window-created` plus per-window `notify::wm-class` / `notify::title` / `shown`
+  / `unmanaged` handlers and arms a `GLib.timeout_add` per waiter, all of which
+  `_cancelWaiters()` drops from `unexport()`. Any new signal or timer must be
+  torn down on the same path.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.
@@ -73,11 +76,11 @@ draft answer:
 > The interface is deliberately open to every application in the session, and the
 > extension does not claim otherwise. There is no trust boundary to enforce: the
 > session bus does not distinguish between processes of the same user, so a PID
-> allowlist is both racy and useless here (the reference client is a shell
-> script, so the caller is not the user's own program), and a token file is readable by anything that
-> can read the user's files. Rather than ship a mechanism that implies a
-> guarantee it cannot provide, the extension makes the exposure explicit and
-> lets the user decide:
+> allowlist is both racy and useless here (the caller the shell sees is `wctl`,
+> not the program that wanted the window moved), and a token file is readable by
+> anything that can read the user's files. Rather than ship a mechanism that
+> implies a guarantee it cannot provide, the extension makes the exposure
+> explicit and lets the user decide:
 >
 > - The EGO description states, before install, exactly what is registered on
 >   D-Bus and that the interface has no access control.

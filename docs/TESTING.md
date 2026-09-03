@@ -17,10 +17,10 @@ installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
 
 ## Crate tests (the CI gate)
 
-`mise run ci` runs `cargo fmt --check`, `cargo clippy --all-targets -D warnings`,
-`cargo test` and the release build. **`.github/workflows/build.yml` runs it on
-every push and PR** on a bare `ubuntu-latest` runner, so it is the automated gate.
-None of it needs an extension, a GNOME session, or D-Bus.
+`mise run ci` depends on the `fmt:check`, `lint`, `test` and `build` tasks in
+`.mise.toml`. CI runs the same command on a bare `ubuntu-latest` runner (see
+[CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md)), so it is the automated gate. None of it
+needs an extension, a GNOME session, or D-Bus.
 
 Two kinds of test live there:
 
@@ -39,9 +39,10 @@ into all of them fails `cargo test`.
 
 ## Query and modification tests
 
-Both need the extension enabled and running. Query tests are read-only.
-Modification tests spawn a kitty window (found through `wctl wait -p`, which
-replies once the window is shown) and exercise every state-changing command
+Both need the extension enabled and running, plus `jq` and `gdbus`. Query tests
+are read-only. Modification tests need `kitty` installed — they spawn a kitty
+window (found through `wctl wait -p`, which replies once the window is shown)
+and exercise every state-changing command
 (move, resize, move-resize, place, tile, center, minimize/maximize, fullscreen,
 above, sticky, activate, focus, move-to-workspace, move-to-monitor, wait, the
 selector forms, close), asserting geometry within a pixel tolerance. **They

@@ -65,11 +65,14 @@ Building and installing from source is a contributor task — see
 `wctl` is a statically linked binary. It needs nothing at runtime — no shell,
 no `jq`, no `gdbus`.
 
-Use the install script, which downloads the current release into
-`~/.local/bin`:
+Use the install script, which puts `wctl` in `~/.local/bin`:
 ```bash
-./install-wctl.sh
+curl -fsSL https://github.com/carlo9890/gnome-window-control/releases/latest/download/install-wctl.sh | bash
 ```
+
+Run from a checkout, it installs a local build when one exists and downloads the
+published binary otherwise. `--download` always downloads; `--local` always
+builds.
 
 Or download `wctl` from the [releases page](https://github.com/carlo9890/gnome-window-control/releases)
 and put it on your PATH:

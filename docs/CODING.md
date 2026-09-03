@@ -18,12 +18,6 @@ If either fails, the code has a syntax error and must not be committed.
 directory, and `.github/workflows/build.yml` runs it as a hard CI gate — so a
 syntax error fails the build.
 
-Any task that modifies JS code must include:
-
-```markdown
-- [ ] Code passes syntax check (`node --check <file>`)
-```
-
 ## JavaScript style (extension.js)
 
 - Use ES module (ESM) syntax.
@@ -36,21 +30,22 @@ Any task that modifies JS code must include:
   re-implementing the find/try-catch/log skeleton.
 - Use `console.debug()` for per-call handler logging, `console.log()` only for
   the enable/disable lifecycle, and `console.error()` ONLY in catch blocks.
-  `console.log()` is journald priority 5 and IS visible by default — it is not
-  filtered. See [MONITORING.md](MONITORING.md) for the verified level table.
+  `console.log()` is visible by default (journald priority 5, see
+  [MONITORING.md](MONITORING.md)), so a per-call `console.log()` leaves a journal
+  line per `wctl` invocation that outlives the session.
 - Never log window content or a caller-supplied match value, at any level — not a
   title, and not a WM class. Log the method name and the outcome. A keyword
-  argument (`WaitForWindow`'s `kind`) is fine **once it has been validated** —
-  until then it is an arbitrary remote string; the value it matches against is
-  never logged.
+  argument (`WaitForWindow`'s `kind`) is fine **once it has been validated**
+  against the four keywords — logged before that, it lets any process on the
+  session bus write arbitrary text, newlines included, into the journal. The
+  value it matches against is never logged.
 
 ## Rust style (cli/)
 
 - The toolchain is pinned in `.mise.toml`. Run the gates through mise:
   `mise run fmt`, `mise run lint`, `mise run test`, `mise run build`, or
-  `mise run ci` for all of them.
-- `cargo fmt` is authoritative; `cargo clippy --all-targets -- -D warnings` must
-  be clean. Both are CI gates.
+  `mise run ci` for all of them (see [TESTING.md](TESTING.md)).
+- `cargo fmt` is authoritative; clippy must be clean with warnings as errors.
 - Validate arguments before any D-Bus call. The session connection is opened
   lazily in `dbus.rs`, so a usage error must never reach it — that is what keeps
   the guard tests headless.

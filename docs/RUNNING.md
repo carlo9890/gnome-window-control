@@ -25,27 +25,49 @@ isolated from your main session; all logs go to the launching terminal):
 ```bash
 ./scripts/build.sh install        # copy updated files into the extensions dir
 ./scripts/start-nested.sh         # launch a nested shell in a window
-# inside the nested session's terminal:
+# from a second terminal pointed at the nested session (see "Reach the nested
+# session" below):
 gnome-extensions enable window-control@carlo9890.github.io
 ```
 
-**The nested session shares your dconf database.** `gnome-extensions
+`start-nested.sh` wraps the shell in `dbus-run-session`, so the nested session
+gets its own session bus and its `org.gnome.Shell` does not collide with the
+outer one.
+
+Without a nested session, restart GNOME Shell directly: log out/in on Wayland,
+or `Alt+F2` → `r` → Enter on X11.
+
+### Reach the nested session
+
+A second terminal needs the nested display and the nested bus. `start-nested.sh`
+prints the display; the bus address exists only inside the nested process, so
+read it back from `/proc`:
+
+```bash
+nested=$(pgrep -f '^gnome-shell --nested')
+export WAYLAND_DISPLAY=wayland-1     # the value start-nested.sh printed
+export DBUS_SESSION_BUS_ADDRESS=$(
+  tr '\0' '\n' < /proc/$nested/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
+```
+
+### Keep the nested shell's settings to itself
+
+**A nested session still shares your dconf database.** `gnome-extensions
 enable`/`disable` writes `org.gnome.shell enabled-extensions`, and your real
 shell reacts to that write too: it can disable the extension in your live
 session (observed: a `disable`/`enable` cycle inside a nested session left the
 outer session's extension INACTIVE). To keep the nested shell's settings
-private, start it with an in-memory settings backend; it then boots with no
-extensions enabled and `gnome-extensions enable` inside it touches only the
-nested shell:
+private, start it with an in-memory settings backend — keeping
+`dbus-run-session`, or the shell lands on your real bus:
 
 ```bash
-GSETTINGS_BACKEND=memory gnome-shell --nested --wayland
+GSETTINGS_BACKEND=memory dbus-run-session gnome-shell --nested --wayland
 ```
 
-Note that the `gnome-extensions enable`/`disable` CLI writes to dconf
-regardless of how the shell was started, so inside such a session use the
-shell's D-Bus API instead; the memory-backed shell then keeps the change to
-itself:
+It then boots with no extensions enabled. The `gnome-extensions` CLI writes to
+dconf regardless of how the shell was started, so enable through the shell's
+D-Bus API instead (from a terminal on the nested session's bus); the
+memory-backed shell keeps the change to itself:
 
 ```bash
 gdbus call --session --dest org.gnome.Shell \
@@ -53,10 +75,9 @@ gdbus call --session --dest org.gnome.Shell \
   window-control@carlo9890.github.io
 ```
 
-Otherwise restart GNOME Shell directly: log out/in on Wayland, or `Alt+F2` → `r` →
-Enter on X11.
+### Nested-session pitfalls
 
-Three more nested-session pitfalls, all observed on GNOME 46:
+All observed on GNOME 46:
 
 - **A fresh nested shell starts in the Activities overview.** Window
   activation does not close it, and `Meta.Workspace.activate()` is ignored

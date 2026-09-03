@@ -69,8 +69,6 @@ gnome-window-control-extension-requirements.md   original design spec
   one `ListDetailed` cached in `Ctx` for the command that follows. The
   argument-count check runs before any D-Bus call so usage errors stay headless.
   The pure halves (`selector::parse`, `select_id`, `filter`) are unit-tested.
-- `disable`/`enable` does **not** reload JS from disk; code changes need a shell
-  restart or nested session (see [RUNNING.md](RUNNING.md)).
 
 ## Finding things
 
@@ -90,9 +88,18 @@ grep -n -A32 'pub const COMMANDS' cli/src/main.rs
 # The pure helpers that are unit-tested headlessly
 grep -n '^pub fn' cli/src/geometry.rs cli/src/selector.rs
 
-# The authoritative method list
+# The method table users read (mirrors the XML above)
 sed -n '/## Methods/,/## /p' README.md
 ```
+
+## Authoritative sources
+
+- The D-Bus surface is the interface XML in
+  `window-control@carlo9890.github.io/dbus-interface.js`. The README method table
+  mirrors it and is updated by hand, so trust the XML when they disagree.
+- `gnome-window-control-extension-requirements.md` is the original design spec,
+  kept as a record of intent. It is not tracked against the code and does not
+  describe the current surface.
 
 ## External resources
 
