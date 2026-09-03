@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 #
 # test-workspaces-monitors.sh - Read-only tests for wctl workspaces, monitors,
-# the list filters, and the read-only window-selector forms.
+# workarea, resolve-place, the list filters, and the read-only window-selector
+# forms.
 #
 # Requires the Window Control extension (with ListWorkspaces) to be running.
 #
 
 source "$(dirname "$0")/test-helper.sh"
+source "$(dirname "$0")/geometry-helper.sh"
 
 echo "Testing: wctl workspaces / monitors / list filters / selectors"
 echo "========================================"
@@ -65,6 +67,85 @@ run_wctl monitors
 assert_exit_code 0 "$WCTL_EXIT_CODE" "monitors (table) exits 0"
 header_line=$(echo "$WCTL_OUTPUT" | head -1)
 assert_matches "$header_line" "IDX.*X.*Y.*WIDTH.*HEIGHT.*SCALE.*PRIMARY" "monitors table header has all columns"
+
+# ---------------------------------------------------------------------------
+# workarea
+# ---------------------------------------------------------------------------
+primary_index=$(echo "$mon_json" | jq -r 'map(select(.is_primary))[0].index')
+
+run_wctl workarea --json
+assert_exit_code 0 "$WCTL_EXIT_CODE" "workarea --json exits 0"
+assert_json_valid "$WCTL_OUTPUT" "workarea --json is valid JSON"
+wa_json="$WCTL_OUTPUT"
+assert_equals "$(echo "$wa_json" | jq -r '.monitor_index')" "$primary_index" \
+    "workarea with no argument uses the primary monitor"
+
+# It must agree with the extension's own GetWorkarea, read independently.
+raw_workarea=$(gdbus call --session \
+    --dest org.gnome.Shell \
+    --object-path /org/gnome/Shell/Extensions/WindowControl \
+    --method org.gnome.Shell.Extensions.WindowControl.GetWorkarea \
+    "$primary_index" 2>/dev/null || echo "")
+parsed_workarea=""
+[[ -n "$raw_workarea" ]] && parsed_workarea=$(parse_workarea_rect "$raw_workarea" 2>/dev/null || echo "")
+if [[ -z "$parsed_workarea" ]]; then
+    fail "workarea: could not read GetWorkarea for verification (got: '$raw_workarea')"
+else
+    read -r wa_x wa_y wa_w wa_h <<< "$parsed_workarea"
+    assert_equals "$(echo "$wa_json" | jq -r '.x')" "$wa_x" "workarea --json x matches GetWorkarea"
+    assert_equals "$(echo "$wa_json" | jq -r '.y')" "$wa_y" "workarea --json y matches GetWorkarea"
+    assert_equals "$(echo "$wa_json" | jq -r '.width')" "$wa_w" "workarea --json width matches GetWorkarea"
+    assert_equals "$(echo "$wa_json" | jq -r '.height')" "$wa_h" "workarea --json height matches GetWorkarea"
+fi
+
+run_wctl workarea "$primary_index"
+assert_exit_code 0 "$WCTL_EXIT_CODE" "workarea <MONITOR> exits 0"
+assert_contains "$WCTL_OUTPUT" "Monitor:" "workarea (plain) reports the monitor"
+assert_contains "$WCTL_OUTPUT" "Size:" "workarea (plain) reports the size"
+
+# The extension's (-1, -1, -1, -1) sentinel must arrive as a distinguishable
+# failure, not as a negative rectangle: a caller probing for a second monitor
+# has to tell "no such monitor" from "the call failed".
+run_wctl workarea 9999
+assert_exit_code 2 "$WCTL_EXIT_CODE" "workarea 9999 exits 2 (not found)"
+assert_contains "$WCTL_OUTPUT" "No such monitor: 9999" "workarea 9999 names the missing monitor"
+
+# ---------------------------------------------------------------------------
+# resolve-place (read-only: it computes, it never moves a window)
+# ---------------------------------------------------------------------------
+run_wctl resolve-place center top 50% 100% --json
+assert_exit_code 0 "$WCTL_EXIT_CODE" "resolve-place --json exits 0"
+assert_json_valid "$WCTL_OUTPUT" "resolve-place --json is valid JSON"
+rp_json="$WCTL_OUTPUT"
+assert_equals "$(echo "$rp_json" | jq -r '.monitor_index')" "$primary_index" \
+    "resolve-place with no --monitor uses the primary monitor"
+assert_equals "$(echo "$rp_json" | jq -c '.workarea')" \
+    "$(echo "$wa_json" | jq -c '{x, y, width, height}')" \
+    "resolve-place resolves against the workarea that wctl workarea reports"
+
+if [[ -n "$parsed_workarea" ]]; then
+    # Computed here, from the workarea, rather than read back out of wctl: this
+    # is the check that the reported rectangle is the RIGHT one.
+    exp_w=$((wa_w / 2))
+    exp_h="$wa_h"
+    exp_x=$((wa_x + (wa_w - exp_w) / 2))
+    exp_y="$wa_y"
+    assert_equals "$(echo "$rp_json" | jq -r '.target.x')" "$exp_x" "resolve-place target.x is centered"
+    assert_equals "$(echo "$rp_json" | jq -r '.target.y')" "$exp_y" "resolve-place target.y is the workarea top"
+    assert_equals "$(echo "$rp_json" | jq -r '.target.width')" "$exp_w" "resolve-place target.width is half the workarea"
+    assert_equals "$(echo "$rp_json" | jq -r '.target.height')" "$exp_h" "resolve-place target.height is the full workarea"
+fi
+
+run_wctl resolve-place --monitor "$primary_index" center top 50% 100% --json
+assert_exit_code 0 "$WCTL_EXIT_CODE" "resolve-place --monitor exits 0"
+assert_equals "$WCTL_OUTPUT" "$rp_json" "resolve-place --monitor <primary> matches the default"
+
+run_wctl resolve-place center top 50% 100%
+assert_exit_code 0 "$WCTL_EXIT_CODE" "resolve-place (plain) exits 0"
+assert_contains "$WCTL_OUTPUT" "Workarea:" "resolve-place (plain) reports the workarea it used"
+
+run_wctl resolve-place --monitor 9999 center top 50% 100%
+assert_exit_code 2 "$WCTL_EXIT_CODE" "resolve-place --monitor 9999 exits 2 (not found)"
 
 # ---------------------------------------------------------------------------
 # list filters (compare against an unfiltered list filtered with jq)

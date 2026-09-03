@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# geometry-helper.sh - Expected geometry for the live modification tests.
+# geometry-helper.sh - Expected geometry for the live suites.
 #
 # These two functions are an independent oracle for the live suites, not a copy
 # of production code: they compute what the workarea reply means and where a

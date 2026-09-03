@@ -178,6 +178,43 @@ else
     assert_within "$y" "$expected_y" "$GEOM_TOLERANCE" "place: y at workarea top (expected $expected_y)"
     assert_within "$width" "$expected_width" "$GEOM_TOLERANCE" "place: half workarea width (expected $expected_width)"
     assert_within "$height" "$expected_height" "$GEOM_TOLERANCE" "place: full workarea height (expected $expected_height)"
+
+    # --json reports what wctl REQUESTED, so it must equal the rectangle this
+    # suite computed for itself, exactly. No tolerance: the tolerance above is
+    # for what mutter and the client did with the request afterwards.
+    info "Testing: place --json"
+    run_wctl place "$TEST_WINDOW_ID" center top 50% 100% --json
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "place --json exits 0"
+    assert_json_valid "$WCTL_OUTPUT" "place --json is valid JSON"
+    place_json="$WCTL_OUTPUT"
+    assert_equals "$(echo "$place_json" | jq -r '.window_id')" "$TEST_WINDOW_ID" "place --json names the window"
+    assert_equals "$(echo "$place_json" | jq -r '.placed')" "true" "place --json reports placed=true"
+    assert_equals "$(echo "$place_json" | jq -r '.monitor_index')" "$monitor_index" "place --json names the monitor"
+    assert_equals "$(echo "$place_json" | jq -r '.workarea.width')" "$wa_w" "place --json reports the workarea it used"
+    assert_equals "$(echo "$place_json" | jq -r '.target.x')" "$expected_x" "place --json target.x"
+    assert_equals "$(echo "$place_json" | jq -r '.target.y')" "$expected_y" "place --json target.y"
+    assert_equals "$(echo "$place_json" | jq -r '.target.width')" "$expected_width" "place --json target.width"
+    assert_equals "$(echo "$place_json" | jq -r '.target.height')" "$expected_height" "place --json target.height"
+
+    # A refusal keeps stdout parseable and puts the reason in the exit code.
+    info "Testing: place --json on a pinned frame"
+    run_wctl maximize "$TEST_WINDOW_ID"
+    wait_for_change
+    run_wctl place "$TEST_WINDOW_ID" center top 50% 100% --json
+    assert_exit_code 3 "$WCTL_EXIT_CODE" "place --json on a maximized window exits 3 (refused)"
+    assert_json_valid "$WCTL_OUTPUT" "place --json emits a document on refusal too"
+    assert_equals "$(echo "$WCTL_OUTPUT" | jq -r '.placed')" "false" "place --json reports placed=false"
+    assert_contains "$(echo "$WCTL_OUTPUT" | jq -r '.message')" "maximized" "place --json says what is in the way"
+    run_wctl unmaximize "$TEST_WINDOW_ID"
+    wait_for_change
+
+    # And the same rectangle must come back with no window and nothing moved.
+    info "Testing: resolve-place agrees with place"
+    run_wctl resolve-place --monitor "$monitor_index" center top 50% 100% --json
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "resolve-place exits 0"
+    assert_equals "$(echo "$WCTL_OUTPUT" | jq -c '.target')" \
+        "$(echo "$place_json" | jq -c '.target')" \
+        "resolve-place resolves the rectangle place applied"
 fi
 
 echo ""
