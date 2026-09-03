@@ -15,6 +15,15 @@ use crate::table;
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
+/// Parse a `list --workspace` / `--monitor` index, rejecting anything that is
+/// not a non-negative integer i64 can hold.
+fn index_filter(token: &str) -> Option<i64> {
+    if !selector::is_window_id(token) {
+        return None;
+    }
+    token.parse::<i64>().ok()
+}
+
 /// Print a table, emboldening the header line when stdout is a terminal.
 fn print_table(rows: &[Vec<String>]) {
     let rendered = table::render(rows);
@@ -59,17 +68,21 @@ pub fn list(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                     .get(index + 1)
                     .ok_or_else(|| Fail::error(format!("Option {arg} requires an argument")))?;
                 match arg {
+                    // is_window_id() only proves the token is all digits, so the
+                    // parse can still overflow i64. Propagate that as an error:
+                    // `.ok()` would turn it into None, which filter() reads as
+                    // "no filter" and would list every window with exit 0.
                     "--workspace" => {
-                        if !selector::is_window_id(value) {
-                            return Err(Fail::error("Workspace index must be a number"));
-                        }
-                        workspace = value.parse::<i64>().ok();
+                        workspace = Some(
+                            index_filter(value)
+                                .ok_or_else(|| Fail::error("Workspace index must be a number"))?,
+                        );
                     }
                     "--monitor" => {
-                        if !selector::is_window_id(value) {
-                            return Err(Fail::error("Monitor index must be a number"));
-                        }
-                        monitor = value.parse::<i64>().ok();
+                        monitor = Some(
+                            index_filter(value)
+                                .ok_or_else(|| Fail::error("Monitor index must be a number"))?,
+                        );
                     }
                     _ => class = Some(value.clone()),
                 }
@@ -137,8 +150,19 @@ pub fn focused(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 pub fn info(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl info <WINDOW> [--json]";
-    let (id, shift) = selector::resolve(ctx, 0, usage, args)?;
-    let json_output = parse_json_flag(&args[shift..])?;
+    // --json is accepted on either side of the window selector. The bash client
+    // scanned its whole argument list for it, so `info --json <ID>` worked;
+    // resolving the selector from args[0] first would reject it as an unknown
+    // option, which would be a silent break of the documented CLI contract.
+    let json_output = args.iter().any(|arg| arg == "--json");
+    let rest: Vec<String> = args
+        .iter()
+        .filter(|arg| *arg != "--json")
+        .cloned()
+        .collect();
+    let (id, shift) = selector::resolve(ctx, 0, usage, &rest)?;
+    // Anything left after the selector is still an error, as before.
+    parse_json_flag(&rest[shift..])?;
 
     let windows = ctx.windows()?;
     let Some(window) = windows.iter().find(|w| model::id(w) == id) else {

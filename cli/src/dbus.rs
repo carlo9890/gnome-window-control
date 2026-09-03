@@ -8,10 +8,9 @@
 //! gdbus.
 
 use std::cell::OnceCell;
-use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
 
+use zbus::blocking::connection::Builder;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::DynamicType;
 
@@ -23,6 +22,14 @@ pub const IFACE: &str = "org.gnome.Shell.Extensions.WindowControl";
 
 const NOT_RUNNING: &str = "Window Control extension is not running. Enable it in GNOME Extensions.";
 
+/// Reply timeout for every method call except `wait`, which sets its own.
+///
+/// zbus defaults to no timeout at all, so a shell that is on the bus but whose
+/// main loop is wedged would hang wctl forever. The bash client inherited 25 s
+/// from both gdbus and busctl, and a hang is worse than an error here: these
+/// commands run from keybindings and scripts.
+const METHOD_TIMEOUT: Duration = Duration::from_secs(25);
+
 /// Classify a failed call as "the extension is not running".
 ///
 /// The bash client matched these substrings in the gdbus/busctl error text so
@@ -33,6 +40,10 @@ fn is_extension_not_running(err: &str) -> bool {
         || err.contains("does not exist")
         || err.contains("No route to host")
         || err.contains("ServiceUnknown")
+        // The extension names this error when it is disabled while a
+        // WaitForWindow call is pending; the shell is still on the bus, so none
+        // of the transport strings above match.
+        || err.contains("WindowControl.Disabled")
 }
 
 fn map_err(err: zbus::Error) -> Fail {
@@ -45,7 +56,16 @@ fn map_err(err: zbus::Error) -> Fail {
 }
 
 fn connect() -> Result<Connection> {
-    Connection::session().map_err(map_err)
+    session_connection(METHOD_TIMEOUT)
+}
+
+/// A session connection whose method calls give up after `timeout`.
+fn session_connection(timeout: Duration) -> Result<Connection> {
+    Builder::session()
+        .map_err(map_err)?
+        .method_timeout(timeout)
+        .build()
+        .map_err(map_err)
 }
 
 fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
@@ -109,8 +129,9 @@ impl Bus {
     /// The extension already applies `timeout_ms` and answers with 0 when it
     /// expires. The client bound is only a guard against a shell that never
     /// replies at all, which is what the bash client bought with gdbus
-    /// `--timeout`. zbus has no per-call timeout in the blocking API, so the
-    /// call runs on a worker thread and the main thread waits with a deadline.
+    /// `--timeout`. This call gets its OWN connection, because the shared one
+    /// gives up after METHOD_TIMEOUT and a `wait --timeout 60` is entitled to
+    /// block far longer than that.
     pub fn wait_for_window(
         &self,
         kind: &str,
@@ -118,22 +139,10 @@ impl Bus {
         timeout_ms: i32,
         client_bound: Duration,
     ) -> Result<u64> {
-        let conn = self.conn()?.clone();
-        let kind = kind.to_string();
-        let value = value.to_string();
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let reply = proxy(&conn).and_then(|p| {
-                p.call::<_, _, u64>("WaitForWindow", &(kind, value, timeout_ms))
-                    .map_err(map_err)
-            });
-            let _ = tx.send(reply);
-        });
-
-        match rx.recv_timeout(client_bound) {
-            Ok(reply) => reply,
-            Err(_) => Err(Fail::error("D-Bus call failed: Timeout was reached")),
-        }
+        let conn = session_connection(client_bound)?;
+        let proxy = proxy(&conn)?;
+        proxy
+            .call::<_, _, u64>("WaitForWindow", &(kind, value, timeout_ms))
+            .map_err(map_err)
     }
 }

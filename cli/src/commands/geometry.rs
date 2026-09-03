@@ -60,23 +60,32 @@ fn as_i32(value: i64) -> i32 {
 
 /// Why a geometry call came back `false`.
 ///
-/// The extension answers `false` both for a window it cannot find and for one
-/// whose frame is pinned by maximize or fullscreen, and "Window not found" is
-/// wrong -- and unactionable -- in the second case. The window list is already
-/// cached whenever a selector or a workarea lookup ran, so this costs a call
-/// only for a bare numeric ID, and only on the failure path.
+/// The extension answers `false` for a window it cannot find and for one whose
+/// frame is pinned by maximize or fullscreen, and "Window not found" is wrong
+/// and unactionable in the second case.
+///
+/// Every state named here is READ, never assumed: the window may also have gone
+/// away between the call and now, or the handler may have failed for a reason
+/// this client cannot see, and claiming "is maximized" for those would send the
+/// caller after a state that is not there. The cache is dropped first because it
+/// was filled before the failing call, so it can no longer describe the window.
+/// That refetch happens only on the failure path.
 fn geometry_failure(ctx: &mut Ctx, id: u64) -> String {
-    match ctx.window_by_id(id) {
-        Ok(window) => {
-            let (state, remedy) = if model::flag(&window, "is_fullscreen") {
-                ("fullscreen", "unfullscreen")
-            } else {
-                ("maximized", "unmaximize")
-            };
-            format!("Window {id} is {state}; run 'wctl {remedy} {id}' first")
-        }
-        Err(_) => not_found(id),
+    ctx.invalidate_windows();
+    let Ok(window) = ctx.window_by_id(id) else {
+        return not_found(id);
+    };
+    if model::flag(&window, "is_fullscreen") {
+        return format!("Window {id} is fullscreen; run 'wctl unfullscreen {id}' first");
     }
+    if model::flag(&window, "is_maximized") {
+        return format!("Window {id} is maximized; run 'wctl unmaximize {id}' first");
+    }
+    // Tiled windows report neither flag in ListDetailed (is_maximized is only
+    // true for BOTH axes) but are still refused by the extension, and so is a
+    // window whose handler threw. Say what is known rather than inventing a
+    // state.
+    format!("Window {id} could not be moved; it may be tiled or maximized")
 }
 
 pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {

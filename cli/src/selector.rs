@@ -101,6 +101,16 @@ pub fn parse(args: &[String]) -> Result<Selector> {
                 shift: 2,
             })
         }
+        // A negative number is a bad window ID, not an unknown option. The bash
+        // client reached validate_id for it and said so; reporting "Unknown
+        // option: -1" instead would be a silent change to a message the suites
+        // treat as a frozen contract.
+        _ if first.starts_with('-')
+            && first.len() > 1
+            && first[1..].chars().all(|c| c.is_ascii_digit()) =>
+        {
+            Err(validate_id(first).expect_err("a negative token is never a valid window ID"))
+        }
         _ if first.starts_with('-') => Err(Fail::error(format!("Unknown option: {first}"))),
         _ => {
             validate_id(first)?;

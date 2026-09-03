@@ -39,8 +39,10 @@ Any task that modifies JS code must include:
   `console.log()` is journald priority 5 and IS visible by default — it is not
   filtered. See [MONITORING.md](MONITORING.md) for the verified level table.
 - Never log window content or a caller-supplied match value, at any level — not a
-  title, and not a WM class. Log the method name and the outcome. A fixed keyword
-  argument (`WaitForWindow`'s `kind`) is fine; the value it matches against is not.
+  title, and not a WM class. Log the method name and the outcome. A keyword
+  argument (`WaitForWindow`'s `kind`) is fine **once it has been validated** —
+  until then it is an arbitrary remote string; the value it matches against is
+  never logged.
 
 ## Rust style (cli/)
 

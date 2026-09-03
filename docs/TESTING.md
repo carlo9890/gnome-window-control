@@ -55,6 +55,17 @@ older loaded build they fail on "No such method" rather than skipping.
 If the extension is not running the suites self-skip and the runner reports
 `NO ... TESTS EXECUTED` (a distinct SKIPPED state), never a false pass.
 
+`WCTL_TEST_SETTLE` sets how long the modification suite waits for a state change
+before asserting (default 0.5 s). Geometry lands asynchronously, and in a nested
+session that default is too short — use `WCTL_TEST_SETTLE=1.5` there, see
+[RUNNING.md](RUNNING.md).
+
+A failing assertion does **not** abort a suite. The helpers record the failure
+and return 0 on purpose: the suites run under `set -euo pipefail`, so a non-zero
+assertion would kill the script at the first failure, skip every later case and
+any diagnostic the suite prints, and leave the runner reporting "no tests
+executed" instead of a failure. Read the summary, not an assertion's status.
+
 `tests/test-helper.sh` holds the shared assertions (`assert_equals`,
 `assert_within`, `assert_contains`, ...). Reuse them rather than re-implementing
 pass/fail logic in a suite. `tests/geometry-helper.sh` holds the expected

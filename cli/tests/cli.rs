@@ -89,6 +89,10 @@ fn state_argument_guards() {
 fn every_window_taking_command_rejects_a_non_numeric_id() {
     expect_die("Window ID must be a number", &["focus", "abc"]);
     expect_die("Window ID must be a number", &["info", "abc"]);
+    // A negative number is a bad ID, not an unknown option: the bash client
+    // reached validate_id for it and the wording is a frozen contract.
+    expect_die("Window ID must be a number", &["focus", "-1"]);
+    expect_die("Window ID must be a number", &["minimize", "-1"]);
     expect_die("Window ID must be a number", &["tile", "abc", "center"]);
     expect_die("Window ID must be a number", &["center", "abc"]);
     expect_die(
@@ -181,6 +185,16 @@ fn list_filter_guards() {
     expect_die("Unknown option", &["list", "--bogus"]);
     expect_die("Unexpected argument", &["list", "extra"]);
     expect_die("Unknown option", &["workspaces", "--bogus"]);
+    // All-digit but wider than i64: parsing with .ok() used to drop the filter
+    // silently and list every window with exit 0.
+    expect_die(
+        "Workspace index must be a number",
+        &["list", "--workspace", "99999999999999999999"],
+    );
+    expect_die(
+        "Monitor index must be a number",
+        &["list", "--monitor", "99999999999999999999"],
+    );
     expect_die("Unknown option", &["monitors", "--bogus"]);
 }
 

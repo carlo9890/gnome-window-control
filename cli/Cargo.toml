@@ -11,6 +11,9 @@ name = "wctl"
 path = "src/main.rs"
 
 [dependencies]
+# Only for restoring the default SIGPIPE disposition in main(); already in the
+# tree as a transitive dependency of zbus.
+libc = "0.2"
 serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 unicode-width = "0.2"
