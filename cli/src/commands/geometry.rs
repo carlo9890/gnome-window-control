@@ -14,7 +14,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::commands::{primary_monitor, workarea_of};
-use crate::fail::{Fail, Result, EXIT_TIMEOUT};
+use crate::fail::{Fail, Result};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -240,8 +240,13 @@ fn report_placement(
             Ok(())
         }
         Err(failure) => {
-            // Placed, but still moving. Say both.
+            // The window WAS placed; only the wait failed. Both output modes
+            // have to say so, and both keep the reason the wait failed for --
+            // which is not always a timeout. An extension too old to serve
+            // WaitForGeometry, or a window that closed mid-wait, must not be
+            // reported as "the frame is still moving".
             if !json_output {
+                println!("{success}");
                 return Err(failure);
             }
             let document = placement.outcome(
@@ -250,7 +255,8 @@ fn report_placement(
                 Some(Settle::Unsettled),
                 Some(&failure.to_string()),
             );
-            Err(Fail::plain(document.to_string()).with_code(EXIT_TIMEOUT))
+            let code = failure.code();
+            Err(Fail::plain(document.to_string()).with_code(code))
         }
     }
 }
