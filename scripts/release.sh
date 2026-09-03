@@ -20,6 +20,10 @@ CLI_BINARY="$PROJECT_ROOT/cli/target/$CLI_TARGET/release/wctl"
 # Extension metadata
 EXTENSION_UUID="window-control@carlo9890.github.io"
 
+# Release notes file, given with --notes-file. There is no CHANGELOG.md: the
+# notes are written by hand for each release (see docs/RELEASING.md).
+NOTES_FILE=""
+
 # Colors for output
 # Colors (disabled if not a tty)
 if [[ -t 1 ]]; then
@@ -57,7 +61,7 @@ usage() {
     cat << EOF
 GNOME Window Control Release Script
 
-Usage: $0 [options]
+Usage: $0 --notes-file <path> [options]
 
 Creates a GitHub release with all required assets:
   - Extension zip file (dist/window-control@carlo9890.github.io_v<version>.zip)
@@ -69,9 +73,14 @@ Prerequisites:
   - Clean working directory (no uncommitted changes)
   - On main branch
   - Git tag v<version> must exist (matching metadata.json version)
+  - Release notes written by hand in a file (see docs/RELEASING.md)
 
 Options:
-    -h, --help    Show this help message
+    --notes-file <path>   File holding the release notes. Required.
+                          Read the commits in the release and write what a user
+                          would notice; do not paste a commit log. The script
+                          appends the install instructions, so leave those out.
+    -h, --help            Show this help message
 
 Release Process:
     1a. Update version in window-control@carlo9890.github.io/metadata.json
@@ -81,12 +90,13 @@ Release Process:
         (cd cli && cargo update -p wctl)
         Skipping this leaves the tag shipping a lock that pins the old version,
         and the release build rewrites it afterwards, dirtying the tree.
-    2. Update CHANGELOG.md with release notes under a "## v<version>" heading
-       (this script only reads notes from that heading, never from "## Unreleased")
-    3. Commit: git commit -am "chore: bump version to vX"
-    4. Create tag: git tag vX
-    5. Push: git push && git push --tags
-    6. Run: $0
+    2. Commit: git commit -am "chore: bump version to vX"
+    3. Create tag: git tag vX
+    4. Push: git push && git push --tags
+    5. Write the release notes from the commits in the release:
+       git log --oneline v<X-1>..vX
+       Keep the notes out of the repository; /tmp is the right home for them.
+    6. Run: $0 --notes-file /tmp/vX-notes.md
 EOF
 }
 
@@ -306,32 +316,37 @@ validate_assets() {
     log_info "All 3 release assets validated"
 }
 
-# Extract release notes from CHANGELOG.md
-extract_release_notes() {
-    log_step "Extracting release notes from CHANGELOG.md..."
-    
-    local changelog="$PROJECT_ROOT/CHANGELOG.md"
-    
-    if [[ ! -f "$changelog" ]]; then
-        log_warn "CHANGELOG.md not found, using default release notes"
-        RELEASE_NOTES="Release $TAG"
-        return
+# Read the release notes from the file given with --notes-file.
+#
+# There is no CHANGELOG.md and no generated notes: what a release changed for a
+# user cannot be derived from commit subjects, so a human (or an agent) reads
+# the commits and writes the notes. Missing notes are a hard failure -- a
+# release with a placeholder body is worse than no release.
+read_release_notes() {
+    log_step "Reading release notes..."
+
+    if [[ -z "$NOTES_FILE" ]]; then
+        log_error "No release notes given."
+        log_error "Write them from the commits in this release:"
+        log_error "  git log --oneline <previous tag>..HEAD"
+        log_error "Then pass the file: $0 --notes-file <path>"
+        log_error "See docs/RELEASING.md for what belongs in them."
+        exit 1
     fi
-    
-    # Extract section for this version (between ## v<version> and next ## or end of file)
-    # Using awk to extract the section
-    RELEASE_NOTES=$(awk -v ver="## $TAG" '
-        $0 ~ ver {found=1; next}
-        found && /^## / {exit}
-        found {print}
-    ' "$changelog" | sed '/^$/N;/^\n$/d')
-    
-    if [[ -z "$RELEASE_NOTES" ]]; then
-        log_warn "No release notes found for $TAG in CHANGELOG.md"
-        RELEASE_NOTES="Release $TAG"
-    else
-        log_info "Found release notes for $TAG"
+
+    if [[ ! -f "$NOTES_FILE" ]]; then
+        log_error "Release notes file not found: $NOTES_FILE"
+        exit 1
     fi
+
+    RELEASE_NOTES=$(cat "$NOTES_FILE")
+
+    if [[ -z "${RELEASE_NOTES//[[:space:]]/}" ]]; then
+        log_error "Release notes file is empty: $NOTES_FILE"
+        exit 1
+    fi
+
+    log_info "Read $(wc -l < "$NOTES_FILE") lines from $NOTES_FILE"
 }
 
 # Check if release already exists
@@ -368,34 +383,25 @@ create_release() {
     body=$(cat << EOF
 $RELEASE_NOTES
 
-## Installation
+## Install
 
-### Extension
+Extension:
 
-1. Download \`$ZIP_NAME\` below
-2. Install: \`gnome-extensions install $ZIP_NAME\`
-3. Log out and back in (Wayland) or press Alt+F2, type \`r\`, Enter (X11)
-4. Enable: \`gnome-extensions enable $EXTENSION_UUID\`
+\`\`\`bash
+gnome-extensions install $ZIP_NAME
+\`\`\`
 
-### wctl CLI
+Log out and back in (Wayland), or press Alt+F2, type \`r\`, Enter (X11), then:
 
-**Quick install:**
+\`\`\`bash
+gnome-extensions enable $EXTENSION_UUID
+\`\`\`
+
+wctl:
+
 \`\`\`bash
 curl -fsSL https://github.com/$repo_name/releases/download/$TAG/install-wctl.sh | bash
 \`\`\`
-
-**Manual install:**
-1. Download \`wctl\` below (statically linked, x86_64)
-2. Make executable: \`chmod +x wctl\`
-3. Move to PATH: \`sudo mv wctl /usr/local/bin/\`
-
-## Assets
-
-| File | Description |
-|------|-------------|
-| \`$ZIP_NAME\` | GNOME Shell extension (installable zip) |
-| \`wctl\` | Command-line interface for window control (static x86_64 binary) |
-| \`install-wctl.sh\` | One-line installer script for wctl |
 EOF
     )
     
@@ -439,13 +445,35 @@ verify_release() {
     gh release view "$TAG" --json url -q '.url'
 }
 
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            --notes-file)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--notes-file needs a path"
+                    exit 1
+                fi
+                NOTES_FILE="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                echo ""
+                usage
+                exit 1
+                ;;
+        esac
+    done
+}
+
 # Main
 main() {
-    # Check for help flag
-    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-        usage
-        exit 0
-    fi
+    parse_args "$@"
     
     echo ""
     echo "=========================================="
@@ -456,6 +484,7 @@ main() {
     cd "$PROJECT_ROOT"
     
     # Step 1: Validate prerequisites
+    read_release_notes
     check_gh_cli
     check_main_branch
     check_clean_workdir
@@ -472,16 +501,13 @@ main() {
     # Step 4: Validate all assets
     validate_assets
     
-    # Step 5: Extract release notes
-    extract_release_notes
-    
-    # Step 6: Check for existing release
+    # Step 5: Check for existing release
     check_existing_release
     
-    # Step 7: Create the release
+    # Step 6: Create the release
     create_release
     
-    # Step 8: Verify the release
+    # Step 7: Verify the release
     verify_release
     
     echo ""
