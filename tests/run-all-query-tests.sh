@@ -95,6 +95,10 @@ for test_script in "$SCRIPT_DIR"/test-*.sh; do
         echo -e "${GREEN}✓${RESET} ${script_name}: ${passed} passed, ${skipped} skipped"
     else
         echo -e "${RED}✗${RESET} ${script_name}: ${passed} passed, ${failed} failed, ${skipped} skipped"
+        # Show WHAT failed. The child's output is captured to count results, so
+        # without this a failing run reports a number and nothing else -- which
+        # is all a CI log, or anyone reading it afterwards, would ever get.
+        echo "$output" | grep -A5 '^FAIL' | sed 's/^/    /'
         ((SCRIPTS_FAILED++))
     fi
 done

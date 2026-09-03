@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::commands::{primary_monitor, workarea_of};
-use crate::fail::{Fail, Result, EXIT_TIMEOUT};
+use crate::commands::{monitor_index, primary_monitor, workarea_of};
+use crate::fail::{Fail, Result};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -113,6 +113,11 @@ impl Placement {
     }
 
     /// The document a geometry command emits under `--json`, on any outcome.
+    ///
+    /// Built FROM `document()` rather than restating its three keys, so
+    /// `resolve-place` and `place --json` cannot describe the same placement
+    /// differently. `window_id` is inserted first for readability; with
+    /// serde_json's preserve_order the rest keep the order `document()` set.
     fn outcome(
         &self,
         id: u64,
@@ -120,13 +125,13 @@ impl Placement {
         settle: Option<Settle>,
         message: Option<&str>,
     ) -> Value {
-        let mut doc = serde_json::json!({
-            "window_id": id,
-            "monitor_index": self.monitor_index,
-            "workarea": rect_json(self.workarea),
-            "target": rect_json(self.target),
-            "placed": placed,
-        });
+        let mut doc = serde_json::json!({ "window_id": id });
+        if let Some(fields) = self.document().as_object() {
+            for (key, value) in fields {
+                doc[key] = value.clone();
+            }
+        }
+        doc["placed"] = Value::Bool(placed);
         // The settle fields appear only with --settled, so a caller can tell
         // "the frame did not settle" from "nobody waited for it to".
         if let Some(settle) = settle {
@@ -240,8 +245,13 @@ fn report_placement(
             Ok(())
         }
         Err(failure) => {
-            // Placed, but still moving. Say both.
+            // The window WAS placed; only the wait failed. Both output modes
+            // have to say so, and both keep the reason the wait failed for --
+            // which is not always a timeout. An extension too old to serve
+            // WaitForGeometry, or a window that closed mid-wait, must not be
+            // reported as "the frame is still moving".
             if !json_output {
+                println!("{success}");
                 return Err(failure);
             }
             let document = placement.outcome(
@@ -250,7 +260,8 @@ fn report_placement(
                 Some(Settle::Unsettled),
                 Some(&failure.to_string()),
             );
-            Err(Fail::plain(document.to_string()).with_code(EXIT_TIMEOUT))
+            let code = failure.code();
+            Err(Fail::plain(document.to_string()).with_code(code))
         }
     }
 }
@@ -272,7 +283,8 @@ fn take_output_flags(args: &[String]) -> (bool, bool, Vec<String>) {
 }
 
 pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-    let (id, shift) = selector::resolve(ctx, 2, "Usage: wctl move <WINDOW> <X> <Y>", args)?;
+    let usage = "Usage: wctl move <WINDOW> <X> <Y>";
+    let (id, shift) = selector::resolve_exact(ctx, 2, usage, args)?;
     let x = coordinate(&args[shift], "X")?;
     let y = coordinate(&args[shift + 1], "Y")?;
 
@@ -282,8 +294,8 @@ pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 }
 
 pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-    let (id, shift) =
-        selector::resolve(ctx, 2, "Usage: wctl resize <WINDOW> <WIDTH> <HEIGHT>", args)?;
+    let usage = "Usage: wctl resize <WINDOW> <WIDTH> <HEIGHT>";
+    let (id, shift) = selector::resolve_exact(ctx, 2, usage, args)?;
     let width = extent(&args[shift], "Width")?;
     let height = extent(&args[shift + 1], "Height")?;
 
@@ -294,7 +306,7 @@ pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl move-resize <WINDOW> <X> <Y> <WIDTH> <HEIGHT>";
-    let (id, shift) = selector::resolve(ctx, 4, usage, args)?;
+    let (id, shift) = selector::resolve_exact(ctx, 4, usage, args)?;
     let x = coordinate(&args[shift], "X")?;
     let y = coordinate(&args[shift + 1], "Y")?;
     let width = extent(&args[shift + 2], "Width")?;
@@ -309,11 +321,8 @@ pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = place_usage();
     let (json_output, settled, args) = take_output_flags(args);
-    let (id, shift) = selector::resolve(ctx, 4, &usage, &args)?;
+    let (id, shift) = selector::resolve_exact(ctx, 4, &usage, &args)?;
     let rest = &args[shift..];
-    if rest.len() != 4 {
-        return Err(Fail::error(usage));
-    }
 
     let window = ctx.window_by_id(id)?;
     let monitor_index = model::number(&window, "monitor_index") as i32;
@@ -368,14 +377,7 @@ pub fn resolve_place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                 let Some(value) = args.get(index + 1) else {
                     return Err(Fail::error("Option --monitor requires an argument"));
                 };
-                if !selector::is_window_id(value) {
-                    return Err(Fail::error("Monitor index must be a number"));
-                }
-                monitor = Some(
-                    value
-                        .parse::<i32>()
-                        .map_err(|_| Fail::error("Monitor index must be a number"))?,
-                );
+                monitor = Some(monitor_index(value)?);
                 index += 2;
             }
             // Only long options are options here: X and Y accept a negative
@@ -416,7 +418,7 @@ pub fn resolve_place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = tile_usage();
     let (json_output, settled, args) = take_output_flags(args);
-    let (id, shift) = selector::resolve(ctx, 1, &usage, &args)?;
+    let (id, shift) = selector::resolve_exact(ctx, 1, &usage, &args)?;
     let position = args[shift].clone();
 
     let window = ctx.window_by_id(id)?;
@@ -454,6 +456,10 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl center <WINDOW> [horizontal|vertical|both] [--json] [--settled]";
     let (json_output, settled, args) = take_output_flags(args);
     let (id, shift) = selector::resolve(ctx, 0, usage, &args)?;
+    // The axis is optional, so this is a maximum rather than an exact count.
+    if args.len() > shift + 1 {
+        return Err(Fail::error(usage));
+    }
     let axis = args.get(shift).map(String::as_str).unwrap_or("both");
 
     let (axis, message) = match axis {

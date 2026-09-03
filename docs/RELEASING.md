@@ -103,7 +103,9 @@ Constraints the review enforces, which the code must keep satisfying:
   disconnect every signal, and remove every timeout. `WaitForWindow` connects
   `window-created` plus per-window `notify::wm-class` / `notify::title` / `shown`
   / `unmanaged` handlers and arms a `GLib.timeout_add` per waiter, all of which
-  `_cancelWaiters()` drops from `unexport()`. Any new signal or timer must be
+  `_cancelWaiters()` drops from `unexport()`. `WaitForGeometry` adds three more
+  per-window handlers (`size-changed`, `position-changed`, `unmanaged`) and two
+  timers per pending call, dropped by `_cancelGeometryWatchers()`. Any new signal or timer must be
   torn down on the same path.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.

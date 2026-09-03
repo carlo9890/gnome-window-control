@@ -142,19 +142,36 @@ fn timeout_from_env() -> Result<Duration> {
 /// They sit before the command because the `<WINDOW>` slot already shifts every
 /// positional after it; a global option that could appear anywhere would have
 /// to be stripped by each command's own parser.
-fn global_options(args: &[String]) -> Result<(Duration, &[String])> {
+///
+/// The FLAG is validated here, because a bad one the user typed is a usage
+/// error whatever the command. `WCTL_TIMEOUT` is not: see `reply_timeout`.
+fn global_options(args: &[String]) -> Result<(Option<Duration>, &[String])> {
     if args.first().map(String::as_str) == Some("--timeout") {
         let Some(value) = args.get(1) else {
             return Err(Fail::error("Option --timeout requires a value"));
         };
         let timeout = Duration::from_secs(timeout_seconds(value, "--timeout")?);
-        return Ok((timeout, &args[2..]));
+        return Ok((Some(timeout), &args[2..]));
     }
-    Ok((timeout_from_env()?, args))
+    Ok((None, args))
+}
+
+/// The reply timeout for a command that will open a bus connection.
+///
+/// `WCTL_TIMEOUT` is read HERE and not in `global_options`, so a stale or
+/// mistyped value cannot break a command that never opens a connection. That
+/// matters most for `wctl completion bash`: it is run from a shell rc file,
+/// usually as `eval "$(wctl completion bash)"`, where an error would reach
+/// every new shell and install no completion at all.
+fn reply_timeout(flag: Option<Duration>) -> Result<Duration> {
+    match flag {
+        Some(timeout) => Ok(timeout),
+        None => timeout_from_env(),
+    }
 }
 
 fn run(args: &[String]) -> Result<()> {
-    let (timeout, args) = global_options(args)?;
+    let (timeout_flag, args) = global_options(args)?;
 
     let Some(command) = args.first().map(String::as_str) else {
         print!("{}", help::text());
@@ -180,7 +197,7 @@ fn run(args: &[String]) -> Result<()> {
         _ => {}
     }
 
-    let mut ctx = Ctx::new(timeout);
+    let mut ctx = Ctx::new(reply_timeout(timeout_flag)?);
     match command {
         "list" => query::list(&mut ctx, rest),
         "focused" => query::focused(&mut ctx, rest),

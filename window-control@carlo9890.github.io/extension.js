@@ -20,13 +20,18 @@ const DBUS_ERROR_FAILED = 'org.freedesktop.DBus.Error.Failed';
 
 // A failure that must reach the caller as a specific D-Bus error NAME.
 //
-// Throwing a GLib.Error does not work for this. GJS answers a thrown GLib.Error
-// with g_dbus_method_invocation_return_gerror(), and an error whose domain is
-// not registered goes on the wire as
-// org.gtk.GDBus.UnmappedGError.Quark._g_2dio_2derror_2dquark.Code36 with the
-// real name buried in the message text (measured against GNOME 46) -- so no
-// caller can switch on it, which is the entire point. The handlers therefore
-// catch this and answer with return_dbus_error(), which sends the name itself.
+// Do NOT reach for Gio.DBusError.new_for_dbus_error() here. That returns a
+// GLib.Error, and GJS answers a thrown GLib.Error with
+// g_dbus_method_invocation_return_gerror(); an unregistered domain then goes on
+// the wire as org.gtk.GDBus.UnmappedGError.Quark._g_2dio_2derror_2dquark.Code36
+// with the real name buried in the message text, where no caller can switch on
+// it (measured against GNOME 46).
+//
+// A plain Error is not subject to that: GJS's synchronous dispatch forwards
+// `e.name` verbatim once it contains a dot. The handlers are async anyway, and
+// answer with return_dbus_error() themselves, for a different reason -- that
+// same synchronous path also calls logError(), which would write a journal
+// WARNING for every ordinary refusal and break this file's logging invariant.
 class NamedError extends Error {
     constructor(name, message) {
         super(message);
@@ -229,7 +234,7 @@ class WindowControlService {
         const win = this._findWindowById(windowId);
         if (!win) {
             console.debug(`[Window Control] ${label}(${windowId}) -> NotFound`);
-            throw new NamedError(DBUS_ERROR_NOT_FOUND, `No window with id ${windowId}`);
+            throw new NamedError(DBUS_ERROR_NOT_FOUND, `Window not found: ${windowId}`);
         }
         const refusal = this._frameRefusal(win);
         if (refusal) {
@@ -244,9 +249,9 @@ class WindowControlService {
     // success, a named error otherwise.
     //
     // The three geometry methods are async (GJS convention:
-    // <Method>Async(params, invocation)) only so they can call
-    // return_dbus_error(). They do no waiting -- see NamedError for why the
-    // synchronous throw could not carry a name.
+    // <Method>Async(params, invocation)) only so they can answer here rather
+    // than by throwing. They do no waiting -- see NamedError for why throwing
+    // is the wrong shape for a routine refusal.
     _geometryCall(invocation, label, body) {
         try {
             body();
@@ -839,19 +844,34 @@ class WindowControlService {
             if (!win) {
                 console.debug(`[Window Control] WaitForGeometry(${windowId}) -> NotFound`);
                 invocation.return_dbus_error(DBUS_ERROR_NOT_FOUND,
-                    `No window with id ${windowId}`);
+                    `Window not found: ${windowId}`);
                 return;
             }
 
             watcher = { win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [] };
             const bump = () => this._restartQuietPeriod(watcher);
-            watcher.signalIds = [
-                win.connect('size-changed', bump),
-                win.connect('position-changed', bump),
-                win.connect('unmanaged', () => this._failGeometryWatcher(
-                    watcher, DBUS_ERROR_NOT_FOUND,
-                    `Window ${windowId} closed while waiting for its frame to settle`)),
-            ];
+            // Each id is stored AS IT IS OBTAINED. Building the array first and
+            // assigning after would leak every handler connected before a throw:
+            // signalIds would still be empty, so _retireGeometryWatcher could
+            // never disconnect them and `bump` would keep arming timers for the
+            // window's whole life.
+            watcher.signalIds.push(win.connect('size-changed', bump));
+            watcher.signalIds.push(win.connect('position-changed', bump));
+            watcher.signalIds.push(win.connect('unmanaged', () => this._failGeometryWatcher(
+                watcher, DBUS_ERROR_NOT_FOUND,
+                `Window ${windowId} closed while waiting for its frame to settle`)));
+
+            this._geometryWatchers.push(watcher);
+
+            // The quiet period is attached BEFORE the overall timeout. A caller
+            // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
+            // sources of equal priority that come ready together in the order
+            // they were attached -- so with the timeout first, a frame that was
+            // never moving would answer Timeout instead of settling.
+            //
+            // Starting it now is also what lets an ALREADY still frame settle,
+            // rather than waiting for a change that never comes.
+            this._restartQuietPeriod(watcher);
             watcher.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
                 watcher.timeoutId = 0;
                 console.debug(`[Window Control] WaitForGeometry(${windowId}) -> Timeout`);
@@ -859,10 +879,6 @@ class WindowControlService {
                     `Window ${windowId} frame did not settle within ${timeoutMs} ms`);
                 return GLib.SOURCE_REMOVE;
             });
-            this._geometryWatchers.push(watcher);
-            // Start the clock now: a frame that is ALREADY still settles after
-            // one quiet period rather than waiting for a change that never comes.
-            this._restartQuietPeriod(watcher);
         } catch (e) {
             console.error(`[Window Control] WaitForGeometry() error: ${e.message}`);
             // Once registered the watcher owns the invocation and one of its

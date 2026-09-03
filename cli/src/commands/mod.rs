@@ -43,6 +43,20 @@ pub fn report_with(ok: bool, success: &str, failure: impl FnOnce() -> Fail) -> R
     }
 }
 
+/// Parse a monitor index: a non-negative integer an i32 can hold.
+///
+/// One home for the rule, because `workarea` and `resolve-place` had the same
+/// eight lines and the same message, and `place --monitor` would have made a
+/// third copy.
+pub fn monitor_index(token: &str) -> Result<i32> {
+    if !crate::selector::is_window_id(token) {
+        return Err(Fail::error("Monitor index must be a number"));
+    }
+    token
+        .parse::<i32>()
+        .map_err(|_| Fail::error("Monitor index must be a number"))
+}
+
 /// Index of the primary monitor.
 ///
 /// `place` and `tile` resolve against the monitor their window is on. The

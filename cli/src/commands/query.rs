@@ -7,7 +7,7 @@ use std::io::IsTerminal;
 
 use serde_json::Value;
 
-use crate::commands::{cell, parse_json_flag, primary_monitor, workarea_of};
+use crate::commands::{cell, monitor_index, parse_json_flag, primary_monitor, workarea_of};
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_NO_EXTENSION};
 use crate::model::{self, Ctx, Window};
 use crate::selector;
@@ -319,16 +319,7 @@ pub fn workarea(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             other if monitor.is_some() => {
                 return Err(Fail::error(format!("Unexpected argument: {other}")))
             }
-            other => {
-                if !selector::is_window_id(other) {
-                    return Err(Fail::error("Monitor index must be a number"));
-                }
-                monitor = Some(
-                    other
-                        .parse::<i32>()
-                        .map_err(|_| Fail::error("Monitor index must be a number"))?,
-                );
-            }
+            other => monitor = Some(monitor_index(other)?),
         }
     }
 
@@ -372,10 +363,11 @@ pub fn workarea(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 /// version it was built against. A mismatch exits non-zero, because the fix is
 /// the same one a missing extension needs.
 pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-    if !parse_json_flag(args)? {
-        println!("wctl {}", crate::VERSION);
-        return Ok(());
-    }
+    // Only `--json` reaches here: `main::run` answers the bare form before a
+    // connection exists, and parse_json_flag rejects every other token. So
+    // there is no plain-output branch to write, and the version string stays in
+    // one place.
+    parse_json_flag(args)?;
 
     let mut document = serde_json::json!({
         "wctl": crate::VERSION,
