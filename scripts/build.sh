@@ -90,6 +90,25 @@ validate() {
         log_warn "node not found; skipping JavaScript syntax check (install node to enable it)"
     fi
 
+    # The interface XML lives inside a JS template literal, so a backtick or a
+    # ${...} in one of its comments ends the string early or interpolates. That
+    # is NOT caught by node --check: the file can still parse, and the damage
+    # only shows up as a SyntaxError inside GJS when the shell loads it -- the
+    # extension then reports state ERROR and serves nothing. Two delimiters are
+    # expected; anything else is the bug.
+    local ticks
+    ticks=$(grep -c '`' "$EXTENSION_DIR/dbus-interface.js" || true)
+    if [[ "$ticks" -ne 2 ]]; then
+        log_error "dbus-interface.js has $ticks backtick line(s), expected 2 (the template delimiters)."
+        log_error "A backtick inside the XML ends the template literal early; use a single quote."
+        exit 1
+    fi
+    if grep -q '\${' "$EXTENSION_DIR/dbus-interface.js"; then
+        log_error "dbus-interface.js contains \${...}: the template literal would interpolate it."
+        exit 1
+    fi
+    log_info "Interface XML template literal is intact!"
+
     log_info "Validation passed!"
 }
 
