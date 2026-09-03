@@ -4,27 +4,67 @@
 `gh release create` or the web UI.
 
 ```bash
-./scripts/release.sh
+./scripts/release.sh --notes-file <path>
 ```
 
 The script guarantees all three assets are attached (extension zip, `wctl`,
 `install-wctl.sh`), that the `metadata.json` and `cli/Cargo.toml` versions match, that git
-tags exist and are pushed, and that the release notes come from `CHANGELOG.md`.
+tags exist and are pushed, and that the release has notes — it refuses to run
+without them.
 
 ## Release checklist
 
 1. Update the version in `window-control@carlo9890.github.io/metadata.json`.
 2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version format
    below). `scripts/release.sh` hard-fails if it does not match `metadata.json`.
-3. Move the `CHANGELOG.md` `Unreleased` section under a new `vN` heading.
-4. Commit: `git commit -am "chore: bump version to vN"`.
-5. Tag: `git tag vN`.
-6. Push: `git push && git push --tags`.
-7. Run: `./scripts/release.sh`.
+3. Commit: `git commit -am "chore: bump version to vN"`.
+4. Tag: `git tag vN`.
+5. Push: `git push && git push --tags`.
+6. Write the release notes (see below) to a file outside the repository.
+7. Run: `./scripts/release.sh --notes-file <path>`.
+
+## Release notes
+
+There is no `CHANGELOG.md`. The notes are written by hand for each release and
+passed to the script, which uses them as the release body.
+
+Writing them is reading work, not scripting work. A generated list of commit
+subjects says what was committed; the notes have to say what a user gets. Read
+the release range first:
+
+```bash
+git log --oneline v8..v9        # the commits in the release
+git show <sha>                  # whenever the user impact is not obvious
+```
+
+What belongs in the notes:
+
+- What a user can do now that they could not before, written as the command
+  they would type (`wctl wait -c firefox`).
+- What a user must act on: breaking changes, a changed UUID, changed output or
+  exit codes, a new requirement.
+- Bugs a user could have hit, described by the symptom they saw, not the cause.
+
+What stays out:
+
+- Refactors, test suites, CI, doc changes, dependency and toolchain bumps.
+- Benchmarks, profiling numbers, and root-cause explanations.
+- Anything invisible from outside `wctl` and the extension.
+
+Form:
+
+- A handful of bullets under `## What's new`, and `## Fixed` when there is
+  something to put there. Under 15 lines in total.
+- One line per item. If an item needs a paragraph, it is written at the wrong
+  altitude.
+- No emojis, and no install instructions — the script appends those.
+
+Keep the notes file out of the repository (`/tmp` is the right home). The
+published release is the record; the detail behind it is in the commits.
 
 ## Version format
 
-Releases, git tags, and CHANGELOG entries use the integer form `vN` (e.g. `v7`).
+Releases and git tags use the integer form `vN` (e.g. `v7`).
 `wctl --version` reports the zero-padded `0.N.0` form (e.g. `0.7.0`) for the same
 release; `scripts/release.sh` enforces the `0.<N>.0 ↔ vN` mapping. So
 `wctl --version` reporting `0.7.0` corresponds to GitHub release/tag `v7`.
