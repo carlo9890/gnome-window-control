@@ -229,7 +229,7 @@ class WindowControlService {
         const win = this._findWindowById(windowId);
         if (!win) {
             console.debug(`[Window Control] ${label}(${windowId}) -> NotFound`);
-            throw new NamedError(DBUS_ERROR_NOT_FOUND, `No window with id ${windowId}`);
+            throw new NamedError(DBUS_ERROR_NOT_FOUND, `Window not found: ${windowId}`);
         }
         const refusal = this._frameRefusal(win);
         if (refusal) {
@@ -839,7 +839,7 @@ class WindowControlService {
             if (!win) {
                 console.debug(`[Window Control] WaitForGeometry(${windowId}) -> NotFound`);
                 invocation.return_dbus_error(DBUS_ERROR_NOT_FOUND,
-                    `No window with id ${windowId}`);
+                    `Window not found: ${windowId}`);
                 return;
             }
 
