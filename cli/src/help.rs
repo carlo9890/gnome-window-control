@@ -38,6 +38,11 @@ LISTING COMMANDS:
     focused [--json]        Show detailed info for the focused window
     workspaces [--json]     List workspaces
     monitors [--json]       List monitors
+    workarea [<MONITOR>] [--json]
+                            Usable area of a monitor (its rectangle minus
+                            panels and docks), defaulting to the primary one.
+                            This is what place and tile resolve percentages
+                            against; monitors reports raw monitor rectangles.
 
 ACTIVATION COMMANDS:
     activate <ID>           Activate by window ID
@@ -109,6 +114,8 @@ EXAMPLES:
     wctl workspace 2                  # Switch to workspace 2
     wctl move-to-workspace -c Firefox 2   # Move the Firefox window to workspace 2
     wctl monitors                     # List monitors
+    wctl workarea --json              # Usable area of the primary monitor
+    wctl workarea 1                   # Usable area of monitor 1
     wctl move-to-monitor focused 1    # Move the focused window to monitor 1
     kitty & wctl wait -c kitty        # Start kitty, print its window ID once it exists
     wctl tile "$(wctl wait -p $!)" right   # Wait for a child process's window, then tile it

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //! move, resize, move-resize, place, tile and center.
 
-use crate::commands::{not_found, report_with};
+use crate::commands::{not_found, report_with, workarea_of};
 use crate::fail::{Fail, Result, EXIT_REFUSED};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
@@ -44,14 +44,7 @@ fn extent(token: &str, label: &str) -> Result<i32> {
 
 /// The workarea of the monitor the window is on.
 fn workarea_for(ctx: &mut Ctx, window: &model::Window) -> Result<Rect> {
-    let monitor = model::number(window, "monitor_index") as i32;
-    let (x, y, width, height) = ctx.bus.get_workarea(monitor)?;
-    Ok(Rect {
-        x: x as i64,
-        y: y as i64,
-        width: width as i64,
-        height: height as i64,
-    })
+    workarea_of(ctx, model::number(window, "monitor_index") as i32)
 }
 
 fn as_i32(value: i64) -> i32 {

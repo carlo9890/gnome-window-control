@@ -184,6 +184,12 @@ wctl move-to-workspace 12345 2      # move a window to workspace 2
 wctl monitors                       # list (index, geometry, scale, primary)
 wctl move-to-monitor focused 1      # move the focused window to monitor 1
 
+# Usable area of a monitor: its rectangle minus panels and docks. This, not the
+# monitor rectangle `monitors` reports, is what place and tile resolve
+# percentages against. With no index the primary monitor is used.
+wctl workarea                       # primary monitor
+wctl workarea 1 --json              # {"monitor_index":1,"x":...,"width":...}
+
 # Wait for a window to be shown and print its ID (default timeout 10 s, exit 4 on
 # timeout). wait returns only once mutter has mapped and placed the window, so
 # the geometry command that follows sticks instead of being overridden by the

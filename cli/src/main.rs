@@ -32,12 +32,13 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The help text and both completion scripts are authored by hand, so a unit
 /// test cross-checks all three against this list. Adding a command means adding
 /// it here.
-pub const COMMANDS: [&str; 28] = [
+pub const COMMANDS: [&str; 29] = [
     "list",
     "focused",
     "info",
     "workspaces",
     "monitors",
+    "workarea",
     "activate",
     "focus",
     "wait",
@@ -171,6 +172,7 @@ fn run(args: &[String]) -> Result<()> {
         "info" => query::info(&mut ctx, rest),
         "workspaces" => query::workspaces(&mut ctx, rest),
         "monitors" => query::monitors(&mut ctx, rest),
+        "workarea" => query::workarea(&mut ctx, rest),
 
         "activate" => state::activate(&mut ctx, rest),
         "focus" => state::focus(&mut ctx, rest),

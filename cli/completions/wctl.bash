@@ -17,7 +17,7 @@ _wctl() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="list focused info workspaces monitors activate focus wait move resize move-resize place tile center workspace move-to-workspace move-to-monitor minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
+    local commands="list focused info workspaces monitors workarea activate focus wait move resize move-resize place tile center workspace move-to-workspace move-to-monitor minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
 
     # A global option before the command shifts every position right.
     local off=0
@@ -49,7 +49,7 @@ _wctl() {
         list)
             COMPREPLY=($(compgen -W "--json --workspace --monitor --class" -- "$cur"))
             ;;
-        focused|workspaces|monitors)
+        focused|workspaces|monitors|workarea)
             COMPREPLY=($(compgen -W "--json" -- "$cur"))
             ;;
         info)

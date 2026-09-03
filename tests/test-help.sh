@@ -61,6 +61,7 @@ assert_contains "$WCTL_OUTPUT" "sticky <WINDOW> on|off" "Help documents sticky c
 assert_contains "$WCTL_OUTPUT" "WINDOW SELECTOR:" "Help contains WINDOW SELECTOR section"
 assert_contains "$WCTL_OUTPUT" "workspaces [--json]" "Help documents workspaces command"
 assert_contains "$WCTL_OUTPUT" "monitors [--json]" "Help documents monitors command"
+assert_contains "$WCTL_OUTPUT" "workarea [<MONITOR>] [--json]" "Help documents workarea command"
 assert_contains "$WCTL_OUTPUT" "workspace <N>" "Help documents workspace command"
 assert_contains "$WCTL_OUTPUT" "move-to-workspace <WINDOW> <N>" "Help documents move-to-workspace command"
 assert_contains "$WCTL_OUTPUT" "move-to-monitor <WINDOW> <N>" "Help documents move-to-monitor command"

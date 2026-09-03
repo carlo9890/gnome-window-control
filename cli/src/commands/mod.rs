@@ -12,6 +12,8 @@ pub mod wsmon;
 use serde_json::Value;
 
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
+use crate::geometry::Rect;
+use crate::model::{self, Ctx};
 
 /// Report the result of a boolean D-Bus action.
 ///
@@ -39,6 +41,44 @@ pub fn report_with(ok: bool, success: &str, failure: impl FnOnce() -> Fail) -> R
     } else {
         Err(failure())
     }
+}
+
+/// Index of the primary monitor.
+///
+/// `place` and `tile` resolve against the monitor their window is on. The
+/// commands that take no window default to the PRIMARY monitor rather than
+/// monitor 0, which is not necessarily the same one.
+pub fn primary_monitor(ctx: &mut Ctx) -> Result<i32> {
+    let json = ctx.bus.call_json("ListMonitors")?;
+    let monitors = model::parse_array(&json, "monitor list")?;
+    monitors
+        .iter()
+        .find(|monitor| model::flag(monitor, "is_primary"))
+        .map(|monitor| model::number(monitor, "index") as i32)
+        .ok_or_else(|| {
+            Fail::error("No primary monitor reported; name a monitor index (see wctl monitors)")
+        })
+}
+
+/// The workarea of one monitor.
+///
+/// `GetWorkarea` answers (-1, -1, -1, -1) for an index that does not exist.
+/// Passed through, that sentinel is a negative rectangle every caller would
+/// have to recognise for itself, and the arithmetic built on it produces
+/// nonsense rather than an error. Reported as EXIT_NOT_FOUND it is also
+/// distinguishable from a call that failed, which is what a script probing
+/// "is there a second monitor?" needs.
+pub fn workarea_of(ctx: &mut Ctx, index: i32) -> Result<Rect> {
+    let (x, y, width, height) = ctx.bus.get_workarea(index)?;
+    if width < 0 || height < 0 {
+        return Err(Fail::error(format!("No such monitor: {index}")).with_code(EXIT_NOT_FOUND));
+    }
+    Ok(Rect {
+        x: x as i64,
+        y: y as i64,
+        width: width as i64,
+        height: height as i64,
+    })
 }
 
 pub fn not_found(id: u64) -> Fail {

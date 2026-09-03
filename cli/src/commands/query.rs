@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-//! The read-only commands: list, focused, info, workspaces, monitors.
+//! The read-only commands: list, focused, info, workspaces, monitors, workarea.
 
 use std::io::IsTerminal;
 
 use serde_json::Value;
 
-use crate::commands::{cell, parse_json_flag};
+use crate::commands::{cell, parse_json_flag, primary_monitor, workarea_of};
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 use crate::model::{self, Ctx, Window};
 use crate::selector;
@@ -296,5 +296,63 @@ pub fn monitors(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         ]);
     }
     print_table(&rows);
+    Ok(())
+}
+
+/// The usable area of a monitor: its rectangle minus panels and docks.
+///
+/// `monitors` reports monitor rectangles, which are not workareas, so a script
+/// that wanted one had to call the extension's GetWorkarea over raw gdbus.
+/// With no MONITOR the primary one is used -- the predictable choice, and
+/// stated rather than inferred from the focused window, which moves.
+pub fn workarea(ctx: &mut Ctx, args: &[String]) -> Result<()> {
+    let mut json_output = false;
+    let mut monitor: Option<i32> = None;
+
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json_output = true,
+            other if other.starts_with('-') => {
+                return Err(Fail::error(format!("Unknown option: {other}")))
+            }
+            other if monitor.is_some() => {
+                return Err(Fail::error(format!("Unexpected argument: {other}")))
+            }
+            other => {
+                if !selector::is_window_id(other) {
+                    return Err(Fail::error("Monitor index must be a number"));
+                }
+                monitor = Some(
+                    other
+                        .parse::<i32>()
+                        .map_err(|_| Fail::error("Monitor index must be a number"))?,
+                );
+            }
+        }
+    }
+
+    let index = match monitor {
+        Some(index) => index,
+        None => primary_monitor(ctx)?,
+    };
+    let rect = workarea_of(ctx, index)?;
+
+    if json_output {
+        println!(
+            "{}",
+            serde_json::json!({
+                "monitor_index": index,
+                "x": rect.x,
+                "y": rect.y,
+                "width": rect.width,
+                "height": rect.height,
+            })
+        );
+        return Ok(());
+    }
+
+    println!("Monitor:   {index}");
+    println!("Position:  {}, {}", rect.x, rect.y);
+    println!("Size:      {} x {}", rect.width, rect.height);
     Ok(())
 }

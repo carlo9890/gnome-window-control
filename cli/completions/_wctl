@@ -44,6 +44,7 @@ _wctl() {
         'info:Show detailed window info'
         'workspaces:List workspaces'
         'monitors:List monitors'
+        'workarea:Usable area of a monitor'
         'activate:Activate a window'
         'focus:Focus window without raising'
         'wait:Wait for a matching window and print its ID'
@@ -89,6 +90,11 @@ _wctl() {
                     ;;
                 focused|workspaces|monitors)
                     _arguments '--json[Output as JSON]'
+                    ;;
+                workarea)
+                    _arguments \
+                        '1:monitor index:' \
+                        '--json[Output as JSON]'
                     ;;
                 info)
                     _arguments "${_wctl_selector_opts[@]}" \

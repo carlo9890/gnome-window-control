@@ -204,6 +204,15 @@ fn workspace_and_monitor_guards() {
         "Monitor index must be a number",
         &["move-to-monitor", "123", "-1"],
     );
+
+    expect_die("Monitor index must be a number", &["workarea", "abc"]);
+    expect_die("Unknown option: --bogus", &["workarea", "--bogus"]);
+    // A leading dash is an option everywhere in this CLI, so a negative index
+    // is reported as one rather than as a bad number. No monitor index is
+    // negative, and special-casing it would be the only place a positional
+    // could start with a dash.
+    expect_die("Unknown option: -1", &["workarea", "-1"]);
+    expect_die("Unexpected argument: 1", &["workarea", "0", "1"]);
 }
 
 #[test]
