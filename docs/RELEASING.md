@@ -7,24 +7,31 @@
 ./scripts/release.sh --notes-file <path>
 ```
 
+Prerequisites the script enforces: `gh` authenticated, `mise` installed (pinned
+Rust toolchain), clean working tree, on `main`.
+
 The script guarantees all three assets are attached (extension zip, `wctl`,
-`install-wctl.sh`), that the `metadata.json` and `cli/Cargo.toml` versions match, that git
-tags exist and are pushed, and that the release has notes — it refuses to run
-without them.
+`install-wctl.sh`), that the `metadata.json` and `cli/Cargo.toml` versions match,
+that the local tag `vN` exists (it does not check the remote — `git push --tags`
+is on you), and that the release has notes — it refuses to run without them.
 
 ## Release checklist
 
-1. Update the version in `window-control@carlo9890.github.io/metadata.json`.
-2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version format
-   below). `scripts/release.sh` hard-fails if it does not match `metadata.json`.
+The version bump goes through a PR against `main` like any other change (see
+[CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md)); the tag is cut on the merged `main`
+commit.
 
-   This pairing is a contract, not a convention: `wctl` compiles its own minor
-   version in as `EXPECTED_EXTENSION_VERSION` and `wctl version --json` reports
-   `compatible: false` when the shell has a different extension version loaded.
-   Bumping one without the other makes every install report a mismatch.
-3. Commit: `git commit -am "chore: bump version to vN"`.
-4. Tag: `git tag vN`.
-5. Push: `git push && git push --tags`.
+1. Update both `version` and `version-name` in
+   `window-control@carlo9890.github.io/metadata.json`.
+2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version
+   format below) — `wctl` compiles its minor version in as
+   `EXPECTED_EXTENSION_VERSION`, so a mismatch makes every install report
+   `compatible: false`, and `scripts/release.sh` hard-fails on it.
+3. Refresh the lock: `(cd cli && cargo update -p wctl)` — otherwise the tag
+   ships a lock pinning the old version and the release build dirties the tree.
+4. Commit on a branch (`chore: bump version to vN`), open the PR, wait for the
+   merge.
+5. On the merged `main` commit: `git tag vN && git push --tags`.
 6. Write the release notes (see below) to a file outside the repository.
 7. Run: `./scripts/release.sh --notes-file <path>`.
 
@@ -85,7 +92,8 @@ then upload the same zip.
 
 1. Build the zip: `./scripts/build.sh all`. The archive must have
    `metadata.json` at its root, not inside a subdirectory — `build.sh` zips the
-   contents of the extension directory, so this holds as long as you use it.
+   contents of the extension directory (`extension.js`, `dbus-interface.js`,
+   `metadata.json`, `README.md`, `LICENSE`), so this holds as long as you use it.
 2. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
    <https://extensions.gnome.org/upload/>.
 3. Wait for the review. A human reviewer reads every line of the extension, and
@@ -136,50 +144,18 @@ Constraints the review enforces, which the code must keep satisfying:
   The script refuses to publish a dynamically linked one. aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
-- `disable()` must undo everything `enable()` did: unexport the D-Bus object,
-  disconnect every signal, and remove every timeout. `WaitForWindow` connects
-  `window-created` plus per-window `notify::wm-class` / `notify::title` / `shown`
-  / `unmanaged` handlers and arms a `GLib.timeout_add` per waiter, all of which
-  `_cancelWaiters()` drops from `unexport()`. `WaitForGeometry` adds three more
-  per-window handlers (`size-changed`, `position-changed`, `unmanaged`) and two
-  timers per pending call, dropped by `_cancelGeometryWatchers()`. Any new signal or timer must be
-  torn down on the same path.
+- `disable()` must undo everything `enable()` did — any new signal or timer is
+  torn down on the same path as the existing ones (see [CODING.md](CODING.md)).
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.
 
 EGO assigns its own integer `version` on upload and ignores the one in
-`metadata.json`. `version-name` is what users see, so keep it in step with the
-`vN` release number.
+`metadata.json`; `version-name` is what users see.
 
 ### If the reviewer asks about the unauthenticated interface
 
-Expect this question. It is the one substantive objection to the extension. A
-draft answer:
-
-> The interface is deliberately open to every application in the session, and the
-> extension does not claim otherwise. There is no trust boundary to enforce: the
-> session bus does not distinguish between processes of the same user, so a PID
-> allowlist is both racy and useless here (the caller the shell sees is `wctl`,
-> not the program that wanted the window moved), and a token file is readable by
-> anything that can read the user's files. Rather than ship a mechanism that
-> implies a guarantee it cannot provide, the extension makes the exposure
-> explicit and lets the user decide:
->
-> - The EGO description states, before install, exactly what is registered on
->   D-Bus and that the interface has no access control.
-> - README.md has a "Security model" section that says the same at length.
-> - Enabling the extension is the consent gate. It is off until the user turns
->   it on, and `disable()` unexports the object completely.
-> - No window title or caller-supplied string is ever written to the log, at any
->   level, and per-call logging is `console.debug()`, gated behind
->   `G_MESSAGES_DEBUG`. Titles are the sensitive data here, and they do not
->   outlive the call.
-> - `session-modes` is unset, so the extension does not run on the lock screen
->   and the interface cannot be queried while the session is locked.
->
-> This restores on Wayland a capability that every X11 application already had
-> with no gate at all. The difference is that here it is opt-in.
-
-Do not answer by proposing a caller allowlist or a shared secret. Both are
-theater, and offering one invites a longer review.
+Expect this question; it is the one substantive objection to the extension.
+Answer from README.md's "Security model" section — it is the authoritative
+statement. The stance is the answer: state the exposure. Offering a caller
+allowlist or a shared secret would be theater and invites a longer review.

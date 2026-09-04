@@ -61,12 +61,23 @@ Reload without logging out via a **nested GNOME Shell session** (runs in a windo
 isolated from your main session; all logs go to the launching terminal):
 
 ```bash
-./scripts/build.sh install        # copy updated files into the extensions dir
-./scripts/start-nested.sh         # launch a nested shell in a window
-# from a second terminal pointed at the nested session (see "Reach the nested
+./scripts/build.sh install                       # copy updated files into the extensions dir
+GSETTINGS_BACKEND=memory ./scripts/start-nested.sh   # launch a nested shell in a window
+# from a second terminal on the nested session's bus (see "Reach the nested
 # session" below):
-gnome-extensions enable window-control@carlo9890.github.io
+gdbus call --session --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell --method org.gnome.Shell.Extensions.EnableExtension \
+  window-control@carlo9890.github.io
 ```
+
+`GSETTINGS_BACKEND=memory` is required: a nested session shares your dconf
+database, and `gnome-extensions enable`/`disable` writes
+`org.gnome.shell enabled-extensions` there — your real shell reacts to that write
+and can disable the extension in your live session (observed: a
+`disable`/`enable` cycle inside a nested session left the outer session's
+extension INACTIVE). The memory-backed shell boots with no extensions enabled;
+enable through the shell's D-Bus API as above, never with the `gnome-extensions`
+CLI, which writes to dconf regardless of how the shell was started.
 
 `start-nested.sh` wraps the shell in `dbus-run-session`, so the nested session
 gets its own session bus and its `org.gnome.Shell` does not collide with the
@@ -88,31 +99,6 @@ export DBUS_SESSION_BUS_ADDRESS=$(
   tr '\0' '\n' < /proc/$nested/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
 ```
 
-### Keep the nested shell's settings to itself
-
-**A nested session still shares your dconf database.** `gnome-extensions
-enable`/`disable` writes `org.gnome.shell enabled-extensions`, and your real
-shell reacts to that write too: it can disable the extension in your live
-session (observed: a `disable`/`enable` cycle inside a nested session left the
-outer session's extension INACTIVE). To keep the nested shell's settings
-private, start it with an in-memory settings backend — keeping
-`dbus-run-session`, or the shell lands on your real bus:
-
-```bash
-GSETTINGS_BACKEND=memory dbus-run-session gnome-shell --nested --wayland
-```
-
-It then boots with no extensions enabled. The `gnome-extensions` CLI writes to
-dconf regardless of how the shell was started, so enable through the shell's
-D-Bus API instead (from a terminal on the nested session's bus); the
-memory-backed shell keeps the change to itself:
-
-```bash
-gdbus call --session --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell --method org.gnome.Shell.Extensions.EnableExtension \
-  window-control@carlo9890.github.io
-```
-
 ### Nested-session pitfalls
 
 All observed on GNOME 46:
@@ -130,21 +116,13 @@ All observed on GNOME 46:
 - **Clients are slow under software rendering.** kitty takes 1-6 s to show its
   first frame in a nested session, and a window that exists but is not yet
   shown ignores geometry requests (mutter's initial placement overrides them).
-  Use `wctl wait` rather than polling `wctl list`. The modification suite's
-  0.5 s settle is also too short there, and its geometry assertions then fail at
-  random — run it with `WCTL_TEST_SETTLE=1.5`:
+  Use `wctl wait` rather than polling `wctl list`. Run the modification suite
+  with the nested settle value from [TESTING.md](TESTING.md).
 
-  ```bash
-  WCTL_TEST_SETTLE=1.5 WAYLAND_DISPLAY=wayland-1 \
-    DBUS_SESSION_BUS_ADDRESS=<nested bus> \
-    WCTL="$PWD/cli/target/release/wctl" ./tests/run-all-modification-tests.sh
-  ```
-
-- **A second monitor can be faked.** `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2` gives
-  the nested shell two outputs, which is the only way to reach the
-  multi-monitor paths (`move-to-monitor` across monitors, and the
-  `workspaces-only-on-primary` refusal in `move-to-workspace`). Without it the
-  suite skips them.
+- **A second monitor can be faked:**
+  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 GSETTINGS_BACKEND=memory ./scripts/start-nested.sh`
+  — the only way to reach `move-to-monitor` across monitors and the
+  `workspaces-only-on-primary` refusal in `move-to-workspace`.
 
 - **Dynamic workspaces shift indices.** Switching away from an empty
   workspace lets GNOME remove it, so the index you switched to can change a
@@ -177,7 +155,8 @@ gdbus call --session --dest org.gnome.Shell \
   --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
 ```
 
-`./scripts/debug-dbus.sh` exercises the methods interactively.
+Run `./scripts/debug-dbus.sh` on the nested session's bus for a one-shot sweep
+of every method; it writes `output/debug-<timestamp>.txt`.
 
 ## Reproduce a reported bug
 
