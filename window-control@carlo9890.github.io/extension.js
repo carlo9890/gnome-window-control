@@ -266,8 +266,12 @@ class WindowControlService {
         }
     }
 
-    // Helper: Build the match predicate for a (kind, value) selector as used by
-    // WaitForWindow. Returns null for an unknown kind or a non-numeric pid.
+    // Helper: Build the match predicate for a (kind, value) selector, shared
+    // by WaitForWindow and the ActivateBy* methods so the two families cannot
+    // disagree about which window a value names. Returns null for an unknown
+    // kind, an empty substring (which would match every window) or a pid that
+    // is not a positive decimal integer: get_pid() is 0 for a window whose
+    // client pid is unknown, so 0 must never be matchable.
     _matchPredicate(kind, value) {
         switch (kind) {
         case 'class':
@@ -275,10 +279,14 @@ class WindowControlService {
         case 'title':
             return w => w.get_title() === value;
         case 'substring':
+            if (value === '')
+                return null;
             return w => (w.get_title() || '').includes(value);
         case 'pid': {
+            if (!/^[0-9]+$/.test(value))
+                return null;
             const pid = Number(value);
-            if (!Number.isInteger(pid) || pid <= 0)
+            if (!Number.isSafeInteger(pid) || pid <= 0)
                 return null;
             return w => w.get_pid() === pid;
         }
@@ -328,7 +336,10 @@ class WindowControlService {
 
     // Helper: Look up a window by ID and run an action on it, with the uniform
     // find / try-catch / result contract shared by the simple boolean handlers.
-    // Returns true on success, false if the window is missing or the action throws.
+    // Returns false if the window is missing, the action throws, or the action
+    // returns false -- which is how an action that reads its result back
+    // (MoveToWorkspace, SetSticky) reports a change mutter declined. An action
+    // that returns nothing counts as success.
     _actOnWindow(windowId, label, action) {
         try {
             const win = this._findWindowById(windowId);
@@ -336,11 +347,34 @@ class WindowControlService {
                 console.debug(`[Window Control] ${label}(${windowId}) -> false (window not found)`);
                 return false;
             }
-            action(win);
-            console.debug(`[Window Control] ${label}(${windowId}) -> true`);
-            return true;
+            const ok = action(win) !== false;
+            console.debug(`[Window Control] ${label}(${windowId}) -> ${ok}`);
+            return ok;
         } catch (e) {
             console.error(`[Window Control] ${label}() error: ${e.message}`);
+            return false;
+        }
+    }
+
+    // Helper: the ActivateBy* contract. Activates the first window matching
+    // (kind, value) and returns true; false if none does or the value is one
+    // _matchPredicate refuses. `kind` is one of this file's own keywords, never
+    // caller-supplied, so it is safe to log; the value is not logged.
+    _activateMatching(kind, value) {
+        const label = `ActivateBy(${kind})`;
+        console.debug(`[Window Control] ${label} called`);
+        try {
+            const predicate = this._matchPredicate(kind, value);
+            const win = predicate ? this._findWindowByPredicate(predicate) : null;
+            if (win) {
+                win.activate(global.get_current_time());
+                console.debug(`[Window Control] ${label} -> true`);
+                return true;
+            }
+            console.debug(`[Window Control] ${label} -> false (not found)`);
+            return false;
+        } catch (e) {
+            console.error(`[Window Control] ${label} error: ${e.message}`);
             return false;
         }
     }
@@ -469,77 +503,23 @@ class WindowControlService {
 
     // ActivateByTitle: Activate window by exact title match
     ActivateByTitle(title) {
-        console.debug('[Window Control] ActivateByTitle() called');
-        try {
-            const win = this._findWindowByPredicate(w => w.get_title() === title);
-            if (win) {
-                win.activate(global.get_current_time());
-                console.debug('[Window Control] ActivateByTitle() -> true');
-                return true;
-            }
-            console.debug('[Window Control] ActivateByTitle() -> false (not found)');
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] ActivateByTitle() error: ${e.message}`);
-            return false;
-        }
+        return this._activateMatching('title', title);
     }
 
     // ActivateByTitleSubstring: Activate window by title substring
     ActivateByTitleSubstring(substring) {
-        console.debug('[Window Control] ActivateByTitleSubstring() called');
-        try {
-            const win = this._findWindowByPredicate(w => {
-                const title = w.get_title();
-                return title && title.includes(substring);
-            });
-            if (win) {
-                win.activate(global.get_current_time());
-                console.debug('[Window Control] ActivateByTitleSubstring() -> true');
-                return true;
-            }
-            console.debug('[Window Control] ActivateByTitleSubstring() -> false (not found)');
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] ActivateByTitleSubstring() error: ${e.message}`);
-            return false;
-        }
+        return this._activateMatching('substring', substring);
     }
 
     // ActivateByWmClass: Activate window by WM class (exact match)
     ActivateByWmClass(wmClass) {
-        console.debug('[Window Control] ActivateByWmClass() called');
-        try {
-            const win = this._findWindowByPredicate(w => w.get_wm_class() === wmClass);
-            if (win) {
-                win.activate(global.get_current_time());
-                console.debug('[Window Control] ActivateByWmClass() -> true');
-                return true;
-            }
-            console.debug('[Window Control] ActivateByWmClass() -> false (not found)');
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] ActivateByWmClass() error: ${e.message}`);
-            return false;
-        }
+        return this._activateMatching('class', wmClass);
     }
 
-    // ActivateByPid: Activate window by PID
+    // ActivateByPid: Activate window by PID. The int32 goes through the same
+    // predicate as the string form, so 0 and negatives are refused here too.
     ActivateByPid(pid) {
-        console.debug(`[Window Control] ActivateByPid(${pid}) called`);
-        try {
-            const win = this._findWindowByPredicate(w => w.get_pid() === pid);
-            if (win) {
-                win.activate(global.get_current_time());
-                console.debug(`[Window Control] ActivateByPid(${pid}) -> true`);
-                return true;
-            }
-            console.debug(`[Window Control] ActivateByPid(${pid}) -> false (not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] ActivateByPid() error: ${e.message}`);
-            return false;
-        }
+        return this._activateMatching('pid', String(pid));
     }
 
     // Focus: Focus a window by ID (without raising)
@@ -548,11 +528,16 @@ class WindowControlService {
             win => win.focus(global.get_current_time()));
     }
 
-    // GetFocused: Get the currently focused window
+    // GetFocused: Get the currently focused window. Mutter keeps it as a
+    // property, so this is one read rather than a walk over every actor; the
+    // NORMAL filter every other method applies still holds, so a focused
+    // dialog reports "no focused window" as it always has.
     GetFocused() {
         console.debug(`[Window Control] GetFocused() called`);
         try {
-            const win = this._findWindowByPredicate(w => w.has_focus());
+            const focused = global.display.focus_window;
+            const win = focused && focused.get_window_type() === Meta.WindowType.NORMAL
+                ? focused : null;
             if (win) {
                 const id = win.get_id();
                 const title = win.get_title() || '';
@@ -676,17 +661,28 @@ class WindowControlService {
             const manager = global.workspace_manager;
             const numWorkspaces = manager.get_n_workspaces();
             const activeIndex = manager.get_active_workspace_index();
-            const windows = this._getAllWindows();
+            // One pass over the windows rather than one per workspace: a
+            // sticky window is located on every workspace, any other on the
+            // one it reports (or none, mid-move).
+            const counts = new Array(numWorkspaces).fill(0);
+            let sticky = 0;
+            for (const win of this._getAllWindows()) {
+                if (win.is_on_all_workspaces()) {
+                    sticky++;
+                    continue;
+                }
+                const index = win.get_workspace()?.index();
+                if (this._isValidIndex(index, numWorkspaces))
+                    counts[index]++;
+            }
             const result = [];
 
             for (let i = 0; i < numWorkspaces; i++) {
-                const workspace = manager.get_workspace_by_index(i);
                 result.push({
                     index: i,
                     name: Meta.prefs_get_workspace_name(i) || '',
                     is_active: i === activeIndex,
-                    // located_on_workspace() is true on every workspace for a sticky window
-                    window_count: windows.filter(w => w.located_on_workspace(workspace)).length,
+                    window_count: counts[i] + sticky,
                 });
             }
 
@@ -732,26 +728,15 @@ class WindowControlService {
     // reads back its switch. The assignment is synchronous, so this sees the
     // final state.
     MoveToWorkspace(windowId, workspaceIndex) {
-        console.debug(`[Window Control] MoveToWorkspace(${windowId}, ${workspaceIndex}) called`);
-        try {
-            if (!this._isValidIndex(workspaceIndex, global.workspace_manager.get_n_workspaces())) {
-                console.debug(`[Window Control] MoveToWorkspace(${windowId}) -> false (invalid index)`);
-                return false;
-            }
-            const win = this._findWindowById(windowId);
-            if (!win) {
-                console.debug(`[Window Control] MoveToWorkspace(${windowId}) -> false (window not found)`);
-                return false;
-            }
-            win.change_workspace_by_index(workspaceIndex, false);
-            const moved = !win.is_on_all_workspaces() &&
-                win.get_workspace()?.index() === workspaceIndex;
-            console.debug(`[Window Control] MoveToWorkspace(${windowId}) -> ${moved}`);
-            return moved;
-        } catch (e) {
-            console.error(`[Window Control] MoveToWorkspace() error: ${e.message}`);
+        if (!this._isValidIndex(workspaceIndex, global.workspace_manager.get_n_workspaces())) {
+            console.debug(`[Window Control] MoveToWorkspace(${windowId}, ${workspaceIndex}) -> false (invalid index)`);
             return false;
         }
+        return this._actOnWindow(windowId, 'MoveToWorkspace', win => {
+            win.change_workspace_by_index(workspaceIndex, false);
+            return !win.is_on_all_workspaces() &&
+                win.get_workspace()?.index() === workspaceIndex;
+        });
     }
 
     // MoveToMonitor: Move a window to a monitor by index
@@ -812,7 +797,7 @@ class WindowControlService {
             if (waiter && this._waiters.includes(waiter))
                 this._failWaiter(waiter, e.message);
             else
-                invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', e.message);
+                invocation.return_dbus_error(DBUS_ERROR_FAILED, e.message);
         }
     }
 
@@ -849,19 +834,19 @@ class WindowControlService {
             }
 
             watcher = { win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [] };
+            // Registered BEFORE anything is connected, and each id is stored
+            // as it is obtained: a throw part-way through then lands in the
+            // catch below, which retires the watcher and disconnects whatever
+            // was connected. Registering after would leave those handlers
+            // attached for the window's whole life, `bump` arming timers that
+            // settle nothing.
+            this._geometryWatchers.push(watcher);
             const bump = () => this._restartQuietPeriod(watcher);
-            // Each id is stored AS IT IS OBTAINED. Building the array first and
-            // assigning after would leak every handler connected before a throw:
-            // signalIds would still be empty, so _retireGeometryWatcher could
-            // never disconnect them and `bump` would keep arming timers for the
-            // window's whole life.
             watcher.signalIds.push(win.connect('size-changed', bump));
             watcher.signalIds.push(win.connect('position-changed', bump));
             watcher.signalIds.push(win.connect('unmanaged', () => this._failGeometryWatcher(
                 watcher, DBUS_ERROR_NOT_FOUND,
                 `Window ${windowId} closed while waiting for its frame to settle`)));
-
-            this._geometryWatchers.push(watcher);
 
             // The quiet period is attached BEFORE the overall timeout. A caller
             // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
@@ -979,8 +964,16 @@ class WindowControlService {
         // hidden", and for a window seen from the start that is knowable.
         this._createdWhileWatching.add(win);
         this._trackWindow(win);
+        this._evaluateWindow(win);
     }
 
+    // Connect the per-window handlers. Does not evaluate: the caller has
+    // either just scanned every window (WaitForWindow) or evaluates itself.
+    //
+    // 'window-type' is watched too: on Wayland a toplevel is created NORMAL
+    // and a later gtk_surface.set_modal retypes it to MODAL_DIALOG, so a
+    // window that was the wrong type at one evaluation may be the right one
+    // at the next, and the reverse.
     _trackWindow(win) {
         const evaluate = () => {
             this._evaluateWindow(win);
@@ -994,11 +987,11 @@ class WindowControlService {
         const ids = [
             win.connect('notify::wm-class', evaluate),
             win.connect('notify::title', evaluate),
+            win.connect('notify::window-type', evaluate),
             win.connect('shown', evaluate),
             win.connect('unmanaged', () => this._untrackWindow(win)),
         ];
         this._trackedWindows.set(win, ids);
-        evaluate();
     }
 
     // Track every window that already exists when a waiter registers.
@@ -1013,8 +1006,10 @@ class WindowControlService {
     //
     // The predicate is deliberately not applied: on Wayland wm_class and title
     // arrive after creation, so a window that cannot match yet may match once
-    // 'notify::wm-class' fires. Handlers cost four connections per window and
-    // only exist while a wait is pending.
+    // 'notify::wm-class' fires. Nothing is evaluated here either -- the caller
+    // has just scanned every shown window, so a second pass cannot match.
+    // Handlers cost five connections per window and only exist while a wait
+    // is pending.
     _trackExistingWindows() {
         for (const win of this._getAllWindows()) {
             if (!this._trackedWindows.has(win))
@@ -1057,7 +1052,7 @@ class WindowControlService {
     // Retire a registered waiter with a D-Bus error instead of a window ID.
     _failWaiter(waiter, message) {
         this._retireWaiter(waiter);
-        waiter.invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', message);
+        waiter.invocation.return_dbus_error(DBUS_ERROR_FAILED, message);
         if (this._waiters.length === 0)
             this._stopWatching();
     }
@@ -1123,10 +1118,19 @@ class WindowControlService {
             win => above ? win.make_above() : win.unmake_above());
     }
 
-    // SetSticky: Set window sticky state (on all workspaces)
+    // SetSticky: Set window sticky state (on all workspaces).
+    // unstick() only withdraws the window's own request; mutter still holds a
+    // window on all workspaces while it is on a secondary monitor with
+    // workspaces-only-on-primary set (the GNOME default), so the state is read
+    // back the way MoveToWorkspace reads back its move.
     SetSticky(windowId, sticky) {
-        return this._actOnWindow(windowId, 'SetSticky',
-            win => sticky ? win.stick() : win.unstick());
+        return this._actOnWindow(windowId, 'SetSticky', win => {
+            if (sticky)
+                win.stick();
+            else
+                win.unstick();
+            return win.is_on_all_workspaces() === sticky;
+        });
     }
 
     // Close: Close window (polite request)

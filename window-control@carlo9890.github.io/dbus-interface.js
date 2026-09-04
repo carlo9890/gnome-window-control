@@ -63,7 +63,7 @@ export const DBUS_INTERFACE_XML = `
 
     <!--
       ActivateByTitleSubstring: Activate window by title substring
-      Args: s - substring to match
+      Args: s - substring to match (empty never matches)
       Returns: b - success
     -->
     <method name="ActivateByTitleSubstring">
@@ -83,7 +83,8 @@ export const DBUS_INTERFACE_XML = `
 
     <!--
       ActivateByPid: Activate window by PID
-      Args: i - process ID
+      Args: i - process ID (> 0; a window whose pid is unknown reports 0 and
+            is never matched)
       Returns: b - success
     -->
     <method name="ActivateByPid">
@@ -117,20 +118,29 @@ export const DBUS_INTERFACE_XML = `
     <!-- Geometry Methods -->
 
     <!--
-      ERRORS RAISED BY THE GEOMETRY METHODS
+      ERRORS RAISED BY NAME
 
       Move, Resize and MoveResize do not return a success flag. They complete,
       or they raise one of the names below, because a bare boolean could not say
       WHICH failure happened and every caller had to guess it back by refetching
       the window and reading its flags -- a guess that cannot see tiling at all.
+      WaitForWindow and WaitForGeometry raise too, for the same reason. This is
+      the complete list; a handler never invents a name at the throw site.
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
-            no window has that id
+            no window has that id (WaitForGeometry: or it closed mid-wait)
         org.gnome.Shell.Extensions.WindowControl.Refused
             the window exists and mutter will drop the request: the frame is
             pinned by fullscreen, maximize or tiling. The message names which.
+        org.gnome.Shell.Extensions.WindowControl.Timeout
+            WaitForGeometry: the frame did not settle within timeout_ms
+        org.gnome.Shell.Extensions.WindowControl.Disabled
+            the extension was disabled while a WaitForWindow or
+            WaitForGeometry call was pending
         org.freedesktop.DBus.Error.InvalidArgs
-            an argument was not a finite number, or a size was not positive
+            an argument was not a finite number, a size was not positive, or a
+            wait selector was refused (unknown kind, empty substring, pid that
+            is not a positive decimal integer)
         org.freedesktop.DBus.Error.Failed
             the handler raised something unexpected
 
@@ -286,7 +296,10 @@ export const DBUS_INTERFACE_XML = `
     <!--
       SetSticky: Set window sticky state (on all workspaces)
       Args: t - window ID, b - sticky
-      Returns: b - success
+      Returns: b - success (false if the window does not exist or the state
+               did not take: mutter holds a window on all workspaces while it
+               is on a secondary monitor with workspaces-only-on-primary set,
+               and unstick() cannot override that)
     -->
     <method name="SetSticky">
       <arg type="t" direction="in" name="window_id"/>
