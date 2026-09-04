@@ -12,6 +12,9 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
 
+All three layers were last run green on GNOME Shell 46 and 50. Add the version
+here when you run the live suites on another one.
+
 The shell suites run the release binary at `cli/target/release/wctl`, so build it
 first (`mise run build`). Set `WCTL` to test a different one, for example the
 installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
