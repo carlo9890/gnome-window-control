@@ -7,23 +7,16 @@ use std::io::IsTerminal;
 
 use serde_json::Value;
 
-use crate::commands::{cell, monitor_index, parse_json_flag, primary_monitor, workarea_of};
-use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_NO_EXTENSION};
+use crate::commands::{
+    self, cell, monitor_index, not_found, parse_json_flag, primary_monitor, take_flag, workarea_of,
+};
+use crate::fail::{Fail, Result, EXIT_NO_EXTENSION};
 use crate::model::{self, Ctx, Window};
 use crate::selector;
 use crate::table;
 
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
-
-/// Parse a `list --workspace` / `--monitor` index, rejecting anything that is
-/// not a non-negative integer i64 can hold.
-fn index_filter(token: &str) -> Option<i64> {
-    if !selector::is_window_id(token) {
-        return None;
-    }
-    token.parse::<i64>().ok()
-}
 
 /// Print a table, emboldening the header line when stdout is a terminal.
 fn print_table(rows: &[Vec<String>]) {
@@ -69,22 +62,10 @@ pub fn list(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                     .get(index + 1)
                     .ok_or_else(|| Fail::error(format!("Option {arg} requires an argument")))?;
                 match arg {
-                    // is_window_id() only proves the token is all digits, so the
-                    // parse can still overflow i64. Propagate that as an error:
-                    // `.ok()` would turn it into None, which filter() reads as
-                    // "no filter" and would list every window with exit 0.
                     "--workspace" => {
-                        workspace = Some(
-                            index_filter(value)
-                                .ok_or_else(|| Fail::error("Workspace index must be a number"))?,
-                        );
+                        workspace = Some(i64::from(commands::index(value, "Workspace")?))
                     }
-                    "--monitor" => {
-                        monitor = Some(
-                            index_filter(value)
-                                .ok_or_else(|| Fail::error("Monitor index must be a number"))?,
-                        );
-                    }
+                    "--monitor" => monitor = Some(i64::from(commands::index(value, "Monitor")?)),
                     _ => class = Some(value.clone()),
                 }
                 index += 2;
@@ -155,20 +136,16 @@ pub fn info(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // scanned its whole argument list for it, so `info --json <ID>` worked;
     // resolving the selector from args[0] first would reject it as an unknown
     // option, which would be a silent break of the documented CLI contract.
-    let json_output = args.iter().any(|arg| arg == "--json");
-    let rest: Vec<String> = args
-        .iter()
-        .filter(|arg| *arg != "--json")
-        .cloned()
-        .collect();
-    let (id, shift) = selector::resolve(ctx, 0, usage, &rest)?;
+    let (json_output, rest) = take_flag(args, "--json");
+    let selector = selector::parse_min(0, usage, &rest)?;
     // Anything left after the selector is still an error, as before.
-    parse_json_flag(&rest[shift..])?;
+    parse_json_flag(&rest[selector.shift..])?;
+    let id = selector::lookup(ctx, &selector)?;
 
     let windows = ctx.windows()?;
     let Some(window) = windows.iter().find(|w| model::id(w) == id) else {
         // The bash client printed this one on stdout, not through die().
-        return Err(Fail::plain(format!("Window not found: {id}")).with_code(EXIT_NOT_FOUND));
+        return Err(not_found(id));
     };
 
     print_window(window, json_output);

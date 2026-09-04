@@ -31,7 +31,12 @@ const NOT_RUNNING: &str = "Window Control extension is not running. Enable it in
 const ERROR_NOT_FOUND: &str = "org.gnome.Shell.Extensions.WindowControl.NotFound";
 const ERROR_REFUSED: &str = "org.gnome.Shell.Extensions.WindowControl.Refused";
 const ERROR_SETTLE_TIMEOUT: &str = "org.gnome.Shell.Extensions.WindowControl.Timeout";
+/// Raised on a pending WaitForWindow/WaitForGeometry when the extension is
+/// disabled; the shell is still on the bus, so this is "not running" by name.
+const ERROR_DISABLED: &str = "org.gnome.Shell.Extensions.WindowControl.Disabled";
 const ERROR_UNKNOWN_METHOD: &str = "org.freedesktop.DBus.Error.UnknownMethod";
+/// The bus daemon's answer when nothing owns org.gnome.Shell.
+const ERROR_SERVICE_UNKNOWN: &str = "org.freedesktop.DBus.Error.ServiceUnknown";
 
 /// Default reply timeout for every method call except `wait`, which sets its
 /// own.
@@ -46,18 +51,31 @@ pub const DEFAULT_TIMEOUT_SECONDS: u64 = 25;
 
 /// Classify a failed call as "the extension is not running".
 ///
-/// The bash client matched these substrings in the gdbus/busctl error text so
-/// that the same fault produced the same actionable hint on either transport.
-/// The same strings appear in the zbus error text, so the rule is unchanged.
-fn is_extension_not_running(err: &str) -> bool {
-    err.contains("was not provided")
-        || err.contains("does not exist")
-        || err.contains("No route to host")
-        || err.contains("ServiceUnknown")
-        // The extension names this error when it is disabled while a
-        // WaitForWindow call is pending; the shell is still on the bus, so none
-        // of the transport strings above match.
-        || err.contains("WindowControl.Disabled")
+/// Matched on the error NAME wherever one exists. The one text match left is
+/// the case GDBus genuinely conflates: it raises UnknownMethod both for a
+/// missing object ("Object does not exist at path ...", the extension is not
+/// running) and for a missing method ("No such method ...", the extension is
+/// too old), and only the detail tells them apart (measured on GNOME 46).
+///
+/// The detail of any OTHER named error is never consulted: the extension
+/// forwards arbitrary exception messages under org.freedesktop.DBus.Error.Failed,
+/// and a message that happened to contain "does not exist" must not send the
+/// user to re-enable an extension that just answered.
+fn is_extension_not_running(err: &zbus::Error) -> bool {
+    match err {
+        zbus::Error::MethodError(name, detail, _) => match name.as_str() {
+            ERROR_SERVICE_UNKNOWN | ERROR_DISABLED => true,
+            ERROR_UNKNOWN_METHOD => detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("does not exist")),
+            _ => false,
+        },
+        // No bus, or a bus with nobody to answer: the transport's own words.
+        other => {
+            let text = other.to_string();
+            text.contains("was not provided") || text.contains("No route to host")
+        }
+    }
 }
 
 /// Classify a failed call as "the reply never came".
@@ -103,19 +121,10 @@ fn map_err(err: zbus::Error) -> Fail {
         }
     }
 
-    let text = err.to_string();
-
-    // BEFORE the UnknownMethod check below, because GDBus raises UnknownMethod
-    // for BOTH a missing method and a missing object, and an extension that is
-    // simply not running is the second (measured on GNOME 46):
-    //
-    //   not running   UnknownMethod  "Object does not exist at path ..."
-    //   too old       UnknownMethod  "No such method ..."
-    //
-    // is_extension_not_running() matches the first on "does not exist"; the
-    // second says "No such method" and falls through. Checking UnknownMethod
-    // first would report every disabled extension as an outdated one.
-    if is_extension_not_running(&text) {
+    // BEFORE the UnknownMethod check below: is_extension_not_running() claims
+    // the "Object does not exist" shape of UnknownMethod, and only "No such
+    // method" falls through to be reported as an outdated extension.
+    if is_extension_not_running(&err) {
         return Fail::error(NOT_RUNNING).with_code(EXIT_NO_EXTENSION);
     }
 
@@ -134,7 +143,7 @@ fn map_err(err: zbus::Error) -> Fail {
         }
     }
 
-    Fail::error(format!("D-Bus call failed: {text}"))
+    Fail::error(format!("D-Bus call failed: {err}"))
 }
 
 /// A session connection whose method calls give up after `timeout`.
@@ -207,8 +216,25 @@ impl Bus {
     where
         B: serde::ser::Serialize + DynamicType,
     {
-        let conn = self.conn()?;
-        proxy(conn)?.call::<_, _, ()>(method, body).map_err(map_err)
+        self.call(method, body)
+    }
+
+    /// Call a method on its OWN connection, whose reply timeout is
+    /// `client_bound` rather than the shared one.
+    ///
+    /// The blocking methods below get this because the shared connection gives
+    /// up after the reply timeout and they are entitled to block far longer:
+    /// the extension applies its own timeout and answers when it expires, so
+    /// the client bound is only a guard against a shell that never replies at
+    /// all. The global `--timeout` therefore does not shorten them.
+    fn call_bounded<B, R>(&self, method: &str, body: &B, client_bound: Duration) -> Result<R>
+    where
+        B: serde::ser::Serialize + DynamicType,
+        R: serde::de::DeserializeOwned + zbus::zvariant::Type,
+    {
+        let conn = session_connection(client_bound)?;
+        let reply = proxy(&conn)?.call(method, body);
+        reply.map_err(map_err)
     }
 
     /// The extension version the running shell has loaded.
@@ -224,16 +250,8 @@ impl Bus {
         self.call("GetWorkarea", &(monitor,))
     }
 
-    /// Block until the extension reports a matching window, or the client-side
-    /// bound elapses.
-    ///
-    /// The extension already applies `timeout_ms` and answers with 0 when it
-    /// expires. The client bound is only a guard against a shell that never
-    /// replies at all, which is what the bash client bought with gdbus
-    /// `--timeout`. This call gets its OWN connection, because the shared one
-    /// gives up after the reply timeout and a `wait --timeout 60` is entitled
-    /// to block far longer than that. The global `--timeout` therefore does not
-    /// shorten a wait.
+    /// Block until the extension reports a matching window (0 once its
+    /// `timeout_ms` expires), or the client-side bound elapses.
     pub fn wait_for_window(
         &self,
         kind: &str,
@@ -241,19 +259,11 @@ impl Bus {
         timeout_ms: i32,
         client_bound: Duration,
     ) -> Result<u64> {
-        let conn = session_connection(client_bound)?;
-        let proxy = proxy(&conn)?;
-        proxy
-            .call::<_, _, u64>("WaitForWindow", &(kind, value, timeout_ms))
-            .map_err(map_err)
+        self.call_bounded("WaitForWindow", &(kind, value, timeout_ms), client_bound)
     }
 
     /// Block until the window's frame has held still for `quiet_ms`, and return
     /// it.
-    ///
-    /// Like `wait_for_window` this gets its OWN connection: the settle wait can
-    /// legitimately outlast the shared reply timeout, and a caller that lowered
-    /// that timeout for the placement itself did not ask to shorten this too.
     pub fn wait_for_geometry(
         &self,
         window_id: u64,
@@ -261,13 +271,10 @@ impl Bus {
         timeout_ms: i32,
         client_bound: Duration,
     ) -> Result<(i32, i32, i32, i32)> {
-        let conn = session_connection(client_bound)?;
-        let proxy = proxy(&conn)?;
-        proxy
-            .call::<_, _, (i32, i32, i32, i32)>(
-                "WaitForGeometry",
-                &(window_id, quiet_ms, timeout_ms),
-            )
-            .map_err(map_err)
+        self.call_bounded(
+            "WaitForGeometry",
+            &(window_id, quiet_ms, timeout_ms),
+            client_bound,
+        )
     }
 }

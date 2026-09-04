@@ -43,18 +43,50 @@ pub fn report_with(ok: bool, success: &str, failure: impl FnOnce() -> Fail) -> R
     }
 }
 
-/// Parse a monitor index: a non-negative integer an i32 can hold.
-///
-/// One home for the rule, because `workarea` and `resolve-place` had the same
-/// eight lines and the same message, and `place --monitor` would have made a
-/// third copy.
-pub fn monitor_index(token: &str) -> Result<i32> {
+/// Parse a workspace or monitor index: a non-negative integer an i32 can
+/// hold. `label` is "Workspace" or "Monitor" and names the index in the
+/// message the suites pin.
+pub fn index(token: &str, label: &str) -> Result<i32> {
     if !crate::selector::is_window_id(token) {
-        return Err(Fail::error("Monitor index must be a number"));
+        return Err(Fail::error(format!("{label} index must be a number")));
     }
     token
         .parse::<i32>()
-        .map_err(|_| Fail::error("Monitor index must be a number"))
+        .map_err(|_| Fail::error(format!("{label} index must be a number")))
+}
+
+pub fn monitor_index(token: &str) -> Result<i32> {
+    index(token, "Monitor")
+}
+
+/// Split one flag that may appear anywhere out of an argument list.
+///
+/// The `<WINDOW>` slot shifts every positional after it, so a flag has to be
+/// removed before the selector is parsed, and `info` set the precedent that
+/// it is accepted on either side of the selector. The VALUE of a match option
+/// is skipped: a window whose title is literally `--json` is still
+/// addressable with `-t --json`.
+pub fn take_flag(args: &[String], flag: &str) -> (bool, Vec<String>) {
+    let mut found = false;
+    let mut rest = Vec::with_capacity(args.len());
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if matches!(arg.as_str(), "-c" | "-t" | "-s" | "-p") {
+            rest.push(arg.clone());
+            if let Some(value) = args.get(index + 1) {
+                rest.push(value.clone());
+            }
+            index += 2;
+        } else if arg == flag {
+            found = true;
+            index += 1;
+        } else {
+            rest.push(arg.clone());
+            index += 1;
+        }
+    }
+    (found, rest)
 }
 
 /// Index of the primary monitor.
@@ -83,16 +115,11 @@ pub fn primary_monitor(ctx: &mut Ctx) -> Result<i32> {
 /// distinguishable from a call that failed, which is what a script probing
 /// "is there a second monitor?" needs.
 pub fn workarea_of(ctx: &mut Ctx, index: i32) -> Result<Rect> {
-    let (x, y, width, height) = ctx.bus.get_workarea(index)?;
-    if width < 0 || height < 0 {
+    let rect = ctx.bus.get_workarea(index)?;
+    if rect.2 < 0 || rect.3 < 0 {
         return Err(Fail::error(format!("No such monitor: {index}")).with_code(EXIT_NOT_FOUND));
     }
-    Ok(Rect {
-        x: x as i64,
-        y: y as i64,
-        width: width as i64,
-        height: height as i64,
-    })
+    Ok(Rect::from(rect))
 }
 
 pub fn not_found(id: u64) -> Fail {

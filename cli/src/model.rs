@@ -12,8 +12,9 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::commands::not_found;
 use crate::dbus::Bus;
-use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
+use crate::fail::{Fail, Result};
 
 pub type Window = Value;
 
@@ -87,14 +88,15 @@ impl Ctx {
         self.windows = None;
     }
 
-    /// Find a window by ID, with the bash client's "Error: Window not found"
-    /// wording (used by the commands that need the window's own geometry).
+    /// Find a window by ID. A missing window is reported the way every other
+    /// command reports one -- on stdout, exit 2 -- so `place 999` and
+    /// `move 999` agree.
     pub fn window_by_id(&mut self, id: u64) -> Result<Window> {
         let windows = self.windows()?;
         windows
             .iter()
             .find(|w| crate::model::id(w) == id)
             .cloned()
-            .ok_or_else(|| Fail::error(format!("Window not found: {id}")).with_code(EXIT_NOT_FOUND))
+            .ok_or_else(|| not_found(id))
     }
 }

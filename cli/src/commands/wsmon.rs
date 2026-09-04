@@ -2,41 +2,48 @@
 // SPDX-License-Identifier: MIT
 //! Switching workspaces and moving a window between workspaces or monitors.
 
-use crate::commands::{report, report_with};
+use crate::commands::{index, report, report_with};
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_REFUSED};
 use crate::model::{self, Ctx};
 use crate::selector;
 
-fn index_of(token: &str, label: &str) -> Result<i32> {
-    if !selector::is_window_id(token) {
-        return Err(Fail::error(format!("{label} index must be a number")));
-    }
-    token
-        .parse::<i32>()
-        .map_err(|_| Fail::error(format!("{label} index must be a number")))
-}
-
 pub fn workspace(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-    let Some(token) = args.first() else {
+    let [token] = args else {
         return Err(Fail::error("Usage: wctl workspace <N>"));
     };
-    let index = index_of(token, "Workspace")?;
+    let index = index(token, "Workspace")?;
 
     let ok = ctx.bus.call_bool("ActivateWorkspace", &(index,))?;
-    report(
-        ok,
-        &format!("Switched to workspace {index}"),
-        Fail::plain(format!(
+    report_with(ok, &format!("Switched to workspace {index}"), || {
+        workspace_switch_failure(ctx, index)
+    })
+}
+
+/// Why ActivateWorkspace came back `false`.
+///
+/// The extension answers false for an index that does not exist AND for a
+/// switch it issued that did not take effect (it reads the active index
+/// back). Only the first is "not found"; the second is a refusal, and a script
+/// branching on the exit code must not be sent to look for a workspace that
+/// `wctl workspaces` will show it.
+fn workspace_switch_failure(ctx: &mut Ctx, index: i32) -> Fail {
+    if !workspace_exists(ctx, index) {
+        return Fail::plain(format!(
             "Cannot switch to workspace {index} (does it exist? see wctl workspaces)"
         ))
-        .with_code(EXIT_NOT_FOUND),
-    )
+        .with_code(EXIT_NOT_FOUND);
+    }
+    Fail::plain(format!(
+        "Cannot switch to workspace {index}: the switch did not take effect"
+    ))
+    .with_code(EXIT_REFUSED)
 }
 
 pub fn move_to_workspace(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl move-to-workspace <WINDOW> <N>";
-    let (id, shift) = selector::resolve(ctx, 1, usage, args)?;
-    let index = index_of(&args[shift], "Workspace")?;
+    let selector = selector::parse_exact(1, usage, args)?;
+    let index = index(&args[selector.shift], "Workspace")?;
+    let id = selector::lookup(ctx, &selector)?;
 
     let ok = ctx.bus.call_bool("MoveToWorkspace", &(id, index))?;
     report_with(ok, &format!("Window moved to workspace {index}"), || {
@@ -60,8 +67,12 @@ fn workspace_move_failure(ctx: &mut Ctx, id: u64, index: i32) -> Fail {
         .with_code(EXIT_NOT_FOUND);
     }
     ctx.invalidate_windows();
-    let Ok(window) = ctx.window_by_id(id) else {
-        return Fail::plain(format!("Window not found: {id}")).with_code(EXIT_NOT_FOUND);
+    // A missing window is already the not-found Fail; anything else (a
+    // timeout, a disabled extension) is reported as what it is rather than
+    // being folded into "not found".
+    let window = match ctx.window_by_id(id) {
+        Ok(window) => window,
+        Err(failure) => return failure,
     };
     if model::flag(&window, "is_on_all_workspaces") {
         return Fail::plain(format!(
@@ -91,8 +102,9 @@ fn workspace_exists(ctx: &mut Ctx, index: i32) -> bool {
 
 pub fn move_to_monitor(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl move-to-monitor <WINDOW> <N>";
-    let (id, shift) = selector::resolve(ctx, 1, usage, args)?;
-    let index = index_of(&args[shift], "Monitor")?;
+    let selector = selector::parse_exact(1, usage, args)?;
+    let index = index(&args[selector.shift], "Monitor")?;
+    let id = selector::lookup(ctx, &selector)?;
 
     let ok = ctx.bus.call_bool("MoveToMonitor", &(id, index))?;
     report(

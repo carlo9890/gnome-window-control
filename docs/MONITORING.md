@@ -47,9 +47,10 @@ contain.
 - **`wctl` prints "extension is not running"** — the D-Bus destination isn't
   answering; enable it
   (`gnome-extensions enable window-control@carlo9890.github.io`).
-  `is_extension_not_running` in `cli/src/dbus.rs` lists the error strings that
-  produce this message, including the `WindowControl.Disabled` error the
-  extension returns when it is disabled while a `WaitForWindow` call is pending.
+  `is_extension_not_running` in `cli/src/dbus.rs` lists the error names (and,
+  for the one case GDBus conflates, the detail text) that produce this message,
+  including the `WindowControl.Disabled` error the extension returns when it is
+  disabled while a `WaitForWindow` or `WaitForGeometry` call is pending.
 - **`wctl list`/`info`/`focused` return empty or error** — check the log for a
   JavaScript exception in `ListDetailed`; the handler returns `'[]'` on any throw.
 - **A method silently no-ops** — the handler caught an exception and returned

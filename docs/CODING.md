@@ -56,7 +56,9 @@ syntax error fails the build.
 - `cargo fmt` is authoritative; clippy must be clean with warnings as errors.
 - Validate arguments before any D-Bus call. The session connection is opened
   lazily in `dbus.rs`, so a usage error must never reach it — that is what keeps
-  the guard tests headless.
+  the guard tests headless. Parse the selector with `selector::parse_exact`
+  (or `parse_min`), validate every argument after `selector.shift`, and only
+  then call `selector::lookup` — that one may hit the bus.
 - Report failure through `Fail`: `Fail::error` for the `Error: ...` on stderr,
   `Fail::plain` for the extension-said-no message on stdout. Every command ends
   in `report()` so they all behave the same way.
@@ -115,7 +117,9 @@ hard-fails if they diverge.
 
    ```rust
    pub fn your_new_command(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-       let (id, _) = selector::resolve(ctx, 0, "Usage: wctl your-new-command <WINDOW>", args)?;
+       let selector = selector::parse_exact(0, "Usage: wctl your-new-command <WINDOW>", args)?;
+       // Validate any argument after selector.shift HERE, before lookup().
+       let id = selector::lookup(ctx, &selector)?;
        let ok = ctx.bus.call_bool("YourNewMethod", &(id,))?;
        report(ok, "Did the thing", not_found(id))
    }

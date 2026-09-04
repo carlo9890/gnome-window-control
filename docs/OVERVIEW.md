@@ -63,12 +63,14 @@ gnome-window-control-extension-requirements.md   original design spec
   replying earlier would break the "launch, then place" script. `unexport()`
   fails every pending call and drops all handlers, so `disable()` leaves nothing
   behind.
-- `wctl` addresses windows through one **selector resolver**
-  (`selector::resolve(ctx, min_after, usage, args)` → id and shift): a numeric ID
-  needs no D-Bus call, `focused` costs one `GetFocused`, and `-c/-t/-s/-p` cost
-  one `ListDetailed` cached in `Ctx` for the command that follows. The
-  argument-count check runs before any D-Bus call so usage errors stay headless.
-  The pure halves (`selector::parse`, `select_id`, `filter`) are unit-tested.
+- `wctl` addresses windows through one **selector resolver** in two halves:
+  `selector::parse_exact(after, usage, args)` / `parse_min` (pure: the selector
+  and the argument count) and `selector::lookup(ctx, &selector)` (the bus: a
+  numeric ID needs no D-Bus call, `focused` costs one `GetFocused`, and
+  `-c/-t/-s/-p` cost one `ListDetailed` cached in `Ctx` for the command that
+  follows). A command validates every trailing argument between the two, so a
+  usage error never reaches the bus. The pure halves (`selector::parse`,
+  `select_id`, `filter`) are unit-tested.
 
 ## Finding things
 

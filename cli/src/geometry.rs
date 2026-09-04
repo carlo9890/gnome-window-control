@@ -23,12 +23,26 @@ pub struct Rect {
     pub height: i64,
 }
 
-fn is_positive_integer(token: &str) -> bool {
+/// The `(iiii)` shape every rectangle crosses the bus in.
+impl From<(i32, i32, i32, i32)> for Rect {
+    fn from((x, y, width, height): (i32, i32, i32, i32)) -> Self {
+        Rect {
+            x: i64::from(x),
+            y: i64::from(y),
+            width: i64::from(width),
+            height: i64::from(height),
+        }
+    }
+}
+
+/// `^[1-9][0-9]*$`: the shape every positive count in the grammar takes.
+pub fn is_positive_integer(token: &str) -> bool {
     let mut chars = token.chars();
     matches!(chars.next(), Some('1'..='9')) && chars.all(|c| c.is_ascii_digit())
 }
 
-fn is_integer(token: &str) -> bool {
+/// An optionally negative run of digits.
+pub fn is_integer(token: &str) -> bool {
     let digits = token.strip_prefix('-').unwrap_or(token);
     !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
 }
@@ -36,23 +50,30 @@ fn is_integer(token: &str) -> bool {
 /// Resolve a WIDTH/HEIGHT token: absolute pixels, or a percentage of the
 /// workarea. There is no upper clamp (150% is allowed), but a percentage that
 /// floors to zero pixels is refused.
+///
+/// Literals and percentages are bounded to i32, the D-Bus type of the
+/// geometry arguments: a value that could not be sent as requested must not
+/// be reported as requested either.
 pub fn resolve_place_size(token: &str, base_size: i64, label: &str) -> Result<i64> {
     if is_positive_integer(token) {
-        if let Ok(value) = token.parse::<i64>() {
-            return Ok(value);
+        if let Ok(value) = token.parse::<i32>() {
+            return Ok(i64::from(value));
         }
     }
 
     if let Some(percent) = token.strip_suffix('%') {
         if !percent.is_empty() && percent.chars().all(|c| c.is_ascii_digit()) {
-            if let Ok(percent) = percent.parse::<i64>() {
-                let value = base_size * percent / 100;
-                if value > 0 {
+            if let Ok(percent) = percent.parse::<i32>() {
+                // Both factors fit i32, so the product fits i64.
+                let value = base_size * i64::from(percent) / 100;
+                if value > 0 && value <= i64::from(i32::MAX) {
                     return Ok(value);
                 }
-                return Err(Fail::error(format!(
-                    "{label} percentage resolves to 0 pixels: {token}"
-                )));
+                if value <= 0 {
+                    return Err(Fail::error(format!(
+                        "{label} percentage resolves to 0 pixels: {token}"
+                    )));
+                }
             }
         }
     }
@@ -72,8 +93,8 @@ pub fn resolve_place_position(
     window_size: i64,
 ) -> Result<i64> {
     if is_integer(token) {
-        if let Ok(value) = token.parse::<i64>() {
-            return Ok(value);
+        if let Ok(value) = token.parse::<i32>() {
+            return Ok(i64::from(value));
         }
     }
 
@@ -120,42 +141,51 @@ pub const TILE_USAGE: &str = "Valid positions:
   left, center, right
   bottom-left, bottom-center, bottom-right";
 
-/// Resolve a 4x2 grid cell into pixels.
+/// A span of the 4x2 tile grid: (start_col, end_col, start_row, end_row).
+pub type TileCells = (i64, i64, i64, i64);
+
+/// Map a tile position keyword to its grid cells. Pure, so a command can
+/// refuse a bad keyword before it has fetched the workarea.
+pub fn tile_cells(position: &str) -> Result<TileCells> {
+    match position {
+        "top-left" => Ok((0, 0, 0, 0)),
+        "top-center" => Ok((1, 2, 0, 0)),
+        "top-right" => Ok((3, 3, 0, 0)),
+        "left" => Ok((0, 0, 0, 1)),
+        "center" => Ok((1, 2, 0, 1)),
+        "right" => Ok((3, 3, 0, 1)),
+        "bottom-left" => Ok((0, 0, 1, 1)),
+        "bottom-center" => Ok((1, 2, 1, 1)),
+        "bottom-right" => Ok((3, 3, 1, 1)),
+        _ => Err(Fail::error(format!(
+            "Invalid position: {position}\n{TILE_USAGE}"
+        ))),
+    }
+}
+
+/// Resolve grid cells into pixels.
 ///
 /// Cell size floors, so a workarea width that is not divisible by four leaves a
 /// remainder at the right edge instead of stretching the last column.
-pub fn resolve_tile_geometry(position: &str, workarea: Rect) -> Result<Rect> {
+pub fn tile_rect(cells: TileCells, workarea: Rect) -> Rect {
+    let (start_col, end_col, start_row, end_row) = cells;
     let cell_w = workarea.width / 4;
     let cell_h = workarea.height / 2;
-
-    let (start_col, end_col, start_row, end_row) = match position {
-        "top-left" => (0, 0, 0, 0),
-        "top-center" => (1, 2, 0, 0),
-        "top-right" => (3, 3, 0, 0),
-        "left" => (0, 0, 0, 1),
-        "center" => (1, 2, 0, 1),
-        "right" => (3, 3, 0, 1),
-        "bottom-left" => (0, 0, 1, 1),
-        "bottom-center" => (1, 2, 1, 1),
-        "bottom-right" => (3, 3, 1, 1),
-        _ => {
-            return Err(Fail::error(format!(
-                "Invalid position: {position}\n{TILE_USAGE}"
-            )))
-        }
-    };
-
-    Ok(Rect {
+    Rect {
         x: workarea.x + cell_w * start_col,
         y: workarea.y + cell_h * start_row,
         width: cell_w * (end_col - start_col + 1),
         height: cell_h * (end_row - start_row + 1),
-    })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn resolve_tile_geometry(position: &str, workarea: Rect) -> Result<Rect> {
+        Ok(tile_rect(tile_cells(position)?, workarea))
+    }
 
     // Expected values are hardcoded known-good results, not recomputed from the
     // implementation's own formula. They are the same numbers the bash suite
@@ -179,6 +209,38 @@ mod tests {
                 "expected {token} to be refused"
             );
         }
+    }
+
+    #[test]
+    fn place_size_is_bounded_to_the_wire_type() {
+        // A literal or a product that cannot be sent as i32 must not be
+        // reported as the requested size either. The first percentage used to
+        // wrap the i64 product to 1920 in a release build and report width 19.
+        for token in [
+            "4611686018427387905%",
+            "9223372036854775807%",
+            "200000000%",
+            "9999999999",
+        ] {
+            assert!(
+                resolve_place_size(token, 1920, "Width").is_err(),
+                "expected {token} to be refused"
+            );
+        }
+        assert_eq!(
+            resolve_place_size("2147483647", 1920, "Width").unwrap(),
+            2147483647
+        );
+    }
+
+    #[test]
+    fn place_position_literal_is_bounded_to_the_wire_type() {
+        assert!(resolve_place_position("9999999999", Axis::X, 0, 1920, 100).is_err());
+        assert!(resolve_place_position("-9999999999", Axis::Y, 0, 1080, 100).is_err());
+        assert_eq!(
+            resolve_place_position("-2147483648", Axis::X, 0, 1920, 100).unwrap(),
+            -2147483648
+        );
     }
 
     #[test]
