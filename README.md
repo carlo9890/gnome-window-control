@@ -374,7 +374,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Fullscreen` | `(t) -> b` | Make window fullscreen |
 | `Unfullscreen` | `(t) -> b` | Exit fullscreen |
 | `SetAbove` | `(tb) -> b` | Set/unset always-on-top |
-| `SetSticky` | `(tb) -> b` | Set/unset sticky (all workspaces) |
+| `SetSticky` | `(tb) -> b` | Set/unset sticky (all workspaces); false if the state did not take |
 | `ListWorkspaces` | `() -> s` | List workspaces as JSON (`index`, `name`, `is_active`, `window_count`) |
 | `ActivateWorkspace` | `(i) -> b` | Switch to a workspace. Hides the Activities overview first (the switch is ignored while it is shown) and returns whether the switch took effect |
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |

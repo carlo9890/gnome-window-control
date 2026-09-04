@@ -105,9 +105,7 @@ fn main() {
 /// `wait` has its own parser: its value feeds a millisecond D-Bus argument, so
 /// it carries an overflow bound this one does not need.
 fn timeout_seconds(token: &str, source: &str) -> Result<u64> {
-    let positive = token.starts_with(|c: char| c.is_ascii_digit() && c != '0')
-        && token.chars().all(|c| c.is_ascii_digit());
-    let seconds = if positive {
+    let seconds = if geometry::is_positive_integer(token) {
         token.parse::<u64>().ok()
     } else {
         None

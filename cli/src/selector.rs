@@ -65,6 +65,18 @@ pub fn validate_id(token: &str) -> Result<u64> {
         .map_err(|_| Fail::error("Window ID must be a number"))
 }
 
+/// A process ID: a positive integer an i32 can hold, which is what the
+/// extension's `i` argument carries and what `_matchPredicate` accepts.
+pub fn validate_pid(token: &str) -> Result<i32> {
+    let pid = if is_window_id(token) {
+        token.parse::<i32>().ok()
+    } else {
+        None
+    };
+    pid.filter(|pid| *pid > 0)
+        .ok_or_else(|| Fail::error("PID must be a number"))
+}
+
 /// Map a selector option to its kind. Shared by the resolver and `wait`.
 pub fn kind_for_option(option: &str) -> Result<Kind> {
     match option {
@@ -92,8 +104,8 @@ pub fn parse(args: &[String]) -> Result<Selector> {
             }
             let kind = kind_for_option(first)?;
             let value = args[1].clone();
-            if kind == Kind::Pid && !is_window_id(&value) {
-                return Err(Fail::error("PID must be a number"));
+            if kind == Kind::Pid {
+                validate_pid(&value)?;
             }
             Ok(Selector {
                 kind,
@@ -165,39 +177,13 @@ pub fn select_id(windows: &[Window], kind: Kind, value: &str) -> Result<u64> {
     Ok(model::id(found[0]))
 }
 
-/// Resolve the selector at the front of `args` to a window ID.
+/// Parse the selector and require at least `min_after` arguments after it.
 ///
-/// Returns the ID and how many arguments the selector occupied. `usage` is
-/// reported when the selector is missing or fewer than `min_after` arguments
-/// follow it -- checked before any D-Bus call.
-/// `resolve`, for a command that takes an EXACT number of arguments after the
-/// selector rather than a minimum.
-///
-/// The count is checked against the parsed shift before delegating, so an
-/// excess argument is refused without a bus call -- the same rule every other
-/// usage error follows. Checking it after `resolve` returned would have cost a
-/// `ListDetailed` for an option selector before reporting the mistake.
-pub fn resolve_exact(
-    ctx: &mut Ctx,
-    after: usize,
-    usage: &str,
-    args: &[String],
-) -> Result<(u64, usize)> {
-    if args.is_empty() {
-        return Err(Fail::error(usage));
-    }
-    if args.len() - parse(args)?.shift != after {
-        return Err(Fail::error(usage));
-    }
-    resolve(ctx, after, usage, args)
-}
-
-pub fn resolve(
-    ctx: &mut Ctx,
-    min_after: usize,
-    usage: &str,
-    args: &[String],
-) -> Result<(u64, usize)> {
+/// Pure: no D-Bus. `usage` is reported when the selector is missing or too
+/// few arguments follow it. A command validates every trailing VALUE it takes
+/// before calling `lookup`, so a usage error never costs a bus call -- the
+/// rule `dbus.rs` relies on to keep the guard tests headless.
+pub fn parse_min(min_after: usize, usage: &str, args: &[String]) -> Result<Selector> {
     if args.is_empty() {
         return Err(Fail::error(usage));
     }
@@ -205,23 +191,37 @@ pub fn resolve(
     if args.len() - selector.shift < min_after {
         return Err(Fail::error(usage));
     }
+    Ok(selector)
+}
 
-    let id = match selector.kind {
-        Kind::Id => validate_id(&selector.value)?,
+/// `parse_min` for a command that takes an EXACT number of arguments after
+/// the selector, so an excess argument is refused too.
+pub fn parse_exact(after: usize, usage: &str, args: &[String]) -> Result<Selector> {
+    let selector = parse_min(after, usage, args)?;
+    if args.len() - selector.shift != after {
+        return Err(Fail::error(usage));
+    }
+    Ok(selector)
+}
+
+/// Turn a parsed selector into a window ID. This is the half that may touch
+/// the bus: `focused` costs one `GetFocused`, a match option one
+/// `ListDetailed` cached in `ctx` for the command that follows.
+pub fn lookup(ctx: &mut Ctx, selector: &Selector) -> Result<u64> {
+    match selector.kind {
+        Kind::Id => validate_id(&selector.value),
         Kind::Focused => {
             let (id, _, _) = ctx.bus.get_focused()?;
             if id == 0 {
                 return Err(Fail::error("No window focused"));
             }
-            id
+            Ok(id)
         }
         kind => {
             let windows = ctx.windows()?;
-            select_id(&windows, kind, &selector.value)?
+            select_id(&windows, kind, &selector.value)
         }
-    };
-
-    Ok((id, selector.shift))
+    }
 }
 
 /// Apply the `list` filters. A workspace filter keeps sticky windows, which are

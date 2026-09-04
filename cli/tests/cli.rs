@@ -278,6 +278,71 @@ fn usage_guards_fire_before_any_bus_call() {
     );
 }
 
+/// A value error after an option or `focused` selector is a usage error like
+/// any other, so it must be reported before the selector is looked up -- with
+/// the bus unreachable, reaching it would print the not-running hint instead.
+#[test]
+fn value_guards_fire_before_the_selector_is_looked_up() {
+    expect_die("Invalid position", &["tile", "-c", "kitty", "nowhere"]);
+    expect_die("Invalid axis", &["center", "focused", "sideways"]);
+    expect_die(
+        "State must be 'on' or 'off'",
+        &["above", "-c", "kitty", "maybe"],
+    );
+    expect_die(
+        "X coordinate must be a number",
+        &["move", "focused", "abc", "0"],
+    );
+    expect_die(
+        "Width must be a positive number",
+        &["resize", "-t", "Doc", "0", "1"],
+    );
+    expect_die(
+        "Workspace index must be a number",
+        &["move-to-workspace", "-s", "Doc", "abc"],
+    );
+    expect_die(
+        "Monitor index must be a number",
+        &["move-to-monitor", "focused", "-1"],
+    );
+    expect_die(
+        "Unexpected argument: extra",
+        &["info", "-c", "kitty", "extra"],
+    );
+}
+
+/// Every window-taking command refuses an argument it would otherwise ignore.
+#[test]
+fn stray_arguments_are_refused_everywhere() {
+    expect_die(
+        "Usage: wctl move-to-workspace",
+        &["move-to-workspace", "123", "2", "3"],
+    );
+    expect_die(
+        "Usage: wctl move-to-monitor",
+        &["move-to-monitor", "123", "0", "x"],
+    );
+    expect_die("Usage: wctl above", &["above", "123", "on", "--json"]);
+    expect_die("Usage: wctl sticky", &["sticky", "123", "off", "extra"]);
+    expect_die("Usage: wctl minimize", &["minimize", "123", "junk"]);
+    expect_die("Usage: wctl focus", &["focus", "focused", "junk"]);
+    expect_die("Usage: wctl close", &["close", "-c", "kitty", "now"]);
+    expect_die("Usage: wctl workspace", &["workspace", "1", "2"]);
+}
+
+/// A window titled `--json` is still addressable: the output flags are taken
+/// from the argument list, but never out of a selector's value slot.
+#[test]
+fn output_flags_are_not_taken_from_a_selector_value() {
+    expect_not("Usage", &["tile", "-t", "--json", "left"]);
+    expect_not(
+        "Usage",
+        &["place", "-s", "--settled", "0", "0", "100", "100"],
+    );
+    expect_not("Usage", &["info", "-t", "--json"]);
+    expect_not("Usage", &["center", "--json", "-c", "--settled"]);
+}
+
 #[test]
 fn selector_option_guards() {
     expect_die("Unknown option: -x", &["tile", "-x", "left"]);
@@ -315,6 +380,11 @@ fn workspace_and_monitor_guards() {
 
 #[test]
 fn wait_guards() {
+    // A PID the extension would refuse, or one that can never match, is a
+    // usage error here rather than an InvalidArgs reply or a full timeout.
+    expect_die("PID must be a number", &["wait", "-p", "0"]);
+    expect_die("PID must be a number", &["wait", "-p", "99999999999"]);
+    expect_die("Substring must not be empty", &["wait", "-s", ""]);
     expect_die("Usage: wctl wait", &["wait"]);
     expect_die("Usage: wctl wait", &["wait", "-c", "a", "-t", "b"]);
     expect_die("Usage: wctl wait", &["wait", "123"]);

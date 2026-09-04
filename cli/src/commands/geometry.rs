@@ -8,12 +8,15 @@
 //! module used to do -- refetch the window and guess which state was in the way
 //! -- is gone, and with it the guess it could never get right for a tiled
 //! window.
+//!
+//! Every command parses and validates ALL of its arguments before the selector
+//! is looked up, so a usage error never costs a bus call.
 
 use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::commands::{monitor_index, primary_monitor, workarea_of};
+use crate::commands::{monitor_index, primary_monitor, take_flag, workarea_of};
 use crate::fail::{Fail, Result};
 use crate::geometry::{self, Axis, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
@@ -42,9 +45,7 @@ fn tile_usage() -> String {
 
 /// Parse a signed pixel coordinate.
 fn coordinate(token: &str, label: &str) -> Result<i32> {
-    let digits = token.strip_prefix('-').unwrap_or(token);
-    let looks_numeric = !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit());
-    if !looks_numeric {
+    if !geometry::is_integer(token) {
         return Err(Fail::error(format!("{label} coordinate must be a number")));
     }
     token
@@ -54,9 +55,7 @@ fn coordinate(token: &str, label: &str) -> Result<i32> {
 
 /// Parse a pixel extent. Zero is refused: the bash guard was `^[1-9][0-9]*$`.
 fn extent(token: &str, label: &str) -> Result<i32> {
-    let positive = token.starts_with(|c: char| c.is_ascii_digit() && c != '0')
-        && token.chars().all(|c| c.is_ascii_digit());
-    if !positive {
+    if !geometry::is_positive_integer(token) {
         return Err(Fail::error(format!("{label} must be a positive number")));
     }
     token
@@ -64,8 +63,10 @@ fn extent(token: &str, label: &str) -> Result<i32> {
         .map_err(|_| Fail::error(format!("{label} must be a positive number")))
 }
 
+/// Narrow a computed coordinate to the D-Bus argument type. Every token is
+/// parsed as i32, so only a sum of two extremes can leave the range.
 fn as_i32(value: i64) -> i32 {
-    value.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 fn rect_json(rect: Rect) -> Value {
@@ -187,12 +188,7 @@ fn settle(ctx: &mut Ctx, id: u64) -> Result<Rect> {
     let (x, y, width, height) =
         ctx.bus
             .wait_for_geometry(id, SETTLE_QUIET_MS, SETTLE_TIMEOUT_MS, bound)?;
-    Ok(Rect {
-        x: x as i64,
-        y: y as i64,
-        width: width as i64,
-        height: height as i64,
-    })
+    Ok(Rect::from((x, y, width, height)))
 }
 
 /// Report a geometry command that resolved a rectangle first.
@@ -266,27 +262,44 @@ fn report_placement(
     }
 }
 
-/// Split the flags that may appear anywhere out of an argument list.
-///
-/// The `<WINDOW>` slot shifts every positional after it, so these have to be
-/// removed before the selector resolver runs. `info` set the precedent: a flag
-/// is accepted on either side of the selector.
+/// Split `--json` and `--settled` out of an argument list. They may appear on
+/// either side of the selector, so this runs before the selector is parsed.
 fn take_output_flags(args: &[String]) -> (bool, bool, Vec<String>) {
-    let json_output = args.iter().any(|arg| arg == "--json");
-    let settled = args.iter().any(|arg| arg == "--settled");
-    let rest = args
-        .iter()
-        .filter(|arg| *arg != "--json" && *arg != "--settled")
-        .cloned()
-        .collect();
+    let (json_output, rest) = take_flag(args, "--json");
+    let (settled, rest) = take_flag(&rest, "--settled");
     (json_output, settled, rest)
+}
+
+/// The window's own document, the monitor it is on, and that monitor's
+/// workarea: the preamble every workarea-relative command shares.
+fn window_workarea(ctx: &mut Ctx, id: u64) -> Result<(Value, i32, Rect)> {
+    let window = ctx.window_by_id(id)?;
+    let monitor_index = model::number(&window, "monitor_index") as i32;
+    let workarea = workarea_of(ctx, monitor_index)?;
+    Ok((window, monitor_index, workarea))
+}
+
+/// Ask the extension for a frame rectangle. The one place the i64 arithmetic
+/// meets the i32 wire type.
+fn move_resize_to(ctx: &mut Ctx, id: u64, target: Rect) -> Result<()> {
+    ctx.bus.call_unit(
+        "MoveResize",
+        &(
+            id,
+            as_i32(target.x),
+            as_i32(target.y),
+            as_i32(target.width),
+            as_i32(target.height),
+        ),
+    )
 }
 
 pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl move <WINDOW> <X> <Y>";
-    let (id, shift) = selector::resolve_exact(ctx, 2, usage, args)?;
-    let x = coordinate(&args[shift], "X")?;
-    let y = coordinate(&args[shift + 1], "Y")?;
+    let selector = selector::parse_exact(2, usage, args)?;
+    let x = coordinate(&args[selector.shift], "X")?;
+    let y = coordinate(&args[selector.shift + 1], "Y")?;
+    let id = selector::lookup(ctx, &selector)?;
 
     ctx.bus.call_unit("Move", &(id, x, y))?;
     println!("Window moved");
@@ -295,9 +308,10 @@ pub fn move_window(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl resize <WINDOW> <WIDTH> <HEIGHT>";
-    let (id, shift) = selector::resolve_exact(ctx, 2, usage, args)?;
-    let width = extent(&args[shift], "Width")?;
-    let height = extent(&args[shift + 1], "Height")?;
+    let selector = selector::parse_exact(2, usage, args)?;
+    let width = extent(&args[selector.shift], "Width")?;
+    let height = extent(&args[selector.shift + 1], "Height")?;
+    let id = selector::lookup(ctx, &selector)?;
 
     ctx.bus.call_unit("Resize", &(id, width, height))?;
     println!("Window resized");
@@ -306,11 +320,13 @@ pub fn resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl move-resize <WINDOW> <X> <Y> <WIDTH> <HEIGHT>";
-    let (id, shift) = selector::resolve_exact(ctx, 4, usage, args)?;
+    let selector = selector::parse_exact(4, usage, args)?;
+    let shift = selector.shift;
     let x = coordinate(&args[shift], "X")?;
     let y = coordinate(&args[shift + 1], "Y")?;
     let width = extent(&args[shift + 2], "Width")?;
     let height = extent(&args[shift + 3], "Height")?;
+    let id = selector::lookup(ctx, &selector)?;
 
     ctx.bus
         .call_unit("MoveResize", &(id, x, y, width, height))?;
@@ -321,24 +337,17 @@ pub fn move_resize(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = place_usage();
     let (json_output, settled, args) = take_output_flags(args);
-    let (id, shift) = selector::resolve_exact(ctx, 4, &usage, &args)?;
-    let rest = &args[shift..];
+    let selector = selector::parse_exact(4, &usage, &args)?;
+    let tokens = &args[selector.shift..];
+    // The tokens resolve against the workarea, so they are checked once the
+    // window is known: a percentage has no meaning without it.
+    let id = selector::lookup(ctx, &selector)?;
 
-    let window = ctx.window_by_id(id)?;
-    let monitor_index = model::number(&window, "monitor_index") as i32;
-    let workarea = workarea_of(ctx, monitor_index)?;
-    let target = geometry::resolve_place_rect([&rest[0], &rest[1], &rest[2], &rest[3]], workarea)?;
+    let (_, monitor_index, workarea) = window_workarea(ctx, id)?;
+    let target =
+        geometry::resolve_place_rect([&tokens[0], &tokens[1], &tokens[2], &tokens[3]], workarea)?;
 
-    let applied = ctx.bus.call_unit(
-        "MoveResize",
-        &(
-            id,
-            as_i32(target.x),
-            as_i32(target.y),
-            as_i32(target.width),
-            as_i32(target.height),
-        ),
-    );
+    let applied = move_resize_to(ctx, id, target);
     let placement = Placement {
         monitor_index,
         workarea,
@@ -418,24 +427,15 @@ pub fn resolve_place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = tile_usage();
     let (json_output, settled, args) = take_output_flags(args);
-    let (id, shift) = selector::resolve_exact(ctx, 1, &usage, &args)?;
-    let position = args[shift].clone();
+    let selector = selector::parse_exact(1, &usage, &args)?;
+    let position = args[selector.shift].as_str();
+    let cells = geometry::tile_cells(position)?;
+    let id = selector::lookup(ctx, &selector)?;
 
-    let window = ctx.window_by_id(id)?;
-    let monitor_index = model::number(&window, "monitor_index") as i32;
-    let workarea = workarea_of(ctx, monitor_index)?;
-    let target = geometry::resolve_tile_geometry(&position, workarea)?;
+    let (_, monitor_index, workarea) = window_workarea(ctx, id)?;
+    let target = geometry::tile_rect(cells, workarea);
 
-    let applied = ctx.bus.call_unit(
-        "MoveResize",
-        &(
-            id,
-            as_i32(target.x),
-            as_i32(target.y),
-            as_i32(target.width),
-            as_i32(target.height),
-        ),
-    );
+    let applied = move_resize_to(ctx, id, target);
     let placement = Placement {
         monitor_index,
         workarea,
@@ -455,12 +455,15 @@ pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl center <WINDOW> [horizontal|vertical|both] [--json] [--settled]";
     let (json_output, settled, args) = take_output_flags(args);
-    let (id, shift) = selector::resolve(ctx, 0, usage, &args)?;
+    let selector = selector::parse_min(0, usage, &args)?;
     // The axis is optional, so this is a maximum rather than an exact count.
-    if args.len() > shift + 1 {
+    if args.len() > selector.shift + 1 {
         return Err(Fail::error(usage));
     }
-    let axis = args.get(shift).map(String::as_str).unwrap_or("both");
+    let axis = args
+        .get(selector.shift)
+        .map(String::as_str)
+        .unwrap_or("both");
 
     let (axis, message) = match axis {
         "h" | "horizontal" => ("horizontal", "Window centered horizontally"),
@@ -472,11 +475,10 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             )))
         }
     };
+    let id = selector::lookup(ctx, &selector)?;
 
-    let window = ctx.window_by_id(id)?;
+    let (window, monitor_index, workarea) = window_workarea(ctx, id)?;
     let (win_x, win_y, win_w, win_h) = model::frame_rect(&window);
-    let monitor_index = model::number(&window, "monitor_index") as i32;
-    let workarea = workarea_of(ctx, monitor_index)?;
 
     // Centring is the workarea-relative "center" token, so it reuses the one
     // implementation of that formula. Size is preserved, so this is a Move.

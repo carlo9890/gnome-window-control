@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use crate::fail::{Fail, Result, EXIT_TIMEOUT};
+use crate::geometry::is_positive_integer;
 use crate::model::Ctx;
 use crate::selector;
 
@@ -54,8 +55,14 @@ pub fn wait(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let Some(kind) = kind else {
         return Err(Fail::error(USAGE));
     };
-    if kind == selector::Kind::Pid && !selector::is_window_id(&value) {
-        return Err(Fail::error("PID must be a number"));
+    // The extension validates these too, but a bad value reported from here
+    // costs no bus call, and an impossible PID would otherwise block for the
+    // whole timeout before being reported as "timed out".
+    if kind == selector::Kind::Pid {
+        selector::validate_pid(&value)?;
+    }
+    if kind == selector::Kind::Substring && value.is_empty() {
+        return Err(Fail::error("Substring must not be empty"));
     }
 
     let seconds = parse_timeout(&timeout)?;
@@ -77,9 +84,7 @@ pub fn wait(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 }
 
 fn parse_timeout(token: &str) -> Result<i32> {
-    let positive = token.starts_with(|c: char| c.is_ascii_digit() && c != '0')
-        && token.chars().all(|c| c.is_ascii_digit());
-    let seconds = if positive {
+    let seconds = if is_positive_integer(token) {
         token.parse::<i32>().ok()
     } else {
         None
