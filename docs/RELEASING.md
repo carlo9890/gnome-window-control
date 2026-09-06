@@ -88,6 +88,38 @@ then upload the same zip.
    the queue is usually weeks. Every new version needs a new upload and a new
    review.
 
+### Pre-upload check with shexli
+
+The upload page recommends `shexli`, the static analyzer the reviewer may also
+run. Run it on the built zip before uploading:
+
+```bash
+pip install -U shexli 'tree-sitter==0.25.2'
+shexli dist/window-control@carlo9890.github.io_v<version>.zip
+```
+
+**Pin `tree-sitter==0.25.2`.** shexli 0.2.1 pins neither dependency and resolves
+tree-sitter 0.26.0 against a tree-sitter-javascript 0.25.0 grammar; the ABI
+mismatch segfaults the process before any output (exit 139 on a zip,
+`munmap_chunk(): invalid pointer` on a directory).
+
+Four findings fire on the current sources. All four were investigated at v11 and
+none is a defect — do not "fix" them:
+
+- `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
+  `get_maximized()` are reported as removed-on-49 API. Both sit behind the
+  `typeof win.get_maximized === 'function'` feature detection in
+  `_maximizeFlags` / `_maximizeWindow` / `_unmaximizeWindow`
+  (`extension.js`), so neither runs on GNOME 49. Answer the reviewer with the
+  guard. Narrowing `shell-version` to 45-48 clears both and costs the 49/50
+  users — `shell-version` cannot be widened again without a new review.
+- `EGO-A-004` (warning): counts `console.error` toward a threshold of 5.
+  Stripping every `console.log` still leaves 15, all in catch blocks, which
+  [CODING.md](CODING.md) mandates.
+- `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
+  `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
+  calls after setting `this._service = null`.
+
 Constraints the review enforces, which the code must keep satisfying:
 
 - The `uuid` is permanent. Never change it again — a new UUID is a new listing
