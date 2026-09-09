@@ -76,6 +76,10 @@ release; `scripts/release.sh` enforces the `0.<N>.0 ↔ vN` mapping. So
 
 ## Publishing to extensions.gnome.org (EGO)
 
+The listing is live at <https://extensions.gnome.org/extension/10886/window-control/>.
+Uploads go to that same listing — never create a second one, and never change the
+`uuid`.
+
 EGO is a separate channel from the GitHub release. Do the GitHub release first,
 then upload the same zip.
 
@@ -104,7 +108,8 @@ mismatch segfaults the process before any output (exit 139 on a zip,
 `munmap_chunk(): invalid pointer` on a directory).
 
 Four findings fire on the current sources. All four were investigated at v11 and
-none is a defect — do not "fix" them:
+none is a defect — do not "fix" them. v11 was approved with all four present, so
+shexli output is not a gate:
 
 - `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
   `get_maximized()` are reported as removed-on-49 API. Both sit behind the
