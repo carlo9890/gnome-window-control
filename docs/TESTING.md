@@ -37,6 +37,21 @@ The suite also asserts the command inventory stays in sync across the dispatch
 table, the help text and both shell completions, so a command that is not wired
 into all of them fails `cargo test`.
 
+## Headless GJS checks (no shell needed)
+
+Pure extension logic can be exercised with `gjs -m` outside any shell. The
+extension modules import `gi://Meta`, so point `GI_TYPELIB_PATH` at the mutter
+typelib directory (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46) and
+import the module by `file://` URL:
+
+```bash
+GI_TYPELIB_PATH=/usr/lib/x86_64-linux-gnu/mutter-14 gjs -m check.js
+```
+
+Anything reachable this way (the `rules.js` geometry and rule validation, for
+example) must be verified this way before a shell is even considered; see the
+hard rules in [RUNNING.md](RUNNING.md).
+
 ## Query and modification tests
 
 Both need the extension enabled and running, plus `jq` and `gdbus`. Query tests

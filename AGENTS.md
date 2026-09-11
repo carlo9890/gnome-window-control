@@ -35,7 +35,10 @@ minimum checks per action.
 
 **MUST read [docs/RUNNING.md](docs/RUNNING.md) before reloading or driving the
 extension by hand.** It owns the reload path, the nested-session setup, and the
-pitfalls that cost hours when met blind.
+pitfalls that cost hours when met blind. **Starting, killing, or restarting any
+GNOME Shell, nested included, needs the user's explicit consent for that
+specific run.** A nested start once logged the user out of the real session;
+the hard rules at the top of RUNNING.md are not negotiable.
 
 ### Analyze logs
 
