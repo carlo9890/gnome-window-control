@@ -9,6 +9,10 @@ import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
+import { WindowRules } from './rules.js';
+import {
+    isFullyMaximized, matchPredicate, maximizeFlags, maximizeWindow, unmaximizeWindow,
+} from './window-helpers.js';
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
@@ -66,39 +70,6 @@ const WINDOW_TYPE_NAMES = {
     [Meta.WindowType.DND]: 'dnd',
     [Meta.WindowType.OVERRIDE_OTHER]: 'override_other',
 };
-
-// GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
-// longer take a Meta.MaximizeFlags argument, and get_maximized() was removed in
-// favor of get_maximize_flags()/is_maximized() (verified against mutter 49.0
-// window.h). global.get_window_actors() and the rest of the Meta.Window API used
-// here are unchanged across GNOME 45-50. Detect the pre-49 API via the removed
-// get_maximized() method so a single extension.js works on all supported shells.
-function _maximizeFlags(win) {
-    if (typeof win.get_maximized === 'function') {
-        return win.get_maximized();                                  // GNOME <= 48
-    }
-    return win.get_maximize_flags();                                 // GNOME 49+
-}
-
-function _isFullyMaximized(win) {
-    return _maximizeFlags(win) === Meta.MaximizeFlags.BOTH;
-}
-
-function _maximizeWindow(win) {
-    if (typeof win.get_maximized === 'function') {
-        win.maximize(Meta.MaximizeFlags.BOTH);                       // GNOME <= 48
-    } else {
-        win.maximize();                                              // GNOME 49+
-    }
-}
-
-function _unmaximizeWindow(win) {
-    if (typeof win.get_maximized === 'function') {
-        win.unmaximize(Meta.MaximizeFlags.BOTH);                     // GNOME <= 48
-    } else {
-        win.unmaximize();                                            // GNOME 49+
-    }
-}
 
 // D-Bus service implementation.
 //
@@ -220,7 +191,7 @@ class WindowControlService {
     _frameRefusal(win) {
         if (win.is_fullscreen())
             return 'the window is fullscreen; unfullscreen it first';
-        const flags = _maximizeFlags(win);
+        const flags = maximizeFlags(win);
         if (flags === Meta.MaximizeFlags.BOTH)
             return 'the window is maximized; unmaximize it first';
         if (flags !== 0)
@@ -266,33 +237,10 @@ class WindowControlService {
         }
     }
 
-    // Helper: Build the match predicate for a (kind, value) selector, shared
-    // by WaitForWindow and the ActivateBy* methods so the two families cannot
-    // disagree about which window a value names. Returns null for an unknown
-    // kind, an empty substring (which would match every window) or a pid that
-    // is not a positive decimal integer: get_pid() is 0 for a window whose
-    // client pid is unknown, so 0 must never be matchable.
+    // Helper: the (kind, value) selector predicate, shared with rules.json.
+    // See matchPredicate() in window-helpers.js for the values it refuses.
     _matchPredicate(kind, value) {
-        switch (kind) {
-        case 'class':
-            return w => w.get_wm_class() === value;
-        case 'title':
-            return w => w.get_title() === value;
-        case 'substring':
-            if (value === '')
-                return null;
-            return w => (w.get_title() || '').includes(value);
-        case 'pid': {
-            if (!/^[0-9]+$/.test(value))
-                return null;
-            const pid = Number(value);
-            if (!Number.isSafeInteger(pid) || pid <= 0)
-                return null;
-            return w => w.get_pid() === pid;
-        }
-        default:
-            return null;
-        }
+        return matchPredicate(kind, value);
     }
 
     // Helper: has mutter mapped and placed this window at least once?
@@ -436,7 +384,7 @@ class WindowControlService {
                     appears_focused: win.appears_focused ?? win.has_focus(),
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
-                    is_maximized: _isFullyMaximized(win),
+                    is_maximized: isFullyMaximized(win),
                     is_fullscreen: win.is_fullscreen(),
                     is_above: win.is_above(),
                     is_on_all_workspaces: win.is_on_all_workspaces(),
@@ -1094,12 +1042,12 @@ class WindowControlService {
 
     // Maximize: Maximize window
     Maximize(windowId) {
-        return this._actOnWindow(windowId, 'Maximize', win => _maximizeWindow(win));
+        return this._actOnWindow(windowId, 'Maximize', win => maximizeWindow(win));
     }
 
     // Unmaximize: Unmaximize window
     Unmaximize(windowId) {
-        return this._actOnWindow(windowId, 'Unmaximize', win => _unmaximizeWindow(win));
+        return this._actOnWindow(windowId, 'Unmaximize', win => unmaximizeWindow(win));
     }
 
     // Fullscreen: Make window fullscreen
@@ -1158,6 +1106,8 @@ export default class WindowControlExtension extends Extension {
             this._service = new WindowControlService(this.metadata);
             this._service.export();
             console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
+            this._rules = new WindowRules();
+            this._rules.enable();
         } catch (e) {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
             throw e;
@@ -1169,6 +1119,10 @@ export default class WindowControlExtension extends Extension {
     disable() {
         console.log(`[${this.metadata.name}] Disabling extension...`);
 
+        if (this._rules) {
+            this._rules.disable();
+            this._rules = null;
+        }
         if (this._service) {
             try {
                 this._service.unexport();

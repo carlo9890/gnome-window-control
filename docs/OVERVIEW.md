@@ -10,6 +10,8 @@ Shell 45-50.
 window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── extension.js           D-Bus service + method handlers (WindowControlService)
 ├── dbus-interface.js      D-Bus interface XML (imported by extension.js)
+├── rules.js               WindowRules: rules.json auto-placement (no D-Bus)
+├── window-helpers.js      selector predicate + maximize API, shared by both
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
@@ -63,6 +65,18 @@ gnome-window-control-extension-requirements.md   original design spec
   replying earlier would break the "launch, then place" script. `unexport()`
   fails every pending call and drops all handlers, so `disable()` leaves nothing
   behind.
+- **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
+  service: it reads `~/.config/gnome-window-control/rules.json`, watches
+  `window-created`, and places a matching window once mutter has shown it. It
+  makes no D-Bus call — the place/tile/center arithmetic is a GJS port of
+  `cli/src/geometry.rs`, pinned to the same values by a headless `gjs` check (see
+  TESTING.md). The selector predicate (`class`/`title`/`substr`) and the
+  GNOME-49 maximize API detection are shared with `extension.js` through
+  `window-helpers.js`, so the D-Bus `ActivateBy*`/`WaitForWindow` family and a
+  rule cannot disagree about which window a value names. A geometry request only
+  sticks after the window is shown (the same constraint `WaitForWindow` documents
+  below), so a rule waits for `shown` and then applies from an idle callback; a
+  window that maps maximized is unmaximized first.
 - `wctl` addresses windows through one **selector resolver** in two halves:
   `selector::parse_exact(after, usage, args)` / `parse_min` (pure: the selector
   and the argument count) and `selector::lookup(ctx, &selector)` (the bus: a

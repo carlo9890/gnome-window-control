@@ -12,6 +12,7 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
 - **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
 - **Wait for a window** - Block until a matching window is shown, without polling
+- **Automatic placement** - Place matching windows the moment they are shown, from a config file, with no `wctl` call in the loop
 - **CLI-friendly** - Easy to use from shell scripts via `gdbus` or the included `wctl` client, a single static binary with no runtime dependencies
 
 ## Compatibility
@@ -336,6 +337,48 @@ gdbus call --session \
   --method org.gnome.Shell.Extensions.WindowControl.ActivateByWmClass \
   "kitty"
 ```
+
+## Automatic window placement
+
+The extension can place a window the moment it is shown, so it opens where you
+want it without a `wctl` call. Rules live in
+`~/.config/gnome-window-control/rules.json`, a JSON array read at enable and
+re-read whenever the file changes (no restart needed). The file is optional; with
+no file, nothing happens.
+
+Each rule names the windows it matches and one placement, in the same vocabulary
+as the `wctl` commands:
+
+```json
+[
+  { "match": { "class": "kitty" },        "tile": "left" },
+  { "match": { "substr": "Report" },      "place": ["right", "top", "50%", "100%"] },
+  { "match": { "title": "Calculator" },   "center": "both", "monitor": 1 },
+  { "match": { "class": "Slack" },        "workspace": 2 }
+]
+```
+
+- **match** — one or more of `class` (exact WM class), `title` (exact title),
+  `substr` (title contains). Several keys must all match.
+- **place** — `[X, Y, WIDTH, HEIGHT]`, the tokens of `wctl place`: X is a number
+  or `left|center|right`, Y a number or `top|center|bottom`, WIDTH/HEIGHT a
+  positive number or a percentage like `50%`.
+- **tile** — a `wctl tile` position (`left`, `top-right`, `center`, ...).
+- **center** — `horizontal`, `vertical`, or `both`; keeps the window's own size.
+- **workspace** — a workspace index; the window is moved there (created if needed).
+- **monitor** — a monitor index; the workarea that `place`/`tile`/`center`
+  resolve against, and where the window is placed.
+
+`place`, `tile` and `center` are mutually exclusive in one rule; combine any of
+them with `workspace` and `monitor`. The first matching rule wins, in file order,
+and applies once per window.
+
+The placement lands after mutter has mapped the window, which is the earliest a
+geometry request sticks (before that, mutter's own initial placement overrides
+it). A window that maps maximized is unmaximized first. This sets the *initial*
+position only: an app that resizes itself afterwards is left alone. A rule with a
+bad value is reported to the journal and the whole file is ignored until fixed,
+so one typo never places a window half-right.
 
 ## D-Bus Interface
 

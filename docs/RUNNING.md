@@ -6,6 +6,44 @@ reproduce a bug or verify a change. For the automated suites and CI gates see
 launch-and-drive flow is the built-in `run`/`verify` skills — this file records
 only what is specific to this project.
 
+## Hard rules for an agent (read before anything else in this file)
+
+These exist because of a real incident, recorded at the end of this file.
+
+1. **Never start, kill, or restart any GNOME Shell without the user's explicit
+   consent for that specific run.** A nested shell counts. "Verify the change
+   in a running shell" is not consent; ask, name the exact command, and wait.
+   One approval covers one start. A second start needs a second approval.
+2. **Never `pkill`/`killall` a shell.** Record the PID when you start a nested
+   shell and stop that PID only, with a plain `kill <pid>`.
+3. **Log every nested run to a new file** (for example a timestamped name).
+   Never redirect a run's output over the previous run's log: the log of the
+   run that logged the user out was destroyed exactly that way.
+4. **Isolate more than the bus.** `dbus-run-session` gives the nested shell its
+   own session bus, but the nested shell still inherits `SESSION_MANAGER`,
+   `GNOME_SHELL_SESSION_MODE`, `XDG_SESSION_ID`, `INVOCATION_ID`, `MANAGERPID`
+   and `JOURNAL_STREAM` from the real session. Mutter's nested backend uses
+   `SESSION_MANAGER` to register with the *real* gnome-session as an XSMP
+   client at startup (mutter 46 `src/x11/session.c`, called from
+   `meta_context_main_notify_ready`). Start it with those variables removed:
+
+   ```bash
+   env -u SESSION_MANAGER -u GNOME_SHELL_SESSION_MODE -u DESKTOP_AUTOSTART_ID \
+       -u XDG_SESSION_ID -u INVOCATION_ID -u MANAGERPID -u JOURNAL_STREAM \
+       GSETTINGS_BACKEND=memory dbus-run-session \
+       gnome-shell --nested --wayland --sm-disable > "nested-$(date +%H%M%S).log" 2>&1 &
+   echo $!   # keep this PID
+   ```
+
+   `--sm-disable` is mutter's own switch for the XSMP client. This hardened
+   form has not yet been exercised here; treat the first run as an experiment
+   the user has agreed to.
+5. **Prefer not to run a shell at all.** Pure logic (geometry, config parsing)
+   is checked headlessly with `gjs -m` and `GI_TYPELIB_PATH` pointed at the
+   mutter typelib directory; see the `check-rules.js` pattern in
+   [TESTING.md](TESTING.md). Only behaviour that needs a compositor needs a
+   shell.
+
 ## Reload after a code change (required)
 
 **`gnome-extensions disable`/`enable` does NOT reload JavaScript from disk** — it
@@ -157,3 +195,31 @@ geometry/state, e.g. after a `tile`/`place`/`move`, read `$W info <ID> --json`
 and compare `frame_rect`. For a full sweep, run the modification suite
 ([TESTING.md](TESTING.md)) — it spawns its own window and asserts geometry within
 a tolerance.
+
+## Incident 2026-09-11: nested shell start logged the user out
+
+What happened. During one session an agent cycled a nested shell six times
+(start, test, `pkill -f '^gnome-shell --nested'`, reinstall, start again) to
+verify extension changes. Three seconds after the sixth start, at 11:15:15,
+the real session's `systemd --user` activated `exit.target`, the real GNOME
+Shell shut down, logind removed the login session, and GDM started a fresh
+one. Every process of the login session died with it: all terminals, and
+thirteen Claude Code sessions in other repositories, one of them mid-workflow.
+
+What the evidence shows.
+
+- The user manager's log line is `Activating special unit exit.target`
+  from `manager_start_special`. For a user manager that follows a SIGTERM,
+  a SIGINT (which would have been logged at info level and was not), or a
+  D-Bus `Exit()`. No gnome-session logout path was logged (no
+  `gnome-session-shutdown.target`, no "Unrecoverable failure").
+- In the two minutes before, the agent's own command was the only one in any
+  Claude session that contained a kill-type command.
+- The trigger coincides with the sixth nested shell reaching startup
+  completion, the moment mutter registers with the real gnome-session over
+  `SESSION_MANAGER`. The five earlier starts used the identical command and
+  were harmless, so the exact in-process mechanism is not proven.
+- The nested shell's own log for that run was overwritten by the next run,
+  so the last piece of evidence is gone. Rule 3 above exists for that reason.
+
+Do not try to reproduce this on a machine that has anything open.
