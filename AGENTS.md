@@ -25,6 +25,13 @@ under `window-control@carlo9890.github.io/` or `cli/`.** It owns the JS and Rust
 style rules, the mandatory `node --check` gate, and the recipe for adding a D-Bus
 method end to end.
 
+### The rules.json auto-placement format
+
+**MUST read [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md) before editing
+`rules.js`, or changing what the rules file accepts or how a rule is applied.**
+It is the normative format: the key set, the token grammar, the tile grid, every
+validation message, and the show/unmaximize timing a placement depends on.
+
 ### Testing and verification
 
 **MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test** or judging
