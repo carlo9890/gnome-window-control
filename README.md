@@ -373,12 +373,12 @@ as the `wctl` commands:
 them with `workspace` and `monitor`. The first matching rule wins, in file order,
 and applies once per window.
 
-The placement lands after mutter has mapped the window, which is the earliest a
-geometry request sticks (before that, mutter's own initial placement overrides
-it). A window that maps maximized is unmaximized first. This sets the *initial*
-position only: an app that resizes itself afterwards is left alone. A rule with a
-bad value is reported to the journal and the whole file is ignored until fixed,
-so one typo never places a window half-right.
+This sets the *initial* position only: an app that resizes itself afterwards is
+left alone. A rule with a bad value is reported to the journal and the whole file
+is ignored until you fix it, so one typo never places a window half-right.
+
+The complete format, the token grammar, the tile grid and every validation rule
+are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
 
 ## D-Bus Interface
 
