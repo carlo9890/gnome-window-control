@@ -13,12 +13,16 @@
 
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::fail::{Fail, Result};
 use crate::rules;
 
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove> [OPTIONS]";
+
+const ADD_USAGE: &str =
+    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> <tile POSITION|place X Y W H|center [AXIS]> \
+[--workspace N] [--monitor N] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
 ///
@@ -158,6 +162,410 @@ fn check(args: &[String]) -> Result<()> {
     }
 }
 
+/// Read the file and validate it, for the subcommands that need the rules
+/// themselves rather than a verdict.
+///
+/// An absent file is `(Vec::new(), Vec::new())`, not an error. A file that does
+/// not parse or does not validate IS an error: `add` and `remove` rewrite the
+/// whole document, so acting on a file we could not read correctly would
+/// discard whatever the user actually wrote.
+fn load(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
+    let Loaded::Present { text } = read_file(path)? else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    let document = parse(&text, path)?;
+    let compiled = rules::compile_rules(&document).map_err(Fail::error)?;
+    let raw = document
+        .as_array()
+        .expect("compile_rules refuses a non-array")
+        .clone();
+    Ok((raw, compiled))
+}
+
+/// Write the document, atomically.
+///
+/// Serialise to a temp file in the SAME directory and rename over the target.
+/// A rename within a directory is atomic, so a reader never sees a half-written
+/// file -- and the extension watches the directory rather than the file for
+/// exactly this pattern (see docs/specs/RULES-JSON.md), so the reload fires.
+fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
+    let text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(document).map_err(|e| Fail::error(e.to_string()))?
+    );
+    let directory = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(directory)
+        .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
+
+    let temporary = directory.join(format!(".rules.json.{}", std::process::id()));
+    std::fs::write(&temporary, &text)
+        .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary.display())))?;
+    std::fs::rename(&temporary, path).map_err(|e| {
+        let _ = std::fs::remove_file(&temporary);
+        Fail::error(format!("Cannot replace {}: {e}", path.display()))
+    })
+}
+
+/// How a rule reads in the `list` table.
+fn describe_match(rule: &rules::Rule) -> String {
+    rule.matches
+        .iter()
+        .map(|m| format!("{}={}", m.key, m.value))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn describe_action(rule: &rules::Rule) -> String {
+    match &rule.action {
+        Some(rules::Action::Tile(position)) => format!("tile {position}"),
+        Some(rules::Action::Center(axis)) => format!("center {axis}"),
+        Some(rules::Action::Place(tokens)) => format!("place {}", tokens.join(" ")),
+        None => String::new(),
+    }
+}
+
+/// `wctl rules list [--file PATH] [--json]`
+fn list(args: &[String]) -> Result<()> {
+    let (file, rest) = take_file_option(args)?;
+    let json = super::parse_json_flag(&rest)?;
+    let path = match file {
+        Some(path) => path,
+        None => default_path()?,
+    };
+    let (raw, compiled) = load(&path)?;
+
+    if json {
+        // The file unchanged, the way `list --json` and `info --json` emit the
+        // extension's document unchanged.
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&raw).map_err(|e| Fail::error(e.to_string()))?
+        );
+        return Ok(());
+    }
+
+    // No file and no rules print nothing at all: a `wctl rules list | wc -l`
+    // should say 0, not 1 for a header over an empty table.
+    if compiled.is_empty() {
+        return Ok(());
+    }
+
+    let mut rows = vec![vec![
+        "INDEX".to_string(),
+        "MATCH".to_string(),
+        "ACTION".to_string(),
+        "WORKSPACE".to_string(),
+        "MONITOR".to_string(),
+    ]];
+    for (index, rule) in compiled.iter().enumerate() {
+        rows.push(vec![
+            index.to_string(),
+            describe_match(rule),
+            describe_action(rule),
+            rule.workspace.map(|n| n.to_string()).unwrap_or_default(),
+            rule.monitor.map(|n| n.to_string()).unwrap_or_default(),
+        ]);
+    }
+    super::print_table(&rows);
+    Ok(())
+}
+
+/// `wctl rules path [--file PATH]`
+fn path_command(args: &[String]) -> Result<()> {
+    let (file, rest) = take_file_option(args)?;
+    if let Some(unexpected) = rest.first() {
+        return Err(Fail::error(format!("Unexpected argument: {unexpected}")));
+    }
+    let path = match file {
+        Some(path) => path,
+        None => default_path()?,
+    };
+    println!("{}", path.display());
+    Ok(())
+}
+
+/// Parse the match selector of `rules add`.
+///
+/// Only the three selectors a STATIC file can carry. A numeric ID, `focused`
+/// and `-p` all name a window that exists right now, which is exactly what a
+/// rule cannot do: it is evaluated against windows that do not exist yet.
+fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
+    let refused = |named: &str| {
+        Fail::error(format!(
+            "{named} names a window that already exists; a rule matches windows \
+             that do not exist yet. Use -c <CLASS>, -t <TITLE> or -s <SUBSTR>."
+        ))
+    };
+
+    let first = args.first().map(String::as_str).unwrap_or("");
+    let key = match first {
+        "-c" => "class",
+        "-t" => "title",
+        "-s" => "substr",
+        "-p" => return Err(refused("-p <PID>")),
+        "focused" => return Err(refused("focused")),
+        "" => return Err(Fail::error(ADD_USAGE)),
+        other if crate::selector::is_window_id(other) => return Err(refused("A window ID")),
+        other => return Err(Fail::error(format!("Unknown selector option: {other}"))),
+    };
+    let Some(value) = args.get(1) else {
+        return Err(Fail::error(format!("Option {first} requires an argument")));
+    };
+    if value.is_empty() {
+        return Err(Fail::error(format!(
+            "{first} requires a value; an empty one would match every window"
+        )));
+    }
+
+    let mut block = Map::new();
+    block.insert(key.to_string(), Value::String(value.clone()));
+    Ok((block, 2))
+}
+
+/// Parse the action of `rules add`, validating through the same grammar the
+/// rule will be validated by.
+fn parse_rule_action(args: &[String]) -> Result<(String, Value)> {
+    let Some(kind) = args.first().map(String::as_str) else {
+        return Err(Fail::error(ADD_USAGE));
+    };
+    let rest = &args[1..];
+    match kind {
+        "tile" => {
+            let [position] = rest else {
+                return Err(Fail::error("Usage: wctl rules add <MATCH> tile <POSITION>"));
+            };
+            // The command's own grammar, so a rule cannot accept a position
+            // `wctl tile` would refuse.
+            crate::geometry::tile_cells(position)?;
+            Ok(("tile".to_string(), Value::String(position.clone())))
+        }
+        "center" => {
+            let axis = match rest {
+                [] => "both",
+                [axis] => match axis.as_str() {
+                    "h" | "horizontal" => "horizontal",
+                    "v" | "vertical" => "vertical",
+                    "both" => "both",
+                    other => {
+                        return Err(Fail::error(format!(
+                            "Invalid axis: {other}. Must be 'horizontal', 'vertical', or 'both'"
+                        )))
+                    }
+                },
+                _ => {
+                    return Err(Fail::error(
+                        "Usage: wctl rules add <MATCH> center [horizontal|vertical|both]",
+                    ))
+                }
+            };
+            Ok(("center".to_string(), Value::String(axis.to_string())))
+        }
+        "place" => {
+            let [x, y, width, height] = rest else {
+                return Err(Fail::error(
+                    "Usage: wctl rules add <MATCH> place <X> <Y> <WIDTH> <HEIGHT>",
+                ));
+            };
+            // Resolved against the probe workarea, the same check the rule
+            // itself gets at load time, so a percentage that cannot produce a
+            // pixel is refused here rather than written and then rejected.
+            crate::geometry::resolve_place_rect(
+                [x.as_str(), y.as_str(), width.as_str(), height.as_str()],
+                rules::PROBE_WORKAREA,
+            )?;
+            Ok((
+                "place".to_string(),
+                Value::Array(
+                    [x, y, width, height]
+                        .into_iter()
+                        .map(|token| Value::String(token.clone()))
+                        .collect(),
+                ),
+            ))
+        }
+        other => Err(Fail::error(format!(
+            "Unknown action: {other}. Use tile, place or center."
+        ))),
+    }
+}
+
+/// Does `earlier` match every window `later` would?
+///
+/// First match wins, so a new rule under a more general one is dead. Each of
+/// `earlier`'s predicates must be implied by one of `later`'s: an exact class
+/// or title by the same value, a substring by any title or substring that
+/// contains it.
+fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
+    earlier.matches.iter().all(|general| {
+        later.matches.iter().any(
+            |specific| match (general.kind.as_str(), specific.kind.as_str()) {
+                ("class", "class") | ("title", "title") => general.value == specific.value,
+                ("substring", "title") | ("substring", "substring") => {
+                    specific.value.contains(&general.value)
+                }
+                _ => false,
+            },
+        )
+    })
+}
+
+/// `wctl rules add <MATCH> <ACTION> [--workspace N] [--monitor N] [--at N] [--dry-run]`
+fn add(args: &[String]) -> Result<()> {
+    let (file, args) = take_file_option(args)?;
+    let (dry_run, args) = super::take_flag(&args, "--dry-run");
+
+    // The value options come out first: they may appear anywhere, and the
+    // action is positional.
+    let mut workspace = None;
+    let mut monitor = None;
+    let mut at = None;
+    let mut rest = Vec::with_capacity(args.len());
+    let mut index = 0;
+    while index < args.len() {
+        let slot = match args[index].as_str() {
+            "--workspace" => &mut workspace,
+            "--monitor" => &mut monitor,
+            "--at" => &mut at,
+            // A selector option's VALUE is never an option name.
+            "-c" | "-t" | "-s" | "-p" => {
+                rest.push(args[index].clone());
+                if let Some(value) = args.get(index + 1) {
+                    rest.push(value.clone());
+                }
+                index += 2;
+                continue;
+            }
+            _ => {
+                rest.push(args[index].clone());
+                index += 1;
+                continue;
+            }
+        };
+        let option = args[index].clone();
+        let Some(value) = args.get(index + 1) else {
+            return Err(Fail::error(format!("Option {option} requires a value")));
+        };
+        if !crate::selector::is_window_id(value) {
+            return Err(Fail::error(format!(
+                "{option} must be a non-negative number"
+            )));
+        }
+        *slot = Some(
+            value
+                .parse::<i64>()
+                .map_err(|_| Fail::error(format!("{option} must be a non-negative number")))?,
+        );
+        index += 2;
+    }
+
+    let (match_block, shift) = parse_rule_match(&rest)?;
+    let (action_key, action_value) = parse_rule_action(&rest[shift..])?;
+
+    // Built in RULE_KEYS order, so the file reads the way the spec lists them.
+    let mut rule = Map::new();
+    rule.insert("match".to_string(), Value::Object(match_block));
+    rule.insert(action_key, action_value);
+    if let Some(workspace) = workspace {
+        rule.insert("workspace".to_string(), Value::from(workspace));
+    }
+    if let Some(monitor) = monitor {
+        rule.insert("monitor".to_string(), Value::from(monitor));
+    }
+    let rule = Value::Object(rule);
+
+    let path = match file {
+        Some(path) => path,
+        None => default_path()?,
+    };
+    let (mut raw, compiled) = load(&path)?;
+
+    let position = match at {
+        None => raw.len(),
+        Some(at) => {
+            let at = usize::try_from(at).unwrap_or(usize::MAX);
+            if at > raw.len() {
+                return Err(Fail::error(format!(
+                    "--at {at} is past the end; the file has {} rule(s)",
+                    raw.len()
+                )));
+            }
+            at
+        }
+    };
+
+    // Validate the rule in the position it will occupy, so the index in any
+    // message is the index it would really have.
+    let mut candidate = raw.clone();
+    candidate.insert(position, rule.clone());
+    let recompiled = rules::compile_rules(&Value::Array(candidate.clone())).map_err(Fail::error)?;
+
+    // First match wins, so only an EARLIER rule can shadow this one.
+    let added = &recompiled[position];
+    if let Some(shadow) = compiled
+        .iter()
+        .take(position)
+        .position(|earlier| shadows(earlier, added))
+    {
+        eprintln!(
+            "Warning: rule {shadow} already matches every window this rule would, \
+             and the first match wins, so the new rule will never fire."
+        );
+    }
+
+    if dry_run {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&candidate).map_err(|e| Fail::error(e.to_string()))?
+        );
+        return Ok(());
+    }
+
+    raw.insert(position, rule);
+    write_atomically(&path, &raw)?;
+    println!("Added rule {position} to {}", path.display());
+    Ok(())
+}
+
+/// `wctl rules remove <INDEX> [--file PATH] [--dry-run]`
+fn remove(args: &[String]) -> Result<()> {
+    let (file, args) = take_file_option(args)?;
+    let (dry_run, args) = super::take_flag(&args, "--dry-run");
+    let [index] = args.as_slice() else {
+        return Err(Fail::error("Usage: wctl rules remove <INDEX>"));
+    };
+    if !crate::selector::is_window_id(index) {
+        return Err(Fail::error("Rule index must be a non-negative number"));
+    }
+    let index: usize = index
+        .parse()
+        .map_err(|_| Fail::error("Rule index must be a non-negative number"))?;
+
+    let path = match file {
+        Some(path) => path,
+        None => default_path()?,
+    };
+    let (mut raw, _) = load(&path)?;
+    if index >= raw.len() {
+        return Err(Fail::error(format!(
+            "No rule {index}; the file has {} rule(s)",
+            raw.len()
+        ))
+        .with_code(crate::fail::EXIT_NOT_FOUND));
+    }
+
+    raw.remove(index);
+    if dry_run {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&raw).map_err(|e| Fail::error(e.to_string()))?
+        );
+        return Ok(());
+    }
+    write_atomically(&path, &raw)?;
+    println!("Removed rule {index} from {}", path.display());
+    Ok(())
+}
+
 /// Dispatch the subcommand. Unknown ones are a usage error, and no subcommand
 /// prints the usage line rather than defaulting to one of them.
 pub fn rules(args: &[String]) -> Result<()> {
@@ -167,6 +575,10 @@ pub fn rules(args: &[String]) -> Result<()> {
     let rest = &args[1..];
     match subcommand {
         "check" => check(rest),
+        "list" => list(rest),
+        "path" => path_command(rest),
+        "add" => add(rest),
+        "remove" => remove(rest),
         other => Err(Fail::error(format!(
             "Unknown rules subcommand: {other}. {USAGE}"
         ))),

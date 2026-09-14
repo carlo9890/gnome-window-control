@@ -177,9 +177,14 @@ _wctl() {
                     ;;
                 rules)
                     _arguments \
-                        '1:subcommand:(check)' \
+                        '1:subcommand:(list path check add remove)' \
+                        '2:argument:' \
                         '--file[Rules file to use (default: the configured one)]:file:_files' \
-                        '--json[Output as JSON]'
+                        '--json[Output as JSON]' \
+                        '--workspace[Also move the window to this workspace]:index:' \
+                        '--monitor[Resolve the geometry on this monitor]:index:' \
+                        '--at[Insert at this index instead of appending]:index:' \
+                        '--dry-run[Print the resulting document, write nothing]'
                     ;;
                 tile)
                     _arguments "${_wctl_selector_opts[@]}" \

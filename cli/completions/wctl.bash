@@ -75,7 +75,11 @@ _wctl() {
             ;;
         rules)
             if [[ $pos -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "check" -- "$cur"))
+                COMPREPLY=($(compgen -W "list path check add remove" -- "$cur"))
+            elif [[ ${words[2]} == add ]]; then
+                COMPREPLY=($(compgen -W "-c -t -s tile place center --workspace --monitor --at --dry-run --file" -- "$cur"))
+            elif [[ ${words[2]} == remove ]]; then
+                COMPREPLY=($(compgen -W "--dry-run --file" -- "$cur"))
             else
                 COMPREPLY=($(compgen -W "--file --json" -- "$cur"))
             fi

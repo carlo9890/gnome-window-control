@@ -10,11 +10,33 @@ pub mod state;
 pub mod wait;
 pub mod wsmon;
 
+use std::io::IsTerminal;
+
 use serde_json::Value;
 
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 use crate::geometry::Rect;
 use crate::model::{self, Ctx};
+use crate::table;
+
+const BOLD: &str = "\x1b[1m";
+const RESET: &str = "\x1b[0m";
+
+/// Print a table, emboldening the header line when stdout is a terminal.
+pub fn print_table(rows: &[Vec<String>]) {
+    let rendered = table::render(rows);
+    if !std::io::stdout().is_terminal() {
+        print!("{rendered}");
+        return;
+    }
+    let mut lines = rendered.lines();
+    if let Some(header) = lines.next() {
+        println!("{BOLD}{header}{RESET}");
+    }
+    for line in lines {
+        println!("{line}");
+    }
+}
 
 /// Report the result of a boolean D-Bus action.
 ///
