@@ -194,8 +194,6 @@ fn run(args: &[String]) -> Result<()> {
             return Ok(());
         }
         "completion" => return completion::completion(rest),
-        // No bus: the rules file is local and so is the grammar.
-        "rules" => return rules_cmd::rules(rest),
         _ => {}
     }
 
@@ -220,6 +218,11 @@ fn run(args: &[String]) -> Result<()> {
         "tile" => geom::tile(&mut ctx, rest),
         "center" => geom::center(&mut ctx, rest),
         "resolve-place" => geom::resolve_place(&mut ctx, rest),
+
+        // The bus connection in Ctx is lazy, so every rules subcommand but
+        // `test` still reaches its verdict without one -- asserted by the
+        // guard tests against an unreachable address.
+        "rules" => rules_cmd::rules(&mut ctx, rest),
 
         "workspace" => wsmon::workspace(&mut ctx, rest),
         "move-to-workspace" => wsmon::move_to_workspace(&mut ctx, rest),

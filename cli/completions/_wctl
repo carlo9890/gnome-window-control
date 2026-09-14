@@ -177,7 +177,7 @@ _wctl() {
                     ;;
                 rules)
                     _arguments \
-                        '1:subcommand:(list path check add remove)' \
+                        '1:subcommand:(list path check add remove test)' \
                         '2:argument:' \
                         '--file[Rules file to use (default: the configured one)]:file:_files' \
                         '--json[Output as JSON]' \

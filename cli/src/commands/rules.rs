@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 //! `wctl rules` -- the auto-placement rules file the extension reads.
 //!
-//! None of these subcommands opens the bus. The file is local, the grammar is
-//! local (`crate::rules`), and the extension picks a change up on its own
-//! through the file monitor described in docs/specs/RULES-JSON.md. `rules test`
-//! is the one exception and is added separately.
+//! Only `rules test` opens the bus, to resolve a live window. The file is local
+//! and so is the grammar (`crate::rules`), and the extension picks a change up
+//! on its own through the file monitor described in docs/specs/RULES-JSON.md.
+//! The Ctx bus connection is lazy, so the other five never open one.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -16,9 +16,11 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use crate::fail::{Fail, Result};
+use crate::geometry::Rect;
+use crate::model::{self, Ctx};
 use crate::rules;
 
-const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove> [OPTIONS]";
+const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
 
 const ADD_USAGE: &str =
     "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> <tile POSITION|place X Y W H|center [AXIS]> \
@@ -566,9 +568,144 @@ fn remove(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// `wctl rules test <WINDOW> [--file PATH] [--json]`
+///
+/// Why a rule did not fire, answered from outside the shell. Every cause is
+/// otherwise invisible: an earlier rule matched first, the class or title is
+/// not what the user typed, or the action resolves to nothing on that monitor's
+/// workarea. The extension's own `rules[N] -> id` lines are `console.debug` and
+/// hidden unless the shell is restarted with G_MESSAGES_DEBUG set.
+///
+/// Strictly read-only: it resolves the rectangle and never calls MoveResize.
+fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
+    let usage = "Usage: wctl rules test <WINDOW> [--file PATH] [--json]";
+    let (file, args) = take_file_option(args)?;
+    let (json, args) = super::take_flag(&args, "--json");
+    let selector = crate::selector::parse_min(0, usage, &args)?;
+    if args.len() > selector.shift {
+        return Err(Fail::error(usage));
+    }
+
+    let path = match file {
+        Some(path) => path,
+        None => default_path()?,
+    };
+    // The file is read BEFORE the bus call: a broken rules file is the user's
+    // problem to fix either way, and reporting it costs nothing.
+    let (_, compiled) = load(&path)?;
+
+    let id = crate::selector::lookup(ctx, &selector)?;
+    let window = ctx.window_by_id(id)?;
+    let wm_class = model::text(&window, "wm_class").to_string();
+    let title = model::text(&window, "title").to_string();
+
+    // Every rule that matches, in file order. The first wins; the rest are
+    // shadowed, which is the case this command exists to name.
+    let matching: Vec<usize> = compiled
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| rule.matches_window(&wm_class, &title))
+        .map(|(index, _)| index)
+        .collect();
+
+    let winner = matching.first().copied();
+    // The workarea the extension would use: the rule's monitor when it names
+    // one, otherwise the monitor the window is on.
+    let monitor = winner
+        .and_then(|index| compiled[index].monitor)
+        .map(|monitor| monitor as i32)
+        .unwrap_or_else(|| model::number(&window, "monitor_index") as i32);
+    let workarea = super::workarea_of(ctx, monitor)?;
+    let (x, y, width, height) = model::frame_rect(&window);
+    let frame = Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+    let target = winner.and_then(|index| compiled[index].resolve(workarea, frame));
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "window": {"id": id, "wm_class": wm_class, "title": title},
+                "rules_file": path.display().to_string(),
+                "rules": compiled.len(),
+                "matched": winner,
+                "shadowed": matching.iter().skip(1).collect::<Vec<_>>(),
+                "monitor_index": monitor,
+                "workarea": {
+                    "x": workarea.x, "y": workarea.y,
+                    "width": workarea.width, "height": workarea.height,
+                },
+                "target": target.map(|rect| serde_json::json!({
+                    "x": rect.x, "y": rect.y,
+                    "width": rect.width, "height": rect.height,
+                })),
+            })
+        );
+        return Ok(());
+    }
+
+    println!("Window {id}  class={wm_class}  title={title}");
+    if compiled.is_empty() {
+        match read_file(&path)? {
+            Loaded::Absent => println!("No rules file at {}", path.display()),
+            Loaded::Present { .. } => println!("{}: no rules", path.display()),
+        }
+        return Ok(());
+    }
+
+    let Some(index) = winner else {
+        println!(
+            "No rule matches this window (checked {} rules)",
+            compiled.len()
+        );
+        return Ok(());
+    };
+
+    let rule = &compiled[index];
+    println!(
+        "Matched rule {index}: {} -> {}",
+        describe_match(rule),
+        if describe_action(rule).is_empty() {
+            "(no geometry)".to_string()
+        } else {
+            describe_action(rule)
+        }
+    );
+    for shadowed in matching.iter().skip(1) {
+        println!(
+            "  rule {shadowed} also matches but is shadowed: {} -> {}",
+            describe_match(&compiled[*shadowed]),
+            describe_action(&compiled[*shadowed])
+        );
+    }
+    if let Some(workspace) = rule.workspace {
+        println!("  workspace: {workspace}");
+    }
+    println!(
+        "  monitor {monitor}, workarea {},{} {}x{}",
+        workarea.x, workarea.y, workarea.width, workarea.height
+    );
+    match target {
+        Some(rect) => println!(
+            "  would place at {},{} {}x{}",
+            rect.x, rect.y, rect.width, rect.height
+        ),
+        None if rule.action.is_none() => println!("  no geometry action"),
+        None => println!("  the action resolves to nothing on this workarea; it would be skipped"),
+    }
+    Ok(())
+}
+
 /// Dispatch the subcommand. Unknown ones are a usage error, and no subcommand
 /// prints the usage line rather than defaulting to one of them.
-pub fn rules(args: &[String]) -> Result<()> {
+///
+/// `ctx` is taken by every arm but used by `test` alone. The bus connection
+/// inside it is lazy, so the other five still reach their verdict without one.
+pub fn rules(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Err(Fail::error(USAGE));
     };
@@ -579,6 +716,7 @@ pub fn rules(args: &[String]) -> Result<()> {
         "path" => path_command(rest),
         "add" => add(rest),
         "remove" => remove(rest),
+        "test" => test(ctx, rest),
         other => Err(Fail::error(format!(
             "Unknown rules subcommand: {other}. {USAGE}"
         ))),

@@ -432,6 +432,26 @@ It exits 0 when the shell would load the file and 1 when it would not, and the
 message is the same one the extension writes to the journal. It reads only the
 file: no D-Bus, and it works with the extension stopped or not installed.
 
+### Why did a rule not fire?
+
+```bash
+wctl rules test -c kitty
+```
+
+```console
+$ wctl rules test -c kitty
+Window 4152763  class=kitty  title=vim
+Matched rule 0: class=kitty -> tile left
+  rule 2 also matches but is shadowed: class=kitty -> tile right
+  monitor 0, workarea 0,27 1920x1053
+  would place at 0,27 480x1052
+```
+
+It names the rule that wins, any later rule the first-match-wins order makes
+dead, the workarea used, and the exact rectangle the action resolves to. This is
+the one `rules` subcommand that needs the extension running, because it resolves
+a live window. It never moves anything.
+
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
 

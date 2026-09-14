@@ -114,6 +114,11 @@ PLACEMENT RULES:
                             center [horizontal|vertical|both].
     rules remove <INDEX> [--dry-run]
                             Remove the rule at INDEX
+    rules test <WINDOW> [--json]
+                            Which rule matches this window, where it would put
+                            it, and which later rules it shadows. Read-only:
+                            nothing is moved. The one subcommand that needs a
+                            running shell.
 
 WORKSPACE & MONITOR COMMANDS:
     workspace <N>                       Switch to workspace N
@@ -169,6 +174,7 @@ EXAMPLES:
     wctl rules add -s Report place right top 50% 100%   # Right half by title
     wctl rules list                   # What rules do I have?
     wctl rules remove 0               # Drop the first rule
+    wctl rules test -c kitty          # Why did my kitty rule not fire?
     wctl workspaces                   # List workspaces
     wctl workspace 2                  # Switch to workspace 2
     wctl move-to-workspace -c Firefox 2   # Move the Firefox window to workspace 2

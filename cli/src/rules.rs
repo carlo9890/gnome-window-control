@@ -86,6 +86,61 @@ pub struct Rule {
     pub monitor: Option<i64>,
 }
 
+impl Rule {
+    /// Does every predicate hold for this window? An empty match list is
+    /// impossible -- validation refuses it -- so this is never vacuously true.
+    pub fn matches_window(&self, wm_class: &str, title: &str) -> bool {
+        self.matches.iter().all(|m| match m.kind.as_str() {
+            "class" => wm_class == m.value,
+            "title" => title == m.value,
+            "substring" => title.contains(&m.value),
+            _ => false,
+        })
+    }
+
+    /// The rectangle this rule's action resolves to on a workarea, or None
+    /// when it has no geometry action. `frame` is the window's current frame,
+    /// which only `center` reads.
+    pub fn resolve(&self, workarea: Rect, frame: Rect) -> Option<Rect> {
+        match self.action.as_ref()? {
+            Action::Place(tokens) => {
+                let refs = [
+                    tokens[0].as_str(),
+                    tokens[1].as_str(),
+                    tokens[2].as_str(),
+                    tokens[3].as_str(),
+                ];
+                geometry::resolve_place_rect(refs, workarea).ok()
+            }
+            Action::Tile(position) => geometry::tile_cells(position)
+                .ok()
+                .map(|cells| geometry::tile_rect(cells, workarea)),
+            Action::Center(axis) => Some(center_rect(axis, frame, workarea)),
+        }
+    }
+}
+
+/// The centring formula `center` shares with `place center`. Mirrors
+/// centerRect in rules-format.js.
+pub fn center_rect(axis: &str, frame: Rect, workarea: Rect) -> Rect {
+    let horizontal = axis == "horizontal" || axis == "both";
+    let vertical = axis == "vertical" || axis == "both";
+    Rect {
+        x: if horizontal {
+            workarea.x + (workarea.width - frame.width) / 2
+        } else {
+            frame.x
+        },
+        y: if vertical {
+            workarea.y + (workarea.height - frame.height) / 2
+        } else {
+            frame.y
+        },
+        width: frame.width,
+        height: frame.height,
+    }
+}
+
 /// A `place` token as JavaScript's `String()` would render it.
 ///
 /// rules-format.js does `tokens.map(String)` before matching the token
@@ -283,6 +338,116 @@ mod tests {
         let text =
             std::fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
         serde_json::from_str(&text).expect("the vectors are valid JSON")
+    }
+
+    fn rect(value: &Value) -> Rect {
+        Rect {
+            x: value["x"].as_i64().unwrap(),
+            y: value["y"].as_i64().unwrap(),
+            width: value["width"].as_i64().unwrap(),
+            height: value["height"].as_i64().unwrap(),
+        }
+    }
+
+    /// The geometry vectors, through the same `Rule::resolve` a rule uses.
+    /// `geometry.rs` pins these numbers too, from its own unit tests; this
+    /// asserts the rules layer reaches them rather than its own arithmetic.
+    #[test]
+    fn geometry_vectors() {
+        let vectors = vectors();
+
+        for case in vectors["geometry"]["place"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let tokens: Vec<String> = case["tokens"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(js_string)
+                .collect();
+            let rule = Rule {
+                matches: vec![],
+                action: Some(Action::Place([
+                    tokens[0].clone(),
+                    tokens[1].clone(),
+                    tokens[2].clone(),
+                    tokens[3].clone(),
+                ])),
+                workspace: None,
+                monitor: None,
+            };
+            assert_eq!(
+                rule.resolve(rect(&case["workarea"]), PROBE_WORKAREA),
+                Some(rect(&case["rect"])),
+                "place: {name}"
+            );
+        }
+
+        for group in vectors["geometry"]["tile"].as_array().unwrap() {
+            let workarea = rect(&group["workarea"]);
+            for (position, expected) in group["cells"].as_object().unwrap() {
+                let rule = Rule {
+                    matches: vec![],
+                    action: Some(Action::Tile(position.clone())),
+                    workspace: None,
+                    monitor: None,
+                };
+                assert_eq!(
+                    rule.resolve(workarea, PROBE_WORKAREA),
+                    Some(rect(expected)),
+                    "tile: {position}"
+                );
+            }
+        }
+
+        for case in vectors["geometry"]["center"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let rule = Rule {
+                matches: vec![],
+                action: Some(Action::Center(case["axis"].as_str().unwrap().to_string())),
+                workspace: None,
+                monitor: None,
+            };
+            assert_eq!(
+                rule.resolve(rect(&case["workarea"]), rect(&case["frame"])),
+                Some(rect(&case["rect"])),
+                "center: {name}"
+            );
+        }
+    }
+
+    /// The match vectors, against `Rule::matches_window`. `pid` is not a
+    /// rules.json key, so only the three that are reach this.
+    #[test]
+    fn match_vectors() {
+        let vectors = vectors();
+        for case in vectors["match"]["cases"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let kind = case["kind"].as_str().unwrap();
+            if kind == "pid" {
+                continue;
+            }
+            let rule = Rule {
+                matches: vec![Match {
+                    key: kind.to_string(),
+                    kind: kind.to_string(),
+                    value: case["value"].as_str().unwrap().to_string(),
+                }],
+                action: Some(Action::Tile("left".to_string())),
+                workspace: None,
+                monitor: None,
+            };
+            // A null class or title is the empty string on the wire: the
+            // extension's document carries "" for a window with neither.
+            let window = &case["window"];
+            assert_eq!(
+                rule.matches_window(
+                    window["wm_class"].as_str().unwrap_or(""),
+                    window["title"].as_str().unwrap_or(""),
+                ),
+                case["matches"].as_bool().unwrap(),
+                "match: {name}"
+            );
+        }
     }
 
     /// Every validation case in the shared vectors, verdict and message.

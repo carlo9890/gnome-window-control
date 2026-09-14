@@ -176,7 +176,9 @@ apply time instead.
 ## Matching and application
 
 The first rule whose every predicate matches wins, in file order. Later
-matching rules are ignored.
+matching rules are ignored. `wctl rules test <WINDOW>` reports which rule wins
+for a live window, which later ones it shadows, and the rectangle the action
+resolves to, without moving anything.
 
 A rule applies **once per window**, at the point mutter has shown it. The
 window is untracked before the action runs, so a later title change or resize

@@ -750,3 +750,41 @@ fn rules_file_surface_needs_no_bus() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// `wctl rules test` is the one subcommand that needs a shell, so only its
+/// guards are headless. The cases below must all fail BEFORE the bus call:
+/// a usage error, and a rules file that does not validate.
+#[test]
+fn rules_test_guards_fire_before_the_bus() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    let path = file.to_string_lossy().into_owned();
+    std::fs::write(&file, r#"[{"match":{"class":"kitty"},"tile":"left"}]"#).expect("write");
+
+    // A missing selector is a usage error, not a connection error.
+    expect_die(
+        "Usage: wctl rules test",
+        &["rules", "test", "--file", &path],
+    );
+    // So is an argument after the selector.
+    expect_die(
+        "Usage: wctl rules test",
+        &["rules", "test", "--file", &path, "-c", "kitty", "extra"],
+    );
+    expect_die(
+        "Unknown option: --bogus",
+        &["rules", "test", "--file", &path, "--bogus"],
+    );
+    expect_not("connect", &["rules", "test", "--file", &path]);
+
+    // The rules file is read before the window is looked up, so a file that
+    // does not validate is reported as itself rather than as a dead bus.
+    std::fs::write(&file, r#"[{"match":{"class":"k"},"tile":"middle"}]"#).expect("write");
+    expect_die(
+        "rules[0].tile: must be one of",
+        &["rules", "test", "--file", &path, "-c", "kitty"],
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
