@@ -24,35 +24,19 @@
 // The first matching rule wins, in file order, and is applied exactly once per
 // window. A window that resizes itself later is left alone. The file is
 // re-read on every change.
+//
+// The grammar itself -- the token vocabulary, the tile grid and every
+// validation message -- lives in rules-format.js, which imports nothing so the
+// headless check can load it. This file is the half that touches windows.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
-import { matchPredicate, maximizeFlags, unmaximizeWindow } from './window-helpers.js';
+import { centerRect, compileRules, resolvePlaceRect, tileRect } from './rules-format.js';
+import { maximizeFlags, unmaximizeWindow } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
-
-// rules.json key -> matchPredicate() kind.
-const MATCH_KINDS = { class: 'class', title: 'title', substr: 'substring' };
-
-// The same arithmetic as cli/src/geometry.rs, integer and truncating, so a
-// rule lands on the pixels `wctl place` and `wctl tile` would produce.
-
-// A tile position as (startCol, endCol, startRow, endRow) of the 4x2 grid.
-const TILE_CELLS = {
-    'top-left': [0, 0, 0, 0],
-    'top-center': [1, 2, 0, 0],
-    'top-right': [3, 3, 0, 0],
-    'left': [0, 0, 0, 1],
-    'center': [1, 2, 0, 1],
-    'right': [3, 3, 0, 1],
-    'bottom-left': [0, 0, 1, 1],
-    'bottom-center': [1, 2, 1, 1],
-    'bottom-right': [3, 3, 1, 1],
-};
-
-const CENTER_AXES = ['horizontal', 'vertical', 'both'];
 
 // A Wayland client's app_id and first real title can land after the window is
 // shown, so a shown window that matched nothing yet stays under evaluation this
@@ -67,169 +51,6 @@ const RELOAD_DEBOUNCE_MS = 100;
 // A client whose restored size equals its maximized one never reports a
 // size change, so the wait has to be bounded.
 const UNMAXIMIZE_SETTLE_MS = 1000;
-
-// WIDTH/HEIGHT: positive pixels, or a percentage of the workarea that does not
-// floor to zero. Null when the token is neither.
-export function resolvePlaceSize(token, baseSize) {
-    if (/^[1-9][0-9]*$/.test(token))
-        return Number(token);
-    const percent = /^([0-9]+)%$/.exec(token);
-    if (percent) {
-        const value = Math.trunc(baseSize * Number(percent[1]) / 100);
-        return value > 0 ? value : null;
-    }
-    return null;
-}
-
-// X/Y: pixels, or one of the three alignment keywords of the axis resolved
-// against the workarea and the window's own size. Null for anything else.
-export function resolvePlacePosition(token, keywords, workareaPos, workareaSize, windowSize) {
-    if (/^-?[0-9]+$/.test(token))
-        return Number(token);
-    const [start, center, end] = keywords;
-    switch (token) {
-    case start:
-        return workareaPos;
-    case center:
-        return workareaPos + Math.trunc((workareaSize - windowSize) / 2);
-    case end:
-        return workareaPos + workareaSize - windowSize;
-    default:
-        return null;
-    }
-}
-
-// The four `place` tokens against a workarea, sizes first so the alignment
-// keywords can use them. Null when any token is invalid.
-export function resolvePlaceRect(tokens, workarea) {
-    const [x, y, w, h] = tokens.map(String);
-    const width = resolvePlaceSize(w, workarea.width);
-    const height = resolvePlaceSize(h, workarea.height);
-    if (width === null || height === null)
-        return null;
-    const left = resolvePlacePosition(x, ['left', 'center', 'right'], workarea.x, workarea.width, width);
-    const top = resolvePlacePosition(y, ['top', 'center', 'bottom'], workarea.y, workarea.height, height);
-    if (left === null || top === null)
-        return null;
-    return { x: left, y: top, width, height };
-}
-
-// A tile position in pixels. Cells floor, so a workarea width not divisible
-// by four leaves a remainder at the right edge. Null for an unknown position.
-export function tileRect(position, workarea) {
-    const cells = TILE_CELLS[position];
-    if (!cells)
-        return null;
-    const [startCol, endCol, startRow, endRow] = cells;
-    const cellW = Math.trunc(workarea.width / 4);
-    const cellH = Math.trunc(workarea.height / 2);
-    return {
-        x: workarea.x + cellW * startCol,
-        y: workarea.y + cellH * startRow,
-        width: cellW * (endCol - startCol + 1),
-        height: cellH * (endRow - startRow + 1),
-    };
-}
-
-// The frame moved to the middle of the workarea on the given axes.
-export function centerRect(axis, frame, workarea) {
-    const horizontal = axis === 'horizontal' || axis === 'both';
-    const vertical = axis === 'vertical' || axis === 'both';
-    return {
-        x: horizontal ? workarea.x + Math.trunc((workarea.width - frame.width) / 2) : frame.x,
-        y: vertical ? workarea.y + Math.trunc((workarea.height - frame.height) / 2) : frame.y,
-        width: frame.width,
-        height: frame.height,
-    };
-}
-
-// Validation of one parsed rule. Messages name the key, never its value: the
-// file is the user's own, but the journal outlives it and CODING.md forbids
-// window titles and classes in a log line wherever they come from.
-const RULE_KEYS = ['match', 'place', 'tile', 'center', 'workspace', 'monitor'];
-const PROBE_WORKAREA = { x: 0, y: 0, width: 1000, height: 1000 };
-
-function isPlainObject(value) {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function compileIndex(rule, key, label) {
-    if (!(key in rule))
-        return null;
-    const value = rule[key];
-    if (!Number.isInteger(value) || value < 0)
-        throw new Error(`${label}.${key}: must be a non-negative integer`);
-    return value;
-}
-
-// Turn one rule into predicates and an action, or throw with a message that
-// names the offending key.
-export function compileRule(rule, index) {
-    const label = `rules[${index}]`;
-    if (!isPlainObject(rule))
-        throw new Error(`${label}: must be an object`);
-    for (const key of Object.keys(rule)) {
-        if (!RULE_KEYS.includes(key))
-            throw new Error(`${label}.${key}: unknown key (use ${RULE_KEYS.join(', ')})`);
-    }
-
-    if (!isPlainObject(rule.match))
-        throw new Error(`${label}.match: must be an object`);
-    const predicates = [];
-    for (const [key, value] of Object.entries(rule.match)) {
-        const kind = MATCH_KINDS[key];
-        if (!kind)
-            throw new Error(`${label}.match.${key}: unknown key (use class, title, substr)`);
-        if (typeof value !== 'string')
-            throw new Error(`${label}.match.${key}: must be a string`);
-        const predicate = matchPredicate(kind, value);
-        if (!predicate)
-            throw new Error(`${label}.match.${key}: must not be empty`);
-        predicates.push(predicate);
-    }
-    if (predicates.length === 0)
-        throw new Error(`${label}.match: must name at least one of class, title, substr`);
-
-    const actions = ['place', 'tile', 'center'].filter(key => key in rule);
-    if (actions.length > 1)
-        throw new Error(`${label}: place, tile and center are mutually exclusive`);
-    let geometry = null;
-    if ('place' in rule) {
-        const tokens = rule.place;
-        if (!Array.isArray(tokens) || tokens.length !== 4)
-            throw new Error(`${label}.place: must be [X, Y, WIDTH, HEIGHT]`);
-        if (!resolvePlaceRect(tokens, PROBE_WORKAREA)) {
-            throw new Error(`${label}.place: X is a number or left|center|right, ` +
-                'Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage');
-        }
-        geometry = { kind: 'place', tokens };
-    } else if ('tile' in rule) {
-        if (!(rule.tile in TILE_CELLS))
-            throw new Error(`${label}.tile: must be one of ${Object.keys(TILE_CELLS).join(', ')}`);
-        geometry = { kind: 'tile', position: rule.tile };
-    } else if ('center' in rule) {
-        if (!CENTER_AXES.includes(rule.center))
-            throw new Error(`${label}.center: must be one of ${CENTER_AXES.join(', ')}`);
-        geometry = { kind: 'center', axis: rule.center };
-    }
-
-    const workspace = compileIndex(rule, 'workspace', label);
-    const monitor = compileIndex(rule, 'monitor', label);
-    if (!geometry && workspace === null && monitor === null)
-        throw new Error(`${label}: has nothing to do (add place, tile, center, workspace or monitor)`);
-
-    return { predicates, geometry, workspace, monitor };
-}
-
-// Parse and validate the whole file. Throws on the first problem: a file with
-// one bad rule loads no rules at all, so a typo cannot silently drop one rule
-// while the rest keep working.
-export function compileRules(text) {
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed))
-        throw new Error('the top-level value must be an array of rules');
-    return parsed.map(compileRule);
-}
 
 export class WindowRules {
     constructor() {

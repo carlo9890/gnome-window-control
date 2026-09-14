@@ -2,11 +2,21 @@
 
 Normative format and behaviour of the auto-placement rules file. This is the
 authoritative definition; `README.md` shows users how to write one and links
-here. Implemented by `window-control@carlo9890.github.io/rules.js`
-(`compileRules`, `compileRule`, `WindowRules`); the shared match predicate is
-`matchPredicate` in `window-helpers.js`.
+here.
 
-Change this file in the same commit as any change to that behaviour.
+Two implementations follow it, and they are pinned to each other:
+
+| Implementation | Where | Pinned by |
+|---|---|---|
+| The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`) | `tests/check-rules-format.js` |
+| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors` test in that file |
+
+Both read the same cases from `tests/vectors/rules-spec.json`. Change this file,
+both implementations and the vectors in **one commit**: a message or a formula
+changed on one side alone fails the other side's check.
+
+The window-touching half — when a rule is applied and what it does to a window
+— is `rules.js`, and the GNOME 49 maximize API is `window-helpers.js`.
 
 ## File
 
@@ -56,7 +66,10 @@ two keys are an AND.
 | `substr` | title contains the value | `substring` |
 
 `MATCH_KINDS` maps these to `matchPredicate`. A value MUST be a non-empty
-string; an empty `substr` would match every window and is refused.
+string. An empty `substr` would match every window; an empty `class` or `title`
+would match only a window that has none, so a rule carrying one could never
+usefully fire. All three are refused with the same message rather than loaded as
+a rule that silently never matches.
 
 `focused`, numeric window ID and PID are deliberately absent: a static file
 cannot name a window that does not exist yet. `matchPredicate` still supports
@@ -145,7 +158,8 @@ matched value, so a window title or WM class cannot reach the journal.
 | Rule has no action | `rules[N]: has nothing to do (...)` |
 
 `place` tokens are validated at load against `PROBE_WORKAREA`
-(1000x1000), so a grammar error is caught before any window exists. A
+(1000x1000, in `rules-format.js`), so a grammar error is caught before any
+window exists. A
 percentage valid there but flooring to 0 on a real workarea is skipped at
 apply time instead.
 
@@ -206,14 +220,19 @@ Defined at the top of `rules.js`; change them there, not here.
 
 ## Extending the format
 
-Adding a key means editing, in one commit: `RULE_KEYS` and the validation in
-`compileRule`, this spec's rule-object and validation tables, and the README
-section.
+Adding a key means editing, in one commit, on BOTH sides: `RULE_KEYS` and
+`compileRule` in `rules-format.js`, the validator in `cli/src/rules.rs`, a case
+in `tests/vectors/rules-spec.json`, this spec's rule-object and validation
+tables, and the README section.
 
-Re-verify with a headless `gjs` check that imports `compileRules` and asserts
-the tables above, per [../TESTING.md](../TESTING.md). The format has no
-checked-in regression suite yet, so that check is written per change rather than
-run from the repo.
+Re-verify with the two checks that read the vectors:
+
+```bash
+env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
+mise run test
+```
+
+Both are CI gates — see [../TESTING.md](../TESTING.md).
 
 Rules are read by the extension alone. The format is not part of the D-Bus
 interface and carries no version field; the extension version in
