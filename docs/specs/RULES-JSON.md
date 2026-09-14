@@ -131,6 +131,16 @@ size and centres it on the named axes, leaving the other coordinate untouched
 
 ## Validation
 
+`wctl rules check` reports the verdict below without a running shell, reading
+only the file:
+
+```bash
+wctl rules check [--file PATH] [--json]
+```
+
+It exits 0 when the shell would load the file and 1 when it would not, printing
+the same message text. `cli/src/rules.rs` is what produces it.
+
 `compileRules` parses and validates the whole file before any rule takes
 effect. The first problem throws and **no rule from the file is applied** — a
 typo never leaves some rules live and others not. `WindowRules._load` logs the

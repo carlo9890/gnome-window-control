@@ -540,3 +540,72 @@ fn emitted_completions_are_valid_shell_scripts() {
         );
     }
 }
+
+/// `wctl rules` never opens the bus: the file is local and so is the grammar.
+///
+/// Every case here runs against the unreachable NO_BUS address, so a verdict
+/// that arrived at all is a verdict reached without a shell -- which is the
+/// whole point of `rules check`.
+#[test]
+fn rules_guards_and_verdicts_need_no_bus() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let write = |name: &str, body: &str| {
+        let path = dir.join(name);
+        std::fs::write(&path, body).expect("write rules file");
+        path.to_string_lossy().into_owned()
+    };
+
+    let good = write(
+        "good.json",
+        r#"[{"match":{"class":"kitty"},"tile":"left"}]"#,
+    );
+    let bad = write(
+        "bad.json",
+        r#"[{"match":{"class":"kitty"},"tile":"middle"}]"#,
+    );
+    let broken = write("broken.json", r#"[{"match":{"class":"k"} "tile":"left"}]"#);
+    let absent = dir.join("absent.json").to_string_lossy().into_owned();
+
+    // A valid file passes, and says how many rules the shell would load.
+    let (out, code) = wctl(&["rules", "check", "--file", &good]);
+    assert_eq!(code, 0, "a valid file should pass, printed: {out}");
+    assert!(out.contains("1 rule, valid"), "printed: {out}");
+
+    // An invalid one reports the extension's own message, verbatim.
+    expect_die(
+        "rules[0].tile: must be one of top-left, top-center, top-right",
+        &["rules", "check", "--file", &bad],
+    );
+
+    // Malformed JSON names the file rather than the grammar.
+    expect_die("not valid JSON", &["rules", "check", "--file", &broken]);
+
+    // An absent file is not an error: no file means no rules.
+    let (out, code) = wctl(&["rules", "check", "--file", &absent]);
+    assert_eq!(code, 0, "an absent file is not an error, printed: {out}");
+    assert!(out.contains("No rules file at"), "printed: {out}");
+
+    // --json carries the verdict in the document, on both paths.
+    let (out, code) = wctl(&["rules", "check", "--file", &good, "--json"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("\"valid\":true"), "printed: {out}");
+    let (out, code) = wctl(&["rules", "check", "--file", &bad, "--json"]);
+    assert_ne!(code, 0);
+    assert!(out.contains("\"valid\":false"), "printed: {out}");
+
+    // Usage errors.
+    expect_die("Usage: wctl rules", &["rules"]);
+    expect_die("Unknown rules subcommand: bogus", &["rules", "bogus"]);
+    expect_die(
+        "Option --file requires a value",
+        &["rules", "check", "--file"],
+    );
+    expect_die("Unknown option: --nope", &["rules", "check", "--nope"]);
+
+    // No case above may have produced a connection error.
+    expect_not("connect", &["rules", "check", "--file", &good]);
+    expect_not("connect", &["rules", "check", "--file", &bad]);
+
+    std::fs::remove_dir_all(&dir).ok();
+}

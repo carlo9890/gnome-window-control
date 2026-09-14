@@ -94,6 +94,15 @@ TILING & POSITIONING:
     free to resize itself again later. A window that is placed but never
     settles exits 4 and still reports placed=true.
 
+PLACEMENT RULES:
+    Rules in ~/.config/gnome-window-control/rules.json place a window the
+    moment it appears. The extension re-reads the file on every change; no
+    restart, and none of these subcommands needs a running shell.
+    rules check [--file <PATH>] [--json]
+                            Validate the file. Same verdict and same message
+                            the extension would log, so a file this accepts
+                            is a file the shell will load.
+
 WORKSPACE & MONITOR COMMANDS:
     workspace <N>                       Switch to workspace N
     move-to-workspace <WINDOW> <N>      Move window to workspace N
@@ -143,6 +152,7 @@ EXAMPLES:
     wctl resolve-place center top 50% 100% --json   # Same rectangle, nothing placed
     wctl place focused center top 50% 100% --settled  # Return once the frame stops moving
     wctl version --json               # Do wctl and the loaded extension agree?
+    wctl rules check                  # Is my rules.json valid?
     wctl workspaces                   # List workspaces
     wctl workspace 2                  # Switch to workspace 2
     wctl move-to-workspace -c Firefox 2   # Move the Firefox window to workspace 2

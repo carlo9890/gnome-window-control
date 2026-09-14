@@ -55,6 +55,7 @@ _wctl() {
         'tile:Tile window to a preset grid position'
         'center:Center window on screen'
         'resolve-place:Resolve a placement without applying it'
+        'rules:Manage the auto-placement rules file'
         'workspace:Switch to a workspace'
         'move-to-workspace:Move window to a workspace'
         'move-to-monitor:Move window to a monitor'
@@ -172,6 +173,12 @@ _wctl() {
                         '2:y position or keyword:(top center bottom)' \
                         '3:width or percentage:' \
                         '4:height or percentage:' \
+                        '--json[Output as JSON]'
+                    ;;
+                rules)
+                    _arguments \
+                        '1:subcommand:(check)' \
+                        '--file[Rules file to use (default: the configured one)]:file:_files' \
                         '--json[Output as JSON]'
                     ;;
                 tile)

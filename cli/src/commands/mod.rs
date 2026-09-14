@@ -5,6 +5,7 @@
 pub mod completion;
 pub mod geometry;
 pub mod query;
+pub mod rules;
 pub mod state;
 pub mod wait;
 pub mod wsmon;

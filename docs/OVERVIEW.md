@@ -22,6 +22,7 @@ cli/                       wctl, the CLI (Rust, zbus)
 ├── src/dbus.rs            the D-Bus client (lazy session connection)
 ├── src/selector.rs        the <WINDOW> selector and the list filters
 ├── src/geometry.rs        place tokens, tile grid, centring
+├── src/rules.rs           the rules.json grammar, the Rust half of the pair
 ├── src/commands/          one module per command group
 ├── completions/           hand-written bash and zsh completions (embedded)
 └── tests/cli.rs           argument-guard tests, run against the real binary

@@ -377,6 +377,29 @@ This sets the *initial* position only: an app that resizes itself afterwards is
 left alone. A rule with a bad value is reported to the journal and the whole file
 is ignored until you fix it, so one typo never places a window half-right.
 
+### Checking the file
+
+Because one bad value disables every rule, check the file rather than saving it
+and watching whether windows move:
+
+```bash
+wctl rules check                      # the configured file
+wctl rules check --file ./draft.json  # any file
+wctl rules check --json               # for a script
+```
+
+```console
+$ wctl rules check
+/home/you/.config/gnome-window-control/rules.json: 3 rules, valid
+
+$ wctl rules check
+Error: rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right
+```
+
+It exits 0 when the shell would load the file and 1 when it would not, and the
+message is the same one the extension writes to the journal. It reads only the
+file: no D-Bus, and it works with the extension stopped or not installed.
+
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
 
