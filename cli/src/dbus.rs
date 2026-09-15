@@ -242,6 +242,28 @@ impl Bus {
         self.call("GetVersion", &())
     }
 
+    /// Is an extension answering, and is the version it loaded below `minimum`?
+    ///
+    /// For a check that must not fail without a shell: no bus, no shell, a
+    /// disabled extension and a timeout are all `false`. Only an extension
+    /// that answers can be too old. One that predates `GetVersion` answers
+    /// "No such method", and that IS below any minimum a caller asks for.
+    pub fn loaded_version_below(&self, minimum: u32) -> bool {
+        let Ok(conn) = self.conn() else {
+            return false;
+        };
+        let Ok(proxy) = proxy(conn) else {
+            return false;
+        };
+        match proxy.call::<_, _, String>("GetVersion", &()) {
+            Ok(version) => version.parse::<u32>().is_ok_and(|loaded| loaded < minimum),
+            Err(err) => {
+                matches!(&err, zbus::Error::MethodError(name, _, _) if name.as_str() == ERROR_UNKNOWN_METHOD)
+                    && !is_extension_not_running(&err)
+            }
+        }
+    }
+
     pub fn get_focused(&self) -> Result<(u64, String, String)> {
         self.call("GetFocused", &())
     }

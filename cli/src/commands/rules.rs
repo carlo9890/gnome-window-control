@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 //! `wctl rules` -- the auto-placement rules file the extension reads.
 //!
-//! Only `rules test` opens the bus, to resolve a live window. The file is local
-//! and so is the grammar (`crate::rules`), and the extension picks a change up
-//! on its own through the file monitor described in docs/specs/RULES-JSON.md.
-//! The Ctx bus connection is lazy, so the other five never open one.
+//! The file is local and so is the grammar (`crate::rules`), and the extension
+//! picks a change up on its own through the file monitor described in
+//! docs/specs/RULES-JSON.md. `check`, `list` and `path` never open the bus.
+//! `add` and `remove` open it only after the file is written, to warn that the
+//! loaded extension is too old to apply rules. `test` opens it to resolve a
+//! live window, and refuses an extension that is too old.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -19,6 +21,28 @@ use crate::fail::{Fail, Result};
 use crate::geometry::Rect;
 use crate::model::{self, Ctx};
 use crate::rules;
+
+/// The first extension version that reads rules.json.
+const RULES_EXTENSION_VERSION: u32 = 12;
+
+fn extension_too_old_message() -> String {
+    format!(
+        "The extension GNOME Shell has loaded is older than version {RULES_EXTENSION_VERSION}, \
+         the first that applies rules. Check with 'wctl version --json', install the newer \
+         extension, then restart the shell (log out and back in on Wayland)."
+    )
+}
+
+/// Warn, without failing, that the rules file will not be applied yet.
+///
+/// The file is valid either way and takes effect once the extension is updated,
+/// so writing it is not refused. No shell at all is silent: editing rules
+/// before a session exists is legitimate.
+fn warn_if_extension_too_old(ctx: &Ctx) {
+    if ctx.bus.loaded_version_below(RULES_EXTENSION_VERSION) {
+        eprintln!("Warning: {}", extension_too_old_message());
+    }
+}
 
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
 
@@ -412,7 +436,7 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
 }
 
 /// `wctl rules add <MATCH> <ACTION> [--workspace N] [--monitor N] [--at N] [--dry-run]`
-fn add(args: &[String]) -> Result<()> {
+fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (file, args) = take_file_option(args)?;
     let (dry_run, args) = super::take_flag(&args, "--dry-run");
 
@@ -525,11 +549,12 @@ fn add(args: &[String]) -> Result<()> {
     raw.insert(position, rule);
     write_atomically(&path, &raw)?;
     println!("Added rule {position} to {}", path.display());
+    warn_if_extension_too_old(ctx);
     Ok(())
 }
 
 /// `wctl rules remove <INDEX> [--file PATH] [--dry-run]`
-fn remove(args: &[String]) -> Result<()> {
+fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (file, args) = take_file_option(args)?;
     let (dry_run, args) = super::take_flag(&args, "--dry-run");
     let [index] = args.as_slice() else {
@@ -565,6 +590,7 @@ fn remove(args: &[String]) -> Result<()> {
     }
     write_atomically(&path, &raw)?;
     println!("Removed rule {index} from {}", path.display());
+    warn_if_extension_too_old(ctx);
     Ok(())
 }
 
@@ -593,6 +619,14 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // The file is read BEFORE the bus call: a broken rules file is the user's
     // problem to fix either way, and reporting it costs nothing.
     let (_, compiled) = load(&path)?;
+
+    // A match reported against an extension that ignores the file would
+    // explain a placement that never happens.
+    if ctx.bus.loaded_version_below(RULES_EXTENSION_VERSION) {
+        return Err(
+            Fail::error(extension_too_old_message()).with_code(crate::fail::EXIT_NO_EXTENSION)
+        );
+    }
 
     let id = crate::selector::lookup(ctx, &selector)?;
     let window = ctx.window_by_id(id)?;
@@ -703,8 +737,8 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 /// Dispatch the subcommand. Unknown ones are a usage error, and no subcommand
 /// prints the usage line rather than defaulting to one of them.
 ///
-/// `ctx` is taken by every arm but used by `test` alone. The bus connection
-/// inside it is lazy, so the other five still reach their verdict without one.
+/// The bus connection inside `ctx` is lazy, so `check`, `list` and `path` reach
+/// their verdict without one.
 pub fn rules(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Err(Fail::error(USAGE));
@@ -714,8 +748,8 @@ pub fn rules(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         "check" => check(rest),
         "list" => list(rest),
         "path" => path_command(rest),
-        "add" => add(rest),
-        "remove" => remove(rest),
+        "add" => add(ctx, rest),
+        "remove" => remove(ctx, rest),
         "test" => test(ctx, rest),
         other => Err(Fail::error(format!(
             "Unknown rules subcommand: {other}. {USAGE}"

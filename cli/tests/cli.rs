@@ -612,6 +612,10 @@ fn rules_guards_and_verdicts_need_no_bus() {
 
 /// `wctl rules list/path/add/remove`: the local file surface, still no bus.
 ///
+/// `add` and `remove` do try the bus after writing, for the extension-version
+/// warning, but an unreachable bus is silent -- so every case here must still
+/// succeed against NO_BUS.
+///
 /// The invariant these assert hardest is that a REFUSED add or remove leaves
 /// the file byte-identical. The command rewrites the whole document, so a
 /// refusal that had already truncated the file would lose rules the user wrote
