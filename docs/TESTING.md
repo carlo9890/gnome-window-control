@@ -29,9 +29,10 @@ table are the whole bar.
 Two kinds of test live there:
 
 - **Unit tests** next to the code (`cli/src/geometry.rs`, `cli/src/selector.rs`,
-  `cli/src/table.rs`, `cli/src/main.rs`) cover the geometry math, the tile grid,
-  selector parsing, the list filters and table output. Expected values are
-  **hardcoded**, never recomputed from the implementation's own formula.
+  `cli/src/rules.rs`, `cli/src/table.rs`, `cli/src/main.rs`) cover the geometry
+  math, the tile grid, selector parsing, the list filters, the rules.json grammar
+  and table output. Expected values are **hardcoded**, never recomputed from the
+  implementation's own formula.
 - **Argument-guard tests** (`cli/tests/cli.rs`) run the real binary with
   `DBUS_SESSION_BUS_ADDRESS` pointed at a socket that does not exist, so any case
   that reached the bus would report a connection error instead of the expected

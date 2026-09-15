@@ -136,6 +136,36 @@ matching the message text:
 Code 1 stays the catch-all it always was, so a script that only tests for a
 non-zero status is unaffected.
 
+#### Sizing a window before it exists
+
+`resolve-place` answers what a placement would be, without a window and without
+moving anything — so a program can be launched at its final size instead of being
+moved after it appears:
+
+```bash
+read -r w h < <(wctl resolve-place center top 50% 100% --json |
+                jq -r '.target | "\(.width) \(.height)"')
+```
+
+`place`, `tile` and `center` take `--json` too, reporting the workarea used and
+the rectangle computed. All of them report the rectangle wctl **requested**;
+mutter still clamps to size hints, and a client that quantises its own size (a
+terminal, to whole cells) settles a few pixels off, so comparing against it needs
+a tolerance.
+
+#### Waiting for the frame to settle
+
+A geometry request is applied asynchronously, and a client may resize itself once
+more after being placed, so the frame can still be moving when `wctl` exits.
+`--settled` returns only once it has stopped.
+
+The shell decides this by watching its own `size-changed`/`position-changed`
+signals, which is the only place it can be decided: `get_frame_rect()` read right
+after a move still returns the old rectangle, so a client outside the shell can
+only sample and guess. It is a quiet period rather than a promise — the window is
+placed either way, and a frame that never settles exits 4 and still reports
+`"placed":true`.
+
 #### Checking the extension version
 
 ```bash
@@ -338,7 +368,9 @@ destination is `org.gnome.Shell` (not a standalone service name).
 
 `Move`, `Resize` and `MoveResize` return nothing and raise instead; `WaitForWindow`
 and `WaitForGeometry` raise too. The ERRORS block in
-`window-control@carlo9890.github.io/dbus-interface.js` is the authoritative list.
+`window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
+errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
+raises without declaring them there.
 
 | Error name | Meaning |
 |------------|---------|

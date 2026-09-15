@@ -1,7 +1,7 @@
 # Change Workflow
 
-Use the `commit-commands:commit` and `commit-commands:commit-push-pr` skills for
-the standard flow. This file is the local delta over them.
+Use the `/commit` and `/commit-push-pr` commands from the `commit-commands`
+plugin for the standard flow. This file is the local delta over them.
 
 ## Pre-handoff gates
 
@@ -48,8 +48,9 @@ green.
 
 `.github/workflows/build.yml` runs two jobs, which appear as two checks on the PR:
 
-- `extension` — `node --check` on every extension `*.js`, then
-  `./scripts/build.sh all` (validate + package)
+- `extension` — `node --check` on every extension `*.js`, then the rules.json
+  grammar check against the shared vectors (`tests/check-rules-format.js`, run by
+  `gjs`), then `./scripts/build.sh all` (validate + package)
 - `cli` — `mise run ci`
 
 Both must be green when they run. It triggers on pushes to `main` and PRs against

@@ -29,7 +29,10 @@ If it fails, the code has a syntax error and must not be committed.
 - Wrap D-Bus method implementations in try/catch and return graceful defaults on
   error (empty array, `false`, etc.) — never let an exception escape a handler.
   **Exception: `Move`, `Resize`, `MoveResize`, `WaitForWindow` and
-  `WaitForGeometry` raise named D-Bus errors and declare no `success` out-arg.**
+  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean.**
+  The two wait methods return the value asked for (`window_id`, and the settled
+  rectangle) and raise when there is none; the three geometry methods return
+  nothing at all.
   The names, and the reason each method raises, are in the ERRORS block in
   `dbus-interface.js`; add to that list rather than inventing a name at the
   throw site. `_geometryCall()` re-raises an unexpected exception as

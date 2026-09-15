@@ -93,7 +93,8 @@ then upload the same zip.
 1. Build the zip: `./scripts/build.sh all`. The archive must have
    `metadata.json` at its root, not inside a subdirectory — `build.sh` zips the
    contents of the extension directory (`extension.js`, `dbus-interface.js`,
-   `metadata.json`, `README.md`, `LICENSE`), so this holds as long as you use it.
+   `rules.js`, `rules-format.js`, `window-helpers.js`, `metadata.json`,
+   `README.md`, `LICENSE`), so this holds as long as you use it.
 2. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
    <https://extensions.gnome.org/upload/>.
 3. Wait for the review. A human reviewer reads every line of the extension, and
@@ -144,8 +145,11 @@ Constraints the review enforces, which the code must keep satisfying:
   The script refuses to publish a dynamically linked one. aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
-- `disable()` must undo everything `enable()` did — any new signal or timer is
-  torn down on the same path as the existing ones (see [CODING.md](CODING.md)).
+- `disable()` must undo everything `enable()` did: `unexport()` fails every
+  pending call and drops every handler and timer the async methods armed, and
+  `WindowRules.disable()` cancels its file monitor and per-window handlers. Any
+  new signal or timer is torn down on the same path (see
+  [OVERVIEW.md](OVERVIEW.md) for how the existing ones are held).
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.
