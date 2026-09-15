@@ -8,6 +8,7 @@ by hand see [RUNNING.md](RUNNING.md).
 | Layer | Suite | Needs extension? | Command |
 |-------|-------|------------------|---------|
 | Crate tests (CI gate) | `cli/src/**` + `cli/tests/cli.rs` | No — headless | `mise run test` |
+| Rules grammar (CI gate) | `tests/check-rules-format.js` | No — headless | `gjs -m tests/check-rules-format.js` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
 
@@ -37,20 +38,46 @@ The suite also asserts the command inventory stays in sync across the dispatch
 table, the help text and both shell completions, so a command that is not wired
 into all of them fails `cargo test`.
 
-## Headless GJS checks (no shell needed)
+## The rules.json grammar check (a CI gate)
 
-Pure extension logic can be exercised with `gjs -m` outside any shell. The
-extension modules import `gi://Meta`, so point `GI_TYPELIB_PATH` at the mutter
-typelib directory (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46) and
-import the module by `file://` URL:
+```bash
+env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
+```
+
+Asserts `window-control@carlo9890.github.io/rules-format.js` — every validation
+message, the `place` token grammar, the tile grid, the centring formula and the
+match predicate — against `tests/vectors/rules-spec.json`. No GNOME session, no
+D-Bus, no mutter typelib: `rules-format.js` imports nothing, which is why the
+extension job in `.github/workflows/build.yml` can run this on `ubuntu-latest`
+with only the `gjs` package.
+
+**The same vectors are read from Rust** by the `rules_spec_vectors` test in
+`cli/src/rules.rs`, so `wctl rules check` and the extension cannot disagree
+about whether a file is valid or about the message text. Changing a message or
+a formula on one side fails the other side's check. Adding a validation rule
+means adding a case to the vectors in the same commit, and
+[specs/RULES-JSON.md](specs/RULES-JSON.md) is the normative definition both
+follow.
+
+`env -u GI_TYPELIB_PATH` is not decoration: it is what proves the module still
+loads without the typelib. Drop it and a stray `gi://` import goes unnoticed
+locally and breaks CI.
+
+## Other headless GJS checks (no shell needed)
+
+Extension logic that does need `Meta` — anything in `rules.js`, `extension.js`
+or `window-helpers.js` — can still be exercised with `gjs -m` outside a shell,
+by pointing `GI_TYPELIB_PATH` at the mutter typelib directory
+(`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46) and importing the module by
+`file://` URL:
 
 ```bash
 GI_TYPELIB_PATH=/usr/lib/x86_64-linux-gnu/mutter-14 gjs -m check.js
 ```
 
-Anything reachable this way (the `rules.js` geometry and rule validation, for
-example) must be verified this way before a shell is even considered; see the
-hard rules in [RUNNING.md](RUNNING.md).
+Those are written per change rather than checked in. Anything reachable this way
+must be verified this way before a shell is even considered; see the hard rules
+in [RUNNING.md](RUNNING.md).
 
 ## Query and modification tests
 
@@ -91,11 +118,16 @@ tests, so the two cannot drift silently.
 
 ## Minimum checks before a PR
 
-| Action | `mise run ci` | Query | Modification |
-|--------|---------------|-------|--------------|
-| Before commit | **MUST pass** | **MUST pass** | Optional |
-| Before push | **MUST pass** | **MUST pass** | Optional |
-| Before release | **MUST pass** | **MUST pass** | **MUST pass** |
+| Action | `mise run ci` | Rules grammar | Query | Modification |
+|--------|---------------|---------------|-------|--------------|
+| Before commit | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
+| Before push | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
+| Before release | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** |
+
+The rules-grammar column applies to any change under
+`window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
+`tests/vectors/`. It is headless and takes well under a second, so there is no
+reason to skip it.
 
 Modifying JavaScript also requires `node --check` (see [CODING.md](CODING.md)) and
 an actual reload-and-run in a shell (see [RUNNING.md](RUNNING.md)).

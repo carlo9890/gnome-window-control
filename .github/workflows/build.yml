@@ -43,6 +43,20 @@ jobs:
             node --check "$js"
           done
 
+      # The rules.json grammar, pinned to tests/vectors/rules-spec.json -- the
+      # same vectors the crate's rules_spec_vectors test reads, which is what
+      # keeps the GJS and the Rust validator from drifting apart.
+      #
+      # rules-format.js imports nothing, so plain gjs loads it without the
+      # mutter typelib (not packaged for ubuntu-latest). GI_TYPELIB_PATH is
+      # unset explicitly so a runner that gains one later cannot hide a
+      # regression that would break this job on the next runner image.
+      - name: Install gjs
+        run: sudo apt-get update && sudo apt-get install -y gjs
+
+      - name: Check the rules.json grammar against the shared vectors
+        run: env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
+
       - name: Make build script executable
         run: chmod +x scripts/build.sh
 

@@ -9,9 +9,10 @@ import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
+import { matchPredicate } from './rules-format.js';
 import { WindowRules } from './rules.js';
 import {
-    isFullyMaximized, matchPredicate, maximizeFlags, maximizeWindow, unmaximizeWindow,
+    isFullyMaximized, maximizeFlags, maximizeWindow, unmaximizeWindow,
 } from './window-helpers.js';
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
@@ -238,7 +239,7 @@ class WindowControlService {
     }
 
     // Helper: the (kind, value) selector predicate, shared with rules.json.
-    // See matchPredicate() in window-helpers.js for the values it refuses.
+    // See matchPredicate() in rules-format.js for the values it refuses.
     _matchPredicate(kind, value) {
         return matchPredicate(kind, value);
     }

@@ -3,8 +3,6 @@
 //! The read-only commands: list, focused, info, workspaces, monitors,
 //! workarea and version.
 
-use std::io::IsTerminal;
-
 use serde_json::Value;
 
 use crate::commands::{
@@ -13,26 +11,6 @@ use crate::commands::{
 use crate::fail::{Fail, Result, EXIT_NO_EXTENSION};
 use crate::model::{self, Ctx, Window};
 use crate::selector;
-use crate::table;
-
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
-
-/// Print a table, emboldening the header line when stdout is a terminal.
-fn print_table(rows: &[Vec<String>]) {
-    let rendered = table::render(rows);
-    if !std::io::stdout().is_terminal() {
-        print!("{rendered}");
-        return;
-    }
-    let mut lines = rendered.lines();
-    if let Some(header) = lines.next() {
-        println!("{BOLD}{header}{RESET}");
-    }
-    for line in lines {
-        println!("{line}");
-    }
-}
 
 fn workspace_cell(window: &Window) -> String {
     let index = model::number(window, "workspace_index");
@@ -101,7 +79,7 @@ pub fn list(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     for window in &windows {
         rows.push(vec![
             model::id(window).to_string(),
-            table::truncate(model::text(window, "title"), 35, 32),
+            crate::table::truncate(model::text(window, "title"), 35, 32),
             model::text(window, "wm_class").to_string(),
             workspace_cell(window),
             model::number(window, "monitor_index").to_string(),
@@ -113,7 +91,7 @@ pub fn list(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             .to_string(),
         ]);
     }
-    print_table(&rows);
+    super::print_table(&rows);
     Ok(())
 }
 
@@ -234,7 +212,7 @@ pub fn workspaces(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             .to_string(),
         ]);
     }
-    print_table(&rows);
+    super::print_table(&rows);
     Ok(())
 }
 
@@ -273,7 +251,7 @@ pub fn monitors(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             .to_string(),
         ]);
     }
-    print_table(&rows);
+    super::print_table(&rows);
     Ok(())
 }
 

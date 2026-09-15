@@ -55,6 +55,7 @@ _wctl() {
         'tile:Tile window to a preset grid position'
         'center:Center window on screen'
         'resolve-place:Resolve a placement without applying it'
+        'rules:Manage the auto-placement rules file'
         'workspace:Switch to a workspace'
         'move-to-workspace:Move window to a workspace'
         'move-to-monitor:Move window to a monitor'
@@ -173,6 +174,17 @@ _wctl() {
                         '3:width or percentage:' \
                         '4:height or percentage:' \
                         '--json[Output as JSON]'
+                    ;;
+                rules)
+                    _arguments \
+                        '1:subcommand:(list path check add remove test)' \
+                        '2:argument:' \
+                        '--file[Rules file to use (default: the configured one)]:file:_files' \
+                        '--json[Output as JSON]' \
+                        '--workspace[Also move the window to this workspace]:index:' \
+                        '--monitor[Resolve the geometry on this monitor]:index:' \
+                        '--at[Insert at this index instead of appending]:index:' \
+                        '--dry-run[Print the resulting document, write nothing]'
                     ;;
                 tile)
                     _arguments "${_wctl_selector_opts[@]}" \

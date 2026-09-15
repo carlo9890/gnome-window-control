@@ -377,6 +377,81 @@ This sets the *initial* position only: an app that resizes itself afterwards is
 left alone. A rule with a bad value is reported to the journal and the whole file
 is ignored until you fix it, so one typo never places a window half-right.
 
+### Managing rules from the command line
+
+`wctl` writes and reads the file, so you need not edit JSON by hand:
+
+```bash
+wctl rules add -c kitty tile left               # Tile every kitty window left
+wctl rules add -s Report place right top 50% 100%
+wctl rules add -t Calculator center both --monitor 1 --workspace 2
+wctl rules list                                 # What is in the file
+wctl rules remove 0                             # Drop a rule by index
+wctl rules path                                 # Where the file lives
+```
+
+```console
+$ wctl rules list
+INDEX  MATCH             ACTION                    WORKSPACE  MONITOR
+0      class=kitty       tile left
+1      substr=Report     place right top 50% 100%
+2      title=Calculator  center both               2          1
+```
+
+A rule matches with `-c <CLASS>`, `-t <TITLE>` or `-s <SUBSTR>` only. A window
+ID, `focused` and `-p <PID>` name a window that already exists, and a rule is
+evaluated against windows that do not exist yet, so those are refused.
+
+`add` validates the action through the same grammar `wctl tile` and `wctl place`
+use, appends unless `--at <N>` names a position, and writes atomically. A file
+that does not parse or does not validate is never rewritten, so a hand-edited
+file with a typo in it is not clobbered. `--dry-run` prints the document it
+would write and changes nothing. Because the first matching rule wins, `add`
+warns when an earlier rule already matches everything the new one would.
+
+### Checking the file
+
+Because one bad value disables every rule, check the file rather than saving it
+and watching whether windows move:
+
+```bash
+wctl rules check                      # the configured file
+wctl rules check --file ./draft.json  # any file
+wctl rules check --json               # for a script
+```
+
+```console
+$ wctl rules check
+/home/you/.config/gnome-window-control/rules.json: 3 rules, valid
+
+$ wctl rules check
+Error: rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right
+```
+
+It exits 0 when the shell would load the file and 1 when it would not, and the
+message is the same one the extension writes to the journal. It reads only the
+file: no D-Bus, and it works with the extension stopped or not installed.
+
+### Why did a rule not fire?
+
+```bash
+wctl rules test -c kitty
+```
+
+```console
+$ wctl rules test -c kitty
+Window 4152763  class=kitty  title=vim
+Matched rule 0: class=kitty -> tile left
+  rule 2 also matches but is shadowed: class=kitty -> tile right
+  monitor 0, workarea 0,27 1920x1053
+  would place at 0,27 480x1052
+```
+
+It names the rule that wins, any later rule the first-match-wins order makes
+dead, the workarea used, and the exact rectangle the action resolves to. This is
+the one `rules` subcommand that needs the extension running, because it resolves
+a live window. It never moves anything.
+
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
 

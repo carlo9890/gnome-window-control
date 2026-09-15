@@ -1,0 +1,541 @@
+{
+  "comment": [
+    "Shared test vectors for the rules.json format. Derived from",
+    "docs/specs/RULES-JSON.md, which stays the normative definition.",
+    "",
+    "Two implementations read this file and must agree on every case:",
+    "  tests/check-rules-format.js   the extension's grammar (rules-format.js)",
+    "  cli/src/rules.rs              wctl rules check",
+    "",
+    "'document' is the PARSED document, never file text: a malformed-JSON case",
+    "would pin an engine-specific parser message that the two runtimes cannot",
+    "agree on. Whole-file rejection on the first error is what 'message' pins.",
+    "",
+    "Adding a validation rule means adding a case here in the same commit."
+  ],
+
+  "validation": [
+    {
+      "name": "empty document",
+      "document": [],
+      "valid": true
+    },
+    {
+      "name": "one tile rule",
+      "document": [{ "match": { "class": "kitty" }, "tile": "left" }],
+      "valid": true
+    },
+    {
+      "name": "place with mixed keyword and percentage tokens",
+      "document": [{ "match": { "substr": "Report" }, "place": ["right", "top", "50%", "100%"] }],
+      "valid": true
+    },
+    {
+      "name": "place tokens may be JSON numbers",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, 800, 600] }],
+      "valid": true
+    },
+    {
+      "name": "center with workspace and monitor",
+      "document": [{ "match": { "title": "Calculator" }, "center": "both", "workspace": 2, "monitor": 1 }],
+      "valid": true
+    },
+    {
+      "name": "workspace alone is an action",
+      "document": [{ "match": { "class": "Slack" }, "workspace": 2 }],
+      "valid": true
+    },
+    {
+      "name": "monitor alone is an action",
+      "document": [{ "match": { "class": "Slack" }, "monitor": 0 }],
+      "valid": true
+    },
+    {
+      "name": "two match keys are an AND",
+      "document": [{ "match": { "class": "kitty", "substr": "vim" }, "tile": "right" }],
+      "valid": true
+    },
+    {
+      "name": "a percentage above 100 is allowed",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "150%", "100%"] }],
+      "valid": true
+    },
+    {
+      "name": "a negative X is a coordinate, not an error",
+      "document": [{ "match": { "class": "a" }, "place": ["-50", "100", "33%", "50%"] }],
+      "valid": true
+    },
+    {
+      "name": "every tile position resolves",
+      "document": [
+        { "match": { "class": "a" }, "tile": "top-left" },
+        { "match": { "class": "a" }, "tile": "top-center" },
+        { "match": { "class": "a" }, "tile": "top-right" },
+        { "match": { "class": "a" }, "tile": "left" },
+        { "match": { "class": "a" }, "tile": "center" },
+        { "match": { "class": "a" }, "tile": "right" },
+        { "match": { "class": "a" }, "tile": "bottom-left" },
+        { "match": { "class": "a" }, "tile": "bottom-center" },
+        { "match": { "class": "a" }, "tile": "bottom-right" }
+      ],
+      "valid": true
+    },
+    {
+      "name": "every center axis resolves",
+      "document": [
+        { "match": { "class": "a" }, "center": "horizontal" },
+        { "match": { "class": "a" }, "center": "vertical" },
+        { "match": { "class": "a" }, "center": "both" }
+      ],
+      "valid": true
+    },
+
+    {
+      "name": "top level is an object",
+      "document": { "match": { "class": "a" }, "tile": "left" },
+      "valid": false,
+      "message": "the top-level value must be an array of rules"
+    },
+    {
+      "name": "top level is a string",
+      "document": "left",
+      "valid": false,
+      "message": "the top-level value must be an array of rules"
+    },
+    {
+      "name": "rule is not an object",
+      "document": ["left"],
+      "valid": false,
+      "message": "rules[0]: must be an object"
+    },
+    {
+      "name": "rule is an array",
+      "document": [[]],
+      "valid": false,
+      "message": "rules[0]: must be an object"
+    },
+    {
+      "name": "rule is null",
+      "document": [null],
+      "valid": false,
+      "message": "rules[0]: must be an object"
+    },
+    {
+      "name": "unknown rule key",
+      "document": [{ "match": { "class": "a" }, "tile": "left", "size": "big" }],
+      "valid": false,
+      "message": "rules[0].size: unknown key (use match, place, tile, center, workspace, monitor)"
+    },
+    {
+      "name": "the index in the message is the rule's own",
+      "document": [
+        { "match": { "class": "a" }, "tile": "left" },
+        { "match": { "class": "b" }, "tile": "nowhere" }
+      ],
+      "valid": false,
+      "message": "rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+    },
+    {
+      "name": "match is missing",
+      "document": [{ "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match: must be an object"
+    },
+    {
+      "name": "match is not an object",
+      "document": [{ "match": "kitty", "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match: must be an object"
+    },
+    {
+      "name": "match is an array",
+      "document": [{ "match": ["kitty"], "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match: must be an object"
+    },
+    {
+      "name": "match is empty",
+      "document": [{ "match": {}, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match: must name at least one of class, title, substr"
+    },
+    {
+      "name": "unknown match key",
+      "document": [{ "match": { "pid": "123" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.pid: unknown key (use class, title, substr)"
+    },
+    {
+      "name": "focused is not a match key",
+      "document": [{ "match": { "focused": "yes" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.focused: unknown key (use class, title, substr)"
+    },
+    {
+      "name": "match value is a number",
+      "document": [{ "match": { "class": 42 }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.class: must be a string"
+    },
+    {
+      "name": "match value is null",
+      "document": [{ "match": { "title": null }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.title: must be a string"
+    },
+    {
+      "name": "empty substr would match every window",
+      "document": [{ "match": { "substr": "" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.substr: must not be empty"
+    },
+    {
+      "name": "empty class is refused too",
+      "document": [{ "match": { "class": "" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.class: must not be empty"
+    },
+    {
+      "name": "empty title is refused too",
+      "document": [{ "match": { "title": "" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.title: must not be empty"
+    },
+    {
+      "name": "place and tile together",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "100", "100"], "tile": "left" }],
+      "valid": false,
+      "message": "rules[0]: place, tile and center are mutually exclusive"
+    },
+    {
+      "name": "tile and center together",
+      "document": [{ "match": { "class": "a" }, "tile": "left", "center": "both" }],
+      "valid": false,
+      "message": "rules[0]: place, tile and center are mutually exclusive"
+    },
+    {
+      "name": "all three together",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "100", "100"], "tile": "left", "center": "both" }],
+      "valid": false,
+      "message": "rules[0]: place, tile and center are mutually exclusive"
+    },
+    {
+      "name": "place has three elements",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: must be [X, Y, WIDTH, HEIGHT]"
+    },
+    {
+      "name": "place has five elements",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "100", "100", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: must be [X, Y, WIDTH, HEIGHT]"
+    },
+    {
+      "name": "place is not an array",
+      "document": [{ "match": { "class": "a" }, "place": "left" }],
+      "valid": false,
+      "message": "rules[0].place: must be [X, Y, WIDTH, HEIGHT]"
+    },
+    {
+      "name": "place WIDTH is not a size token",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "abc", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place WIDTH of zero",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "0", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place WIDTH percentage floors to zero on the probe workarea",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "0%", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place WIDTH is negative",
+      "document": [{ "match": { "class": "a" }, "place": ["0", "0", "-100", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place X uses a Y keyword",
+      "document": [{ "match": { "class": "a" }, "place": ["top", "top", "100", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place Y uses an X keyword",
+      "document": [{ "match": { "class": "a" }, "place": ["left", "left", "100", "100"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "tile is not a grid position",
+      "document": [{ "match": { "class": "a" }, "tile": "middle" }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+    },
+    {
+      "name": "tile is not a string",
+      "document": [{ "match": { "class": "a" }, "tile": 1 }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+    },
+    {
+      "name": "an inherited Object.prototype key is not a tile position",
+      "document": [{ "match": { "class": "a" }, "tile": "toString" }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+    },
+    {
+      "name": "constructor is not a tile position",
+      "document": [{ "match": { "class": "a" }, "tile": "constructor" }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+    },
+    {
+      "name": "constructor is not a match key",
+      "document": [{ "match": { "constructor": "a" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.constructor: unknown key (use class, title, substr)"
+    },
+    {
+      "name": "hasOwnProperty is not a match key",
+      "document": [{ "match": { "hasOwnProperty": "a" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.hasOwnProperty: unknown key (use class, title, substr)"
+    },
+    {
+      "name": "center is not an axis",
+      "document": [{ "match": { "class": "a" }, "center": "middle" }],
+      "valid": false,
+      "message": "rules[0].center: must be one of horizontal, vertical, both"
+    },
+    {
+      "name": "center is not a string",
+      "document": [{ "match": { "class": "a" }, "center": true }],
+      "valid": false,
+      "message": "rules[0].center: must be one of horizontal, vertical, both"
+    },
+    {
+      "name": "workspace is negative",
+      "document": [{ "match": { "class": "a" }, "workspace": -1 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
+      "name": "workspace is not an integer",
+      "document": [{ "match": { "class": "a" }, "workspace": 1.5 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
+      "name": "workspace is a string",
+      "document": [{ "match": { "class": "a" }, "workspace": "1" }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
+      "name": "monitor is negative",
+      "document": [{ "match": { "class": "a" }, "monitor": -1 }],
+      "valid": false,
+      "message": "rules[0].monitor: must be a non-negative integer"
+    },
+    {
+      "name": "monitor is a string",
+      "document": [{ "match": { "class": "a" }, "monitor": "1" }],
+      "valid": false,
+      "message": "rules[0].monitor: must be a non-negative integer"
+    },
+    {
+      "name": "rule has nothing to do",
+      "document": [{ "match": { "class": "a" } }],
+      "valid": false,
+      "message": "rules[0]: has nothing to do (add place, tile, center, workspace or monitor)"
+    }
+  ],
+
+  "geometry": {
+    "comment": [
+      "The expected rectangles are hardcoded known-good values, pinned to the",
+      "same numbers as the Rust unit tests in cli/src/geometry.rs. Never",
+      "recompute them from an implementation's own formula.",
+      "",
+      "The sample workarea (0, 27, 1920, 1053) is a 1920x1080 screen minus the",
+      "27px top panel: cell_w = 480, cell_h = 526."
+    ],
+
+    "place": [
+      {
+        "name": "half width, full height, centred",
+        "tokens": ["center", "top", "50%", "100%"],
+        "workarea": { "x": 0, "y": 27, "width": 1920, "height": 1053 },
+        "rect": { "x": 480, "y": 27, "width": 960, "height": 1053 }
+      },
+      {
+        "name": "pixels and keywords mix, flush with the bottom right",
+        "tokens": ["right", "bottom", "800", "600"],
+        "workarea": { "x": 0, "y": 27, "width": 1920, "height": 1053 },
+        "rect": { "x": 1120, "y": 480, "width": 800, "height": 600 }
+      },
+      {
+        "name": "a negative X is a coordinate",
+        "tokens": ["-50", "100", "33%", "50%"],
+        "workarea": { "x": 0, "y": 27, "width": 1920, "height": 1053 },
+        "rect": { "x": -50, "y": 100, "width": 633, "height": 526 }
+      },
+      {
+        "name": "left and top are the workarea origin, not the screen origin",
+        "tokens": ["left", "top", "800", "600"],
+        "workarea": { "x": 10, "y": 27, "width": 1920, "height": 1053 },
+        "rect": { "x": 10, "y": 27, "width": 800, "height": 600 }
+      },
+      {
+        "name": "a window wider than the workarea goes negative rather than clamping",
+        "tokens": ["right", "top", "1000", "100"],
+        "workarea": { "x": 0, "y": 0, "width": 800, "height": 600 },
+        "rect": { "x": -200, "y": 0, "width": 1000, "height": 100 }
+      },
+      {
+        "name": "centring a window wider than the workarea goes negative",
+        "tokens": ["center", "top", "1000", "100"],
+        "workarea": { "x": 0, "y": 0, "width": 800, "height": 600 },
+        "rect": { "x": -100, "y": 0, "width": 1000, "height": 100 }
+      },
+      {
+        "name": "a percentage above 100 is not clamped",
+        "tokens": ["0", "0", "150%", "100%"],
+        "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 },
+        "rect": { "x": 0, "y": 0, "width": 1500, "height": 1000 }
+      },
+      {
+        "name": "percentages truncate, never round",
+        "tokens": ["0", "0", "33%", "33%"],
+        "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 },
+        "rect": { "x": 0, "y": 0, "width": 330, "height": 330 }
+      },
+      {
+        "name": "the size is resolved before the alignment that uses it",
+        "tokens": ["center", "center", "50%", "50%"],
+        "workarea": { "x": 0, "y": 0, "width": 1001, "height": 1001 },
+        "rect": { "x": 250, "y": 250, "width": 500, "height": 500 }
+      }
+    ],
+
+    "place_invalid": [
+      { "name": "garbage width", "tokens": ["0", "0", "abc", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
+      { "name": "zero width", "tokens": ["0", "0", "0", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
+      { "name": "percentage flooring to zero", "tokens": ["0", "0", "1%", "100"], "workarea": { "x": 0, "y": 0, "width": 10, "height": 1000 } },
+      { "name": "X keyword belonging to Y", "tokens": ["top", "top", "100", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
+      { "name": "Y keyword belonging to X", "tokens": ["left", "left", "100", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
+      { "name": "a percent sign with no digits", "tokens": ["0", "0", "%", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
+      { "name": "a space before the percent sign", "tokens": ["0", "0", "50 %", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
+      { "name": "an inherited prototype key is not a size token", "tokens": ["0", "0", "toString", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } }
+    ],
+
+    "tile": [
+      {
+        "comment": "workarea (0, 27, 1920, 1053): cell_w 480, cell_h 526",
+        "workarea": { "x": 0, "y": 27, "width": 1920, "height": 1053 },
+        "cells": {
+          "top-left": { "x": 0, "y": 27, "width": 480, "height": 526 },
+          "top-center": { "x": 480, "y": 27, "width": 960, "height": 526 },
+          "top-right": { "x": 1440, "y": 27, "width": 480, "height": 526 },
+          "left": { "x": 0, "y": 27, "width": 480, "height": 1052 },
+          "center": { "x": 480, "y": 27, "width": 960, "height": 1052 },
+          "right": { "x": 1440, "y": 27, "width": 480, "height": 1052 },
+          "bottom-left": { "x": 0, "y": 553, "width": 480, "height": 526 },
+          "bottom-center": { "x": 480, "y": 553, "width": 960, "height": 526 },
+          "bottom-right": { "x": 1440, "y": 553, "width": 480, "height": 526 }
+        }
+      },
+      {
+        "comment": "width 1001 is not divisible by 4: cells floor to 250 and a 1px remainder is left at the right edge",
+        "workarea": { "x": 0, "y": 0, "width": 1001, "height": 1000 },
+        "cells": {
+          "top-left": { "x": 0, "y": 0, "width": 250, "height": 500 },
+          "top-right": { "x": 750, "y": 0, "width": 250, "height": 500 },
+          "top-center": { "x": 250, "y": 0, "width": 500, "height": 500 }
+        }
+      },
+      {
+        "comment": "the workarea origin offsets every cell",
+        "workarea": { "x": 100, "y": 50, "width": 800, "height": 600 },
+        "cells": {
+          "top-left": { "x": 100, "y": 50, "width": 200, "height": 300 },
+          "bottom-right": { "x": 700, "y": 350, "width": 200, "height": 300 }
+        }
+      }
+    ],
+
+    "center": [
+      {
+        "name": "both axes",
+        "axis": "both",
+        "frame": { "x": 0, "y": 0, "width": 800, "height": 600 },
+        "workarea": { "x": 0, "y": 27, "width": 1920, "height": 1053 },
+        "rect": { "x": 560, "y": 253, "width": 800, "height": 600 }
+      },
+      {
+        "name": "horizontal leaves y untouched",
+        "axis": "horizontal",
+        "frame": { "x": 10, "y": 700, "width": 800, "height": 600 },
+        "workarea": { "x": 0, "y": 27, "width": 1920, "height": 1053 },
+        "rect": { "x": 560, "y": 700, "width": 800, "height": 600 }
+      },
+      {
+        "name": "vertical leaves x untouched",
+        "axis": "vertical",
+        "frame": { "x": 10, "y": 700, "width": 800, "height": 600 },
+        "workarea": { "x": 0, "y": 27, "width": 1920, "height": 1053 },
+        "rect": { "x": 10, "y": 253, "width": 800, "height": 600 }
+      },
+      {
+        "name": "a frame larger than the workarea goes negative",
+        "axis": "both",
+        "frame": { "x": 0, "y": 0, "width": 1000, "height": 800 },
+        "workarea": { "x": 0, "y": 0, "width": 800, "height": 600 },
+        "rect": { "x": -100, "y": -100, "width": 1000, "height": 800 }
+      },
+      {
+        "name": "the workarea origin is respected",
+        "axis": "both",
+        "frame": { "x": 0, "y": 0, "width": 400, "height": 300 },
+        "workarea": { "x": 100, "y": 50, "width": 800, "height": 600 },
+        "rect": { "x": 300, "y": 200, "width": 400, "height": 300 }
+      }
+    ]
+  },
+
+  "match": {
+    "comment": [
+      "The match predicate, shared by the D-Bus selector and rules.json.",
+      "'window' is the duck-typed window the predicate is applied to."
+    ],
+    "cases": [
+      { "name": "class is exact", "kind": "class", "value": "kitty", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
+      { "name": "class is case sensitive", "kind": "class", "value": "Kitty", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "class does not match a substring", "kind": "class", "value": "kit", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "title is exact", "kind": "title", "value": "vim", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
+      { "name": "title does not match a substring", "kind": "title", "value": "vi", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "substring matches inside the title", "kind": "substring", "value": "vi", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
+      { "name": "substring matches the whole title", "kind": "substring", "value": "vim", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
+      { "name": "substring is case sensitive", "kind": "substring", "value": "VIM", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "substring against a null title", "kind": "substring", "value": "vim", "window": { "wm_class": "kitty", "title": null, "pid": 100 }, "matches": false },
+      { "name": "class against a null class", "kind": "class", "value": "kitty", "window": { "wm_class": null, "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "pid is numeric equality", "kind": "pid", "value": "100", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
+      { "name": "pid mismatch", "kind": "pid", "value": "101", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false }
+    ],
+    "no_predicate": [
+      { "name": "an unknown kind", "kind": "nonsense", "value": "x" },
+      { "name": "an empty substring would match every window", "kind": "substring", "value": "" },
+      { "name": "pid zero is the unknown-pid sentinel", "kind": "pid", "value": "0" },
+      { "name": "a negative pid", "kind": "pid", "value": "-1" },
+      { "name": "a non-numeric pid", "kind": "pid", "value": "abc" }
+    ]
+  }
+}

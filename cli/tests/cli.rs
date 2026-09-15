@@ -540,3 +540,251 @@ fn emitted_completions_are_valid_shell_scripts() {
         );
     }
 }
+
+/// `wctl rules` never opens the bus: the file is local and so is the grammar.
+///
+/// Every case here runs against the unreachable NO_BUS address, so a verdict
+/// that arrived at all is a verdict reached without a shell -- which is the
+/// whole point of `rules check`.
+#[test]
+fn rules_guards_and_verdicts_need_no_bus() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let write = |name: &str, body: &str| {
+        let path = dir.join(name);
+        std::fs::write(&path, body).expect("write rules file");
+        path.to_string_lossy().into_owned()
+    };
+
+    let good = write(
+        "good.json",
+        r#"[{"match":{"class":"kitty"},"tile":"left"}]"#,
+    );
+    let bad = write(
+        "bad.json",
+        r#"[{"match":{"class":"kitty"},"tile":"middle"}]"#,
+    );
+    let broken = write("broken.json", r#"[{"match":{"class":"k"} "tile":"left"}]"#);
+    let absent = dir.join("absent.json").to_string_lossy().into_owned();
+
+    // A valid file passes, and says how many rules the shell would load.
+    let (out, code) = wctl(&["rules", "check", "--file", &good]);
+    assert_eq!(code, 0, "a valid file should pass, printed: {out}");
+    assert!(out.contains("1 rule, valid"), "printed: {out}");
+
+    // An invalid one reports the extension's own message, verbatim.
+    expect_die(
+        "rules[0].tile: must be one of top-left, top-center, top-right",
+        &["rules", "check", "--file", &bad],
+    );
+
+    // Malformed JSON names the file rather than the grammar.
+    expect_die("not valid JSON", &["rules", "check", "--file", &broken]);
+
+    // An absent file is not an error: no file means no rules.
+    let (out, code) = wctl(&["rules", "check", "--file", &absent]);
+    assert_eq!(code, 0, "an absent file is not an error, printed: {out}");
+    assert!(out.contains("No rules file at"), "printed: {out}");
+
+    // --json carries the verdict in the document, on both paths.
+    let (out, code) = wctl(&["rules", "check", "--file", &good, "--json"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("\"valid\":true"), "printed: {out}");
+    let (out, code) = wctl(&["rules", "check", "--file", &bad, "--json"]);
+    assert_ne!(code, 0);
+    assert!(out.contains("\"valid\":false"), "printed: {out}");
+
+    // Usage errors.
+    expect_die("Usage: wctl rules", &["rules"]);
+    expect_die("Unknown rules subcommand: bogus", &["rules", "bogus"]);
+    expect_die(
+        "Option --file requires a value",
+        &["rules", "check", "--file"],
+    );
+    expect_die("Unknown option: --nope", &["rules", "check", "--nope"]);
+
+    // No case above may have produced a connection error.
+    expect_not("connect", &["rules", "check", "--file", &good]);
+    expect_not("connect", &["rules", "check", "--file", &bad]);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// `wctl rules list/path/add/remove`: the local file surface, still no bus.
+///
+/// The invariant these assert hardest is that a REFUSED add or remove leaves
+/// the file byte-identical. The command rewrites the whole document, so a
+/// refusal that had already truncated the file would lose rules the user wrote
+/// by hand.
+#[test]
+fn rules_file_surface_needs_no_bus() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-file-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    let path = file.to_string_lossy().into_owned();
+    let read = || std::fs::read_to_string(&file).unwrap_or_default();
+    std::fs::remove_file(&file).ok();
+
+    // path prints the file it would use, without needing it to exist.
+    let (out, code) = wctl(&["rules", "path", "--file", &path]);
+    assert_eq!(code, 0);
+    assert!(out.trim().ends_with("rules.json"), "printed: {out}");
+
+    // list on an absent file prints nothing and succeeds.
+    let (out, code) = wctl(&["rules", "list", "--file", &path]);
+    assert_eq!(code, 0);
+    assert!(out.is_empty(), "expected no output, printed: {out}");
+
+    // add creates the file.
+    let (out, code) = wctl(&[
+        "rules", "add", "--file", &path, "-c", "kitty", "tile", "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", &path]);
+    assert!(out.contains("class=kitty"), "printed: {out}");
+    assert!(out.contains("tile left"), "printed: {out}");
+
+    // What add writes is what check accepts: the two share one grammar.
+    let (_, code) = wctl(&["rules", "check", "--file", &path]);
+    assert_eq!(code, 0);
+
+    // --at inserts and shifts the rest down.
+    let (_, code) = wctl(&[
+        "rules", "add", "--file", &path, "--at", "0", "-t", "Calc", "center", "both",
+    ]);
+    assert_eq!(code, 0);
+    let (out, _) = wctl(&["rules", "list", "--file", &path]);
+    let rows: Vec<&str> = out.lines().skip(1).collect();
+    assert!(rows[0].contains("title=Calc"), "printed: {out}");
+    assert!(rows[1].contains("class=kitty"), "printed: {out}");
+
+    // A selector naming an existing window is refused, and names the three
+    // that work in a static file.
+    let before = read();
+    for selector in [vec!["focused"], vec!["123"], vec!["-p", "999"]] {
+        let mut args = vec!["rules", "add", "--file", &path];
+        args.extend(selector);
+        args.extend(["tile", "left"]);
+        let (out, code) = wctl(&args);
+        assert_ne!(code, 0, "{args:?} should be refused, printed: {out}");
+        assert!(out.contains("-c <CLASS>"), "printed: {out}");
+    }
+
+    // A bad action is refused by the same grammar `wctl tile` uses.
+    expect_die(
+        "Invalid position: middle",
+        &["rules", "add", "--file", &path, "-c", "a", "tile", "middle"],
+    );
+    expect_die(
+        "resolves to 0 pixels",
+        &[
+            "rules", "add", "--file", &path, "-c", "a", "place", "0", "0", "0%", "100",
+        ],
+    );
+
+    // None of those refusals touched the file.
+    assert_eq!(read(), before, "a refused add must not rewrite the file");
+
+    // --dry-run prints the document it would write and changes nothing.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        &path,
+        "-c",
+        "Slack",
+        "tile",
+        "right",
+        "--dry-run",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("Slack"), "printed: {out}");
+    assert_eq!(read(), before, "--dry-run must not write");
+
+    // An earlier rule that already matches everything is a warning, not an error.
+    let (out, code) = wctl(&[
+        "rules", "add", "--file", &path, "-c", "kitty", "tile", "right",
+    ]);
+    assert_eq!(code, 0, "shadowing is a warning, printed: {out}");
+    assert!(out.contains("never fire"), "printed: {out}");
+
+    // list --json emits the file unchanged.
+    let (out, code) = wctl(&["rules", "list", "--file", &path, "--json"]);
+    assert_eq!(code, 0);
+    assert_eq!(out, read(), "--json must emit the file unchanged");
+
+    // remove takes the rule out and leaves the order of the rest.
+    let (_, code) = wctl(&["rules", "remove", "--file", &path, "0"]);
+    assert_eq!(code, 0);
+    let (out, _) = wctl(&["rules", "list", "--file", &path]);
+    assert!(!out.contains("title=Calc"), "printed: {out}");
+    assert!(out.contains("class=kitty"), "printed: {out}");
+
+    // An index past the end is a not-found, not a usage error.
+    let (_, code) = wctl(&["rules", "remove", "--file", &path, "99"]);
+    assert_eq!(code, 2, "out-of-range index should be EXIT_NOT_FOUND");
+
+    // A file that does not parse is never rewritten: add and remove both refuse
+    // rather than clobbering whatever the user actually wrote.
+    let broken = r#"[{"match":{"class":"k"} "tile":"left"}]"#;
+    std::fs::write(&file, broken).expect("write broken file");
+    expect_die(
+        "not valid JSON",
+        &["rules", "add", "--file", &path, "-c", "a", "tile", "left"],
+    );
+    expect_die("not valid JSON", &["rules", "remove", "--file", &path, "0"]);
+    assert_eq!(read(), broken, "a broken file must be left alone");
+
+    // Same for a file that parses but does not validate.
+    let invalid = r#"[{"match":{"class":"k"},"tile":"middle"}]"#;
+    std::fs::write(&file, invalid).expect("write invalid file");
+    expect_die(
+        "rules[0].tile: must be one of",
+        &["rules", "add", "--file", &path, "-c", "a", "tile", "left"],
+    );
+    assert_eq!(read(), invalid, "an invalid file must be left alone");
+
+    // Nothing above may have reached the bus.
+    expect_not("connect", &["rules", "list", "--file", &path]);
+    expect_not("connect", &["rules", "path", "--file", &path]);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// `wctl rules test` is the one subcommand that needs a shell, so only its
+/// guards are headless. The cases below must all fail BEFORE the bus call:
+/// a usage error, and a rules file that does not validate.
+#[test]
+fn rules_test_guards_fire_before_the_bus() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    let path = file.to_string_lossy().into_owned();
+    std::fs::write(&file, r#"[{"match":{"class":"kitty"},"tile":"left"}]"#).expect("write");
+
+    // A missing selector is a usage error, not a connection error.
+    expect_die(
+        "Usage: wctl rules test",
+        &["rules", "test", "--file", &path],
+    );
+    // So is an argument after the selector.
+    expect_die(
+        "Usage: wctl rules test",
+        &["rules", "test", "--file", &path, "-c", "kitty", "extra"],
+    );
+    expect_die(
+        "Unknown option: --bogus",
+        &["rules", "test", "--file", &path, "--bogus"],
+    );
+    expect_not("connect", &["rules", "test", "--file", &path]);
+
+    // The rules file is read before the window is looked up, so a file that
+    // does not validate is reported as itself rather than as a dead bus.
+    std::fs::write(&file, r#"[{"match":{"class":"k"},"tile":"middle"}]"#).expect("write");
+    expect_die(
+        "rules[0].tile: must be one of",
+        &["rules", "test", "--file", &path, "-c", "kitty"],
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}

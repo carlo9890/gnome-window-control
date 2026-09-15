@@ -17,7 +17,7 @@ _wctl() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="list focused info workspaces monitors workarea activate focus wait move resize move-resize place tile center resolve-place workspace move-to-workspace move-to-monitor minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close version help completion"
+    local commands="list focused info workspaces monitors workarea activate focus wait move resize move-resize place tile center resolve-place rules workspace move-to-workspace move-to-monitor minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close version help completion"
 
     # A global option before the command shifts every position right.
     local off=0
@@ -72,6 +72,19 @@ _wctl() {
             ;;
         resolve-place)
             COMPREPLY=($(compgen -W "--monitor --json left center right top bottom" -- "$cur"))
+            ;;
+        rules)
+            if [[ $pos -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "list path check add remove test" -- "$cur"))
+            elif [[ ${words[2]} == add ]]; then
+                COMPREPLY=($(compgen -W "-c -t -s tile place center --workspace --monitor --at --dry-run --file" -- "$cur"))
+            elif [[ ${words[2]} == remove ]]; then
+                COMPREPLY=($(compgen -W "--dry-run --file" -- "$cur"))
+            elif [[ ${words[2]} == test ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_window_words) --json --file" -- "$cur"))
+            else
+                COMPREPLY=($(compgen -W "--file --json" -- "$cur"))
+            fi
             ;;
         tile)
             if [[ $slot -eq 2 ]]; then

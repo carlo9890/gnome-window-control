@@ -15,12 +15,13 @@ mod fail;
 mod geometry;
 mod help;
 mod model;
+mod rules;
 mod selector;
 mod table;
 
 use std::time::Duration;
 
-use commands::{completion, geometry as geom, query, state, wait, wsmon};
+use commands::{completion, geometry as geom, query, rules as rules_cmd, state, wait, wsmon};
 use dbus::DEFAULT_TIMEOUT_SECONDS;
 use fail::{Fail, Result};
 use model::Ctx;
@@ -41,7 +42,7 @@ pub const EXPECTED_EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION_MINOR");
 /// The help text and both completion scripts are authored by hand, so a unit
 /// test cross-checks all three against this list. Adding a command means adding
 /// it here.
-pub const COMMANDS: [&str; 31] = [
+pub const COMMANDS: [&str; 32] = [
     "list",
     "focused",
     "info",
@@ -58,6 +59,7 @@ pub const COMMANDS: [&str; 31] = [
     "tile",
     "center",
     "resolve-place",
+    "rules",
     "workspace",
     "move-to-workspace",
     "move-to-monitor",
@@ -216,6 +218,11 @@ fn run(args: &[String]) -> Result<()> {
         "tile" => geom::tile(&mut ctx, rest),
         "center" => geom::center(&mut ctx, rest),
         "resolve-place" => geom::resolve_place(&mut ctx, rest),
+
+        // The bus connection in Ctx is lazy, so every rules subcommand but
+        // `test` still reaches its verdict without one -- asserted by the
+        // guard tests against an unreachable address.
+        "rules" => rules_cmd::rules(&mut ctx, rest),
 
         "workspace" => wsmon::workspace(&mut ctx, rest),
         "move-to-workspace" => wsmon::move_to_workspace(&mut ctx, rest),

@@ -28,9 +28,15 @@ method end to end.
 ### The rules.json auto-placement format
 
 **MUST read [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md) before editing
-`rules.js`, or changing what the rules file accepts or how a rule is applied.**
-It is the normative format: the key set, the token grammar, the tile grid, every
+`rules-format.js`, `rules.js`, `cli/src/rules.rs` or `tests/vectors/`, or
+changing what the rules file accepts or how a rule is applied.** It is the
+normative format: the key set, the token grammar, the tile grid, every
 validation message, and the show/unmaximize timing a placement depends on.
+
+Two implementations follow it — the extension's `rules-format.js` and the CLI's
+`cli/src/rules.rs` — pinned to each other by
+`tests/vectors/rules-spec.json`. Change the spec, both sides and the vectors in
+**one commit**, or the other side's CI gate fails.
 
 ### Testing and verification
 

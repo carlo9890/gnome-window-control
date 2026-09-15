@@ -1,38 +1,13 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Helpers shared by the D-Bus service and the window rules: the selector
-// predicate, and the maximize API that changed in GNOME 49.
+// Helpers shared by the D-Bus service and the window rules: the maximize API
+// that changed in GNOME 49.
+//
+// The selector predicate used to live here too. It moved to rules-format.js,
+// which imports nothing, so that plain `gjs` can load the grammar without the
+// mutter typelib. Everything left in this file needs Meta.
 
 import Meta from 'gi://Meta';
-
-// Build the match predicate for a (kind, value) selector. One implementation
-// for WaitForWindow, the ActivateBy* methods and rules.json, so the three
-// cannot disagree about which window a value names. Returns null for an
-// unknown kind, an empty substring (which would match every window) or a pid
-// that is not a positive decimal integer: get_pid() is 0 for a window whose
-// client pid is unknown, so 0 must never be matchable.
-export function matchPredicate(kind, value) {
-    switch (kind) {
-    case 'class':
-        return w => w.get_wm_class() === value;
-    case 'title':
-        return w => w.get_title() === value;
-    case 'substring':
-        if (value === '')
-            return null;
-        return w => (w.get_title() || '').includes(value);
-    case 'pid': {
-        if (!/^[0-9]+$/.test(value))
-            return null;
-        const pid = Number(value);
-        if (!Number.isSafeInteger(pid) || pid <= 0)
-            return null;
-        return w => w.get_pid() === pid;
-    }
-    default:
-        return null;
-    }
-}
 
 // GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
 // longer take a Meta.MaximizeFlags argument, and get_maximized() was removed in

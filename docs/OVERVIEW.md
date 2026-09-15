@@ -11,7 +11,8 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── extension.js           D-Bus service + method handlers (WindowControlService)
 ├── dbus-interface.js      D-Bus interface XML (imported by extension.js)
 ├── rules.js               WindowRules: rules.json auto-placement (no D-Bus)
-├── window-helpers.js      selector predicate + maximize API, shared by both
+├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
+├── window-helpers.js      the GNOME 49 maximize API, shared by both
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
@@ -21,11 +22,14 @@ cli/                       wctl, the CLI (Rust, zbus)
 ├── src/dbus.rs            the D-Bus client (lazy session connection)
 ├── src/selector.rs        the <WINDOW> selector and the list filters
 ├── src/geometry.rs        place tokens, tile grid, centring
+├── src/rules.rs           the rules.json grammar, the Rust half of the pair
 ├── src/commands/          one module per command group
 ├── completions/           hand-written bash and zsh completions (embedded)
 └── tests/cli.rs           argument-guard tests, run against the real binary
 scripts/                   build.sh, release.sh, start-nested.sh, debug-dbus.sh
 tests/                     test suites (see docs/TESTING.md)
+├── check-rules-format.js  headless gjs check of the rules.json grammar
+└── vectors/               shared test vectors read by GJS and Rust alike
 docs/                      developer topic docs (this directory)
 .github/workflows/         CI (build.yml)
 dist/                      build output (generated zips)
@@ -68,15 +72,22 @@ gnome-window-control-extension-requirements.md   original design spec
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
   service: it reads `~/.config/gnome-window-control/rules.json`, watches
   `window-created`, and places a matching window once mutter has shown it. It
-  makes no D-Bus call — the place/tile/center arithmetic is a GJS port of
-  `cli/src/geometry.rs`, pinned to the same values by a headless `gjs` check (see
-  TESTING.md). The selector predicate (`class`/`title`/`substr`) and the
-  GNOME-49 maximize API detection are shared with `extension.js` through
-  `window-helpers.js`, so the D-Bus `ActivateBy*`/`WaitForWindow` family and a
-  rule cannot disagree about which window a value names. A geometry request only
+  makes no D-Bus call. The GNOME-49 maximize API detection is shared with
+  `extension.js` through `window-helpers.js`. A geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   below), so a rule waits for `shown` and then applies from an idle callback; a
   window that maps maximized is unmaximized first.
+- **The rules.json grammar** is `rules-format.js`, and it is the one module in
+  the extension that imports **nothing** — no `gi://`, no shell resource. That
+  is deliberate: plain `gjs` loads it without the mutter typelib, so
+  `tests/check-rules-format.js` runs it on a bare CI runner. It owns the token
+  vocabulary, the tile grid, every validation message, and `matchPredicate`
+  (`class`/`title`/`substr`/`pid`), which `extension.js` imports too — so the
+  D-Bus `ActivateBy*`/`WaitForWindow` family and a rule cannot disagree about
+  which window a value names. `wctl rules` carries a **second implementation**
+  of the same grammar in `cli/src/rules.rs`; both are pinned to
+  `tests/vectors/rules-spec.json`, so neither can drift without the other's test
+  failing. `docs/specs/RULES-JSON.md` is the normative definition.
 - `wctl` addresses windows through one **selector resolver** in two halves:
   `selector::parse_exact(after, usage, args)` / `parse_min` (pure: the selector
   and the argument count) and `selector::lookup(ctx, &selector)` (the bus: a
