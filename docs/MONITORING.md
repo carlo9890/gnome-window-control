@@ -11,8 +11,14 @@ Follow this extension's own log lines (filtered by its `Window Control` tag):
 journalctl --user -b -g "Window Control" -f
 ```
 
-By default this shows only the enable/disable lifecycle lines. For the per-call
-handler logging, restart the shell with `G_MESSAGES_DEBUG=all` (see Log levels).
+`journalctl --user` shows only the main session's shell. A nested session's
+output goes to the terminal that ran `./scripts/start-nested.sh`.
+
+Errors and warnings appear by default; the per-call `console.debug()` trace
+needs `G_MESSAGES_DEBUG=all` in the shell's environment. In a nested session:
+`G_MESSAGES_DEBUG=all GSETTINGS_BACKEND=memory ./scripts/start-nested.sh`. The
+main Wayland session cannot be restarted, so it needs the variable in the
+session environment before login — use the nested session instead.
 
 ## Log levels
 
@@ -27,16 +33,6 @@ GNOME Shell 46 by logging one line at each level and reading back `PRIORITY`):
 | `console.log()` | 5 (notice) | **Yes** |
 | `console.warn()` | 4 (warning) | Yes |
 | `console.error()` | 3 (critical) | Yes |
-
-`console.log()` is **not** filtered out. It is the equivalent of a notice, and it
-lands in the user's journal on every call.
-
-To reproduce the table yourself:
-
-```bash
-systemd-run --user --quiet --wait gjs -c 'console.debug("A"); console.log("B")'
-journalctl --user -b --since "1 min ago" -o json | grep -o '"PRIORITY":"[0-9]"'
-```
 
 Writing these lines is a coding rule, not a monitoring one — see
 [CODING.md](CODING.md) for which level a handler may use and what a line may

@@ -1,17 +1,36 @@
 #!/usr/bin/env bash
-# Start a nested GNOME Shell session for manual testing
+# Start a nested GNOME Shell session for manual testing.
+#
+# Isolation is the whole job of this script, and it is not optional: on
+# 2026-09-11 a nested shell started without it logged the user out of the real
+# session. dbus-run-session gives the nested shell its own session bus, but the
+# shell still inherits SESSION_MANAGER from the real session, and mutter's
+# nested backend uses it to register with the REAL gnome-session as an XSMP
+# client (mutter 46 src/x11/session.c, from meta_context_main_notify_ready).
+# Removing those variables and passing --sm-disable is what keeps the nested
+# shell from reaching out of its sandbox.
+#
+# GSETTINGS_BACKEND=memory keeps its dconf writes to itself: a nested session
+# otherwise shares the real dconf database, and `gnome-extensions enable` there
+# makes the REAL shell react. Enable through the shell's D-Bus API instead.
+#
+# See the hard rules at the top of docs/RUNNING.md, which this script implements.
 
 set -e
 
 echo "Starting nested GNOME Shell..."
 echo ""
 
-# Create a temp file for gnome-shell output
-OUTPUT_FILE=$(mktemp)
-trap "rm -f $OUTPUT_FILE" EXIT
+# One log per run, never reused: the log of the run that logged the user out was
+# destroyed by the next run redirecting over it.
+OUTPUT_FILE="nested-$(date +%Y%m%d-%H%M%S).log"
 
 # Start gnome-shell and capture output, backgrounding after initial startup
-dbus-run-session gnome-shell --nested --wayland 2>&1 | tee "$OUTPUT_FILE" &
+env -u SESSION_MANAGER -u GNOME_SHELL_SESSION_MODE -u DESKTOP_AUTOSTART_ID \
+    -u XDG_SESSION_ID -u INVOCATION_ID -u MANAGERPID -u JOURNAL_STREAM \
+    GSETTINGS_BACKEND=memory \
+    dbus-run-session gnome-shell --nested --wayland --sm-disable 2>&1 \
+    | tee "$OUTPUT_FILE" &
 GNOME_PID=$!
 
 # Wait for gnome-shell to report its display values
@@ -74,14 +93,25 @@ echo "  ./cli/target/release/wctl list"
 echo ""
 echo "=== View Extension Logs ==="
 echo ""
-echo "  journalctl --user -f | grep \"Window Control\""
+echo "  tail -f $OUTPUT_FILE"
+echo ""
+echo "  # This session's lines land in the log above, not in journalctl --user,"
+echo "  # which shows the real session's shell."
 echo ""
 echo "=== Enable Extension (if needed) ==="
 echo ""
-echo "  gnome-extensions enable window-control@carlo9890.github.io"
+echo "  gdbus call --session --dest org.gnome.Shell \\"
+echo "    --object-path /org/gnome/Shell \\"
+echo "    --method org.gnome.Shell.Extensions.EnableExtension \\"
+echo "    window-control@carlo9890.github.io"
+echo ""
+echo "  # Through D-Bus, never 'gnome-extensions enable': that writes dconf,"
+echo "  # which the REAL shell reads, and it can disable your live extension."
 echo ""
 echo "=========================================="
-echo "Close the nested shell window to exit."
+echo "Nested shell PID: $GNOME_PID"
+echo "Stop it with: kill $GNOME_PID   (never pkill -- it matches the real shell)"
+echo "Log: $OUTPUT_FILE"
 echo "=========================================="
 echo ""
 

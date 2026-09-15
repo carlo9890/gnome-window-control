@@ -9,14 +9,17 @@ When modifying any JavaScript file you **MUST** validate its syntax before
 finishing:
 
 ```bash
-node --check window-control@carlo9890.github.io/extension.js
-node --check window-control@carlo9890.github.io/dbus-interface.js
+./scripts/build.sh validate      # node --check on every *.js in the extension dir
 ```
 
-If either fails, the code has a syntax error and must not be committed.
-`scripts/build.sh validate` runs `node --check` on every `*.js` in the extension
-directory, and `.github/workflows/build.yml` runs it as a hard CI gate — so a
-syntax error fails the build.
+If it fails, the code has a syntax error and must not be committed.
+`.github/workflows/build.yml` runs the same check as a hard CI gate.
+
+## Every source file
+
+- Start every new `.js` and `.rs` file with the two SPDX lines —
+  `// SPDX-FileCopyrightText: 2026 hko9890` and `// SPDX-License-Identifier: MIT`.
+  No gate catches a missing header.
 
 ## JavaScript style (extension.js)
 
@@ -25,14 +28,15 @@ syntax error fails the build.
 - Use template literals for string interpolation.
 - Wrap D-Bus method implementations in try/catch and return graceful defaults on
   error (empty array, `false`, etc.) — never let an exception escape a handler.
-  **Exception: `Move`, `Resize` and `MoveResize` raise named D-Bus errors
-  instead.** A boolean cannot say *which* failure happened, and a client outside
-  the shell cannot work it out — it can read `is_maximized`/`is_fullscreen` but
-  has no tiled predicate at all. Those three go through `_geometryCall()`, which
-  still catches an unexpected exception and re-raises it as
-  `org.freedesktop.DBus.Error.Failed`, so nothing escapes untyped. The error
-  names are listed in the ERRORS block in `dbus-interface.js`; add to that list
-  rather than inventing a name at the throw site.
+  **Exception: `Move`, `Resize`, `MoveResize`, `WaitForWindow` and
+  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean.**
+  The two wait methods return the value asked for (`window_id`, and the settled
+  rectangle) and raise when there is none; the three geometry methods return
+  nothing at all.
+  The names, and the reason each method raises, are in the ERRORS block in
+  `dbus-interface.js`; add to that list rather than inventing a name at the
+  throw site. `_geometryCall()` re-raises an unexpected exception as
+  `org.freedesktop.DBus.Error.Failed`, so nothing escapes untyped.
 - Simple "find window by id, do one action, return bool" handlers should go
   through the shared `_actOnWindow(windowId, label, action)` helper rather than
   re-implementing the find/try-catch/log skeleton.
@@ -59,9 +63,9 @@ syntax error fails the build.
   the guard tests headless. Parse the selector with `selector::parse_exact`
   (or `parse_min`), validate every argument after `selector.shift`, and only
   then call `selector::lookup` — that one may hit the bus.
-- Report failure through `Fail`: `Fail::error` for the `Error: ...` on stderr,
-  `Fail::plain` for the extension-said-no message on stdout. Every command ends
-  in `report()` so they all behave the same way.
+- Report failure through `Fail` (`cli/src/fail.rs`): `Fail::error` for the
+  `Error: ...` on stderr, `Fail::plain` for the extension-said-no message on
+  stdout. Every command ends in `report()` so they all behave the same way.
 - Keep pure, testable logic (geometry math, token resolution, selector parsing)
   in `geometry.rs` and `selector.rs` with `#[cfg(test)]` unit tests that pin
   **hardcoded** expected values.
@@ -69,18 +73,16 @@ syntax error fails the build.
   codes are asserted by the live suites. Do not reword a message without
   changing the suite that pins it.
 
-## Building for distribution
+## Building
 
 ```bash
 ./scripts/build.sh all         # clean, validate (incl. node --check), build zip
-./scripts/build.sh install     # copy the extension into place for local testing
+./scripts/build.sh install     # copy the extension into place — see RUNNING.md for the reload
 ```
 
-The zip lands in `dist/window-control@carlo9890.github.io_v<version>.zip` and
-includes every file in the extension directory (`extension.js`,
-`dbus-interface.js`, `metadata.json`, `README.md`, `LICENSE`). The directory name
-must stay identical to the `uuid` in `metadata.json` — `build.sh validate`
-hard-fails if they diverge.
+The extension directory name must stay identical to the `uuid` in
+`metadata.json` — `build.sh validate` hard-fails if they diverge. The zip and
+what it ships are described in [RELEASING.md](RELEASING.md).
 
 ## Adding a new D-Bus method
 
@@ -134,4 +136,4 @@ hard-fails if they diverge.
 
 5. Update the method table in `README.md`.
 
-6. Run `mise run ci` and `node --check` before committing.
+6. Run `mise run ci` and `./scripts/build.sh validate` before committing.

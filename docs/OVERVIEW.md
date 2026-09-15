@@ -17,12 +17,13 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
 cli/                       wctl, the CLI (Rust, zbus)
-├── Cargo.toml             crate manifest; its version gates the release
+├── Cargo.toml             crate manifest
 ├── src/main.rs            argument dispatch, command inventory, help/version
 ├── src/dbus.rs            the D-Bus client (lazy session connection)
 ├── src/selector.rs        the <WINDOW> selector and the list filters
 ├── src/geometry.rs        place tokens, tile grid, centring
 ├── src/rules.rs           the rules.json grammar, the Rust half of the pair
+├── src/help.rs            usage and help text (a frozen contract)
 ├── src/commands/          one module per command group
 ├── completions/           hand-written bash and zsh completions (embedded)
 └── tests/cli.rs           argument-guard tests, run against the real binary
@@ -34,6 +35,7 @@ docs/                      developer topic docs (this directory)
 .github/workflows/         CI (build.yml)
 dist/                      build output (generated zips)
 install-wctl.sh            wctl installer
+README.md                  user docs; the D-Bus method table
 gnome-window-control-extension-requirements.md   original design spec
 ```
 
@@ -52,23 +54,17 @@ gnome-window-control-extension-requirements.md   original design spec
   `is_extension_not_running` in `dbus.rs` for a consistent hint.
 - The session connection is opened **lazily**, so every argument-validation error
   is reported without touching the bus. That is what keeps the guard tests in
-  `cli/tests/cli.rs` headless, and it is the CI gate.
+  `cli/tests/cli.rs` headless.
 - Window documents stay as `serde_json::Value` (with serde_json's
   `preserve_order`), because `list --json` and `info --json` must emit the
   extension's document unchanged, key order included.
 - A single `extension.js` runs across GNOME 45-50 via runtime API detection for
   the maximize path (`get_maximized()` vs `get_maximize_flags()`).
-- `WaitForWindow` is the one **async** handler (`WaitForWindowAsync(params,
-  invocation)`, the GJS convention): it keeps the `Gio.DBusMethodInvocation` in
-  `_waiters` and replies from a `window-created` handler or a `GLib.timeout_add`
-  source. The display signal is connected only while a waiter is pending, and a
-  new window is re-evaluated on `notify::wm-class` / `notify::title` (on
-  Wayland those can arrive after creation) and on `shown`. A window only
-  satisfies a waiter once it is shown (`_isUnshown`): before mutter maps and
-  places it, any geometry request is overridden by the initial placement, so
-  replying earlier would break the "launch, then place" script. `unexport()`
-  fails every pending call and drops all handlers, so `disable()` leaves nothing
-  behind.
+- `WaitForWindow` and `WaitForGeometry` are the **async** handlers (the GJS
+  `...Async(params, invocation)` convention), holding the invocation in
+  `_waiters` / `_geometryWatchers`. A window satisfies a waiter only once it is
+  shown — `_isUnshown` and `_evaluateWindow` in `extension.js` say why, and
+  `disable()` teardown is a release constraint in [RELEASING.md](RELEASING.md).
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
   service: it reads `~/.config/gnome-window-control/rules.json`, watches
   `window-created`, and places a matching window once mutter has shown it. It
@@ -77,25 +73,16 @@ gnome-window-control-extension-requirements.md   original design spec
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   below), so a rule waits for `shown` and then applies from an idle callback; a
   window that maps maximized is unmaximized first.
-- **The rules.json grammar** is `rules-format.js`, and it is the one module in
-  the extension that imports **nothing** — no `gi://`, no shell resource. That
-  is deliberate: plain `gjs` loads it without the mutter typelib, so
-  `tests/check-rules-format.js` runs it on a bare CI runner. It owns the token
-  vocabulary, the tile grid, every validation message, and `matchPredicate`
-  (`class`/`title`/`substr`/`pid`), which `extension.js` imports too — so the
-  D-Bus `ActivateBy*`/`WaitForWindow` family and a rule cannot disagree about
-  which window a value names. `wctl rules` carries a **second implementation**
-  of the same grammar in `cli/src/rules.rs`; both are pinned to
-  `tests/vectors/rules-spec.json`, so neither can drift without the other's test
-  failing. `docs/specs/RULES-JSON.md` is the normative definition.
+- **The rules.json grammar** is `rules-format.js` — the one module that imports
+  **nothing**, so plain `gjs` loads it without the mutter typelib and CI can
+  check it. `cli/src/rules.rs` is a second implementation of the same grammar;
+  both are pinned to `tests/vectors/rules-spec.json`, so neither drifts without
+  the other's test failing. `docs/specs/RULES-JSON.md` is normative.
 - `wctl` addresses windows through one **selector resolver** in two halves:
-  `selector::parse_exact(after, usage, args)` / `parse_min` (pure: the selector
-  and the argument count) and `selector::lookup(ctx, &selector)` (the bus: a
-  numeric ID needs no D-Bus call, `focused` costs one `GetFocused`, and
-  `-c/-t/-s/-p` cost one `ListDetailed` cached in `Ctx` for the command that
-  follows). A command validates every trailing argument between the two, so a
-  usage error never reaches the bus. The pure halves (`selector::parse`,
-  `select_id`, `filter`) are unit-tested.
+  `selector::parse_exact` / `parse_min` (pure: the selector and the argument
+  count) and `selector::lookup(ctx, &selector)` (the bus: a numeric ID needs no
+  D-Bus call, `focused` costs one `GetFocused`, and `-c/-t/-s/-p` cost one
+  `ListDetailed` cached in `Ctx` for the command that follows).
 
 ## Finding things
 

@@ -14,16 +14,28 @@ skippable because the task looks small.
 
 ### Research, planning, analysis
 
-**MUST read [docs/OVERVIEW.md](docs/OVERVIEW.md) before searching this repository.**
-It is the map — layout, architecture, the D-Bus and selector concepts, and the
-expressions that locate a method or a command fast.
+**MUST read [docs/OVERVIEW.md](docs/OVERVIEW.md) before your first `grep`, `rg`,
+Glob, or file Read in this repository.** It is the map — layout, architecture,
+the D-Bus and selector concepts, and the expressions that locate a method or a
+command fast.
 
 ### Coding and file changes
 
 **MUST read [docs/CODING.md](docs/CODING.md) before creating or editing ANY file
-under `window-control@carlo9890.github.io/` or `cli/`.** It owns the JS and Rust
-style rules, the mandatory `node --check` gate, and the recipe for adding a D-Bus
-method end to end.
+under `window-control@carlo9890.github.io/`, `cli/`, `scripts/` or `tests/`.**
+It owns the JS and Rust style rules, the mandatory `node --check` gate, and the
+recipe for adding a D-Bus method end to end.
+
+### Documentation changes
+
+**MUST load the `instruction-writing:writing-project-docs` skill before creating
+or editing ANY `*.md` file in this repository.** It owns which file holds which
+content and how a doc is written.
+
+**Local delta:** `docs/specs/` holds normative format specifications, one file
+per format, outside the canonical topic set. A spec states what an
+implementation MUST do and is changed in the same commit as the code and the
+tests that pin it.
 
 ### The rules.json auto-placement format
 
@@ -40,9 +52,10 @@ Two implementations follow it — the extension's `rules-format.js` and the CLI'
 
 ### Testing and verification
 
-**MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test** or judging
-whether a change is verified. It owns the test layers, the CI gate, and the
-minimum checks per action.
+**MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test, and before
+your first `mise run test`, `mise run ci`, or `./tests/run-all-*.sh`
+invocation.** It owns the test layers, the CI gate, and the minimum checks per
+action.
 
 ### Run the extension to reproduce a bug or verify a change
 
@@ -55,14 +68,14 @@ the hard rules at the top of RUNNING.md are not negotiable.
 
 ### Analyze logs
 
-**MUST read [docs/MONITORING.md](docs/MONITORING.md) before interpreting the
-extension's log output** — where the lines land, which levels are visible, and
-what a silent no-op means.
+**MUST read [docs/MONITORING.md](docs/MONITORING.md) before your first
+`journalctl` or other log-reading command against the extension** — where the
+lines land, which levels are visible, and what a silent no-op means.
 
 ### Commit, branch, PR workflow
 
 **MUST read [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before ANY git
-operation** — commit, branch, push, or opening a PR.
+operation** — commit, branch, worktree, push, or opening a PR.
 
 ### Release
 

@@ -1,6 +1,6 @@
 # GNOME Window Control
 
-A GNOME Shell extension that provides a D-Bus interface for listing and controlling windows on Wayland. This fills a critical gap: on Wayland, there's no standard way to enumerate windows from the command line (unlike X11's `wmctrl`).
+A GNOME Shell extension that provides a D-Bus interface for listing and controlling windows on Wayland. This fills a critical gap: on Wayland, there's no standard way to enumerate windows from the command line (unlike X11's `wmctrl` and `xdotool`).
 
 ## Features
 
@@ -71,9 +71,9 @@ Use the install script, which puts `wctl` in `~/.local/bin`:
 curl -fsSL https://github.com/carlo9890/gnome-window-control/releases/latest/download/install-wctl.sh | bash
 ```
 
-Run from a checkout, it installs a local build when one exists and downloads the
-published binary otherwise. `--download` always downloads; `--local` always
-builds.
+Piped from `curl`, the script downloads the published binary. Run from a
+checkout, it installs a local build when one exists and downloads otherwise;
+`--download` always downloads, `--local` always builds.
 
 Or download `wctl` from the [releases page](https://github.com/carlo9890/gnome-window-control/releases)
 and put it on your PATH:
@@ -84,142 +84,40 @@ mv wctl ~/.local/bin/
 sudo mv wctl /usr/local/bin/
 ```
 
-The published binary is x86_64. On another architecture, build it from a
-checkout (needs [mise](https://mise.jdx.dev) for the pinned Rust toolchain):
-```bash
-./install-wctl.sh --local
-```
+The published binary is x86_64 only; on another architecture build it from a
+checkout — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Usage
 
 ### Using wctl (Recommended)
 
 ```bash
-# List all windows
-wctl list
-
-# List windows as JSON
-wctl list --json
-
-# Filter the list by workspace, monitor, or WM class
-wctl list --workspace 1
-wctl list --class kitty --json
-
-# Get focused window
-wctl focused
-
-# Get focused window as JSON
-wctl focused --json
+wctl list                          # every window; --json for the full document
+wctl focused                       # the focused window
+wctl info 12345 --json             # one window's details
 
 # Every command that takes a window accepts a selector instead of an ID:
 #   <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
 # A selector must match exactly one window; otherwise wctl lists the
 # candidates and exits 1.
-wctl info focused
 wctl tile -c kitty left
 wctl close -s "Untitled"
 
-# Activate window by ID
-wctl activate 12345
-
-# Activate by title (exact match)
-wctl activate -t "Firefox"
-
-# Activate by title substring
-wctl activate -s "GitHub"
-
-# Activate by WM class
-wctl activate -c kitty
-
-# Activate by PID
-wctl activate -p 54321
-
-# Get detailed info about a window
-wctl info 12345
-
-# Get window info as JSON
-wctl info 12345 --json
-
-# Move window to position
-wctl move 12345 100 200
-
-# Resize window
-wctl resize 12345 1920 1080
-
-# Move and resize in one call
-wctl move-resize 12345 0 0 960 1080
-
-# Place a window using workarea-relative tokens
+# Place with workarea-relative tokens: X/Y take pixels or left|center|right /
+# top|center|bottom; width/height take pixels or a percentage of the workarea
+# (the monitor minus panels and docks).
 wctl place 12345 center top 50% 100%
 
-# Exact pixel placement still works
-wctl place 12345 1280 32 3840 1408
-
-# Tile to a grid cell (e.g. left half, top-right quadrant)
-wctl tile 12345 left
-wctl tile 12345 top-right
-
-# Center on screen (both axes, or just one)
-wctl center 12345
-wctl center 12345 horizontal
-
-# Focus a window without raising it
-wctl focus 12345
-
-# Window state
-wctl minimize 12345
-wctl maximize 12345
-wctl fullscreen 12345
-wctl above 12345 on      # always-on-top
-wctl sticky 12345 on     # show on all workspaces
-
-# Close window (polite - allows save dialogs)
-wctl close 12345
-
-# Workspaces
-wctl workspaces                     # list (index, name, window count, active)
-wctl workspace 2                    # switch to workspace 2 (closes the overview if open)
-wctl move-to-workspace 12345 2      # move a window to workspace 2
-
-# Monitors
-wctl monitors                       # list (index, geometry, scale, primary)
-wctl move-to-monitor focused 1      # move the focused window to monitor 1
-
-# Usable area of a monitor: its rectangle minus panels and docks. This, not the
-# monitor rectangle `monitors` reports, is what place and tile resolve
-# percentages against. With no index the primary monitor is used.
-wctl workarea                       # primary monitor
-wctl workarea 1 --json              # {"monitor_index":1,"x":...,"width":...}
-
-# Wait for a window to be shown and print its ID (default timeout 10 s, exit 4 on
-# timeout). wait returns only once mutter has mapped and placed the window, so
-# the geometry command that follows sticks instead of being overridden by the
-# initial placement.
+# Wait for a window to be shown, then place it
 kitty &
-id=$(wctl wait -p $! --timeout 5)
-wctl tile "$id" right
+wctl tile "$(wctl wait -p $! --timeout 5)" right
 
-# Help
-wctl --help
+wctl --help                        # every command, global options, and --json/--settled
 ```
 
 `wctl activate` keeps the extension's first-match rule for `-t`/`-s`/`-c`/`-p`
 (useful for run-or-raise scripts). Every other command requires the selector to
 be unambiguous.
-
-#### Global options
-
-```bash
-# Bound how long a call waits for GNOME Shell to reply. The default is 25 s,
-# which is right for a batch script and far too long for a keybinding.
-wctl --timeout 2 place focused center top 50% 100%
-
-# Or set it once for a whole script.
-export WCTL_TIMEOUT=2
-```
-
-`--timeout` must come before the command, and it does not change how long
-`wctl wait` waits for a window -- that is `wait --timeout`.
 
 #### Exit codes
 
@@ -238,62 +136,29 @@ matching the message text:
 Code 1 stays the catch-all it always was, so a script that only tests for a
 non-zero status is unaffected.
 
-#### Reporting the rectangle a placement resolved to
+#### Sizing a window before it exists
 
-`place`, `tile` and `center` take `--json`. It reports the workarea used and
-the rectangle wctl computed, so a script can verify a placement by comparing
-against that instead of reimplementing the percentage arithmetic:
-
-```bash
-wctl place focused center top 50% 100% --json
-# {"window_id":42,"monitor_index":0,
-#  "workarea":{"x":0,"y":27,"width":1920,"height":1053},
-#  "target":{"x":480,"y":27,"width":960,"height":1053},
-#  "placed":true}
-```
-
-A refusal emits the same document with `"placed":false` and a `"message"`, so
-stdout carries JSON on both outcomes; the exit code says why (see below).
-
-`resolve-place` answers the same question without a window and without moving
-anything, which is what sizing a window *before* it exists needs:
+`resolve-place` answers what a placement would be, without a window and without
+moving anything — so a program can be launched at its final size instead of being
+moved after it appears:
 
 ```bash
-# What would that placement be on the primary monitor?
-wctl resolve-place center top 50% 100% --json
-# {"monitor_index":0,
-#  "workarea":{"x":0,"y":27,"width":1920,"height":1053},
-#  "target":{"x":480,"y":27,"width":960,"height":1053}}
-
-# Size a terminal at launch so its first mapped frame is already final.
 read -r w h < <(wctl resolve-place center top 50% 100% --json |
                 jq -r '.target | "\(.width) \(.height)"')
 ```
 
-Both report the rectangle wctl **requested**. Mutter still clamps to size
-hints, and a client that quantises its own size (a terminal, to whole cells)
-settles a few pixels off, so a comparison against it still needs a tolerance.
-
-`move`, `resize` and `move-resize` have no `--json`: they take literal pixels
-and resolve nothing to report.
+`place`, `tile` and `center` take `--json` too, reporting the workarea used and
+the rectangle computed. All of them report the rectangle wctl **requested**;
+mutter still clamps to size hints, and a client that quantises its own size (a
+terminal, to whole cells) settles a few pixels off, so comparing against it needs
+a tolerance.
 
 #### Waiting for the frame to settle
 
-A geometry request is applied asynchronously, and a client may resize itself
-again once it has been placed, so the frame can still be moving when `wctl`
-exits. `--settled` returns only once it has stopped:
-
-```bash
-wctl place focused center top 50% 100% --settled --json
-# ... "target":{...},"placed":true,"settled":true,"observed":{...}}
-```
-
-The shell watches its own `size-changed`/`position-changed` signals to decide
-this, which is the only place it can be decided: `get_frame_rect()` read right
-after a move still returns the old rect, so a client outside the shell can only
-sample and guess. It is still a quiet period rather than a promise — a client
-is free to resize itself again later. The window is placed either way; a frame
-that never settles exits 4 and still reports `"placed":true`.
+A geometry request is applied asynchronously, and a client may resize itself once
+more after being placed, so the frame can still be moving when `wctl` exits.
+`--settled` returns only once it has stopped. The window is placed either way: a
+frame that never settles exits 4 and still reports `"placed":true`.
 
 #### Checking the extension version
 
@@ -307,13 +172,6 @@ wctl version --json
 question: on Wayland an install lands on disk while the shell keeps serving the
 old code until you log out, so `metadata.json` can say 10 while the answer here
 is still 9. A mismatch exits 5.
-
-`wctl place` is a higher-level CLI convenience built on top of the existing
-geometry methods. X and Y accept either absolute pixel coordinates or
-alignment keywords (`left|center|right` and `top|center|bottom`). Width and
-height accept either absolute pixels or percentages such as `50%` and `100%`.
-Percentages are resolved against the monitor workarea, not the raw monitor
-size, so panels and docks are respected.
 
 ### Using gdbus Directly
 
@@ -502,10 +360,11 @@ destination is `org.gnome.Shell` (not a standalone service name).
 
 ### Errors
 
-`Move`, `Resize` and `MoveResize` return nothing and raise instead. A boolean
-could not say *which* failure happened, and a client outside the shell cannot
-work it out for itself: it can read `is_maximized` and `is_fullscreen`, but
-mutter exposes no tiled predicate at all.
+`Move`, `Resize` and `MoveResize` return nothing and raise instead; `WaitForWindow`
+and `WaitForGeometry` raise too. The ERRORS block in
+`window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
+errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
+raises without declaring them there.
 
 | Error name | Meaning |
 |------------|---------|
@@ -513,7 +372,8 @@ mutter exposes no tiled predicate at all.
 | `org.gnome.Shell.Extensions.WindowControl.Refused` | The frame is pinned by fullscreen, maximize or tiling — the message names which |
 | `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
 | `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending |
-| `org.freedesktop.DBus.Error.InvalidArgs` | An argument was not a finite number, or a size was not positive |
+| `org.freedesktop.DBus.Error.InvalidArgs` | An argument was not a finite number, a size was not positive, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
+| `org.freedesktop.DBus.Error.Failed` | The handler raised something unexpected |
 
 **Breaking change in extension version 10.** Before it, those three methods
 returned `b success`. A client written against the old signature cannot parse
@@ -560,12 +420,6 @@ What this means in practice:
 If that trade is not acceptable to you, do not enable the extension. On X11 the
 same capability was available to every application with no gate at all; on
 Wayland it is off until you turn it on, and this is the switch.
-
-## Background
-
-On X11, tools like `wmctrl` and `xdotool` provide window control, but they don't
-work on Wayland due to its security model. This extension bridges that gap by
-exposing window control through GNOME Shell's privileged position.
 
 ## Contributing & internals
 

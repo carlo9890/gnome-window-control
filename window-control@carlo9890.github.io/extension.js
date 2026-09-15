@@ -760,8 +760,9 @@ class WindowControlService {
     // The quiet period is a heuristic and is meant to be. What it removes is
     // the SAMPLING: a client outside the shell can only poll get_frame_rect()
     // and compare, which costs a round trip per sample and still races the
-    // compositor. Here every change is a signal, so the timer only has to
-    // outlast the gap between two of them.
+    // compositor -- get_frame_rect() read right after a move still returns the
+    // OLD rectangle, so the first sample is reliably wrong. Here every change is
+    // a signal, so the timer only has to outlast the gap between two of them.
     WaitForGeometryAsync([windowId, quietMs, timeoutMs], invocation) {
         console.debug(`[Window Control] WaitForGeometry(${windowId}, ${quietMs}, ${timeoutMs}) called`);
         let watcher = null;

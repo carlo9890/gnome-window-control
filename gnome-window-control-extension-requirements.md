@@ -1,5 +1,11 @@
 # GNOME Window Control Extension - Requirements
 
+Original design spec, kept as a record of intent. It is not tracked against the
+code; the authoritative D-Bus surface is
+`window-control@carlo9890.github.io/dbus-interface.js`, and the shipped CLI is
+documented in `README.md`. Sections that described things never built have been
+removed.
+
 ## Overview
 
 A GNOME Shell extension that provides a D-Bus interface for listing and controlling windows on Wayland. This fills a critical gap: on Wayland, there's no standard way to enumerate windows from the command line (unlike X11's `wmctrl`).
@@ -278,15 +284,6 @@ Set or unset sticky (visible on all workspaces).
 
 ---
 
-### Signals (Optional - for future)
-
-#### `WindowOpened(id: t, title: s, wm_class: s)`
-#### `WindowClosed(id: t)`  
-#### `WindowFocused(id: t)`
-#### `WindowTitleChanged(id: t, new_title: s)`
-
----
-
 ## CLI Usage Examples
 
 ### List all windows
@@ -370,9 +367,9 @@ gdbus call --session \
 
 ---
 
-## Helper Script (Optional)
+## Helper Script
 
-A `wctl` CLI wrapper could make this more ergonomic:
+The original sketch of the `wctl` CLI. It shipped as a Rust crate (`cli/`); see `README.md` for what it does today:
 
 ```bash
 # Listing
@@ -407,41 +404,10 @@ wctl list --json | jq '.[] | select(.wm_class == "kitty") | .id' | \
 
 ---
 
-## Extension Structure
-
-```
-window-control@example.com/
-├── metadata.json           # Extension metadata
-├── extension.js            # Main extension code
-├── README.md              
-└── schemas/                # If settings needed (probably not)
-    └── org.gnome.shell.extensions.window-control.gschema.xml
-```
-
-### metadata.json
-```json
-{
-  "uuid": "window-control@example.com",
-  "name": "Window Control",
-  "description": "D-Bus interface for listing and controlling windows",
-  "version": 1,
-  "shell-version": ["45", "46", "47", "48", "49", "50"],
-  "url": "https://github.com/username/gnome-window-control"
-}
-```
-
----
-
 ## Compatibility
 
 ### Target GNOME Versions
 - GNOME 45+ (current LTS and newer)
-- Note: GNOME 48 changes `global.get_window_actors()` to `global.compositor.get_window_actors()` - handle both
-
-### Testing Matrix
-- [ ] GNOME 45 (Ubuntu 24.04 LTS)
-- [ ] GNOME 46 (Fedora 40, current)
-- [ ] GNOME 47 (Fedora 41)
 
 ---
 
@@ -478,15 +444,6 @@ gdbus call ... WindowControl.ActivateByTitle "$WINDOW_TITLE"
 WINDOW_ID=$(gdbus call ... WindowControl.List | parse_for_title "$WINDOW_TITLE")
 gdbus call ... WindowControl.Activate "$WINDOW_ID"
 ```
-
----
-
-## Open Questions
-
-1. **Should we include window icons?** - Could be useful but adds complexity
-2. **Real-time signals?** - Useful for reactive UIs but overkill for CLI use
-3. **Filter parameters in List()?** - e.g., `List(workspace: i)` - or keep it simple?
-4. **Extension name?** - "Window Control", "Window List", "wmctrl for Wayland"?
 
 ---
 
