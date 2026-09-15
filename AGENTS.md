@@ -30,7 +30,12 @@ recipe for adding a D-Bus method end to end.
 
 **MUST load the `instruction-writing:writing-project-docs` skill before creating
 or editing ANY `*.md` file in this repository.** It owns which file holds which
-content and how a doc is written; this repository has no local delta over it.
+content and how a doc is written.
+
+**Local delta:** `docs/specs/` holds normative format specifications, one file
+per format, outside the canonical topic set. A spec states what an
+implementation MUST do and is changed in the same commit as the code and the
+tests that pin it.
 
 ### The rules.json auto-placement format
 

@@ -46,17 +46,17 @@ green.
 
 ## CI — required checks
 
-`.github/workflows/build.yml` runs two jobs, which appear as two checks on the PR:
+`.github/workflows/build.yml` runs two jobs — `extension` and `cli` — which
+appear as two checks on the PR. Read the workflow for the steps; both run on a
+bare `ubuntu-latest` and every gate in them is reproducible locally from the
+minimum-checks table in [TESTING.md](TESTING.md).
 
-- `extension` — `node --check` on every extension `*.js`, then the rules.json
-  grammar check against the shared vectors (`tests/check-rules-format.js`, run by
-  `gjs`), then `./scripts/build.sh all` (validate + package)
-- `cli` — `mise run ci`
+Two things the workflow does not say:
 
-Both must be green when they run. It triggers on pushes to `main` and PRs against
-`main`, and only when a path under `window-control@carlo9890.github.io/`, `cli/`,
-`scripts/`, `tests/`, `install-wctl.sh`, `.mise.toml` or the workflow itself
-changed. No branch protection is configured, so a docs-only PR reports no checks
-and is still mergeable.
+- It triggers only on a path under `window-control@carlo9890.github.io/`, `cli/`,
+  `scripts/`, `tests/`, `install-wctl.sh`, `.mise.toml` or the workflow itself.
+- No branch protection is configured, so a docs-only PR reports **no checks at
+  all** and is still mergeable — a green tick is not evidence a docs PR was
+  tested.
 
 Releases are a separate flow — see [RELEASING.md](RELEASING.md).

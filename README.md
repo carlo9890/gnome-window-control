@@ -157,14 +157,8 @@ a tolerance.
 
 A geometry request is applied asynchronously, and a client may resize itself once
 more after being placed, so the frame can still be moving when `wctl` exits.
-`--settled` returns only once it has stopped.
-
-The shell decides this by watching its own `size-changed`/`position-changed`
-signals, which is the only place it can be decided: `get_frame_rect()` read right
-after a move still returns the old rectangle, so a client outside the shell can
-only sample and guess. It is a quiet period rather than a promise — the window is
-placed either way, and a frame that never settles exits 4 and still reports
-`"placed":true`.
+`--settled` returns only once it has stopped. The window is placed either way: a
+frame that never settles exits 4 and still reports `"placed":true`.
 
 #### Checking the extension version
 

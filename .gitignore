@@ -11,3 +11,6 @@ cli/target/
 
 # Debug output
 output/
+
+# Nested-session logs, one per run (scripts/start-nested.sh)
+nested-*.log

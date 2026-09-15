@@ -25,19 +25,13 @@ These exist because of a real incident, recorded at the end of this file.
    and `JOURNAL_STREAM` from the real session. Mutter's nested backend uses
    `SESSION_MANAGER` to register with the *real* gnome-session as an XSMP
    client at startup (mutter 46 `src/x11/session.c`, called from
-   `meta_context_main_notify_ready`). Start it with those variables removed:
+   `meta_context_main_notify_ready`). Start it with those variables removed and
+   with `--sm-disable`, mutter's own switch for the XSMP client.
 
-   ```bash
-   env -u SESSION_MANAGER -u GNOME_SHELL_SESSION_MODE -u DESKTOP_AUTOSTART_ID \
-       -u XDG_SESSION_ID -u INVOCATION_ID -u MANAGERPID -u JOURNAL_STREAM \
-       GSETTINGS_BACKEND=memory dbus-run-session \
-       gnome-shell --nested --wayland --sm-disable > "nested-$(date +%H%M%S).log" 2>&1 &
-   echo $!   # keep this PID
-   ```
-
-   `--sm-disable` is mutter's own switch for the XSMP client. This hardened
-   form has not yet been exercised here; treat the first run as an experiment
-   the user has agreed to.
+   `scripts/start-nested.sh` does all of that, and rules 2 and 3 with it — use
+   it rather than assembling the command by hand. This hardened form has not yet
+   been exercised here; treat the first run as an experiment the user has agreed
+   to.
 5. **Prefer not to run a shell at all.** Pure logic (geometry, config parsing)
    is checked headlessly with `gjs -m` and `GI_TYPELIB_PATH` pointed at the
    mutter typelib directory; see the `check-rules.js` pattern in
@@ -61,8 +55,8 @@ Reload without logging out via a **nested GNOME Shell session** (runs in a windo
 isolated from your main session; all logs go to the launching terminal):
 
 ```bash
-./scripts/build.sh install                       # copy updated files into the extensions dir
-GSETTINGS_BACKEND=memory ./scripts/start-nested.sh   # launch a nested shell in a window
+./scripts/build.sh install     # copy updated files into the extensions dir
+./scripts/start-nested.sh      # launch a nested shell; prints its PID and log path
 # from a second terminal on the nested session's bus (see "Reach the nested
 # session" below):
 gdbus call --session --dest org.gnome.Shell \
@@ -70,18 +64,19 @@ gdbus call --session --dest org.gnome.Shell \
   window-control@carlo9890.github.io
 ```
 
-`GSETTINGS_BACKEND=memory` is required: a nested session shares your dconf
-database, and `gnome-extensions enable`/`disable` writes
-`org.gnome.shell enabled-extensions` there — your real shell reacts to that write
-and can disable the extension in your live session (observed: a
-`disable`/`enable` cycle inside a nested session left the outer session's
-extension INACTIVE). The memory-backed shell boots with no extensions enabled;
-enable through the shell's D-Bus API as above, never with the `gnome-extensions`
-CLI, which writes to dconf regardless of how the shell was started.
+`start-nested.sh` implements hard rules 2-4: it strips the six inherited session
+variables, passes `--sm-disable`, sets `GSETTINGS_BACKEND=memory`, writes one
+`nested-<timestamp>.log` per run, and prints the PID to `kill`. Starting it still
+needs the user's consent under hard rule 1.
 
-`start-nested.sh` wraps the shell in `dbus-run-session`, so the nested session
-gets its own session bus and its `org.gnome.Shell` does not collide with the
-outer one.
+Enable through the D-Bus call above rather than `gnome-extensions enable`: that
+CLI writes `org.gnome.shell enabled-extensions` to dconf whatever shell asked,
+the real shell reacts to the write, and a `disable`/`enable` cycle in a nested
+session has left the outer session's extension INACTIVE.
+
+The memory-backed shell boots with no extensions enabled, which is why the
+enable step is separate. `dbus-run-session` gives it its own session bus, so its
+`org.gnome.Shell` does not collide with the outer one.
 
 Without a nested session, restart GNOME Shell directly: log out/in on Wayland,
 or `Alt+F2` → `r` → Enter on X11.
@@ -120,7 +115,7 @@ All observed on GNOME 46:
   with the nested settle value from [TESTING.md](TESTING.md).
 
 - **A second monitor can be faked:**
-  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 GSETTINGS_BACKEND=memory ./scripts/start-nested.sh`
+  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 ./scripts/start-nested.sh`
   — the only way to reach `move-to-monitor` across monitors and the
   `workspaces-only-on-primary` refusal in `move-to-workspace`.
 

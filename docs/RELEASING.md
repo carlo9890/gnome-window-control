@@ -145,11 +145,12 @@ Constraints the review enforces, which the code must keep satisfying:
   The script refuses to publish a dynamically linked one. aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
-- `disable()` must undo everything `enable()` did: `unexport()` fails every
-  pending call and drops every handler and timer the async methods armed, and
-  `WindowRules.disable()` cancels its file monitor and per-window handlers. Any
-  new signal or timer is torn down on the same path (see
-  [OVERVIEW.md](OVERVIEW.md) for how the existing ones are held).
+- `disable()` must undo everything `enable()` did. `unexport()` fails every
+  pending call and drops the `window-created` handler, the per-window
+  `notify::wm-class` / `notify::title` / `shown` / `unmanaged` handlers and the
+  per-waiter timeouts that `WaitForWindow` and `WaitForGeometry` arm;
+  `WindowRules.disable()` cancels its file monitor, its debounce timeout and its
+  per-window handlers. Tear down any new signal or timer on the same path.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.

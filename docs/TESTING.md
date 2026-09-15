@@ -12,8 +12,8 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
 
-All three layers were last run green on GNOME Shell 46 and 50. Add the version
-here when you run the live suites on another one.
+The live suites were last run green on GNOME Shell 46 (mutter 46.2). Add a
+version here when you run them on another one.
 
 The shell suites run the release binary at `cli/target/release/wctl`, so build it
 first (`mise run build`). Set `WCTL` to test a different one, for example the
@@ -28,10 +28,9 @@ table are the whole bar.
 
 Two kinds of test live there:
 
-- **Unit tests** next to the code (`cli/src/geometry.rs`, `cli/src/selector.rs`,
-  `cli/src/rules.rs`, `cli/src/table.rs`, `cli/src/main.rs`) cover the geometry
-  math, the tile grid, selector parsing, the list filters, the rules.json grammar
-  and table output. Expected values are **hardcoded**, never recomputed from the
+- **Unit tests** in a `#[cfg(test)]` module next to the code they cover —
+  geometry, selector parsing, the rules.json grammar, table output, the command
+  inventory. Expected values are **hardcoded**, never recomputed from the
   implementation's own formula.
 - **Argument-guard tests** (`cli/tests/cli.rs`) run the real binary with
   `DBUS_SESSION_BUS_ADDRESS` pointed at a socket that does not exist, so any case

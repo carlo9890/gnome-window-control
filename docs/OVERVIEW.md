@@ -23,10 +23,7 @@ cli/                       wctl, the CLI (Rust, zbus)
 ├── src/selector.rs        the <WINDOW> selector and the list filters
 ├── src/geometry.rs        place tokens, tile grid, centring
 ├── src/rules.rs           the rules.json grammar, the Rust half of the pair
-├── src/fail.rs            Fail: failure reporting and exit codes
-├── src/help.rs            usage and help text (frozen contract)
-├── src/model.rs           the Window document type
-├── src/table.rs           aligned table output
+├── src/help.rs            usage and help text (a frozen contract)
 ├── src/commands/          one module per command group
 ├── completions/           hand-written bash and zsh completions (embedded)
 └── tests/cli.rs           argument-guard tests, run against the real binary
@@ -64,17 +61,10 @@ gnome-window-control-extension-requirements.md   original design spec
 - A single `extension.js` runs across GNOME 45-50 via runtime API detection for
   the maximize path (`get_maximized()` vs `get_maximize_flags()`).
 - `WaitForWindow` and `WaitForGeometry` are the **async** handlers (the GJS
-  `...Async(params, invocation)` convention): they keep the
-  `Gio.DBusMethodInvocation` in `_waiters` / `_geometryWatchers` and reply from a
-  signal handler or a `GLib.timeout_add` source. Each display signal is connected
-  only while a call is pending, and a new window is re-evaluated on
-  `notify::wm-class` / `notify::title` — on Wayland those arrive after creation —
-  and on `shown`. A window satisfies a waiter only once it is shown
-  (`_isUnshown`): before mutter maps and places it, any geometry request is
-  overridden by the initial placement, so replying earlier would break the
-  "launch, then place" script. `unexport()` fails every pending call and drops
-  every handler and timer, so `disable()` leaves nothing behind — the teardown
-  contract the EGO review enforces (see RELEASING.md).
+  `...Async(params, invocation)` convention), holding the invocation in
+  `_waiters` / `_geometryWatchers`. A window satisfies a waiter only once it is
+  shown — `_isUnshown` and `_evaluateWindow` in `extension.js` say why, and
+  `disable()` teardown is a release constraint in [RELEASING.md](RELEASING.md).
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
   service: it reads `~/.config/gnome-window-control/rules.json`, watches
   `window-created`, and places a matching window once mutter has shown it. It
@@ -83,17 +73,11 @@ gnome-window-control-extension-requirements.md   original design spec
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   below), so a rule waits for `shown` and then applies from an idle callback; a
   window that maps maximized is unmaximized first.
-- **The rules.json grammar** is `rules-format.js`, and it is the one module in
-  the extension that imports **nothing** — no `gi://`, no shell resource. That
-  is deliberate: plain `gjs` loads it without the mutter typelib, so
-  `tests/check-rules-format.js` runs it on a bare CI runner. It owns the token
-  vocabulary, the tile grid, every validation message, and `matchPredicate`
-  (`class`/`title`/`substr`/`pid`), which `extension.js` imports too — so the
-  D-Bus `ActivateBy*`/`WaitForWindow` family and a rule cannot disagree about
-  which window a value names. `wctl rules` carries a **second implementation**
-  of the same grammar in `cli/src/rules.rs`; both are pinned to
-  `tests/vectors/rules-spec.json`, so neither can drift without the other's test
-  failing. `docs/specs/RULES-JSON.md` is the normative definition.
+- **The rules.json grammar** is `rules-format.js` — the one module that imports
+  **nothing**, so plain `gjs` loads it without the mutter typelib and CI can
+  check it. `cli/src/rules.rs` is a second implementation of the same grammar;
+  both are pinned to `tests/vectors/rules-spec.json`, so neither drifts without
+  the other's test failing. `docs/specs/RULES-JSON.md` is normative.
 - `wctl` addresses windows through one **selector resolver** in two halves:
   `selector::parse_exact` / `parse_min` (pure: the selector and the argument
   count) and `selector::lookup(ctx, &selector)` (the bus: a numeric ID needs no
