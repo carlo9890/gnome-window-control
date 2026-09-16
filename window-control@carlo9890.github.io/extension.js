@@ -15,6 +15,14 @@ import {
     isFullyMaximized, maximizeFlags, maximizeWindow, unmaximizeWindow,
 } from './window-helpers.js';
 
+// Parsed once and kept for the life of the shell, never per enable(). GJS
+// cache_build()s the info it exports and never releases it, and GLib keys that
+// method cache by the info's address without holding a reference. An info
+// parsed per enable() is freed after disable(), and a later one allocated at
+// the same address inherits the stale cache: every call then fails with
+// "No such method" while introspection still lists the method.
+const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML);
+
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 const DBUS_ERROR_NOT_FOUND = 'org.gnome.Shell.Extensions.WindowControl.NotFound';
@@ -93,7 +101,7 @@ const WINDOW_TYPE_NAMES = {
 class WindowControlService {
     constructor(metadata) {
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
-            DBUS_INTERFACE_XML,
+            DBUS_INTERFACE_INFO,
             this
         );
         // Reported by GetVersion. Read from the metadata the SHELL loaded, not
