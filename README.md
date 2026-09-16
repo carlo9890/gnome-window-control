@@ -267,6 +267,11 @@ file with a typo in it is not clobbered. `--dry-run` prints the document it
 would write and changes nothing. Because the first matching rule wins, `add`
 warns when an earlier rule already matches everything the new one would.
 
+Rules need extension version 12 or newer. When the running shell has an older
+one loaded, `add` and `remove` still write the file but warn that no rule will
+be applied until you install the newer extension and restart the shell. With no
+shell running they say nothing.
+
 ### Checking the file
 
 Because one bad value disables every rule, check the file rather than saving it
@@ -308,7 +313,8 @@ Matched rule 0: class=kitty -> tile left
 It names the rule that wins, any later rule the first-match-wins order makes
 dead, the workarea used, and the exact rectangle the action resolves to. This is
 the one `rules` subcommand that needs the extension running, because it resolves
-a live window. It never moves anything.
+a live window. It never moves anything. Against an extension older than
+version 12 it exits 5 instead, because that extension ignores the file.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
