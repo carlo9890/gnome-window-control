@@ -334,6 +334,17 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             let compatible = loaded == crate::EXPECTED_EXTENSION_VERSION;
             document["extension"] = Value::String(loaded);
             document["compatible"] = Value::Bool(compatible);
+            // What the extension supports, which the number cannot say: an
+            // install from extensions.gnome.org reports that site's upload
+            // number. An extension too old to serve the method reports none.
+            document["capabilities"] = Value::Array(
+                ctx.bus
+                    .get_capabilities()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(Value::String)
+                    .collect(),
+            );
             if compatible {
                 println!("{document}");
                 return Ok(());

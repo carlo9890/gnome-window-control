@@ -247,5 +247,6 @@ mise run test
 Both are CI gates — see [../TESTING.md](../TESTING.md).
 
 Rules are read by the extension alone. The format is not part of the D-Bus
-interface and carries no version field; the extension version in
-`metadata.json` covers it.
+interface and carries no version field. An extension that applies rules MUST
+report the `rules` capability from `GetCapabilities`; that name, not the
+version number, is how a caller learns the file is read.

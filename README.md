@@ -165,13 +165,18 @@ frame that never settles exits 4 and still reports `"placed":true`.
 ```bash
 wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.10.0","expects_extension":"10","extension":"10","compatible":true}
+# {"wctl":"0.12.0","expects_extension":"12","extension":"12","compatible":true,"capabilities":["rules"]}
 ```
 
 `--json` asks the **running shell** what it has loaded. That is the useful
 question: on Wayland an install lands on disk while the shell keeps serving the
 old code until you log out, so `metadata.json` can say 10 while the answer here
 is still 9. A mismatch exits 5.
+
+`capabilities` is what the extension says it supports, by name. Ask for a name
+rather than comparing version numbers: an install from extensions.gnome.org
+carries that site's own upload number in `extension`, which no release of this
+project ever had. An empty list means the extension is too old to answer.
 
 ### Using gdbus Directly
 
@@ -267,10 +272,11 @@ file with a typo in it is not clobbered. `--dry-run` prints the document it
 would write and changes nothing. Because the first matching rule wins, `add`
 warns when an earlier rule already matches everything the new one would.
 
-Rules need extension version 12 or newer. When the running shell has an older
-one loaded, `add` and `remove` still write the file but warn that no rule will
-be applied until you install the newer extension and restart the shell. With no
-shell running they say nothing.
+Rules are applied only by an extension that reports the `rules` capability
+(`wctl version --json` lists it). When the running shell has an older one
+loaded, `add` and `remove` still write the file but warn that no rule will be
+applied until you install the newer extension and restart the shell. With no
+shell running, and with `--file`, they say nothing.
 
 ### Checking the file
 
@@ -313,8 +319,9 @@ Matched rule 0: class=kitty -> tile left
 It names the rule that wins, any later rule the first-match-wins order makes
 dead, the workarea used, and the exact rectangle the action resolves to. This is
 the one `rules` subcommand that needs the extension running, because it resolves
-a live window. It never moves anything. Against an extension older than
-version 12 it exits 5 instead, because that extension ignores the file.
+a live window. It never moves anything. Against an extension that does not
+report the `rules` capability it exits 5 instead, because that extension
+ignores the file.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
@@ -349,6 +356,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
 | `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area |
 | `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |
+| `GetCapabilities` | `() -> as` | The feature names this extension supports, e.g. `['rules']` |
 | `Minimize` | `(t) -> b` | Minimize window |
 | `Unminimize` | `(t) -> b` | Restore minimized window |
 | `Maximize` | `(t) -> b` | Maximize window |

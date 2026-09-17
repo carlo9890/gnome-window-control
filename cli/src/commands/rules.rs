@@ -5,9 +5,10 @@
 //! The file is local and so is the grammar (`crate::rules`), and the extension
 //! picks a change up on its own through the file monitor described in
 //! docs/specs/RULES-JSON.md. `check`, `list` and `path` never open the bus.
-//! `add` and `remove` open it only after the file is written, to warn that the
-//! loaded extension is too old to apply rules. `test` opens it to resolve a
-//! live window, and refuses an extension that is too old.
+//! `add` and `remove` open it only after the default file is written, to warn
+//! that the loaded extension does not report the `rules` capability. `test`
+//! opens it to resolve a live window, and refuses an extension without that
+//! capability.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -22,25 +23,34 @@ use crate::geometry::Rect;
 use crate::model::{self, Ctx};
 use crate::rules;
 
-/// The first extension version that reads rules.json.
-const RULES_EXTENSION_VERSION: u32 = 12;
+/// The capability an extension reports when it applies rules.json.
+pub const RULES_CAPABILITY: &str = "rules";
 
-fn extension_too_old_message() -> String {
-    format!(
-        "The extension GNOME Shell has loaded is older than version {RULES_EXTENSION_VERSION}, \
-         the first that applies rules. Check with 'wctl version --json', install the newer \
-         extension, then restart the shell (log out and back in on Wayland)."
-    )
-}
+/// How long the warning check waits for the shell.
+///
+/// The file is already written when it runs, so a shell that does not answer
+/// must cost a moment and no more: `rules add` runs from keybindings, and the
+/// 25 s a real call is entitled to would read as a hang.
+const CAPABILITY_PROBE: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Warn, without failing, that the rules file will not be applied yet.
+const NO_RULES_SUPPORT: &str =
+    "The extension GNOME Shell has loaded does not apply rules. Check with \
+     'wctl version --json', install a newer extension, then restart the shell \
+     (log out and back in on Wayland).";
+
+/// Warn, without failing, that the file will not be applied yet.
 ///
 /// The file is valid either way and takes effect once the extension is updated,
-/// so writing it is not refused. No shell at all is silent: editing rules
+/// so writing it is not refused. Only a shell that answers and does not report
+/// the capability warns: no shell at all is silent, because editing rules
 /// before a session exists is legitimate.
-fn warn_if_extension_too_old(ctx: &Ctx) {
-    if ctx.bus.loaded_version_below(RULES_EXTENSION_VERSION) {
-        eprintln!("Warning: {}", extension_too_old_message());
+fn warn_if_rules_unsupported(ctx: &Ctx) {
+    if ctx
+        .bus
+        .reports_capability(RULES_CAPABILITY, CAPABILITY_PROBE)
+        == Some(false)
+    {
+        eprintln!("Warning: {NO_RULES_SUPPORT}");
     }
 }
 
@@ -499,6 +509,9 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
     let rule = Value::Object(rule);
 
+    // The warning is about the file the extension READS, so `--file` earns
+    // neither the warning nor the bus call it costs.
+    let is_default_file = file.is_none();
     let path = match file {
         Some(path) => path,
         None => default_path()?,
@@ -549,7 +562,9 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     raw.insert(position, rule);
     write_atomically(&path, &raw)?;
     println!("Added rule {position} to {}", path.display());
-    warn_if_extension_too_old(ctx);
+    if is_default_file {
+        warn_if_rules_unsupported(ctx);
+    }
     Ok(())
 }
 
@@ -567,6 +582,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         .parse()
         .map_err(|_| Fail::error("Rule index must be a non-negative number"))?;
 
+    let is_default_file = file.is_none();
     let path = match file {
         Some(path) => path,
         None => default_path()?,
@@ -590,7 +606,9 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
     write_atomically(&path, &raw)?;
     println!("Removed rule {index} from {}", path.display());
-    warn_if_extension_too_old(ctx);
+    if is_default_file {
+        warn_if_rules_unsupported(ctx);
+    }
     Ok(())
 }
 
@@ -621,11 +639,12 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (_, compiled) = load(&path)?;
 
     // A match reported against an extension that ignores the file would
-    // explain a placement that never happens.
-    if ctx.bus.loaded_version_below(RULES_EXTENSION_VERSION) {
-        return Err(
-            Fail::error(extension_too_old_message()).with_code(crate::fail::EXIT_NO_EXTENSION)
-        );
+    // explain a placement that never happens. This command needs the shell
+    // anyway, so a failed call is reported here rather than swallowed and met
+    // again, after a second full timeout, at the window lookup.
+    let capabilities = ctx.bus.get_capabilities()?;
+    if !capabilities.iter().any(|name| name == RULES_CAPABILITY) {
+        return Err(Fail::error(NO_RULES_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
 
     let id = crate::selector::lookup(ctx, &selector)?;
