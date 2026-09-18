@@ -294,7 +294,7 @@ $ wctl rules check
 /home/you/.config/gnome-window-control/rules.json: 3 rules, valid
 
 $ wctl rules check
-Error: rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right
+Error: rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right
 ```
 
 It exits 0 when the shell would load the file and 1 when it would not, and the

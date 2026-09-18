@@ -76,7 +76,9 @@
         { "match": { "class": "a" }, "tile": "right" },
         { "match": { "class": "a" }, "tile": "bottom-left" },
         { "match": { "class": "a" }, "tile": "bottom-center" },
-        { "match": { "class": "a" }, "tile": "bottom-right" }
+        { "match": { "class": "a" }, "tile": "bottom-right" },
+        { "match": { "class": "a" }, "tile": "wide-left" },
+        { "match": { "class": "a" }, "tile": "wide-right" }
       ],
       "valid": true
     },
@@ -133,7 +135,7 @@
         { "match": { "class": "b" }, "tile": "nowhere" }
       ],
       "valid": false,
-      "message": "rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+      "message": "rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     },
     {
       "name": "match is missing",
@@ -277,25 +279,25 @@
       "name": "tile is not a grid position",
       "document": [{ "match": { "class": "a" }, "tile": "middle" }],
       "valid": false,
-      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     },
     {
       "name": "tile is not a string",
       "document": [{ "match": { "class": "a" }, "tile": 1 }],
       "valid": false,
-      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     },
     {
       "name": "an inherited Object.prototype key is not a tile position",
       "document": [{ "match": { "class": "a" }, "tile": "toString" }],
       "valid": false,
-      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     },
     {
       "name": "constructor is not a tile position",
       "document": [{ "match": { "class": "a" }, "tile": "constructor" }],
       "valid": false,
-      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right"
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     },
     {
       "name": "constructor is not a match key",
@@ -450,7 +452,9 @@
           "right": { "x": 1440, "y": 27, "width": 480, "height": 1052 },
           "bottom-left": { "x": 0, "y": 553, "width": 480, "height": 526 },
           "bottom-center": { "x": 480, "y": 553, "width": 960, "height": 526 },
-          "bottom-right": { "x": 1440, "y": 553, "width": 480, "height": 526 }
+          "bottom-right": { "x": 1440, "y": 553, "width": 480, "height": 526 },
+          "wide-left": { "x": 0, "y": 27, "width": 1440, "height": 1052 },
+          "wide-right": { "x": 480, "y": 27, "width": 1440, "height": 1052 }
         }
       },
       {

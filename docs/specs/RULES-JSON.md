@@ -119,6 +119,8 @@ remainder at the right edge rather than stretching the last column.
 | `bottom-left` | 0 | 1 |
 | `bottom-center` | 1–2 | 1 |
 | `bottom-right` | 3 | 1 |
+| `wide-left` | 0–2 | 0–1 |
+| `wide-right` | 1–3 | 0–1 |
 
 `tile right` is the right column (`x = wa.x + cell_w * 3`), which differs from
 `place` with `X: "right"`, an alignment of an independently sized window.

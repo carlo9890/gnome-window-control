@@ -266,10 +266,10 @@ if [[ -z "$tc_wa" ]]; then
 else
     read -r tc_wa_x tc_wa_y tc_wa_w tc_wa_h <<< "$tc_wa"
 
-    # tile: verify each of the 9 grid cells lands where resolve_tile_geometry says.
+    # tile: verify each of the 11 grid spans lands where resolve_tile_geometry says.
     # The same pixels are pinned by hand in the crate's unit tests, so this
     # checks the D-Bus/WM round-trip, not the formula against itself.
-    for pos in top-left top-center top-right left center right bottom-left bottom-center bottom-right; do
+    for pos in top-left top-center top-right left center right bottom-left bottom-center bottom-right wide-left wide-right; do
         info "Testing: tile $pos"
         run_wctl tile "$TEST_WINDOW_ID" "$pos"
         wait_for_change

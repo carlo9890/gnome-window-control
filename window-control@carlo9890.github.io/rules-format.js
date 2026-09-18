@@ -26,6 +26,10 @@ export const TILE_CELLS = {
     'bottom-left': [0, 0, 1, 1],
     'bottom-center': [1, 2, 1, 1],
     'bottom-right': [3, 3, 1, 1],
+    // Three columns of four, full height: the pair a "cycle" keybinding
+    // alternates between, and a rule can name either directly.
+    'wide-left': [0, 2, 0, 1],
+    'wide-right': [1, 3, 0, 1],
 };
 
 export const CENTER_AXES = ['horizontal', 'vertical', 'both'];

@@ -139,7 +139,8 @@ pub fn resolve_place_rect(tokens: [&str; 4], workarea: Rect) -> Result<Rect> {
 pub const TILE_USAGE: &str = "Valid positions:
   top-left, top-center, top-right
   left, center, right
-  bottom-left, bottom-center, bottom-right";
+  bottom-left, bottom-center, bottom-right
+  wide-left, wide-right";
 
 /// A span of the 4x2 tile grid: (start_col, end_col, start_row, end_row).
 pub type TileCells = (i64, i64, i64, i64);
@@ -157,6 +158,9 @@ pub fn tile_cells(position: &str) -> Result<TileCells> {
         "bottom-left" => Ok((0, 0, 1, 1)),
         "bottom-center" => Ok((1, 2, 1, 1)),
         "bottom-right" => Ok((3, 3, 1, 1)),
+        // Three columns of four, full height.
+        "wide-left" => Ok((0, 2, 0, 1)),
+        "wide-right" => Ok((1, 3, 0, 1)),
         _ => Err(Fail::error(format!(
             "Invalid position: {position}\n{TILE_USAGE}"
         ))),
@@ -419,6 +423,26 @@ mod tests {
                 y: 553,
                 width: 480,
                 height: 526
+            }
+        );
+        // Three of four columns, full height: 1440 wide, and wide-right starts
+        // one cell in.
+        assert_eq!(
+            cell("wide-left"),
+            Rect {
+                x: 0,
+                y: 27,
+                width: 1440,
+                height: 1052
+            }
+        );
+        assert_eq!(
+            cell("wide-right"),
+            Rect {
+                x: 480,
+                y: 27,
+                width: 1440,
+                height: 1052
             }
         );
         assert_eq!(

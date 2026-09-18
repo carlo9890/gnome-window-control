@@ -47,7 +47,7 @@ pub const CENTER_AXES: [&str; 3] = ["horizontal", "vertical", "both"];
 
 /// The tile positions, in grid order. `geometry::tile_cells` decides which are
 /// valid; this list only builds the message, which names them in this order.
-pub const TILE_POSITIONS: [&str; 9] = [
+pub const TILE_POSITIONS: [&str; 11] = [
     "top-left",
     "top-center",
     "top-right",
@@ -57,6 +57,8 @@ pub const TILE_POSITIONS: [&str; 9] = [
     "bottom-left",
     "bottom-center",
     "bottom-right",
+    "wide-left",
+    "wide-right",
 ];
 
 /// One `match` predicate: a selector kind and the value it compares against.

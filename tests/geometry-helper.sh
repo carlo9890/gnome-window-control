@@ -47,6 +47,8 @@ resolve_tile_geometry() {
         bottom-left)   start_col=0 end_col=0 start_row=1 end_row=1 ;;
         bottom-center) start_col=1 end_col=2 start_row=1 end_row=1 ;;
         bottom-right)  start_col=3 end_col=3 start_row=1 end_row=1 ;;
+        wide-left)     start_col=0 end_col=2 start_row=0 end_row=1 ;;
+        wide-right)    start_col=1 end_col=3 start_row=0 end_row=1 ;;
         *)
             echo "Error: invalid position: $position" >&2
             return 1

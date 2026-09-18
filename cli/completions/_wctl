@@ -189,7 +189,7 @@ _wctl() {
                 tile)
                     _arguments "${_wctl_selector_opts[@]}" \
                         '1:window:_wctl_window_ids' \
-                        '2:position:(top-left top-center top-right left center right bottom-left bottom-center bottom-right)' \
+                        '2:position:(top-left top-center top-right left center right bottom-left bottom-center bottom-right wide-left wide-right)' \
                         '--json[Output as JSON]' \
                         '--settled[Return only once the frame stops changing]'
                     ;;
