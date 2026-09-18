@@ -93,8 +93,11 @@ then upload the same zip.
 1. Build the zip: `./scripts/build.sh all`. The archive must have
    `metadata.json` at its root, not inside a subdirectory — `build.sh` zips the
    contents of the extension directory (`extension.js`, `dbus-interface.js`,
-   `rules.js`, `rules-format.js`, `window-helpers.js`, `metadata.json`,
-   `README.md`, `LICENSE`), so this holds as long as you use it.
+   `rules.js`, `rules-format.js`, `keybindings.js`, `window-helpers.js`,
+   `schemas/*.gschema.xml`, `metadata.json`, `README.md`, `LICENSE`), so this
+   holds as long as you use it. `gschemas.compiled` is excluded on purpose:
+   the review rejects a shipped compiled schema (`EGO-P-006`), because
+   extensions.gnome.org and `gnome-extensions install` compile the XML.
 2. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
    <https://extensions.gnome.org/upload/>.
 3. Wait for the review. A human reviewer reads every line of the extension, and
@@ -150,7 +153,9 @@ Constraints the review enforces, which the code must keep satisfying:
   `notify::wm-class` / `notify::title` / `shown` / `unmanaged` handlers and the
   per-waiter timeouts that `WaitForWindow` and `WaitForGeometry` arm;
   `WindowRules.disable()` cancels its file monitor, its debounce timeout and its
-  per-window handlers. Tear down any new signal or timer on the same path.
+  per-window handlers; `WindowKeybindings.disable()` removes every keybinding
+  it added and cancels a pending unmaximize-then-place. Tear down any new
+  signal or timer on the same path.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.

@@ -16,9 +16,11 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
    cd gnome-window-control
    ```
 
-2. Install the extension by copying it into the extensions directory:
+2. Install the extension. The script copies it into the extensions directory
+   and compiles the settings schema, which the keyboard shortcuts are read
+   from; a plain copy has no compiled schema and fails to enable:
    ```bash
-   cp -r window-control@carlo9890.github.io ~/.local/share/gnome-shell/extensions/
+   ./scripts/build.sh install
    ```
 
 3. Restart GNOME Shell:

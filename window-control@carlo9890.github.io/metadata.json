@@ -10,6 +10,7 @@
     "49",
     "50"
   ],
+  "settings-schema": "org.gnome.shell.extensions.window-control",
   "url": "https://github.com/carlo9890/gnome-window-control",
   "version": 12,
   "version-name": "12"

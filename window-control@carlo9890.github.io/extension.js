@@ -11,6 +11,7 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import { WindowRules } from './rules.js';
+import { WindowKeybindings } from './keybindings.js';
 import {
     isFullyMaximized, maximizeFlags, maximizeWindow, unmaximizeWindow,
 } from './window-helpers.js';
@@ -25,8 +26,9 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 
 // Reported by GetCapabilities. A name here is a promise a caller may rely on,
 // so it is added in the same commit as the feature and never removed while the
-// feature is served. 'rules' means rules.json is read and applied.
-const CAPABILITIES = ['rules'];
+// feature is served. 'rules' means rules.json is read and applied;
+// 'keybindings' means the tile shortcuts in the settings schema are served.
+const CAPABILITIES = ['rules', 'keybindings'];
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
@@ -1133,6 +1135,8 @@ export default class WindowControlExtension extends Extension {
             console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
             this._rules = new WindowRules();
             this._rules.enable();
+            this._keybindings = new WindowKeybindings();
+            this._keybindings.enable(this);
         } catch (e) {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
             throw e;
@@ -1144,6 +1148,10 @@ export default class WindowControlExtension extends Extension {
     disable() {
         console.log(`[${this.metadata.name}] Disabling extension...`);
 
+        if (this._keybindings) {
+            this._keybindings.disable();
+            this._keybindings = null;
+        }
         if (this._rules) {
             this._rules.disable();
             this._rules = null;

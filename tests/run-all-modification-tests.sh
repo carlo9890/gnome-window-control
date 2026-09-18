@@ -30,6 +30,7 @@ fi
 # Explicit list of modification suites (files, relative to this dir).
 MODIFICATION_TESTS=(
     test-modifications.sh
+    test-keybindings.sh
 )
 
 echo -e "${BOLD}========================================"

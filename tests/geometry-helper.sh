@@ -2,12 +2,12 @@
 #
 # geometry-helper.sh - Expected geometry for the live suites.
 #
-# These two functions are an independent oracle for the live suites, not a copy
-# of production code: they compute what the workarea reply means and where a
-# grid cell should land, so test-modifications.sh can assert that a real window
-# arrived there. The same expectations are pinned to hardcoded pixels in the
-# crate's unit tests (cli/src/geometry.rs), so the two cannot drift silently --
-# if the binary's formula changes, those tests fail first.
+# The parser and the grid resolver are an independent oracle for the live
+# suites, not a copy of production code: they compute what the workarea reply
+# means and where a grid cell should land, so a suite can assert that a real
+# window arrived there. The same expectations are pinned to hardcoded pixels in
+# the crate's unit tests (cli/src/geometry.rs), so the two cannot drift
+# silently -- if the binary's formula changes, those tests fail first.
 #
 # Usage: source this file after test-helper.sh.
 
@@ -47,6 +47,8 @@ resolve_tile_geometry() {
         bottom-left)   start_col=0 end_col=0 start_row=1 end_row=1 ;;
         bottom-center) start_col=1 end_col=2 start_row=1 end_row=1 ;;
         bottom-right)  start_col=3 end_col=3 start_row=1 end_row=1 ;;
+        wide-left)     start_col=0 end_col=2 start_row=0 end_row=1 ;;
+        wide-right)    start_col=1 end_col=3 start_row=0 end_row=1 ;;
         *)
             echo "Error: invalid position: $position" >&2
             return 1
@@ -58,4 +60,20 @@ resolve_tile_geometry() {
     local width=$((cell_w * (end_col - start_col + 1)))
     local height=$((cell_h * (end_row - start_row + 1)))
     echo "$x $y $width $height"
+}
+
+# Assert that a window's frame is the given tile position, within
+# GEOM_TOLERANCE. The frame is read once for all four edges, so a frame still
+# settling cannot be sampled half old and half new.
+# Usage: assert_tile_frame <WINDOW_ID> <POSITION> <WA_X> <WA_Y> <WA_W> <WA_H> <LABEL>
+assert_tile_frame() {
+    local id="$1" position="$2" label="$7"
+    local exp_x exp_y exp_w exp_h x y width height
+    read -r exp_x exp_y exp_w exp_h <<< "$(resolve_tile_geometry "$position" "$3" "$4" "$5" "$6")"
+    read -r x y width height <<< "$("$WCTL" info "$id" --json 2>/dev/null \
+        | jq -r '"\(.frame_rect.x) \(.frame_rect.y) \(.frame_rect.width) \(.frame_rect.height)"')"
+    assert_within "$x" "$exp_x" "$GEOM_TOLERANCE" "$label: x (expected $exp_x)"
+    assert_within "$y" "$exp_y" "$GEOM_TOLERANCE" "$label: y (expected $exp_y)"
+    assert_within "$width" "$exp_w" "$GEOM_TOLERANCE" "$label: width (expected $exp_w)"
+    assert_within "$height" "$exp_h" "$GEOM_TOLERANCE" "$label: height (expected $exp_h)"
 }

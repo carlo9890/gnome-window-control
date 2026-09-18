@@ -58,6 +58,7 @@ fi
 for test_script in "$SCRIPT_DIR"/test-*.sh; do
     [[ "$(basename "$test_script")" == "test-helper.sh" ]] && continue
     [[ "$(basename "$test_script")" == "test-modifications.sh" ]] && continue
+    [[ "$(basename "$test_script")" == "test-keybindings.sh" ]] && continue
     [[ ! -x "$test_script" ]] && continue
     
     ((SCRIPTS_RUN++))

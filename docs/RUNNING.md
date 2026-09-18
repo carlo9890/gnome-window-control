@@ -123,6 +123,35 @@ All observed on GNOME 46:
   workspace lets GNOME remove it, so the index you switched to can change a
   moment later. This is normal desktop behaviour, not an extension bug.
 
+## Headless session: no window on the real screen
+
+```bash
+./scripts/start-headless.sh 1920x1080    # prints PID, log, WAYLAND_DISPLAY, bus address
+```
+
+`gnome-shell --headless` with a virtual monitor. It runs the same isolation as
+`start-nested.sh` and two more steps: `XDG_DATA_HOME` and `XDG_CONFIG_HOME`
+point at a scratch directory, so the shell loads the extension from a copy of
+**this checkout** (with the schema compiled) and never reads the installed
+copy or the user's `rules.json`. Nothing appears on the real screen. Starting
+it needs consent under hard rule 1 like any other shell.
+
+The script prints the variables a second terminal needs. Export the bus
+address and `WAYLAND_DISPLAY` from its output, then enable the extension over
+D-Bus and close the overview as for a nested session. Clients (`kitty`) connect
+to the printed display; run the suites with `WCTL_TEST_SETTLE=1.5`. The
+read-only query suites need at least one window open, so spawn one first.
+
+Keys are injected with `tests/inject-keys.js` (mutter's RemoteDesktop API on
+that bus): `gjs -m tests/inject-keys.js Super_L Shift_L KP_Home` presses the
+chord on the focused window. `wtype` and `ydotool` do not work here: mutter has
+no virtual-keyboard protocol, and the headless backend sees no evdev device.
+
+Verified once on GNOME Shell 46: the shell started, the suites ran, and the
+real session was untouched. Stop it with `kill <HEADLESS_SHELL_PID>`, the
+shell's own PID as printed: killing the `dbus-run-session` runner leaves the
+shell alive.
+
 ## Check extension status
 
 ```bash

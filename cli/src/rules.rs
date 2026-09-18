@@ -45,20 +45,6 @@ pub const MATCH_KEYS: [(&str, &str); 3] = [
 
 pub const CENTER_AXES: [&str; 3] = ["horizontal", "vertical", "both"];
 
-/// The tile positions, in grid order. `geometry::tile_cells` decides which are
-/// valid; this list only builds the message, which names them in this order.
-pub const TILE_POSITIONS: [&str; 9] = [
-    "top-left",
-    "top-center",
-    "top-right",
-    "left",
-    "center",
-    "right",
-    "bottom-left",
-    "bottom-center",
-    "bottom-right",
-];
-
 /// One `match` predicate: a selector kind and the value it compares against.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Match {
@@ -279,7 +265,12 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
         let position = tile
             .as_str()
             .filter(|position| geometry::tile_cells(position).is_ok())
-            .ok_or_else(|| format!("{label}.tile: must be one of {}", TILE_POSITIONS.join(", ")))?;
+            .ok_or_else(|| {
+                format!(
+                    "{label}.tile: must be one of {}",
+                    geometry::TILE_POSITIONS.join(", ")
+                )
+            })?;
         Some(Action::Tile(position.to_string()))
     } else if let Some(center) = rule.get("center") {
         let axis = center

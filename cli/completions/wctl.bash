@@ -90,7 +90,7 @@ _wctl() {
             if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
-                COMPREPLY=($(compgen -W "top-left top-center top-right left center right bottom-left bottom-center bottom-right" -- "$cur"))
+                COMPREPLY=($(compgen -W "top-left top-center top-right left center right bottom-left bottom-center bottom-right wide-left wide-right" -- "$cur"))
             else
                 COMPREPLY=($(compgen -W "--json --settled" -- "$cur"))
             fi

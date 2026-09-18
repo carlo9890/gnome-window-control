@@ -21,7 +21,9 @@ const ROOT = GLib.path_get_dirname(GLib.path_get_dirname(
     GLib.canonicalize_filename(import.meta.url.replace('file://', ''), null)));
 
 const format = await import(`file://${ROOT}/window-control@carlo9890.github.io/rules-format.js`);
-const { compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, TILE_CELLS } = format;
+const {
+    compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, nextWidePosition, TILE_CELLS,
+} = format;
 
 const [, bytes] = GLib.file_get_contents(`${ROOT}/tests/vectors/rules-spec.json`);
 const VECTORS = JSON.parse(new TextDecoder().decode(bytes));
@@ -124,6 +126,33 @@ const pinned = Object.keys(VECTORS.geometry.tile[0].cells);
 for (const position of Object.keys(TILE_CELLS)) {
     check(`tile: ${position} has a pinned rectangle`, pinned.includes(position),
         'add it to the first tile group in tests/vectors/rules-spec.json');
+}
+
+// -- the cycle-wide shortcut -----------------------------------------------
+//
+// The decision is the extension's alone, wctl has no counterpart to pin, so
+// there is no vector for it. The frames are the first tile group's pinned
+// rectangles, not tileRect(), so the decision is tested against the vectors
+// rather than against the function it calls. Half a cell of slack there is
+// 240 px wide and 263 px high.
+
+{
+    const { workarea, cells } = VECTORS.geometry.tile[0];
+    const wideRight = cells['wide-right'];
+    const cases = [
+        ['a window elsewhere goes wide-right', cells['top-left'], 'wide-right'],
+        ['a wide-right window goes wide-left', wideRight, 'wide-left'],
+        ['a wide-left window goes wide-right again', cells['wide-left'], 'wide-right'],
+        ['a frame snapped to a character cell is still wide-right',
+            { ...wideRight, width: wideRight.width - 7, height: wideRight.height - 13 }, 'wide-left'],
+        ['half a cell off is still wide-right', { ...wideRight, x: wideRight.x + 240 }, 'wide-left'],
+        ['more than half a cell off is elsewhere', { ...wideRight, x: wideRight.x + 241 }, 'wide-right'],
+        ['the center columns are not wide-right', cells['center'], 'wide-right'],
+    ];
+    for (const [name, frame, expected] of cases) {
+        const actual = nextWidePosition(frame, workarea);
+        check(`cycle-wide: ${name}`, actual === expected, `expected ${expected}, got ${actual}`);
+    }
 }
 
 // -- geometry: center ------------------------------------------------------

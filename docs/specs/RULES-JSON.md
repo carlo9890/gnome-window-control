@@ -119,6 +119,8 @@ remainder at the right edge rather than stretching the last column.
 | `bottom-left` | 0 | 1 |
 | `bottom-center` | 1–2 | 1 |
 | `bottom-right` | 3 | 1 |
+| `wide-left` | 0–2 | 0–1 |
+| `wide-right` | 1–3 | 0–1 |
 
 `tile right` is the right column (`x = wa.x + cell_w * 3`), which differs from
 `place` with `X: "right"`, an alignment of an independently sized window.
@@ -222,13 +224,13 @@ absent or empty file costs nothing per window.
 
 ## Timing constants
 
-Defined at the top of `rules.js`; change them there, not here.
+Defined at the top of the file named; change them there, not here.
 
-| Constant | Value | Guards |
-|---|---|---|
-| `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title |
-| `RELOAD_DEBOUNCE_MS` | 100 | one reload per save |
-| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change |
+| Constant | Value | Guards | File |
+|---|---|---|---|
+| `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title | `rules.js` |
+| `RELOAD_DEBOUNCE_MS` | 100 | one reload per save | `rules.js` |
+| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`afterUnmaximize`, shared with the keyboard shortcuts) |
 
 ## Extending the format
 

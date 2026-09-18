@@ -11,9 +11,22 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 | Rules grammar (CI gate) | `tests/check-rules-format.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
+| Keyboard shortcuts (state-changing, in the modification runner) | `tests/test-keybindings.sh` | Yes, plus injected keys | `./tests/test-keybindings.sh` in a headless shell (see below) |
 
 The live suites were last run green on GNOME Shell 46 (mutter 46.2). Add a
 version here when you run them on another one.
+
+## The keyboard-shortcut suite
+
+`tests/test-keybindings.sh` presses every shortcut and asserts the frame that
+lands, through the same oracle as the modification suite. It cannot press keys
+on the real desktop: it injects them with `tests/inject-keys.js` over mutter's
+`org.gnome.Mutter.RemoteDesktop` API, which needs a shell that has no real
+keyboard in front of it. Run it against a headless shell started with
+`scripts/start-headless.sh` (see [RUNNING.md](RUNNING.md)); on the real
+session it would press the keys into the shell that started it. It skips when
+the loaded extension does not report the `keybindings` capability, and it
+expects the schema defaults, so reset a rebound key first.
 
 The shell suites run the release binary at `cli/target/release/wctl`, so build it
 first (`mise run build`). Set `WCTL` to test a different one, for example the
@@ -109,11 +122,14 @@ Assertions record a failure and return 0 (`tests/test-helper.sh`) — read the
 suite summary, never an assertion's exit status.
 
 `tests/test-helper.sh` holds the shared assertions (`assert_equals`,
-`assert_within`, `assert_contains`, ...). Reuse them rather than re-implementing
-pass/fail logic in a suite. `tests/geometry-helper.sh` holds the expected
-workarea parsing and tile geometry for the modification suite: it is an
-independent oracle, and the same pixels are pinned by hand in the crate's unit
-tests, so the two cannot drift silently.
+`assert_within`, `assert_contains`, ...) and the test-window scaffolding the
+state-changing suites share (`spawn_test_window`, `cleanup_test_window`,
+`wait_for_change`, `get_window_field`). Reuse them rather than re-implementing
+pass/fail logic or a window spawn in a suite. `tests/geometry-helper.sh` holds
+the expected workarea parsing and tile geometry, plus `assert_tile_frame`, which
+reads a window's frame once and asserts all four edges: it is an independent
+oracle, and the same pixels are pinned by hand in the crate's unit tests, so the
+two cannot drift silently.
 
 ## Adding a suite
 
