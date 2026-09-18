@@ -11,10 +11,11 @@
 //     DBUS_SESSION_BUS_ADDRESS=... gjs -m tests/inject-keys.js Super_L Shift_L KP_Home
 //
 // Every keysym named is pressed in order and released in reverse order, so
-// modifiers go first. Names are the xkb keysym names; the table below holds
-// the ones the tile shortcuts use. Mutter accepts a session's calls only from
-// the bus name that created it, so the whole sequence runs on this one
-// connection.
+// modifiers go first. Names are the xkb keysym names; the table holds the
+// modifiers the shortcuts use and each numpad key under both of its names, so
+// the README's claim that a shortcut fires with Num Lock on or off can be
+// pressed by hand. Mutter accepts a session's calls only from the bus name
+// that created it, so the whole sequence runs on this one connection.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -22,8 +23,6 @@ import GLib from 'gi://GLib';
 const KEYSYMS = {
     Super_L: 0xffeb,
     Shift_L: 0xffe1,
-    Control_L: 0xffe3,
-    Alt_L: 0xffe9,
     KP_Home: 0xff95, KP_7: 0xffb7,
     KP_Up: 0xff97, KP_8: 0xffb8,
     KP_Page_Up: 0xff9a, KP_9: 0xffb9,
@@ -42,17 +41,14 @@ if (names.length === 0) {
     imports.system.exit(2);
 }
 const keysyms = names.map(name => {
-    if (!(name in KEYSYMS)) {
+    if (!Object.hasOwn(KEYSYMS, name)) {
         printerr(`Unknown keysym: ${name}`);
         imports.system.exit(2);
     }
     return KEYSYMS[name];
 });
 
-const bus = Gio.DBusConnection.new_for_address_sync(
-    GLib.getenv('DBUS_SESSION_BUS_ADDRESS'),
-    Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-    null, null);
+const bus = Gio.DBus.session;
 
 function call(path, iface, method, args) {
     const reply = bus.call_sync('org.gnome.Mutter.RemoteDesktop', path, iface, method,

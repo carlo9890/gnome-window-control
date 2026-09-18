@@ -15,6 +15,8 @@
 # makes the REAL shell react. Enable through the shell's D-Bus API instead.
 #
 # See the hard rules at the top of docs/RUNNING.md, which this script implements.
+# scripts/start-headless.sh starts a headless shell with the same env line;
+# change the two together.
 
 set -e
 

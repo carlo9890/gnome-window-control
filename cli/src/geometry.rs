@@ -142,6 +142,23 @@ pub const TILE_USAGE: &str = "Valid positions:
   bottom-left, bottom-center, bottom-right
   wide-left, wide-right";
 
+/// The tile positions, in grid order: the names `TILE_USAGE` lists and
+/// `tile_cells` accepts, pinned to both by a unit test. `wctl rules check`
+/// names them in this order in its message.
+pub const TILE_POSITIONS: [&str; 11] = [
+    "top-left",
+    "top-center",
+    "top-right",
+    "left",
+    "center",
+    "right",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right",
+    "wide-left",
+    "wide-right",
+];
+
 /// A span of the 4x2 tile grid: (start_col, end_col, start_row, end_row).
 pub type TileCells = (i64, i64, i64, i64);
 
@@ -536,18 +553,20 @@ mod tests {
     }
 
     #[test]
-    fn every_position_the_usage_text_names_resolves() {
+    fn the_usage_text_names_exactly_the_tile_positions_and_all_resolve() {
+        let named: Vec<&str> = TILE_USAGE
+            .lines()
+            .skip(1)
+            .flat_map(|line| line.split(',').map(str::trim))
+            .collect();
+        assert_eq!(named, TILE_POSITIONS);
         let wa = Rect {
             x: 0,
             y: 27,
             width: 1920,
             height: 1053,
         };
-        for position in TILE_USAGE
-            .lines()
-            .skip(1)
-            .flat_map(|line| line.split(',').map(str::trim))
-        {
+        for position in TILE_POSITIONS {
             assert!(resolve_tile_geometry(position, wa).is_ok(), "{position}");
         }
     }

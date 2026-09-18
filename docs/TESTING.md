@@ -122,11 +122,14 @@ Assertions record a failure and return 0 (`tests/test-helper.sh`) — read the
 suite summary, never an assertion's exit status.
 
 `tests/test-helper.sh` holds the shared assertions (`assert_equals`,
-`assert_within`, `assert_contains`, ...). Reuse them rather than re-implementing
-pass/fail logic in a suite. `tests/geometry-helper.sh` holds the expected
-workarea parsing and tile geometry for the modification suite: it is an
-independent oracle, and the same pixels are pinned by hand in the crate's unit
-tests, so the two cannot drift silently.
+`assert_within`, `assert_contains`, ...) and the test-window scaffolding the
+state-changing suites share (`spawn_test_window`, `cleanup_test_window`,
+`wait_for_change`, `get_window_field`). Reuse them rather than re-implementing
+pass/fail logic or a window spawn in a suite. `tests/geometry-helper.sh` holds
+the expected workarea parsing and tile geometry, plus `assert_tile_frame`, which
+reads a window's frame once and asserts all four edges: it is an independent
+oracle, and the same pixels are pinned by hand in the crate's unit tests, so the
+two cannot drift silently.
 
 ## Adding a suite
 

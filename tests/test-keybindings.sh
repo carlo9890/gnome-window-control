@@ -15,28 +15,8 @@ source "$(dirname "$0")/test-helper.sh"
 source "$(dirname "$0")/geometry-helper.sh"
 
 TEST_WINDOW_TITLE="auto-test:keybindings"
-TEST_WINDOW_PID=""
-TEST_WINDOW_ID=""
-GEOM_TOLERANCE=10
 INJECT="$(dirname "$0")/inject-keys.js"
-
-cleanup_test_window() {
-    if [[ -n "$TEST_WINDOW_ID" ]]; then
-        "$WCTL" close "$TEST_WINDOW_ID" 2>/dev/null || true
-    fi
-    if [[ -n "$TEST_WINDOW_PID" ]]; then
-        kill "$TEST_WINDOW_PID" 2>/dev/null || true
-    fi
-}
 trap cleanup_test_window EXIT
-
-wait_for_change() {
-    sleep "${WCTL_TEST_SETTLE:-0.5}"
-}
-
-frame() {
-    "$WCTL" info "$TEST_WINDOW_ID" --json 2>/dev/null | jq -r ".frame_rect.$1"
-}
 
 # Press Super+Shift plus the named key on the focused window.
 press() {
@@ -45,12 +25,7 @@ press() {
 }
 
 assert_tiled() {
-    local position="$1" label="$2"
-    read -r exp_x exp_y exp_w exp_h <<< "$(resolve_tile_geometry "$position" "$wa_x" "$wa_y" "$wa_w" "$wa_h")"
-    assert_within "$(frame x)" "$exp_x" "$GEOM_TOLERANCE" "$label: x"
-    assert_within "$(frame y)" "$exp_y" "$GEOM_TOLERANCE" "$label: y"
-    assert_within "$(frame width)" "$exp_w" "$GEOM_TOLERANCE" "$label: width"
-    assert_within "$(frame height)" "$exp_h" "$GEOM_TOLERANCE" "$label: height"
+    assert_tile_frame "$TEST_WINDOW_ID" "$1" "$wa_x" "$wa_y" "$wa_w" "$wa_h" "$2"
 }
 
 echo "========================================"
@@ -64,21 +39,26 @@ if ! "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("keybindi
     exit 0
 fi
 
-info "Spawning test window: $TEST_WINDOW_TITLE"
-kitty --title "$TEST_WINDOW_TITLE" &
-TEST_WINDOW_PID=$!
-TEST_WINDOW_ID=$("$WCTL" wait -p "$TEST_WINDOW_PID" --timeout 10 2>/dev/null || echo "")
-if [[ -z "$TEST_WINDOW_ID" ]]; then
-    echo -e "${RED}ERROR${RESET}: Failed to find test window after 10 seconds"
-    exit 1
-fi
-"$WCTL" unmaximize "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
+spawn_test_window "$TEST_WINDOW_TITLE"
 "$WCTL" activate "$TEST_WINDOW_ID" >/dev/null
 wait_for_change
-assert_equals "$("$WCTL" focused --json 2>/dev/null | jq -r .id)" "$TEST_WINDOW_ID" "the test window has focus"
 
-monitor=$("$WCTL" info "$TEST_WINDOW_ID" --json | jq -r .monitor_index)
-read -r wa_x wa_y wa_w wa_h <<< "$("$WCTL" workarea "$monitor" --json | jq -r '"\(.x) \(.y) \(.width) \(.height)"')"
+# Every press below goes to the focused window, so this is an abort and not a
+# recorded failure: with another window focused, the chords would rearrange it.
+focused=$("$WCTL" focused --json 2>/dev/null | jq -r .id)
+if [[ "$focused" != "$TEST_WINDOW_ID" ]]; then
+    echo -e "${RED}ERROR${RESET}: the test window did not take focus (focused: '$focused')"
+    exit 1
+fi
+
+monitor=$(get_window_field .monitor_index)
+wa=$("$WCTL" workarea "$monitor" --json 2>/dev/null \
+    | jq -r '"\(.x) \(.y) \(.width) \(.height)"' || true)
+if [[ -z "$wa" ]]; then
+    echo -e "${RED}ERROR${RESET}: cannot read the workarea of monitor '$monitor'"
+    exit 1
+fi
+read -r wa_x wa_y wa_w wa_h <<< "$wa"
 info "Workarea: $wa_x,$wa_y ${wa_w}x${wa_h}"
 
 echo ""
@@ -109,10 +89,10 @@ echo ""
 echo "--- A maximized window is restored first ---"
 "$WCTL" maximize "$TEST_WINDOW_ID" >/dev/null
 wait_for_change
-assert_equals "$("$WCTL" info "$TEST_WINDOW_ID" --json | jq -r .is_maximized)" "true" "window is maximized before the press"
+assert_equals "$(get_window_field .is_maximized)" "true" "window is maximized before the press"
 press KP_Left
-wait_for_change
-assert_equals "$("$WCTL" info "$TEST_WINDOW_ID" --json | jq -r .is_maximized)" "false" "the press unmaximized it"
+wait_for_change  # two client acks: the restore, then the placement
+assert_equals "$(get_window_field .is_maximized)" "false" "the press unmaximized it"
 assert_tiled left "KP_Left on a maximized window"
 
 echo ""
@@ -120,7 +100,7 @@ echo "--- A fullscreen window is left alone ---"
 "$WCTL" fullscreen "$TEST_WINDOW_ID" >/dev/null
 wait_for_change
 press KP_Home
-assert_equals "$("$WCTL" info "$TEST_WINDOW_ID" --json | jq -r .is_fullscreen)" "true" "still fullscreen after the press"
+assert_equals "$(get_window_field .is_fullscreen)" "true" "still fullscreen after the press"
 "$WCTL" unfullscreen "$TEST_WINDOW_ID" >/dev/null
 wait_for_change
 

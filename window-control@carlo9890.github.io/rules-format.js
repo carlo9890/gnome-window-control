@@ -38,10 +38,19 @@ export const CENTER_AXES = ['horizontal', 'vertical', 'both'];
 // unless the frame already IS wide-right, then wide-left. Decided from the
 // frame rather than remembered per window, so a window moved elsewhere in
 // between starts the cycle over, and nothing has to be forgotten on close.
+//
+// "Is wide-right" allows half a cell of slack on every edge: a client that
+// snaps to size increments (a terminal's character cell) never lands on the
+// exact pixels, and every other grid span differs from wide-right by a full
+// cell on some edge, so the slack cannot mistake one for it.
 export function nextWidePosition(frame, workarea) {
     const wideRight = tileRect('wide-right', workarea);
-    const isWideRight = frame.x === wideRight.x && frame.y === wideRight.y &&
-        frame.width === wideRight.width && frame.height === wideRight.height;
+    const slackW = Math.trunc(workarea.width / 8);
+    const slackH = Math.trunc(workarea.height / 4);
+    const isWideRight = Math.abs(frame.x - wideRight.x) <= slackW &&
+        Math.abs(frame.width - wideRight.width) <= slackW &&
+        Math.abs(frame.y - wideRight.y) <= slackH &&
+        Math.abs(frame.height - wideRight.height) <= slackH;
     return isWideRight ? 'wide-left' : 'wide-right';
 }
 

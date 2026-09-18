@@ -130,17 +130,24 @@ for (const position of Object.keys(TILE_CELLS)) {
 
 // -- the cycle-wide shortcut -----------------------------------------------
 //
-// Not from the vectors: the decision is the extension's alone, wctl has no
-// counterpart to pin. Hardcoded against the first tile group's workarea.
+// The decision is the extension's alone, wctl has no counterpart to pin, so
+// there is no vector for it. The frames are the first tile group's pinned
+// rectangles, not tileRect(), so the decision is tested against the vectors
+// rather than against the function it calls. Half a cell of slack there is
+// 240 px wide and 263 px high.
 
 {
-    const workarea = VECTORS.geometry.tile[0].workarea;
-    const wideRight = tileRect('wide-right', workarea);
+    const { workarea, cells } = VECTORS.geometry.tile[0];
+    const wideRight = cells['wide-right'];
     const cases = [
-        ['a window elsewhere goes wide-right', tileRect('top-left', workarea), 'wide-right'],
+        ['a window elsewhere goes wide-right', cells['top-left'], 'wide-right'],
         ['a wide-right window goes wide-left', wideRight, 'wide-left'],
-        ['a wide-left window goes wide-right again', tileRect('wide-left', workarea), 'wide-right'],
-        ['one pixel off wide-right is elsewhere', { ...wideRight, x: wideRight.x + 1 }, 'wide-right'],
+        ['a wide-left window goes wide-right again', cells['wide-left'], 'wide-right'],
+        ['a frame snapped to a character cell is still wide-right',
+            { ...wideRight, width: wideRight.width - 7, height: wideRight.height - 13 }, 'wide-left'],
+        ['half a cell off is still wide-right', { ...wideRight, x: wideRight.x + 240 }, 'wide-left'],
+        ['more than half a cell off is elsewhere', { ...wideRight, x: wideRight.x + 241 }, 'wide-right'],
+        ['the center columns are not wide-right', cells['center'], 'wide-right'],
     ];
     for (const [name, frame, expected] of cases) {
         const actual = nextWidePosition(frame, workarea);

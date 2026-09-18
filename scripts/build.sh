@@ -40,6 +40,15 @@ log_error() {
     echo -e "${RED}[ERROR]${RESET} $1"
 }
 
+# The settings schema is load-bearing for enable(), so a missing compiler is a
+# hard failure with its own message, not a schema error.
+require_glib_compile_schemas() {
+    if ! command -v glib-compile-schemas >/dev/null 2>&1; then
+        log_error "glib-compile-schemas not found (Debian/Ubuntu: libglib2.0-bin; Fedora/Arch: glib2)"
+        exit 1
+    fi
+}
+
 # Clean previous build
 clean() {
     log_info "Cleaning previous build..."
@@ -116,6 +125,7 @@ validate() {
     # would otherwise tolerate into errors, which is how gnome-extensions
     # install and extensions.gnome.org compile it too; a schema that fails
     # here fails there.
+    require_glib_compile_schemas
     if ! glib-compile-schemas --strict --dry-run "$EXTENSION_DIR/schemas"; then
         log_error "The settings schema does not compile."
         exit 1
@@ -161,7 +171,9 @@ install_local() {
     log_info "Installing extension locally..."
     
     local target_dir="$HOME/.local/share/gnome-shell/extensions/$EXTENSION_UUID"
-    
+
+    require_glib_compile_schemas
+
     # Remove existing installation
     rm -rf "$target_dir"
     

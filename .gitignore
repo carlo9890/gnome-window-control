@@ -1,8 +1,9 @@
 # Build output
 dist/
 cli/target/
-# Compiled by build.sh for the manual-copy install only; the zip ships the XML
-# and every other install path compiles it itself.
+# A manual glib-compile-schemas run in the tree. Nothing in the repo writes it
+# here: build.sh compiles the installed copy, start-headless.sh its scratch
+# copy, and the zip excludes it because every install path compiles the XML.
 window-control@carlo9890.github.io/schemas/gschemas.compiled
 
 # IDE

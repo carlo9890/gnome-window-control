@@ -224,13 +224,13 @@ absent or empty file costs nothing per window.
 
 ## Timing constants
 
-Defined at the top of `rules.js`; change them there, not here.
+Defined at the top of the file named; change them there, not here.
 
-| Constant | Value | Guards |
-|---|---|---|
-| `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title |
-| `RELOAD_DEBOUNCE_MS` | 100 | one reload per save |
-| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change |
+| Constant | Value | Guards | File |
+|---|---|---|---|
+| `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title | `rules.js` |
+| `RELOAD_DEBOUNCE_MS` | 100 | one reload per save | `rules.js` |
+| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`afterUnmaximize`, shared with the keyboard shortcuts) |
 
 ## Extending the format
 

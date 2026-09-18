@@ -313,3 +313,78 @@ get_first_window_id() {
         echo ""
     fi
 }
+
+# ============================================================================
+# The test window (state-changing suites)
+#
+# A kitty window the suite owns: spawn_test_window once, and arm
+# `trap cleanup_test_window EXIT` before calling it so an early exit closes it.
+# ============================================================================
+
+TEST_WINDOW_PID=""
+TEST_WINDOW_ID=""
+
+# Pixel tolerance for geometry assertions. Window managers may nudge position/size
+# by a few pixels (decorations, snapping); a band still fails on a wrong result.
+GEOM_TOLERANCE=10
+
+# Wait a moment for state changes to take effect.
+#
+# Geometry lands asynchronously: move_resize_frame() returns before the client
+# has acked the new size, so every assertion needs a settle first. 0.5 s is
+# enough on a real desktop. Under the software rendering of a nested session it
+# is not, and the geometry assertions fail at random -- set WCTL_TEST_SETTLE=1.5
+# there (see docs/RUNNING.md).
+wait_for_change() {
+    sleep "${WCTL_TEST_SETTLE:-0.5}"
+}
+
+# Spawn the test window and wait until it is shown. Exits 1 when it does not
+# appear; the EXIT trap does the cleanup.
+# Usage: spawn_test_window <TITLE>
+spawn_test_window() {
+    local title="$1"
+    info "Spawning test window: $title"
+
+    if ! command -v kitty &>/dev/null; then
+        echo -e "${RED}ERROR${RESET}: kitty terminal not found. Install kitty to run these tests."
+        exit 1
+    fi
+
+    kitty --title "$title" &
+    TEST_WINDOW_PID=$!
+
+    # wctl wait replies once the window is shown (mapped and placed), which is
+    # the earliest moment a geometry command sticks: a move issued before that
+    # is overridden by mutter's initial placement. Polling list --json would
+    # return the window while it is still unshown.
+    TEST_WINDOW_ID=$("$WCTL" wait -p "$TEST_WINDOW_PID" --timeout 10 2>/dev/null || echo "")
+    if [[ -z "$TEST_WINDOW_ID" ]]; then
+        echo -e "${RED}ERROR${RESET}: Failed to find test window after 10 seconds"
+        exit 1
+    fi
+    info "Test window spawned with ID: $TEST_WINDOW_ID"
+
+    # mutter auto-maximizes a new window that covers most of a small workarea
+    # (e.g. a nested session), and a maximized window ignores move/resize.
+    # Start every geometry test from a normal state.
+    "$WCTL" unmaximize "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
+    wait_for_change
+}
+
+cleanup_test_window() {
+    info "Cleaning up test window"
+
+    if [[ -n "$TEST_WINDOW_ID" ]]; then
+        "$WCTL" close "$TEST_WINDOW_ID" 2>/dev/null || true
+    fi
+
+    if [[ -n "$TEST_WINDOW_PID" ]]; then
+        kill "$TEST_WINDOW_PID" 2>/dev/null || true
+    fi
+}
+
+# One field of the test window's `wctl info --json` document, by jq path.
+get_window_field() {
+    "$WCTL" info "$TEST_WINDOW_ID" --json 2>/dev/null | jq -r "$1" 2>/dev/null
+}

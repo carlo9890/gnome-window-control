@@ -1136,7 +1136,7 @@ export default class WindowControlExtension extends Extension {
             this._rules = new WindowRules();
             this._rules.enable();
             this._keybindings = new WindowKeybindings();
-            this._keybindings.enable(this.getSettings());
+            this._keybindings.enable(this);
         } catch (e) {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
             throw e;

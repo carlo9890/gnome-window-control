@@ -10,7 +10,9 @@
   and matches on that, so KP_Home fires with Num Lock on or off, and naming
   KP_7 as well only makes mutter warn that it overwrote the first binding.
 
-  Compiled by scripts/build.sh into gschemas.compiled next to this file.
+  Compiled into gschemas.compiled at install time, never in the checkout: by
+  gnome-extensions install, by extensions.gnome.org, or by build.sh install
+  for the manual-copy path.
 -->
 <schemalist gettext-domain="window-control">
   <schema id="org.gnome.shell.extensions.window-control"

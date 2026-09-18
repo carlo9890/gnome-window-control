@@ -33,7 +33,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import { centerRect, compileRules, resolvePlaceRect, tileRect } from './rules-format.js';
-import { maximizeFlags, unmaximizeWindow } from './window-helpers.js';
+import { afterUnmaximize, maximizeFlags, workareaOf } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
@@ -47,16 +47,11 @@ const LATE_IDENTITY_GRACE_MS = 2000;
 // Collapse the burst of file events one save produces into a single reload.
 const RELOAD_DEBOUNCE_MS = 100;
 
-// How long to wait for an unmaximize to land before placing the frame anyway.
-// A client whose restored size equals its maximized one never reports a
-// size change, so the wait has to be bounded.
-const UNMAXIMIZE_SETTLE_MS = 1000;
-
 export class WindowRules {
     constructor() {
         this._rules = [];
         this._windowCreatedId = 0;
-        this._tracked = new Map();        // Meta.Window -> {ids, graceId}
+        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, cancel}
         this._fileMonitor = null;
         this._fileMonitorId = 0;
         this._reloadId = 0;
@@ -183,6 +178,7 @@ export class WindowRules {
             GLib.source_remove(entry.graceId);
         if (entry.applyId)
             GLib.source_remove(entry.applyId);
+        entry.cancel?.();
         this._tracked.delete(win);
     }
 
@@ -247,59 +243,25 @@ export class WindowRules {
             // A client that restores itself maximized, or one mutter
             // auto-maximized for filling the screen, would have the request
             // dropped outright (see _frameRefusal in extension.js). The rule
-            // asked for a rectangle, so the rectangle wins -- but not in the
-            // same breath: a frame requested while the unmaximize is still in
-            // flight is overwritten by the restored size (measured on GNOME
-            // 46). Place once the restore has landed.
-            this._afterUnmaximize(win, () => this._placeFrame(win, rule, index));
+            // asked for a rectangle, so the rectangle wins -- once the restore
+            // has landed (see afterUnmaximize). The window stays tracked until
+            // then so 'unmanaged' and disable() can still cancel it.
+            const entry = { ids: [], graceId: 0, applyId: 0, shown: true, cancel: null };
+            entry.cancel = afterUnmaximize(win, landed => {
+                this._tracked.delete(win);
+                if (landed)
+                    this._placeFrame(win, rule, index);
+            });
+            this._tracked.set(win, entry);
         } catch (e) {
             console.error(`[Window Control] rules[${index}] -> ${id}: ${e.message}`);
         }
     }
 
-    // Unmaximize, then run `then` after the next 'size-changed' or after
-    // UNMAXIMIZE_SETTLE_MS, whichever comes first. The window stays tracked
-    // until then so 'unmanaged' and disable() can still cancel it.
-    //
-    // 'size-changed' is emitted from inside mutter's own move-resize, so the
-    // frame is requested from an idle callback rather than from the handler:
-    // a request made re-entrantly is overwritten when the outer call
-    // continues (measured on GNOME 46).
-    _afterUnmaximize(win, then) {
-        const entry = { ids: [], graceId: 0, applyId: 0, shown: true };
-        const done = () => {
-            if (entry.applyId)
-                return;
-            if (entry.graceId) {
-                GLib.source_remove(entry.graceId);
-                entry.graceId = 0;
-            }
-            entry.applyId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                entry.applyId = 0;
-                this._untrack(win);
-                then();
-                return GLib.SOURCE_REMOVE;
-            });
-        };
-        entry.ids = [
-            win.connect('size-changed', done),
-            win.connect('unmanaged', () => this._untrack(win)),
-        ];
-        entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, UNMAXIMIZE_SETTLE_MS, () => {
-            entry.graceId = 0;
-            done();
-            return GLib.SOURCE_REMOVE;
-        });
-        this._tracked.set(win, entry);
-        unmaximizeWindow(win);
-    }
-
     _placeFrame(win, rule, index) {
         const id = win.get_id();
         try {
-            const workspace = win.get_workspace() || global.workspace_manager.get_active_workspace();
-            const monitor = rule.monitor !== null ? rule.monitor : win.get_monitor();
-            const workarea = workspace.get_work_area_for_monitor(monitor);
+            const workarea = workareaOf(win, rule.monitor !== null ? rule.monitor : win.get_monitor());
             const target = this._resolve(rule.geometry, win, workarea);
             if (!target) {
                 console.debug(`[Window Control] rules[${index}] -> ${id}: resolves to nothing on this workarea, skipped`);

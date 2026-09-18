@@ -14,7 +14,7 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
 ├── keybindings.js         WindowKeybindings: the tile shortcuts (no D-Bus)
 ├── schemas/               the GSettings schema the shortcuts are read from
-├── window-helpers.js      the GNOME 49 maximize API, shared by all three
+├── window-helpers.js      the GNOME 49 maximize API, the workarea lookup and the unmaximize wait, shared by all three
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
@@ -80,9 +80,11 @@ gnome-window-control-extension-requirements.md   original design spec
   `PER_WINDOW` so mutter hands the handler the focused window and skips it when
   there is none. A shortcut tiles to a position from `rules-format.js`, so a
   key, a rule and `wctl tile` cannot disagree about a rectangle; `cycle-wide`
-  picks its position with `nextWidePosition` from the window's frame, not from
-  remembered state. A maximized window is restored first and placed once the
-  restore has landed, the sequence `rules.js` follows. The zip ships the schema
+  picks its position with `nextWidePosition` from the window's frame (within
+  half a cell, so a terminal snapped to its character grid still counts), not
+  from remembered state. A maximized window is restored first and placed once
+  the restore has landed, through the `afterUnmaximize` helper in
+  `window-helpers.js` that `rules.js` uses too. The zip ships the schema
   XML only: every install path but a plain copy compiles it, and `build.sh
   install` compiles it for that one.
 - **The rules.json grammar** is `rules-format.js` — the one module that imports

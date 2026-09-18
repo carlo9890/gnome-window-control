@@ -8,16 +8,17 @@
 // and never edits this file. The grid and the position names are the ones
 // rules.json and wctl use, from rules-format.js.
 
-import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { nextWidePosition, tileRect } from './rules-format.js';
-import { maximizeFlags, unmaximizeWindow } from './window-helpers.js';
+import { afterUnmaximize, maximizeFlags, workareaOf } from './window-helpers.js';
 
 // Settings key -> tile position. The cycle key is handled apart, because its
-// position depends on where the window is.
-export const TILE_BINDINGS = {
+// position depends on where the window is. Every key named here must exist in
+// the schema: GSettings aborts the shell on a key it does not know, which the
+// registration check in _add cannot catch.
+const TILE_BINDINGS = {
     'tile-top-left': 'top-left',
     'tile-top-center': 'top-center',
     'tile-top-right': 'top-right',
@@ -28,12 +29,7 @@ export const TILE_BINDINGS = {
     'tile-bottom-center': 'bottom-center',
     'tile-bottom-right': 'bottom-right',
 };
-export const CYCLE_WIDE_BINDING = 'cycle-wide';
-
-// How long to wait for an unmaximize to land before placing the frame anyway
-// (the same bound rules.js applies, for the same reason: a client whose
-// restored size equals its maximized one never reports a size change).
-const UNMAXIMIZE_SETTLE_MS = 1000;
+const CYCLE_WIDE_BINDING = 'cycle-wide';
 
 export class WindowKeybindings {
     constructor() {
@@ -43,9 +39,11 @@ export class WindowKeybindings {
 
     // Never throws: the shortcuts are secondary to the D-Bus service, so a
     // schema or registration failure logs and leaves the extension running
-    // without them rather than failing enable().
-    enable(settings) {
+    // without them rather than failing enable(). The schema is read here, not
+    // by the caller, so a copy without gschemas.compiled is that case too.
+    enable(extension) {
         try {
+            const settings = extension.getSettings();
             for (const [name, position] of Object.entries(TILE_BINDINGS)) {
                 this._add(name, settings,
                     (display, win) => this._tile(name, win, position));
@@ -85,13 +83,13 @@ export class WindowKeybindings {
     _tile(name, win, position) {
         if (!this._actionable(name, win))
             return;
-        this._place(win, position, this._workareaOf(win));
+        this._place(win, position, workareaOf(win));
     }
 
     _cycleWide(win) {
         if (!this._actionable(CYCLE_WIDE_BINDING, win))
             return;
-        const workarea = this._workareaOf(win);
+        const workarea = workareaOf(win);
         this._place(win, nextWidePosition(win.get_frame_rect(), workarea), workarea);
     }
 
@@ -109,11 +107,6 @@ export class WindowKeybindings {
         return true;
     }
 
-    _workareaOf(win) {
-        const workspace = win.get_workspace() || global.workspace_manager.get_active_workspace();
-        return workspace.get_work_area_for_monitor(win.get_monitor());
-    }
-
     _place(win, position, workarea) {
         const id = win.get_id();
         const target = tileRect(position, workarea);
@@ -121,18 +114,22 @@ export class WindowKeybindings {
             win.move_resize_frame(true, target.x, target.y, target.width, target.height);
             console.debug(`[Window Control] shortcut -> ${id}: tile ${position}`);
         };
-        if (maximizeFlags(win) === 0) {
+        // A maximized frame drops the request outright (see _frameRefusal in
+        // extension.js), and a frame requested while an unmaximize is still
+        // in flight is overwritten by the restored size -- the restore an
+        // earlier press started included, although the flags already read as
+        // unmaximized then. Restore first and place once the restore has
+        // landed; a second press before then replaces the first press's
+        // target rather than racing it.
+        if (maximizeFlags(win) === 0 && !this._pending.has(win)) {
             request();
             return;
         }
-        // A maximized frame drops the request outright (see _frameRefusal in
-        // extension.js), and a frame requested while the unmaximize is still
-        // in flight is overwritten by the restored size. Restore first, then
-        // place once the restore has landed -- the sequence rules.js follows.
         this._cancelPending(win);
-        this._pending.set(win, this._afterUnmaximize(win, () => {
+        this._pending.set(win, afterUnmaximize(win, landed => {
             this._pending.delete(win);
-            request();
+            if (landed)
+                request();
         }));
     }
 
@@ -142,46 +139,5 @@ export class WindowKeybindings {
             cancel();
             this._pending.delete(win);
         }
-    }
-
-    // Unmaximize, then run `then` from an idle callback after the next
-    // 'size-changed' or after UNMAXIMIZE_SETTLE_MS, whichever comes first.
-    // Returns a cancel function; a window that closes first cancels itself.
-    _afterUnmaximize(win, then) {
-        let ids = [];
-        let timeoutId = 0;
-        let idleId = 0;
-        const cancel = () => {
-            for (const id of ids)
-                win.disconnect(id);
-            ids = [];
-            if (timeoutId)
-                GLib.source_remove(timeoutId);
-            if (idleId)
-                GLib.source_remove(idleId);
-            timeoutId = 0;
-            idleId = 0;
-        };
-        const done = () => {
-            if (idleId)
-                return;
-            idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                idleId = 0;
-                cancel();
-                then();
-                return GLib.SOURCE_REMOVE;
-            });
-        };
-        ids = [
-            win.connect('size-changed', done),
-            win.connect('unmanaged', () => this._cancelPending(win)),
-        ];
-        timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, UNMAXIMIZE_SETTLE_MS, () => {
-            timeoutId = 0;
-            done();
-            return GLib.SOURCE_REMOVE;
-        });
-        unmaximizeWindow(win);
-        return cancel;
     }
 }
