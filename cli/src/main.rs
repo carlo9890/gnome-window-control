@@ -221,7 +221,8 @@ fn run(args: &[String]) -> Result<()> {
 
         // The bus connection in Ctx is lazy, so every rules subcommand but
         // `test` still reaches its verdict without one -- asserted by the
-        // guard tests against an unreachable address.
+        // guard tests against an unreachable address. `add` and `remove` try
+        // it after writing, for a warning that an unreachable bus silences.
         "rules" => rules_cmd::rules(&mut ctx, rest),
 
         "workspace" => wsmon::workspace(&mut ctx, rest),

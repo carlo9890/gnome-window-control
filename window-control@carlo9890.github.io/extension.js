@@ -23,6 +23,11 @@ import {
 // "No such method" while introspection still lists the method.
 const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML);
 
+// Reported by GetCapabilities. A name here is a promise a caller may rely on,
+// so it is added in the same commit as the feature and never removed while the
+// feature is served. 'rules' means rules.json is read and applied.
+const CAPABILITIES = ['rules'];
+
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 const DBUS_ERROR_NOT_FOUND = 'org.gnome.Shell.Extensions.WindowControl.NotFound';
@@ -581,6 +586,16 @@ class WindowControlService {
     GetVersion() {
         console.debug(`[Window Control] GetVersion() -> ${this._version}`);
         return this._version;
+    }
+
+    // GetCapabilities: the feature names a caller can rely on.
+    //
+    // A name is added here in the same commit as the feature it names, and
+    // never removed while the feature is served. 'rules' means WindowRules is
+    // enabled, so a rules.json this extension can see is applied.
+    GetCapabilities() {
+        console.debug(`[Window Control] GetCapabilities() -> ${CAPABILITIES}`);
+        return CAPABILITIES;
     }
 
     // GetWorkarea: Get usable workspace area for a monitor

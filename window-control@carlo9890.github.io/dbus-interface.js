@@ -209,6 +209,20 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
+      GetCapabilities: What this extension supports, beyond the methods it serves
+      Returns: as - capability names, e.g. ['rules']
+      A caller asks for a name rather than comparing version numbers, because
+      the version is not a reliable signal: extensions.gnome.org replaces the
+      'version' field in metadata.json with its own upload number, so an install
+      from there reports a number unrelated to this project's releases. A
+      capability the extension does not have is an absent name, and an extension
+      too old to serve this method raises UnknownMethod, which means the same.
+    -->
+    <method name="GetCapabilities">
+      <arg type="as" direction="out" name="capabilities"/>
+    </method>
+
+    <!--
       GetWorkarea: Get usable workspace area for a monitor
       Args: i - monitor index
       Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if invalid)

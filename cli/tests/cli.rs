@@ -612,9 +612,10 @@ fn rules_guards_and_verdicts_need_no_bus() {
 
 /// `wctl rules list/path/add/remove`: the local file surface, still no bus.
 ///
-/// `add` and `remove` do try the bus after writing, for the extension-version
-/// warning, but an unreachable bus is silent -- so every case here must still
-/// succeed against NO_BUS.
+/// `add` and `remove` do try the bus after writing, for the warning that the
+/// loaded extension does not apply rules, but only for the DEFAULT file and
+/// never when nobody answers -- so every `--file` case here must still succeed
+/// against NO_BUS, and in silence.
 ///
 /// The invariant these assert hardest is that a REFUSED add or remove leaves
 /// the file byte-identical. The command rewrites the whole document, so a
@@ -644,6 +645,10 @@ fn rules_file_surface_needs_no_bus() {
         "rules", "add", "--file", &path, "-c", "kitty", "tile", "left",
     ]);
     assert_eq!(code, 0, "printed: {out}");
+    assert!(
+        !out.contains("does not apply rules"),
+        "an unreachable bus must not warn, printed: {out}"
+    );
     let (out, _) = wctl(&["rules", "list", "--file", &path]);
     assert!(out.contains("class=kitty"), "printed: {out}");
     assert!(out.contains("tile left"), "printed: {out}");
@@ -718,8 +723,12 @@ fn rules_file_surface_needs_no_bus() {
     assert_eq!(out, read(), "--json must emit the file unchanged");
 
     // remove takes the rule out and leaves the order of the rest.
-    let (_, code) = wctl(&["rules", "remove", "--file", &path, "0"]);
+    let (out, code) = wctl(&["rules", "remove", "--file", &path, "0"]);
     assert_eq!(code, 0);
+    assert!(
+        !out.contains("does not apply rules"),
+        "an unreachable bus must not warn, printed: {out}"
+    );
     let (out, _) = wctl(&["rules", "list", "--file", &path]);
     assert!(!out.contains("title=Calc"), "printed: {out}");
     assert!(out.contains("class=kitty"), "printed: {out}");

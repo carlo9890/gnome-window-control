@@ -242,25 +242,41 @@ impl Bus {
         self.call("GetVersion", &())
     }
 
-    /// Is an extension answering, and is the version it loaded below `minimum`?
+    /// The feature names the loaded extension reports.
     ///
-    /// For a check that must not fail without a shell: no bus, no shell, a
-    /// disabled extension and a timeout are all `false`. Only an extension
-    /// that answers can be too old. One that predates `GetVersion` answers
-    /// "No such method", and that IS below any minimum a caller asks for.
-    pub fn loaded_version_below(&self, minimum: u32) -> bool {
-        let Ok(conn) = self.conn() else {
-            return false;
-        };
-        let Ok(proxy) = proxy(conn) else {
-            return false;
-        };
-        match proxy.call::<_, _, String>("GetVersion", &()) {
-            Ok(version) => version.parse::<u32>().is_ok_and(|loaded| loaded < minimum),
-            Err(err) => {
-                matches!(&err, zbus::Error::MethodError(name, _, _) if name.as_str() == ERROR_UNKNOWN_METHOD)
-                    && !is_extension_not_running(&err)
-            }
+    /// A name, not a version number: extensions.gnome.org replaces the `version`
+    /// field in metadata.json with its own upload number, so an install from
+    /// there reports a number this project never released.
+    pub fn get_capabilities(&self) -> Result<Vec<String>> {
+        self.call("GetCapabilities", &())
+    }
+
+    /// Does the loaded extension report `capability`?
+    ///
+    /// `None` is "nobody answered": no bus, no shell, a disabled extension or a
+    /// shell that stayed silent. `Some(false)` is an answer -- an extension that
+    /// serves the method without the name, or one too old to serve it at all,
+    /// which says "No such method". A caller that must not fail without a shell
+    /// acts on `Some(false)` alone.
+    ///
+    /// It runs on its OWN connection with `bound` as the reply timeout, because
+    /// the caller has already done its work: a shell that never answers must
+    /// cost a moment, not the full `--timeout` a real call is entitled to.
+    pub fn reports_capability(&self, capability: &str, bound: Duration) -> Option<bool> {
+        let conn = session_connection(bound).ok()?;
+        let proxy = proxy(&conn).ok()?;
+        match proxy.call::<_, _, Vec<String>>("GetCapabilities", &()) {
+            Ok(names) => Some(names.iter().any(|name| name == capability)),
+            // Matched positively: GDBus translates this detail into the shell's
+            // locale, so an unrecognised UnknownMethod shape -- a disabled
+            // extension in a German session included -- stays `None`.
+            Err(zbus::Error::MethodError(name, detail, _)) => (name.as_str()
+                == ERROR_UNKNOWN_METHOD
+                && detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("No such method")))
+            .then_some(false),
+            Err(_) => None,
         }
     }
 
