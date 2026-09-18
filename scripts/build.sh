@@ -112,6 +112,16 @@ validate() {
     fi
     log_info "Interface XML template literal is intact!"
 
+    # The settings schema. --strict turns the warnings glib-compile-schemas
+    # would otherwise tolerate into errors, which is how gnome-extensions
+    # install and extensions.gnome.org compile it too; a schema that fails
+    # here fails there.
+    if ! glib-compile-schemas --strict --dry-run "$EXTENSION_DIR/schemas"; then
+        log_error "The settings schema does not compile."
+        exit 1
+    fi
+    log_info "Settings schema compiles!"
+
     log_info "Validation passed!"
 }
 
@@ -124,9 +134,11 @@ build() {
     local zip_name="${EXTENSION_UUID}_v${version}.zip"
     local zip_path="$DIST_DIR/$zip_name"
     
-    # Create zip file
+    # Create zip file. gschemas.compiled stays out: gnome-extensions install and
+    # extensions.gnome.org compile the XML themselves, and the review rejects a
+    # shipped compiled schema.
     cd "$EXTENSION_DIR"
-    zip -r "$zip_path" . -x "*.git*" -x "*.DS_Store"
+    zip -r "$zip_path" . -x "*.git*" -x "*.DS_Store" -x "schemas/gschemas.compiled"
     cd "$PROJECT_ROOT"
     
     log_info "Built: $zip_path"
@@ -155,7 +167,11 @@ install_local() {
     
     # Copy extension
     cp -r "$EXTENSION_DIR" "$target_dir"
-    
+
+    # A plain copy is the one install path nothing compiles the schema on, and
+    # Extension.getSettings() reads only gschemas.compiled.
+    glib-compile-schemas --strict "$target_dir/schemas"
+
     log_info "Installed to: $target_dir"
     log_warn "Restart GNOME Shell and run: gnome-extensions enable $EXTENSION_UUID"
 }

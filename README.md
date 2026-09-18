@@ -13,6 +13,7 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 - **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
 - **Wait for a window** - Block until a matching window is shown, without polling
 - **Automatic placement** - Place matching windows the moment they are shown, from a config file, with no `wctl` call in the loop
+- **Keyboard shortcuts** - Tile the focused window to a grid position from the numpad, configurable, no `wctl` process per key
 - **CLI-friendly** - Easy to use from shell scripts via `gdbus` or the included `wctl` client, a single static binary with no runtime dependencies
 
 ## Compatibility
@@ -325,6 +326,43 @@ ignores the file.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
+
+## Keyboard shortcuts
+
+The extension tiles the focused window from the keyboard, to the same 4x2 grid
+`wctl tile` and a rule use. The numpad mirrors the grid; the defaults are
+`Super+Shift` plus the key, and they work with Num Lock on or off:
+
+| Key | Position | | Key | Position | | Key | Position |
+|---|---|---|---|---|---|---|---|
+| `7` | `top-left` | | `8` | `top-center` | | `9` | `top-right` |
+| `4` | `left` | | `5` | `center` | | `6` | `right` |
+| `1` | `bottom-left` | | `2` | `bottom-center` | | `3` | `bottom-right` |
+
+`Super+Shift+KP_Add` (the numpad `+`) tiles the window `wide-right`, three
+columns of four; press it again on the same window and it goes `wide-left`.
+A maximized window is unmaximized first; a fullscreen one is left alone.
+
+Every shortcut is a GSettings key, so you change one without editing anything:
+
+```bash
+S=org.gnome.shell.extensions.window-control
+D=~/.local/share/gnome-shell/extensions/window-control@carlo9890.github.io/schemas
+gsettings --schemadir $D list-recursively $S               # what is bound
+gsettings --schemadir $D set $S tile-left "['<Super>KP_Left']"   # rebind one
+gsettings --schemadir $D set $S cycle-wide "[]"            # unbind one
+gsettings --schemadir $D reset-recursively $S              # back to the defaults
+```
+
+The keys are `tile-<position>` for the nine positions and `cycle-wide`. Each
+holds a list of accelerators in GTK's `<Super><Shift>KP_Home` notation, so one
+key can carry several combinations. The numpad names are the Num-Lock-off ones
+(`KP_Home`, not `KP_7`); mutter binds the physical key, so they fire in either
+state. `--schemadir` is needed because the schema ships with the extension,
+not with the system.
+
+`wctl version --json` lists `keybindings` under `capabilities` when the loaded
+extension serves the shortcuts.
 
 ## D-Bus Interface
 

@@ -1,6 +1,9 @@
 # Build output
 dist/
 cli/target/
+# Compiled by build.sh for the manual-copy install only; the zip ships the XML
+# and every other install path compiles it itself.
+window-control@carlo9890.github.io/schemas/gschemas.compiled
 
 # IDE
 .idea/

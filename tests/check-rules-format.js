@@ -21,7 +21,9 @@ const ROOT = GLib.path_get_dirname(GLib.path_get_dirname(
     GLib.canonicalize_filename(import.meta.url.replace('file://', ''), null)));
 
 const format = await import(`file://${ROOT}/window-control@carlo9890.github.io/rules-format.js`);
-const { compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, TILE_CELLS } = format;
+const {
+    compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, nextWidePosition, TILE_CELLS,
+} = format;
 
 const [, bytes] = GLib.file_get_contents(`${ROOT}/tests/vectors/rules-spec.json`);
 const VECTORS = JSON.parse(new TextDecoder().decode(bytes));
@@ -124,6 +126,26 @@ const pinned = Object.keys(VECTORS.geometry.tile[0].cells);
 for (const position of Object.keys(TILE_CELLS)) {
     check(`tile: ${position} has a pinned rectangle`, pinned.includes(position),
         'add it to the first tile group in tests/vectors/rules-spec.json');
+}
+
+// -- the cycle-wide shortcut -----------------------------------------------
+//
+// Not from the vectors: the decision is the extension's alone, wctl has no
+// counterpart to pin. Hardcoded against the first tile group's workarea.
+
+{
+    const workarea = VECTORS.geometry.tile[0].workarea;
+    const wideRight = tileRect('wide-right', workarea);
+    const cases = [
+        ['a window elsewhere goes wide-right', tileRect('top-left', workarea), 'wide-right'],
+        ['a wide-right window goes wide-left', wideRight, 'wide-left'],
+        ['a wide-left window goes wide-right again', tileRect('wide-left', workarea), 'wide-right'],
+        ['one pixel off wide-right is elsewhere', { ...wideRight, x: wideRight.x + 1 }, 'wide-right'],
+    ];
+    for (const [name, frame, expected] of cases) {
+        const actual = nextWidePosition(frame, workarea);
+        check(`cycle-wide: ${name}`, actual === expected, `expected ${expected}, got ${actual}`);
+    }
 }
 
 // -- geometry: center ------------------------------------------------------

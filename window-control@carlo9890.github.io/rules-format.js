@@ -34,6 +34,17 @@ export const TILE_CELLS = {
 
 export const CENTER_AXES = ['horizontal', 'vertical', 'both'];
 
+// The position the "cycle wide" shortcut moves a window to next: wide-right,
+// unless the frame already IS wide-right, then wide-left. Decided from the
+// frame rather than remembered per window, so a window moved elsewhere in
+// between starts the cycle over, and nothing has to be forgotten on close.
+export function nextWidePosition(frame, workarea) {
+    const wideRight = tileRect('wide-right', workarea);
+    const isWideRight = frame.x === wideRight.x && frame.y === wideRight.y &&
+        frame.width === wideRight.width && frame.height === wideRight.height;
+    return isWideRight ? 'wide-left' : 'wide-right';
+}
+
 export const RULE_KEYS = ['match', 'place', 'tile', 'center', 'workspace', 'monitor'];
 
 // `place` tokens are resolved against this at load time, so a grammar error is

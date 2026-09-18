@@ -11,9 +11,22 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 | Rules grammar (CI gate) | `tests/check-rules-format.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
+| Keyboard shortcuts (state-changing, in the modification runner) | `tests/test-keybindings.sh` | Yes, plus injected keys | `./tests/test-keybindings.sh` in a headless shell (see below) |
 
 The live suites were last run green on GNOME Shell 46 (mutter 46.2). Add a
 version here when you run them on another one.
+
+## The keyboard-shortcut suite
+
+`tests/test-keybindings.sh` presses every shortcut and asserts the frame that
+lands, through the same oracle as the modification suite. It cannot press keys
+on the real desktop: it injects them with `tests/inject-keys.js` over mutter's
+`org.gnome.Mutter.RemoteDesktop` API, which needs a shell that has no real
+keyboard in front of it. Run it against a headless shell started with
+`scripts/start-headless.sh` (see [RUNNING.md](RUNNING.md)); on the real
+session it would press the keys into the shell that started it. It skips when
+the loaded extension does not report the `keybindings` capability, and it
+expects the schema defaults, so reset a rebound key first.
 
 The shell suites run the release binary at `cli/target/release/wctl`, so build it
 first (`mise run build`). Set `WCTL` to test a different one, for example the

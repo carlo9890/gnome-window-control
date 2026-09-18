@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 hko9890
+  SPDX-License-Identifier: MIT
+
+  Keyboard shortcuts. Each key is a list of accelerators, the shape
+  Main.wm.addKeybinding reads; an empty list unbinds the action.
+
+  One name per numpad key is enough: mutter resolves a keysym to its keycode
+  and matches on that, so KP_Home fires with Num Lock on or off, and naming
+  KP_7 as well only makes mutter warn that it overwrote the first binding.
+
+  Compiled by scripts/build.sh into gschemas.compiled next to this file.
+-->
+<schemalist gettext-domain="window-control">
+  <schema id="org.gnome.shell.extensions.window-control"
+          path="/org/gnome/shell/extensions/window-control/">
+
+    <key name="tile-top-left" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Home']</default>
+      <summary>Tile the focused window to the top-left cell</summary>
+    </key>
+    <key name="tile-top-center" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Up']</default>
+      <summary>Tile the focused window to the top-center cells</summary>
+    </key>
+    <key name="tile-top-right" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Page_Up']</default>
+      <summary>Tile the focused window to the top-right cell</summary>
+    </key>
+    <key name="tile-left" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Left']</default>
+      <summary>Tile the focused window to the left column</summary>
+    </key>
+    <key name="tile-center" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Begin']</default>
+      <summary>Tile the focused window to the center columns</summary>
+    </key>
+    <key name="tile-right" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Right']</default>
+      <summary>Tile the focused window to the right column</summary>
+    </key>
+    <key name="tile-bottom-left" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_End']</default>
+      <summary>Tile the focused window to the bottom-left cell</summary>
+    </key>
+    <key name="tile-bottom-center" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Down']</default>
+      <summary>Tile the focused window to the bottom-center cells</summary>
+    </key>
+    <key name="tile-bottom-right" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Page_Down']</default>
+      <summary>Tile the focused window to the bottom-right cell</summary>
+    </key>
+    <key name="cycle-wide" type="as">
+      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Add']</default>
+      <summary>Tile the focused window wide-right, or wide-left when it already is wide-right</summary>
+    </key>
+
+  </schema>
+</schemalist>
