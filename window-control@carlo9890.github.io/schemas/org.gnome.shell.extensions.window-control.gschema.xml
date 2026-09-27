@@ -10,6 +10,13 @@
   and matches on that, so KP_Home fires with Num Lock on or off, and naming
   KP_7 as well only makes mutter warn that it overwrote the first binding.
 
+  The modifier is Super+Control because Super+Shift is taken: GNOME 50 binds
+  <Super><Shift>KP_Prior and KP_Next to move-to-workspace-left/right, and when
+  two bindings share a chord mutter hands it to one of them at random (seen on
+  GNOME 50.1: KP_Page_Up went to the shell, KP_Page_Down to this extension).
+  Nothing in GNOME 45-50 or Ubuntu's Tiling Assistant binds Super+Control on
+  the numpad.
+
   Compiled into gschemas.compiled at install time, never in the checkout: by
   gnome-extensions install, by extensions.gnome.org, or by build.sh install
   for the manual-copy path.
@@ -19,43 +26,43 @@
           path="/org/gnome/shell/extensions/window-control/">
 
     <key name="tile-top-left" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Home']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Home']</default>
       <summary>Tile the focused window to the top-left cell</summary>
     </key>
     <key name="tile-top-center" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Up']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Up']</default>
       <summary>Tile the focused window to the top-center cells</summary>
     </key>
     <key name="tile-top-right" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Page_Up']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Page_Up']</default>
       <summary>Tile the focused window to the top-right cell</summary>
     </key>
     <key name="tile-left" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Left']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Left']</default>
       <summary>Tile the focused window to the left column</summary>
     </key>
     <key name="tile-center" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Begin']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Begin']</default>
       <summary>Tile the focused window to the center columns</summary>
     </key>
     <key name="tile-right" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Right']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Right']</default>
       <summary>Tile the focused window to the right column</summary>
     </key>
     <key name="tile-bottom-left" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_End']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_End']</default>
       <summary>Tile the focused window to the bottom-left cell</summary>
     </key>
     <key name="tile-bottom-center" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Down']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Down']</default>
       <summary>Tile the focused window to the bottom-center cells</summary>
     </key>
     <key name="tile-bottom-right" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Page_Down']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Page_Down']</default>
       <summary>Tile the focused window to the bottom-right cell</summary>
     </key>
     <key name="cycle-wide" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;KP_Add']</default>
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Add']</default>
       <summary>Tile the focused window wide-right, or wide-left when it already is wide-right</summary>
     </key>
 

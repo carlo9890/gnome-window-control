@@ -18,9 +18,9 @@ TEST_WINDOW_TITLE="auto-test:keybindings"
 INJECT="$(dirname "$0")/inject-keys.js"
 trap cleanup_test_window EXIT
 
-# Press Super+Shift plus the named key on the focused window.
+# Press Super+Ctrl plus the named key on the focused window.
 press() {
-    gjs -m "$INJECT" Super_L Shift_L "$1"
+    gjs -m "$INJECT" Super_L Control_L "$1"
     wait_for_change
 }
 
@@ -68,20 +68,20 @@ for spec in KP_Home:top-left KP_Up:top-center KP_Page_Up:top-right \
             KP_End:bottom-left KP_Down:bottom-center KP_Page_Down:bottom-right; do
     key="${spec%%:*}"
     position="${spec##*:}"
-    info "Testing: Super+Shift+$key -> tile $position"
+    info "Testing: Super+Ctrl+$key -> tile $position"
     press "$key"
     assert_tiled "$position" "$key"
 done
 
 echo ""
 echo "--- Cycle wide ---"
-info "Testing: Super+Shift+KP_Add from elsewhere -> wide-right"
+info "Testing: Super+Ctrl+KP_Add from elsewhere -> wide-right"
 press KP_Add
 assert_tiled wide-right "KP_Add first press"
-info "Testing: Super+Shift+KP_Add again -> wide-left"
+info "Testing: Super+Ctrl+KP_Add again -> wide-left"
 press KP_Add
 assert_tiled wide-left "KP_Add second press"
-info "Testing: Super+Shift+KP_Add a third time -> wide-right again"
+info "Testing: Super+Ctrl+KP_Add a third time -> wide-right again"
 press KP_Add
 assert_tiled wide-right "KP_Add third press"
 

@@ -8,7 +8,7 @@
 // device it creates feeds the same event path as evdev, so extension
 // keybindings fire on it (mutter pins this in src/tests/keybindings.c).
 //
-//     DBUS_SESSION_BUS_ADDRESS=... gjs -m tests/inject-keys.js Super_L Shift_L KP_Home
+//     DBUS_SESSION_BUS_ADDRESS=... gjs -m tests/inject-keys.js Super_L Control_L KP_Home
 //
 // Every keysym named is pressed in order and released in reverse order, so
 // modifiers go first. Names are the xkb keysym names; the table holds the
@@ -23,6 +23,7 @@ import GLib from 'gi://GLib';
 const KEYSYMS = {
     Super_L: 0xffeb,
     Shift_L: 0xffe1,
+    Control_L: 0xffe3,
     KP_Home: 0xff95, KP_7: 0xffb7,
     KP_Up: 0xff97, KP_8: 0xffb8,
     KP_Page_Up: 0xff9a, KP_9: 0xffb9,
