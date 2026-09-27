@@ -152,6 +152,58 @@ real session was untouched. Stop it with `kill <HEADLESS_SHELL_PID>`, the
 shell's own PID as printed: killing the `dbus-run-session` runner leaves the
 shell alive.
 
+## Real session in a VM guest
+
+The one path that exercises the install itself (`gnome-extensions install`,
+the schema compile, `gnome-extensions enable`, a real session with the
+distribution's own extensions loaded) and another GNOME version, without
+touching this desktop. Verified 2026-09-27 on Ubuntu 24.04 (GNOME Shell 46.0)
+and Ubuntu 26.04 (50.1) libvirt guests reached over SSH.
+
+Prepare the guest once:
+
+- Install `openssh-server`, `kitty`, `jq`.
+- Auto-login: `AutomaticLoginEnable=true` and `AutomaticLogin=<user>` under
+  `[daemon]` in `/etc/gdm3/custom.conf`, so a session exists after every boot.
+- `gsettings set org.gnome.desktop.session idle-delay 0` and
+  `gsettings set org.gnome.desktop.screensaver lock-enabled false`: the lock
+  screen disables the extension, and an idle guest then reports
+  "extension is not running".
+
+Per run, from this checkout (`<guest>` is the SSH host):
+
+```bash
+./scripts/build.sh all && mise run build
+rsync -a --exclude .git --exclude cli/target ./ <guest>:~/gnome-window-control/
+rsync -aR cli/target/release/wctl <guest>:~/gnome-window-control/   # -R creates the excluded path
+ssh <guest> 'cd gnome-window-control && gnome-extensions install --force dist/window-control@carlo9890.github.io_v*.zip'
+ssh <guest> sudo systemctl reboot     # a JS or schema change needs a new session (reload table above)
+```
+
+Without sudo in the guest, reboot through its session instead:
+`gdbus call --session --dest org.gnome.SessionManager --object-path /org/gnome/SessionManager --method org.gnome.SessionManager.Reboot`
+on the session bus below.
+
+Then on the guest, against the real session:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus \
+       WAYLAND_DISPLAY=wayland-0 PATH=/usr/bin:$PATH
+gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf, so this is fine here
+kitty --title probe &                                        # the query suites need one window
+WCTL_TEST_SETTLE=1.0 ./tests/run-all-query-tests.sh
+WCTL_TEST_SETTLE=1.0 ./tests/run-all-modification-tests.sh   # includes the keybinding suite
+```
+
+- `PATH=/usr/bin:$PATH` puts the system `jq` before a mise shim, which refuses
+  to run inside the copied checkout (its `.mise.toml` is untrusted there) and
+  fails every JSON assertion.
+- Key injection works on the guest's real session: it is disposable.
+- The host's `wctl` build runs unchanged when the guest's glibc is not older
+  than the host's; otherwise build in the guest.
+- Anchor a window on the first workspace before testing a workspace move: an
+  empty one vanishes when you switch away (dynamic workspaces, above).
+
 ## Check extension status
 
 ```bash
