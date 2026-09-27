@@ -4,9 +4,10 @@
 #
 # Isolation follows scripts/start-nested.sh, whose reasons apply unchanged (on
 # 2026-09-11 a shell started without it logged the user out): the session
-# variables are removed, --sm-disable is passed, GSETTINGS_BACKEND=memory keeps
-# dconf writes local. Change the env line here and there together. On top of
-# that, XDG_DATA_HOME and XDG_CONFIG_HOME point at a fresh scratch directory,
+# variables are removed, --sm-disable is passed where the shell still has it
+# (mutter 50 dropped it), GSETTINGS_BACKEND=memory keeps dconf writes local.
+# Change the env line here and there together. On top of that, XDG_DATA_HOME
+# and XDG_CONFIG_HOME point at a fresh scratch directory,
 # so the headless shell loads the extension from THIS checkout (copied there by
 # this script) and never reads the user's installed copy or rules.json.
 #
@@ -37,11 +38,18 @@ mkdir -p "$SCRATCH/data/gnome-shell/extensions" "$SCRATCH/config"
 cp -r "$PROJECT_ROOT/$UUID" "$SCRATCH/data/gnome-shell/extensions/$UUID"
 glib-compile-schemas --strict "$SCRATCH/data/gnome-shell/extensions/$UUID/schemas"
 
+# Matched in bash on the whole help text: `grep -q` on a pipe exits at the
+# match, and under pipefail gnome-shell's SIGPIPE would then read as "not listed".
+SM_DISABLE=()
+if [[ "$(gnome-shell --help-all 2>/dev/null)" == *--sm-disable* ]]; then
+    SM_DISABLE=(--sm-disable)
+fi
+
 env -u SESSION_MANAGER -u GNOME_SHELL_SESSION_MODE -u DESKTOP_AUTOSTART_ID \
     -u XDG_SESSION_ID -u INVOCATION_ID -u MANAGERPID -u JOURNAL_STREAM \
     GSETTINGS_BACKEND=memory \
     XDG_DATA_HOME="$SCRATCH/data" XDG_CONFIG_HOME="$SCRATCH/config" \
-    dbus-run-session gnome-shell --headless --no-x11 --sm-disable \
+    dbus-run-session gnome-shell --headless --no-x11 "${SM_DISABLE[@]}" \
         --virtual-monitor "$MONITOR" --wayland-display "$WAYLAND_NAME" \
         > "$OUTPUT_FILE" 2>&1 &
 RUNNER_PID=$!

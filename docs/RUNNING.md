@@ -26,7 +26,9 @@ These exist because of a real incident, recorded at the end of this file.
    `SESSION_MANAGER` to register with the *real* gnome-session as an XSMP
    client at startup (mutter 46 `src/x11/session.c`, called from
    `meta_context_main_notify_ready`). Start it with those variables removed and
-   with `--sm-disable`, mutter's own switch for the XSMP client.
+   with `--sm-disable`, mutter's own switch for the XSMP client. Mutter 50 has
+   no XSMP client and rejects the flag, so the scripts pass it only where
+   `gnome-shell --help-all` lists it.
 
    `scripts/start-nested.sh` does all of that, and rules 2 and 3 with it — use
    it rather than assembling the command by hand. This hardened form has not yet
@@ -65,9 +67,9 @@ gdbus call --session --dest org.gnome.Shell \
 ```
 
 `start-nested.sh` implements hard rules 2-4: it strips the six inherited session
-variables, passes `--sm-disable`, sets `GSETTINGS_BACKEND=memory`, writes one
-`nested-<timestamp>.log` per run, and prints the PID to `kill`. Starting it still
-needs the user's consent under hard rule 1.
+variables, passes `--sm-disable` where it exists, sets `GSETTINGS_BACKEND=memory`,
+writes one `nested-<timestamp>.log` per run, and prints the PID to `kill`.
+Starting it still needs the user's consent under hard rule 1.
 
 Enable through the D-Bus call above rather than `gnome-extensions enable`: that
 CLI writes `org.gnome.shell enabled-extensions` to dconf whatever shell asked,

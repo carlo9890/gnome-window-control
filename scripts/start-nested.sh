@@ -8,7 +8,9 @@
 # nested backend uses it to register with the REAL gnome-session as an XSMP
 # client (mutter 46 src/x11/session.c, from meta_context_main_notify_ready).
 # Removing those variables and passing --sm-disable is what keeps the nested
-# shell from reaching out of its sandbox.
+# shell from reaching out of its sandbox. Mutter 50 has no --sm-disable any
+# more (the XSMP client left with the X11 session code) and rejects the flag,
+# so it is passed only where `gnome-shell --help-all` still lists it.
 #
 # GSETTINGS_BACKEND=memory keeps its dconf writes to itself: a nested session
 # otherwise shares the real dconf database, and `gnome-extensions enable` there
@@ -27,11 +29,18 @@ echo ""
 # destroyed by the next run redirecting over it.
 OUTPUT_FILE="nested-$(date +%Y%m%d-%H%M%S).log"
 
+# Matched in bash on the whole help text: `grep -q` on a pipe exits at the
+# match, and under pipefail gnome-shell's SIGPIPE would then read as "not listed".
+SM_DISABLE=()
+if [[ "$(gnome-shell --help-all 2>/dev/null)" == *--sm-disable* ]]; then
+    SM_DISABLE=(--sm-disable)
+fi
+
 # Start gnome-shell and capture output, backgrounding after initial startup
 env -u SESSION_MANAGER -u GNOME_SHELL_SESSION_MODE -u DESKTOP_AUTOSTART_ID \
     -u XDG_SESSION_ID -u INVOCATION_ID -u MANAGERPID -u JOURNAL_STREAM \
     GSETTINGS_BACKEND=memory \
-    dbus-run-session gnome-shell --nested --wayland --sm-disable 2>&1 \
+    dbus-run-session gnome-shell --nested --wayland "${SM_DISABLE[@]}" 2>&1 \
     | tee "$OUTPUT_FILE" &
 GNOME_PID=$!
 
