@@ -143,7 +143,7 @@ to the printed display; run the suites with `WCTL_TEST_SETTLE=1.5`. The
 read-only query suites need at least one window open, so spawn one first.
 
 Keys are injected with `tests/inject-keys.js` (mutter's RemoteDesktop API on
-that bus): `gjs -m tests/inject-keys.js Super_L Shift_L KP_Home` presses the
+that bus): `gjs -m tests/inject-keys.js Super_L Control_L KP_Home` presses the
 chord on the focused window. `wtype` and `ydotool` do not work here: mutter has
 no virtual-keyboard protocol, and the headless backend sees no evdev device.
 

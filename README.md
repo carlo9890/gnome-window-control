@@ -331,7 +331,7 @@ are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
 
 The extension tiles the focused window from the keyboard, to the same 4x2 grid
 `wctl tile` and a rule use. The numpad mirrors the grid; the defaults are
-`Super+Shift` plus the key, and they work with Num Lock on or off:
+`Super+Ctrl` plus the key, and they work with Num Lock on or off:
 
 | Key | Position | | Key | Position | | Key | Position |
 |---|---|---|---|---|---|---|---|
@@ -339,7 +339,7 @@ The extension tiles the focused window from the keyboard, to the same 4x2 grid
 | `4` | `left` | | `5` | `center` | | `6` | `right` |
 | `1` | `bottom-left` | | `2` | `bottom-center` | | `3` | `bottom-right` |
 
-`Super+Shift+KP_Add` (the numpad `+`) tiles the window `wide-right`, three
+`Super+Ctrl+KP_Add` (the numpad `+`) tiles the window `wide-right`, three
 columns of four; press it again on the same window and it goes `wide-left`.
 A maximized window is unmaximized first; a fullscreen one is left alone.
 
@@ -355,8 +355,12 @@ gsettings --schemadir $D reset-recursively $S              # back to the default
 ```
 
 The keys are `tile-<position>` for the nine positions and `cycle-wide`. Each
-holds a list of accelerators in GTK's `<Super><Shift>KP_Home` notation, so one
-key can carry several combinations. The numpad names are the Num-Lock-off ones
+holds a list of accelerators in GTK's `<Super><Control>KP_Home` notation, so one
+key can carry several combinations. Pick a chord nothing else binds: when two
+bindings share one, mutter gives it to either at random, and the shortcut then
+works on one machine and not on the next. `Super+Shift` on the numpad is such
+a case, since GNOME 50 uses `Super+Shift+KP_Page_Up`/`KP_Page_Down` to move a
+window between workspaces. The numpad names are the Num-Lock-off ones
 (`KP_Home`, not `KP_7`); mutter binds the physical key, so they fire in either
 state. `--schemadir` is needed because the schema ships with the extension,
 not with the system.
