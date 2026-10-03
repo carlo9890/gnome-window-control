@@ -170,7 +170,7 @@ frame that never settles exits 4 and still reports `"placed":true`.
 ```bash
 wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.12.0","expects_extension":"12","extension":"12","compatible":true,"capabilities":["rules","keybindings","no-animation"]}
+# {"wctl":"0.13.0","expects_extension":"13","extension":"13","compatible":true,"capabilities":["rules","keybindings","no-animation"]}
 ```
 
 `--json` asks the **running shell** what it has loaded. That is the useful
