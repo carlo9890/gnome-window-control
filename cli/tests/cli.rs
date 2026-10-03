@@ -325,6 +325,18 @@ fn stray_arguments_are_refused_everywhere() {
     expect_die("Usage: wctl above", &["above", "123", "on", "--json"]);
     expect_die("Usage: wctl sticky", &["sticky", "123", "off", "extra"]);
     expect_die("Usage: wctl minimize", &["minimize", "123", "junk"]);
+    expect_die(
+        "Usage: wctl minimize <WINDOW> [--no-animation]",
+        &["minimize", "--no-animation"],
+    );
+    expect_die(
+        "Usage: wctl unminimize <WINDOW> [--no-animation]",
+        &["unminimize", "123", "--no-animation", "junk"],
+    );
+    expect_die(
+        "Unknown option: --instant",
+        &["minimize", "--instant", "123"],
+    );
     expect_die("Usage: wctl focus", &["focus", "focused", "junk"]);
     expect_die("Usage: wctl close", &["close", "-c", "kitty", "now"]);
     expect_die("Usage: wctl workspace", &["workspace", "1", "2"]);

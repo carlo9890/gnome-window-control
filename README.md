@@ -113,6 +113,10 @@ wctl place 12345 center top 50% 100%
 kitty &
 wctl tile "$(wctl wait -p $! --timeout 5)" right
 
+# Hide and show a window with no minimize animation, e.g. a popup
+wctl minimize -c my-popup --no-animation
+wctl unminimize -c my-popup --no-animation
+
 wctl --help                        # every command, global options, and --json/--settled
 ```
 
@@ -166,7 +170,7 @@ frame that never settles exits 4 and still reports `"placed":true`.
 ```bash
 wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.12.0","expects_extension":"12","extension":"12","compatible":true,"capabilities":["rules","keybindings"]}
+# {"wctl":"0.12.0","expects_extension":"12","extension":"12","compatible":true,"capabilities":["rules","keybindings","no-animation"]}
 ```
 
 `--json` asks the **running shell** what it has loaded. That is the useful
@@ -401,6 +405,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `GetCapabilities` | `() -> as` | The feature names this extension supports, e.g. `['rules']` |
 | `Minimize` | `(t) -> b` | Minimize window |
 | `Unminimize` | `(t) -> b` | Restore minimized window |
+| `MinimizeNoAnimation` | `(t) -> b` | Minimize window without the shell's minimize animation |
+| `UnminimizeNoAnimation` | `(t) -> b` | Restore minimized window without the animation |
 | `Maximize` | `(t) -> b` | Maximize window |
 | `Unmaximize` | `(t) -> b` | Restore maximized window |
 | `Fullscreen` | `(t) -> b` | Make window fullscreen |

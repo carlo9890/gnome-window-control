@@ -257,6 +257,34 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
+      MinimizeNoAnimation: Minimize window without the shell's minimize animation
+      Args: t - window ID
+      Returns: b - success
+      For a window a caller hides and shows as one gesture, e.g. a popup: the
+      animation shrinks the window towards its taskbar icon, or towards a
+      corner of the monitor when it has none. Served by an extension that
+      reports the 'no-animation' capability.
+      The skip is consumed by the window's next animation. A minimize that is
+      reversed before the shell has hidden the window (an unminimize within
+      the same frame) runs none, and the skip then falls on the window's next
+      animation of any kind. Leave a frame between the two.
+    -->
+    <method name="MinimizeNoAnimation">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+
+    <!--
+      UnminimizeNoAnimation: Unminimize (restore) window without the animation
+      Args: t - window ID
+      Returns: b - success
+    -->
+    <method name="UnminimizeNoAnimation">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+
+    <!--
       Maximize: Maximize window
       Args: t - window ID
       Returns: b - success

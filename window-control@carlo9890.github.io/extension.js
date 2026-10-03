@@ -27,8 +27,9 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // Reported by GetCapabilities. A name here is a promise a caller may rely on,
 // so it is added in the same commit as the feature and never removed while the
 // feature is served. 'rules' means rules.json is read and applied;
-// 'keybindings' means the tile shortcuts in the settings schema are served.
-const CAPABILITIES = ['rules', 'keybindings'];
+// 'keybindings' means the tile shortcuts in the settings schema are served;
+// 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are.
+const CAPABILITIES = ['rules', 'keybindings', 'no-animation'];
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
@@ -1065,6 +1066,36 @@ class WindowControlService {
     // Unminimize: Unminimize (restore) window
     Unminimize(windowId) {
         return this._actOnWindow(windowId, 'Unminimize', win => win.unminimize());
+    }
+
+    // Helper: skip the shell's animation for the minimize or unminimize the
+    // caller requests next. Main.wm.skipNextEffect() holds until the actor's
+    // next effect of ANY kind, so a caller arms it only for a request that
+    // changes the window's visibility: one that leaves the window as hidden as
+    // it was -- already in that state, or on another workspace -- runs no
+    // effect, and the skip would swallow a later, unrelated animation instead.
+    // The window came out of global.get_window_actors(), so it has an actor.
+    _skipNextEffect(win) {
+        Main.wm.skipNextEffect(win.get_compositor_private());
+    }
+
+    // MinimizeNoAnimation: Minimize window without the minimize animation
+    MinimizeNoAnimation(windowId) {
+        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => {
+            if (!win.is_hidden())
+                this._skipNextEffect(win);
+            win.minimize();
+        });
+    }
+
+    // UnminimizeNoAnimation: Unminimize (restore) window without the animation
+    UnminimizeNoAnimation(windowId) {
+        return this._actOnWindow(windowId, 'UnminimizeNoAnimation', win => {
+            if (win.minimized &&
+                win.located_on_workspace(global.workspace_manager.get_active_workspace()))
+                this._skipNextEffect(win);
+            win.unminimize();
+        });
     }
 
     // Maximize: Maximize window
