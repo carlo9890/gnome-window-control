@@ -130,9 +130,6 @@ STATE COMMANDS:
                                 Minimize window
     unminimize <WINDOW> [--no-animation]
                                 Restore from minimize
-                                --no-animation skips the shell's minimize
-                                animation, for a window a script hides and
-                                shows as one gesture, such as a popup.
     maximize <WINDOW>           Maximize window
     unmaximize <WINDOW>         Restore from maximize
     fullscreen <WINDOW>         Make window fullscreen
@@ -140,6 +137,10 @@ STATE COMMANDS:
     above <WINDOW> on|off       Set always-on-top state
     sticky <WINDOW> on|off      Set sticky (all workspaces) state
     close <WINDOW>              Close window (polite request)
+
+    --no-animation on minimize and unminimize skips the shell's minimize
+    animation, for a window a script hides and shows as one gesture, such as
+    a popup.
 
 OTHER:
     version [--json]        Show the wctl version. With --json, also the

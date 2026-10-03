@@ -264,7 +264,7 @@ if "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("no-animati
     assert_equals "$(get_window_field '.is_minimized')" "false" "unminimize --no-animation: window is not minimized"
     assert_equals "$(get_window_field '.is_hidden')" "false" "unminimize --no-animation: window is shown"
 else
-    info "Skipping --no-animation: the loaded extension does not report the no-animation capability"
+    skip "--no-animation: the loaded extension does not report the no-animation capability"
 fi
 
 # Test: maximize

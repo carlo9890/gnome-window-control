@@ -1070,20 +1070,20 @@ class WindowControlService {
 
     // Helper: skip the shell's animation for the minimize or unminimize the
     // caller requests next. Main.wm.skipNextEffect() holds until the actor's
-    // next effect of ANY kind, so it is armed only when `flips`: a request that
-    // leaves the window as hidden as it was -- already in that state, or on
-    // another workspace -- runs no effect, and the skip would swallow a later,
-    // unrelated animation instead.
-    _skipAnimationIf(win, flips) {
-        const actor = win.get_compositor_private();
-        if (flips && actor)
-            Main.wm.skipNextEffect(actor);
+    // next effect of ANY kind, so a caller arms it only for a request that
+    // changes the window's visibility: one that leaves the window as hidden as
+    // it was -- already in that state, or on another workspace -- runs no
+    // effect, and the skip would swallow a later, unrelated animation instead.
+    // The window came out of global.get_window_actors(), so it has an actor.
+    _skipNextEffect(win) {
+        Main.wm.skipNextEffect(win.get_compositor_private());
     }
 
     // MinimizeNoAnimation: Minimize window without the minimize animation
     MinimizeNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => {
-            this._skipAnimationIf(win, !win.is_hidden());
+            if (!win.is_hidden())
+                this._skipNextEffect(win);
             win.minimize();
         });
     }
@@ -1091,8 +1091,9 @@ class WindowControlService {
     // UnminimizeNoAnimation: Unminimize (restore) window without the animation
     UnminimizeNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'UnminimizeNoAnimation', win => {
-            this._skipAnimationIf(win, win.minimized &&
-                win.located_on_workspace(global.workspace_manager.get_active_workspace()));
+            if (win.minimized &&
+                win.located_on_workspace(global.workspace_manager.get_active_workspace()))
+                this._skipNextEffect(win);
             win.unminimize();
         });
     }

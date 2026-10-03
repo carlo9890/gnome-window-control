@@ -129,10 +129,10 @@ _wctl() {
             fi
             ;;
         minimize|unminimize)
-            if [[ "$cur" == --* ]]; then
+            if [[ $slot -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_window_words) --no-animation" -- "$cur"))
+            elif [[ $pos -eq 3 && " ${words[*]} " != *" --no-animation "* ]]; then
                 COMPREPLY=($(compgen -W "--no-animation" -- "$cur"))
-            elif [[ $slot -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             fi
             ;;
         focus|move|resize|move-resize|move-to-workspace|move-to-monitor|maximize|unmaximize|fullscreen|unfullscreen|close)
