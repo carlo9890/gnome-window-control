@@ -126,8 +126,13 @@ WORKSPACE & MONITOR COMMANDS:
     move-to-monitor <WINDOW> <N>        Move window to monitor N
 
 STATE COMMANDS:
-    minimize <WINDOW>           Minimize window
-    unminimize <WINDOW>         Restore from minimize
+    minimize <WINDOW> [--no-animation]
+                                Minimize window
+    unminimize <WINDOW> [--no-animation]
+                                Restore from minimize
+                                --no-animation skips the shell's minimize
+                                animation, for a window a script hides and
+                                shows as one gesture, such as a popup.
     maximize <WINDOW>           Maximize window
     unmaximize <WINDOW>         Restore from maximize
     fullscreen <WINDOW>         Make window fullscreen

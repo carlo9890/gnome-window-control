@@ -133,7 +133,12 @@ _wctl() {
                         '(-t -s -p)-c[Activate by WM class]:class:' \
                         '(-t -s -c)-p[Activate by PID]:pid:'
                     ;;
-                focus|minimize|unminimize|maximize|unmaximize|fullscreen|unfullscreen|close)
+                minimize|unminimize)
+                    _arguments "${_wctl_selector_opts[@]}" \
+                        '--no-animation[Skip the minimize animation]' \
+                        '1:window:_wctl_window_ids'
+                    ;;
+                focus|maximize|unmaximize|fullscreen|unfullscreen|close)
                     _arguments "${_wctl_selector_opts[@]}" '1:window:_wctl_window_ids'
                     ;;
                 move)

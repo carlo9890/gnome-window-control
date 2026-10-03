@@ -27,8 +27,9 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // Reported by GetCapabilities. A name here is a promise a caller may rely on,
 // so it is added in the same commit as the feature and never removed while the
 // feature is served. 'rules' means rules.json is read and applied;
-// 'keybindings' means the tile shortcuts in the settings schema are served.
-const CAPABILITIES = ['rules', 'keybindings'];
+// 'keybindings' means the tile shortcuts in the settings schema are served;
+// 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are.
+const CAPABILITIES = ['rules', 'keybindings', 'no-animation'];
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
@@ -1065,6 +1066,35 @@ class WindowControlService {
     // Unminimize: Unminimize (restore) window
     Unminimize(windowId) {
         return this._actOnWindow(windowId, 'Unminimize', win => win.unminimize());
+    }
+
+    // Helper: skip the shell's animation for the minimize or unminimize the
+    // caller requests next. Main.wm.skipNextEffect() holds until the actor's
+    // next effect of ANY kind, so it is armed only when `flips`: a request that
+    // leaves the window as hidden as it was -- already in that state, or on
+    // another workspace -- runs no effect, and the skip would swallow a later,
+    // unrelated animation instead.
+    _skipAnimationIf(win, flips) {
+        const actor = win.get_compositor_private();
+        if (flips && actor)
+            Main.wm.skipNextEffect(actor);
+    }
+
+    // MinimizeNoAnimation: Minimize window without the minimize animation
+    MinimizeNoAnimation(windowId) {
+        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => {
+            this._skipAnimationIf(win, !win.is_hidden());
+            win.minimize();
+        });
+    }
+
+    // UnminimizeNoAnimation: Unminimize (restore) window without the animation
+    UnminimizeNoAnimation(windowId) {
+        return this._actOnWindow(windowId, 'UnminimizeNoAnimation', win => {
+            this._skipAnimationIf(win, win.minimized &&
+                win.located_on_workspace(global.workspace_manager.get_active_workspace()));
+            win.unminimize();
+        });
     }
 
     // Maximize: Maximize window

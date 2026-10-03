@@ -128,7 +128,14 @@ _wctl() {
                 COMPREPLY=($(compgen -W "bash zsh" -- "$cur"))
             fi
             ;;
-        focus|move|resize|move-resize|move-to-workspace|move-to-monitor|minimize|unminimize|maximize|unmaximize|fullscreen|unfullscreen|close)
+        minimize|unminimize)
+            if [[ "$cur" == --* ]]; then
+                COMPREPLY=($(compgen -W "--no-animation" -- "$cur"))
+            elif [[ $slot -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
+            fi
+            ;;
+        focus|move|resize|move-resize|move-to-workspace|move-to-monitor|maximize|unmaximize|fullscreen|unfullscreen|close)
             if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             fi

@@ -229,8 +229,8 @@ fn run(args: &[String]) -> Result<()> {
         "move-to-workspace" => wsmon::move_to_workspace(&mut ctx, rest),
         "move-to-monitor" => wsmon::move_to_monitor(&mut ctx, rest),
 
-        "minimize" => state::simple(&mut ctx, "Minimize", "Window minimized", rest),
-        "unminimize" => state::simple(&mut ctx, "Unminimize", "Window unminimized", rest),
+        "minimize" => state::minimizing(&mut ctx, "Minimize", "Window minimized", rest),
+        "unminimize" => state::minimizing(&mut ctx, "Unminimize", "Window unminimized", rest),
         "maximize" => state::simple(&mut ctx, "Maximize", "Window maximized", rest),
         "unmaximize" => state::simple(&mut ctx, "Unmaximize", "Window unmaximized", rest),
         "fullscreen" => state::simple(&mut ctx, "Fullscreen", "Window fullscreened", rest),

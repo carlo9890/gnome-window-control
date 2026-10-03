@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //! Activation, focus and the window-state commands.
 
-use crate::commands::{not_found, report, report_with};
+use crate::commands::{not_found, report, report_with, take_flag};
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_REFUSED};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -86,6 +86,23 @@ pub fn simple(ctx: &mut Ctx, method: &str, success: &str, args: &[String]) -> Re
     let selector = selector::parse_exact(0, &usage, args)?;
     let id = selector::lookup(ctx, &selector)?;
     let ok = ctx.bus.call_bool(method, &(id,))?;
+    report(ok, success, not_found(id))
+}
+
+/// `minimize` and `unminimize`: a window, and optionally no animation.
+pub fn minimizing(ctx: &mut Ctx, method: &str, success: &str, args: &[String]) -> Result<()> {
+    let usage = format!(
+        "Usage: wctl {} <WINDOW> [--no-animation]",
+        method.to_lowercase()
+    );
+    let (no_animation, args) = take_flag(args, "--no-animation");
+    let selector = selector::parse_exact(0, &usage, &args)?;
+    let id = selector::lookup(ctx, &selector)?;
+    let ok = if no_animation {
+        ctx.bus.call_bool(&format!("{method}NoAnimation"), &(id,))?
+    } else {
+        ctx.bus.call_bool(method, &(id,))?
+    };
     report(ok, success, not_found(id))
 }
 

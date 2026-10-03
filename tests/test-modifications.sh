@@ -248,6 +248,25 @@ else
     fail "unminimize: Window should not be minimized (minimized=$minimized, hidden=$hidden)"
 fi
 
+# Test: minimize and unminimize --no-animation. The state is the contract a
+# script relies on; that no animation played is not observable from here.
+if "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("no-animation")' >/dev/null; then
+    info "Testing: minimize --no-animation"
+    run_wctl minimize "$TEST_WINDOW_ID" --no-animation
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "minimize --no-animation: exits 0"
+    wait_for_change
+    assert_equals "$(get_window_field '.is_minimized')" "true" "minimize --no-animation: window is minimized"
+
+    info "Testing: unminimize --no-animation"
+    run_wctl unminimize "$TEST_WINDOW_ID" --no-animation
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "unminimize --no-animation: exits 0"
+    wait_for_change
+    assert_equals "$(get_window_field '.is_minimized')" "false" "unminimize --no-animation: window is not minimized"
+    assert_equals "$(get_window_field '.is_hidden')" "false" "unminimize --no-animation: window is shown"
+else
+    info "Skipping --no-animation: the loaded extension does not report the no-animation capability"
+fi
+
 # Test: maximize
 info "Testing: maximize"
 run_wctl maximize "$TEST_WINDOW_ID"
