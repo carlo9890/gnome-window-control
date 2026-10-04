@@ -111,7 +111,10 @@ _wctl() {
                 else
                     COMPREPLY=($(compgen -W "-t -s -c -p $(_wctl_get_window_ids)" -- "$cur"))
                 fi
-            elif [[ $pos -eq 3 && " ${words[*]} " != *" --no-animation "* ]]; then
+            elif [[ $slot -eq 3 && "$prev" == "--no-animation" ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
+            elif [[ $slot -eq 3 && "$prev" != -* ]]; then
+                # --no-animation goes with a window ID, never with -t/-s/-c/-p.
                 COMPREPLY=($(compgen -W "--no-animation" -- "$cur"))
             fi
             ;;

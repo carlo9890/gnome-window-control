@@ -250,7 +250,7 @@ fi
 
 # Test: minimize and unminimize --no-animation. The state is the contract a
 # script relies on; that no animation played is not observable from here.
-if "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("no-animation")' >/dev/null; then
+if extension_reports no-animation; then
     info "Testing: minimize --no-animation"
     run_wctl minimize "$TEST_WINDOW_ID" --no-animation
     assert_exit_code 0 "$WCTL_EXIT_CODE" "minimize --no-animation: exits 0"
@@ -268,10 +268,11 @@ else
 fi
 
 # Test: activate --no-animation restores a minimized window and focuses it.
-if "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("activate-no-animation")' >/dev/null; then
+if extension_reports activate-no-animation; then
     info "Testing: activate --no-animation"
-    "$WCTL" minimize "$TEST_WINDOW_ID" --no-animation >/dev/null
+    run_wctl minimize "$TEST_WINDOW_ID" --no-animation
     wait_for_change
+    assert_equals "$(get_window_field '.is_minimized')" "true" "activate --no-animation: window starts minimized"
     run_wctl activate "$TEST_WINDOW_ID" --no-animation
     assert_exit_code 0 "$WCTL_EXIT_CODE" "activate --no-animation: exits 0"
     wait_for_change

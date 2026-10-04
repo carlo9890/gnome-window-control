@@ -1106,10 +1106,12 @@ class WindowControlService {
     }
 
     // ActivateNoAnimation: Activate a window by ID; a minimized one is
-    // restored without the animation. activate() does the restore itself.
+    // restored without the animation. activate() does the restore itself, and
+    // restores every minimized transient parent with the window.
     ActivateNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'ActivateNoAnimation', win => {
-            this._skipUnminimizeEffect(win);
+            for (let restored = win; restored; restored = restored.get_transient_for())
+                this._skipUnminimizeEffect(restored);
             win.activate(global.get_current_time());
         });
     }
