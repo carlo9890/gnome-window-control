@@ -74,7 +74,9 @@ gnome-window-control-extension-requirements.md   original design spec
   `extension.js` through `window-helpers.js`. A geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   below), so a rule waits for `shown` and then applies from an idle callback; a
-  window that maps maximized is unmaximized first.
+  window that maps maximized is unmaximized first. On GNOME 49 and later the
+  frame also goes into the window's initial configuration (`_preplace`, the
+  `configure` signal), so the first frame is drawn in place.
 - **Keyboard shortcuts** live in `keybindings.js` (`WindowKeybindings`): one
   `Main.wm.addKeybinding` per key of the schema in `schemas/`, registered
   `PER_WINDOW` so mutter hands the handler the focused window and skips it when

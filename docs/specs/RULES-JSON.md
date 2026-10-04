@@ -182,7 +182,9 @@ matching rules are ignored. `wctl rules test <WINDOW>` reports which rule wins
 for a live window, which later ones it shadows, and the rectangle the action
 resolves to, without moving anything.
 
-A rule applies **once per window**, at the point mutter has shown it. The
+A rule applies **once per window**, at the point mutter has shown it; on
+GNOME 49 and later its frame is also handed to mutter before the first frame
+(see the initial configuration below). The
 window is untracked before the action runs, so a later title change or resize
 never re-triggers it. This sets the initial placement only.
 
@@ -190,8 +192,9 @@ Gating, in order:
 
 1. Only `Meta.WindowType.NORMAL` windows are considered.
 2. A window still hidden and not yet `shown` is skipped — mutter's initial
-   placement overrides any geometry requested before that, so a rule applied
-   earlier would be discarded.
+   placement overrides a frame requested through the window before that, so a
+   rule applied earlier would be discarded. The initial configuration below is
+   the one earlier way in.
 3. On a match, the action runs from a `GLib.idle_add` callback, not from inside
    the signal emission: a frame requested re-entrantly is overwritten when the
    outer move-resize continues.
@@ -206,6 +209,33 @@ Action order within `_apply`:
    unmaximized first, and the frame is requested after the next `size-changed`
    or `UNMAXIMIZE_SETTLE_MS`, whichever comes first, because a frame requested
    while the unmaximize is in flight is overwritten by the restored size.
+
+### Initial configuration (GNOME 49 and later)
+
+Where `Meta.Window` has the `configure` signal, `_preplace` writes the frame of
+the matching rule into the window's initial `Meta.WindowConfig`. Mutter then
+marks the window placed, skips its own placement and asks the client for that
+size, so the first frame is drawn in place.
+
+This is a head start, not the application: the gating and the action order
+above still run once the window is shown, and correct a client that committed
+another size. `_preplace` sets nothing, and leaves the window to that later
+step, when:
+
+- the configuration is not the initial one, or the window is not `NORMAL`,
+  fullscreen or maximized;
+- no rule matches yet — an app ID or title that arrives after the first commit;
+- the rule has no geometry, or its geometry is `center`, which needs a size the
+  window does not have yet;
+- the rule's `monitor` does not exist, or the tokens resolve to nothing.
+
+A rule without `monitor` resolves against `get_current_monitor()`, the monitor
+mutter's own placement would pick. `workspace` is not part of the initial
+configuration; the window moves there once shown.
+
+Mutter 48 has the signal but applies the handler's values through a different
+code path, unverified here, so `PLACES_BEFORE_FIRST_FRAME` in `rules.js` is
+false below 49.
 
 A window that matches nothing stays under evaluation for
 `LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID

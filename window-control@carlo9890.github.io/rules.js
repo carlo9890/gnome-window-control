@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Window rules: put a new window on a well-defined spot the moment mutter
-// shows it, driven by ~/.config/gnome-window-control/rules.json.
+// Window rules: put a new window on a well-defined spot, driven by
+// ~/.config/gnome-window-control/rules.json. On GNOME 49 and later the window
+// is drawn there from its first frame; on every shell the rule is applied the
+// moment mutter shows the window.
 //
 // The file is a JSON array. Each rule names the windows it applies to and
 // what to do with them, in the vocabulary wctl already has:
@@ -46,6 +48,14 @@ const LATE_IDENTITY_GRACE_MS = 2000;
 
 // Collapse the burst of file events one save produces into a single reload.
 const RELOAD_DEBOUNCE_MS = 100;
+
+// Meta.Window's 'configure' signal hands a handler the window's initial
+// configuration before the client has drawn anything. Mutter 48 has the signal
+// too, but applies what the handler sets through a different code path that was
+// never checked here, so it is used from 49 on: get_maximize_flags() is the
+// method that release added (see window-helpers.js).
+const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
+    typeof Meta.Window.prototype.get_maximize_flags === 'function';
 
 export class WindowRules {
     constructor() {
@@ -149,8 +159,9 @@ export class WindowRules {
 
     // A new window may carry neither wm_class nor title yet, and mutter has
     // not placed it, so evaluate again whenever those change and once it is
-    // shown. Placing before 'shown' is pointless: mutter's initial placement
-    // overrides any geometry requested until then.
+    // shown. A frame requested through the window before 'shown' is pointless:
+    // mutter's initial placement overrides it. The one earlier way in is the
+    // initial configuration (see _preplace).
     _track(win) {
         const entry = { ids: [], graceId: 0, applyId: 0, shown: false };
         const evaluate = () => this._evaluate(win);
@@ -164,6 +175,8 @@ export class WindowRules {
             }),
             win.connect('unmanaged', () => this._untrack(win)),
         ];
+        if (PLACES_BEFORE_FIRST_FRAME)
+            entry.ids.push(win.connect('configure', (w, config) => this._preplace(win, config)));
         this._tracked.set(win, entry);
         this._evaluate(win);
     }
@@ -182,6 +195,46 @@ export class WindowRules {
         this._tracked.delete(win);
     }
 
+    _matchIndex(win) {
+        return this._rules.findIndex(rule => rule.predicates.every(p => p(win)));
+    }
+
+    // Put the rule's frame into the window's initial configuration: mutter
+    // then skips its own placement and asks the client for that size, so the
+    // first frame is drawn in place instead of jumping there afterwards.
+    //
+    // A head start, not the rule's application: the client may commit another
+    // size, its identity may not have arrived yet, and `center` needs a size
+    // the window does not have yet. So the window stays tracked and the rule
+    // is applied in full once it is shown, exactly as on an older shell.
+    _preplace(win, config) {
+        try {
+            if (!config.get_is_initial() ||
+                win.get_window_type() !== Meta.WindowType.NORMAL ||
+                win.is_fullscreen() || maximizeFlags(win) !== 0)
+                return;
+            const index = this._matchIndex(win);
+            if (index < 0)
+                return;
+            const rule = this._rules[index];
+            if (!rule.geometry || rule.geometry.kind === 'center')
+                return;
+            // Without a monitor in the rule, the one mutter's own placement
+            // would pick: the window has no position to derive one from yet.
+            const monitor = rule.monitor ?? global.display.get_current_monitor();
+            if (monitor < 0 || monitor >= global.display.get_n_monitors())
+                return;
+            const target = this._resolve(rule.geometry, win, workareaOf(win, monitor));
+            if (!target)
+                return;
+            config.set_position(target.x, target.y);
+            config.set_size(target.width, target.height);
+            console.debug(`[Window Control] rules[${index}] -> ${win.get_id()}: ${rule.geometry.kind} set before the first frame`);
+        } catch (e) {
+            console.error(`[Window Control] rules: initial configuration: ${e.message}`);
+        }
+    }
+
     _evaluate(win) {
         const entry = this._tracked.get(win);
         if (!entry || entry.applyId || win.get_window_type() !== Meta.WindowType.NORMAL)
@@ -191,7 +244,7 @@ export class WindowRules {
         if (!entry.shown && win.is_hidden())
             return;
         entry.shown = true;
-        const index = this._rules.findIndex(rule => rule.predicates.every(p => p(win)));
+        const index = this._matchIndex(win);
         if (index >= 0) {
             // Not from inside the 'shown' emission: mutter is still applying
             // the client's first committed size there, and a frame requested
