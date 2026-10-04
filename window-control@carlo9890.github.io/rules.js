@@ -61,7 +61,7 @@ export class WindowRules {
     constructor() {
         this._rules = [];
         this._windowCreatedId = 0;
-        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, cancel}
+        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, headStart, cancel}
         this._fileMonitor = null;
         this._fileMonitorId = 0;
         this._reloadId = 0;
@@ -163,7 +163,7 @@ export class WindowRules {
     // mutter's initial placement overrides it. The one earlier way in is the
     // initial configuration (see _preplace).
     _track(win) {
-        const entry = { ids: [], graceId: 0, applyId: 0, shown: false };
+        const entry = { ids: [], graceId: 0, applyId: 0, shown: false, headStart: null };
         const evaluate = () => this._evaluate(win);
         entry.ids = [
             win.connect('notify::wm-class', evaluate),
@@ -236,6 +236,7 @@ export class WindowRules {
                 return;
             config.set_position(target.x, target.y);
             config.set_size(target.width, target.height);
+            this._tracked.get(win).headStart = { rule, monitor };
             console.debug(`[Window Control] rules[${index}] -> ${win.get_id()}: ${rule.geometry.kind} set before the first frame`);
         } catch (e) {
             console.error(`[Window Control] rules: initial configuration: ${e.message}`);
@@ -254,6 +255,10 @@ export class WindowRules {
         const index = this._matchIndex(win);
         if (index >= 0) {
             const rule = this._rules[index];
+            // A rule that took the head start resolves against the same
+            // monitor again: literal coordinates can have put the frame on
+            // another one, and its workarea would resize the window.
+            const headStartMonitor = entry.headStart?.rule === rule ? entry.headStart.monitor : null;
             // Not from inside the 'shown' emission: mutter is still applying
             // the client's first committed size there, and a frame requested
             // that early is overwritten by it (measured on GNOME 46: the
@@ -263,7 +268,7 @@ export class WindowRules {
             entry.applyId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 entry.applyId = 0;
                 this._untrack(win);
-                this._apply(win, rule, index);
+                this._apply(win, rule, index, headStartMonitor);
                 return GLib.SOURCE_REMOVE;
             });
             return;
@@ -277,7 +282,7 @@ export class WindowRules {
         }
     }
 
-    _apply(win, rule, index) {
+    _apply(win, rule, index, headStartMonitor) {
         const id = win.get_id();
         try {
             if (rule.workspace !== null)
@@ -298,7 +303,7 @@ export class WindowRules {
                 return;
             }
             if (maximizeFlags(win) === 0) {
-                this._placeFrame(win, rule, index);
+                this._placeFrame(win, rule, index, headStartMonitor);
                 return;
             }
             // A client that restores itself maximized, or one mutter
@@ -311,7 +316,7 @@ export class WindowRules {
             entry.cancel = afterUnmaximize(win, landed => {
                 this._tracked.delete(win);
                 if (landed)
-                    this._placeFrame(win, rule, index);
+                    this._placeFrame(win, rule, index, headStartMonitor);
             });
             this._tracked.set(win, entry);
         } catch (e) {
@@ -319,10 +324,10 @@ export class WindowRules {
         }
     }
 
-    _placeFrame(win, rule, index) {
+    _placeFrame(win, rule, index, headStartMonitor) {
         const id = win.get_id();
         try {
-            const workarea = workareaOf(win, rule.monitor !== null ? rule.monitor : win.get_monitor());
+            const workarea = workareaOf(win, rule.monitor ?? headStartMonitor ?? win.get_monitor());
             const target = this._resolve(rule.geometry, win, workarea);
             if (!target) {
                 console.debug(`[Window Control] rules[${index}] -> ${id}: resolves to nothing on this workarea, skipped`);

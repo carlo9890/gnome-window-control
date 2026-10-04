@@ -240,13 +240,16 @@ step, when:
 
 A rule without `monitor` resolves against the monitor mutter's own placement
 would pick: the parent's for a window that has one, else
-`get_current_monitor()`. `workspace` is not part of the initial configuration;
-the window moves there once shown.
+`get_current_monitor()`. Once shown, the same rule resolves against that
+monitor again, not the one the window is on: literal coordinates can put the
+frame on another monitor, whose workarea would resize it. `workspace` is not
+part of the initial configuration; the window moves there once shown.
 
 The rule is matched twice, at the first commit and once shown. The head start
 cannot be taken back: when the title changes in between so that another rule,
 or none, wins once shown, the window keeps the first rule's frame unless the
-winning rule sets a geometry of its own.
+winning rule has a `place` or a `tile`. A winning `center` moves the window and
+keeps the size the first rule set.
 
 Mutter 48 has the signal but applies the handler's values through a different
 code path, unverified here, so `PLACES_BEFORE_FIRST_FRAME` in `rules.js` is
