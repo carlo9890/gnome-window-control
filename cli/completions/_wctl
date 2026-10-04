@@ -128,10 +128,11 @@ _wctl() {
                 activate)
                     _arguments \
                         '(-t -s -c -p)1:window id:_wctl_window_ids' \
-                        '(-s -c -p)-t[Activate by exact title]:title:' \
-                        '(-t -c -p)-s[Activate by title substring]:substring:' \
-                        '(-t -s -p)-c[Activate by WM class]:class:' \
-                        '(-t -s -c)-p[Activate by PID]:pid:'
+                        '(-t -s -c -p)--no-animation[Restore a minimized window without the animation]' \
+                        '(-s -c -p --no-animation)-t[Activate by exact title]:title:' \
+                        '(-t -c -p --no-animation)-s[Activate by title substring]:substring:' \
+                        '(-t -s -p --no-animation)-c[Activate by WM class]:class:' \
+                        '(-t -s -c --no-animation)-p[Activate by PID]:pid:'
                     ;;
                 minimize|unminimize)
                     _arguments "${_wctl_selector_opts[@]}" \

@@ -258,6 +258,17 @@ require_extension() {
     fi
 }
 
+# True when the loaded extension reports the capability NAME.
+# `wctl version --json` exits 5 on a version mismatch and still prints the
+# capabilities, so its status is dropped: under pipefail it would turn a
+# reported capability into "not reported".
+# Usage: extension_reports <NAME>
+extension_reports() {
+    local document
+    document=$("$WCTL" version --json 2>/dev/null) || true
+    jq -e --arg name "$1" '.capabilities | index($name)' <<< "$document" >/dev/null 2>&1
+}
+
 # ============================================================================
 # Test summary
 # ============================================================================

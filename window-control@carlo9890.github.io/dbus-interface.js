@@ -285,6 +285,21 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
+      ActivateNoAnimation: Activate (focus and raise) a window by ID, restoring
+      a minimized one without the animation
+      Args: t - window ID
+      Returns: b - success
+      The restore and the activation are one call, so no frame shows the
+      window restored but not focused. A window that is not minimized is
+      activated as Activate does. Served by an extension that reports the
+      'activate-no-animation' capability.
+    -->
+    <method name="ActivateNoAnimation">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+
+    <!--
       Maximize: Maximize window
       Args: t - window ID
       Returns: b - success

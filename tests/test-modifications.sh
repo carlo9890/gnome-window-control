@@ -250,7 +250,7 @@ fi
 
 # Test: minimize and unminimize --no-animation. The state is the contract a
 # script relies on; that no animation played is not observable from here.
-if "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("no-animation")' >/dev/null; then
+if extension_reports no-animation; then
     info "Testing: minimize --no-animation"
     run_wctl minimize "$TEST_WINDOW_ID" --no-animation
     assert_exit_code 0 "$WCTL_EXIT_CODE" "minimize --no-animation: exits 0"
@@ -265,6 +265,22 @@ if "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("no-animati
     assert_equals "$(get_window_field '.is_hidden')" "false" "unminimize --no-animation: window is shown"
 else
     skip "--no-animation: the loaded extension does not report the no-animation capability"
+fi
+
+# Test: activate --no-animation restores a minimized window and focuses it.
+if extension_reports activate-no-animation; then
+    info "Testing: activate --no-animation"
+    run_wctl minimize "$TEST_WINDOW_ID" --no-animation
+    wait_for_change
+    assert_equals "$(get_window_field '.is_minimized')" "true" "activate --no-animation: window starts minimized"
+    run_wctl activate "$TEST_WINDOW_ID" --no-animation
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "activate --no-animation: exits 0"
+    wait_for_change
+    assert_equals "$(get_window_field '.is_minimized')" "false" "activate --no-animation: window is not minimized"
+    assert_equals "$(get_window_field '.is_hidden')" "false" "activate --no-animation: window is shown"
+    assert_equals "$(get_window_field '.has_focus')" "true" "activate --no-animation: window is focused"
+else
+    skip "activate --no-animation: the loaded extension does not report the activate-no-animation capability"
 fi
 
 # Test: maximize
