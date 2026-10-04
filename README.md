@@ -243,8 +243,8 @@ and applies once per window.
 
 On GNOME 49 and later a `place` or `tile` rule takes effect before the window
 is drawn, so it opens in place. On GNOME 45 to 48, and for `center`,
-`workspace`, or a window whose class or title arrives late, the window appears
-first and moves a moment later.
+`workspace`, an X11 application, or a window whose class or title arrives late,
+the window appears first and moves a moment later.
 
 This sets the *initial* position only: an app that resizes itself afterwards is
 left alone. A rule with a bad value is reported to the journal and the whole file

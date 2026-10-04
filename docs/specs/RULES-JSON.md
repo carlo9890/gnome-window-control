@@ -210,37 +210,47 @@ Action order within `_apply`:
    or `UNMAXIMIZE_SETTLE_MS`, whichever comes first, because a frame requested
    while the unmaximize is in flight is overwritten by the restored size.
 
+A window that matches nothing stays under evaluation for
+`LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID
+and first real title can arrive late. After that it is untracked, so a title
+change hours later cannot rearrange a window the user has since placed.
+
 ### Initial configuration (GNOME 49 and later)
 
-Where `Meta.Window` has the `configure` signal, `_preplace` writes the frame of
-the matching rule into the window's initial `Meta.WindowConfig`. Mutter then
-marks the window placed, skips its own placement and asks the client for that
-size, so the first frame is drawn in place.
+On GNOME 49 and later, `_preplace` handles `Meta.Window`'s `configure` signal
+and writes the frame of the matching rule into the window's initial
+`Meta.WindowConfig`. Mutter then marks the window placed, skips its own
+placement and asks the client for that size, so the first frame is drawn in
+place.
 
 This is a head start, not the application: the gating and the action order
 above still run once the window is shown, and correct a client that committed
 another size. `_preplace` sets nothing, and leaves the window to that later
 step, when:
 
-- the configuration is not the initial one, or the window is not `NORMAL`,
-  fullscreen or maximized;
+- the configuration is not the initial one;
+- the window is an X11 client: mutter reads the frame back as the client's size
+  hints there, and a server-side decorated window comes out larger by its title
+  bar;
+- the window is not `NORMAL`, or it is fullscreen or maximized;
 - no rule matches yet — an app ID or title that arrives after the first commit;
 - the rule has no geometry, or its geometry is `center`, which needs a size the
   window does not have yet;
 - the rule's `monitor` does not exist, or the tokens resolve to nothing.
 
-A rule without `monitor` resolves against `get_current_monitor()`, the monitor
-mutter's own placement would pick. `workspace` is not part of the initial
-configuration; the window moves there once shown.
+A rule without `monitor` resolves against the monitor mutter's own placement
+would pick: the parent's for a window that has one, else
+`get_current_monitor()`. `workspace` is not part of the initial configuration;
+the window moves there once shown.
+
+The rule is matched twice, at the first commit and once shown. The head start
+cannot be taken back: when the title changes in between so that another rule,
+or none, wins once shown, the window keeps the first rule's frame unless the
+winning rule sets a geometry of its own.
 
 Mutter 48 has the signal but applies the handler's values through a different
 code path, unverified here, so `PLACES_BEFORE_FIRST_FRAME` in `rules.js` is
 false below 49.
-
-A window that matches nothing stays under evaluation for
-`LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID
-and first real title can arrive late. After that it is untracked, so a title
-change hours later cannot rearrange a window the user has since placed.
 
 ## Reload
 

@@ -209,7 +209,11 @@ export class WindowRules {
     // is applied in full once it is shown, exactly as on an older shell.
     _preplace(win, config) {
         try {
+            // Wayland clients only: for an X11 window mutter reads the frame
+            // back as the client's size hints, and one with server-side
+            // decorations then comes out larger by its title bar.
             if (!config.get_is_initial() ||
+                win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
                 win.get_window_type() !== Meta.WindowType.NORMAL ||
                 win.is_fullscreen() || maximizeFlags(win) !== 0)
                 return;
@@ -220,8 +224,11 @@ export class WindowRules {
             if (!rule.geometry || rule.geometry.kind === 'center')
                 return;
             // Without a monitor in the rule, the one mutter's own placement
-            // would pick: the window has no position to derive one from yet.
-            const monitor = rule.monitor ?? global.display.get_current_monitor();
+            // would pick: a window with a parent goes over that parent, any
+            // other window under the pointer. The window has no position to
+            // derive one from yet.
+            const monitor = rule.monitor ?? win.get_transient_for()?.get_monitor() ??
+                global.display.get_current_monitor();
             if (monitor < 0 || monitor >= global.display.get_n_monitors())
                 return;
             const target = this._resolve(rule.geometry, win, workareaOf(win, monitor));
@@ -246,6 +253,7 @@ export class WindowRules {
         entry.shown = true;
         const index = this._matchIndex(win);
         if (index >= 0) {
+            const rule = this._rules[index];
             // Not from inside the 'shown' emission: mutter is still applying
             // the client's first committed size there, and a frame requested
             // that early is overwritten by it (measured on GNOME 46: the
@@ -255,7 +263,7 @@ export class WindowRules {
             entry.applyId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 entry.applyId = 0;
                 this._untrack(win);
-                this._apply(win, this._rules[index], index);
+                this._apply(win, rule, index);
                 return GLib.SOURCE_REMOVE;
             });
             return;
