@@ -7,12 +7,14 @@ use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_REFUSED};
 use crate::model::{self, Ctx};
 use crate::selector;
 
-const ACTIVATE_USAGE: &str = "Usage: wctl activate <ID> or wctl activate -t|-s|-c|-p <value>";
+const ACTIVATE_USAGE: &str =
+    "Usage: wctl activate <ID> [--no-animation] or wctl activate -t|-s|-c|-p <value>";
 
 /// `activate` keeps the extension's first-match rule, so it has its own parser
 /// instead of going through the unique-match selector resolver. A later option
 /// overrides an earlier one, as it did in the bash client.
 pub fn activate(ctx: &mut Ctx, args: &[String]) -> Result<()> {
+    let (no_animation, args) = take_flag(args, "--no-animation");
     let mut mode = "id";
     let mut value = String::new();
 
@@ -49,11 +51,19 @@ pub fn activate(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if value.is_empty() {
         return Err(Fail::error(ACTIVATE_USAGE));
     }
+    if no_animation && mode != "id" {
+        return Err(Fail::error("Option --no-animation requires a window ID"));
+    }
 
     let ok = match mode {
         "id" => {
             let id = selector::validate_id(&value)?;
-            ctx.bus.call_bool("Activate", &(id,))?
+            let method = if no_animation {
+                "ActivateNoAnimation"
+            } else {
+                "Activate"
+            };
+            ctx.bus.call_bool(method, &(id,))?
         }
         "title" => ctx.bus.call_bool("ActivateByTitle", &(value.clone(),))?,
         "substring" => ctx

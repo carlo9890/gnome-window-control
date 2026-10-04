@@ -28,8 +28,9 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // so it is added in the same commit as the feature and never removed while the
 // feature is served. 'rules' means rules.json is read and applied;
 // 'keybindings' means the tile shortcuts in the settings schema are served;
-// 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are.
-const CAPABILITIES = ['rules', 'keybindings', 'no-animation'];
+// 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
+// 'activate-no-animation' means ActivateNoAnimation is.
+const CAPABILITIES = ['rules', 'keybindings', 'no-animation', 'activate-no-animation'];
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
@@ -1088,13 +1089,28 @@ class WindowControlService {
         });
     }
 
+    // Helper: skip the unminimize animation of a window the caller restores
+    // next, under the visibility rule of _skipNextEffect.
+    _skipUnminimizeEffect(win) {
+        if (win.minimized &&
+            win.located_on_workspace(global.workspace_manager.get_active_workspace()))
+            this._skipNextEffect(win);
+    }
+
     // UnminimizeNoAnimation: Unminimize (restore) window without the animation
     UnminimizeNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'UnminimizeNoAnimation', win => {
-            if (win.minimized &&
-                win.located_on_workspace(global.workspace_manager.get_active_workspace()))
-                this._skipNextEffect(win);
+            this._skipUnminimizeEffect(win);
             win.unminimize();
+        });
+    }
+
+    // ActivateNoAnimation: Activate a window by ID; a minimized one is
+    // restored without the animation. activate() does the restore itself.
+    ActivateNoAnimation(windowId) {
+        return this._actOnWindow(windowId, 'ActivateNoAnimation', win => {
+            this._skipUnminimizeEffect(win);
+            win.activate(global.get_current_time());
         });
     }
 

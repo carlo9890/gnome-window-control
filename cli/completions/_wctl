@@ -128,6 +128,7 @@ _wctl() {
                 activate)
                     _arguments \
                         '(-t -s -c -p)1:window id:_wctl_window_ids' \
+                        '(-t -s -c -p)--no-animation[Restore a minimized window without the animation]' \
                         '(-s -c -p)-t[Activate by exact title]:title:' \
                         '(-t -c -p)-s[Activate by title substring]:substring:' \
                         '(-t -s -p)-c[Activate by WM class]:class:' \

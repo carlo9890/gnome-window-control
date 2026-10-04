@@ -45,7 +45,10 @@ LISTING COMMANDS:
                             against; monitors reports raw monitor rectangles.
 
 ACTIVATION COMMANDS:
-    activate <ID>           Activate by window ID
+    activate <ID> [--no-animation]
+                            Activate by window ID. With --no-animation, a
+                            minimized window is restored without the shell's
+                            animation, in the same call
     activate -t <TITLE>     Activate by exact title match (first match)
     activate -s <SUBSTR>    Activate by title substring (first match)
     activate -c <CLASS>     Activate by WM class (first match)
@@ -140,7 +143,7 @@ STATE COMMANDS:
 
     --no-animation on minimize and unminimize skips the shell's minimize
     animation, for a window a script hides and shows as one gesture, such as
-    a popup.
+    a popup. activate <ID> --no-animation restores and focuses in one call.
 
 OTHER:
     version [--json]        Show the wctl version. With --json, also the

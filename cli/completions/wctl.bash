@@ -107,10 +107,12 @@ _wctl() {
         activate)
             if [[ $slot -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then
-                    COMPREPLY=($(compgen -W "-t -s -c -p" -- "$cur"))
+                    COMPREPLY=($(compgen -W "-t -s -c -p --no-animation" -- "$cur"))
                 else
                     COMPREPLY=($(compgen -W "-t -s -c -p $(_wctl_get_window_ids)" -- "$cur"))
                 fi
+            elif [[ $pos -eq 3 && " ${words[*]} " != *" --no-animation "* ]]; then
+                COMPREPLY=($(compgen -W "--no-animation" -- "$cur"))
             fi
             ;;
         wait)

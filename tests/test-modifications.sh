@@ -267,6 +267,21 @@ else
     skip "--no-animation: the loaded extension does not report the no-animation capability"
 fi
 
+# Test: activate --no-animation restores a minimized window and focuses it.
+if "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("activate-no-animation")' >/dev/null; then
+    info "Testing: activate --no-animation"
+    "$WCTL" minimize "$TEST_WINDOW_ID" --no-animation >/dev/null
+    wait_for_change
+    run_wctl activate "$TEST_WINDOW_ID" --no-animation
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "activate --no-animation: exits 0"
+    wait_for_change
+    assert_equals "$(get_window_field '.is_minimized')" "false" "activate --no-animation: window is not minimized"
+    assert_equals "$(get_window_field '.is_hidden')" "false" "activate --no-animation: window is shown"
+    assert_equals "$(get_window_field '.has_focus')" "true" "activate --no-animation: window is focused"
+else
+    skip "activate --no-animation: the loaded extension does not report the activate-no-animation capability"
+fi
+
 # Test: maximize
 info "Testing: maximize"
 run_wctl maximize "$TEST_WINDOW_ID"

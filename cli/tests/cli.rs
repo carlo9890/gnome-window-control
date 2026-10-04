@@ -456,6 +456,18 @@ fn activate_guards() {
     expect_die("Window ID must be a number", &["activate", "abc"]);
     expect_die("Option -t requires a title argument", &["activate", "-t"]);
     expect_die("Unknown option: -x", &["activate", "-x"]);
+    expect_die(
+        "Usage: wctl activate <ID> [--no-animation]",
+        &["activate", "--no-animation"],
+    );
+    expect_die(
+        "Option --no-animation requires a window ID",
+        &["activate", "-c", "kitty", "--no-animation"],
+    );
+    expect_die(
+        "Window ID must be a number",
+        &["activate", "abc", "--no-animation"],
+    );
 }
 
 #[test]
