@@ -126,13 +126,13 @@ shexli output is not a gate:
 - `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
   `get_maximized()` are reported as removed-on-49 API. Both sit behind the
   `typeof win.get_maximized === 'function'` feature detection in
-  `_maximizeFlags` / `_maximizeWindow` / `_unmaximizeWindow`
-  (`extension.js`), so neither runs on GNOME 49. Answer the reviewer with the
+  `maximizeFlags` / `maximizeWindow` / `unmaximizeWindow`
+  (`window-helpers.js`), so neither runs on GNOME 49. Answer the reviewer with the
   guard. Narrowing `shell-version` to 45-48 clears both and costs the 49/50
   users — `shell-version` cannot be widened again without a new review.
-- `EGO-A-004` (warning): counts `console.error` toward a threshold of 5.
-  Stripping every `console.log` still leaves 15, all in catch blocks, which
-  [CODING.md](CODING.md) mandates.
+- `EGO-A-004` (warning): counts `console.error` toward a threshold of 5 per
+  file. Stripping every `console.log` still leaves 15 in `extension.js` and 5
+  in `rules.js`, all in catch blocks, which [CODING.md](CODING.md) mandates.
 - `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
   `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
   calls after setting `this._service = null`.
