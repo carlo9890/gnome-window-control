@@ -119,17 +119,22 @@ tree-sitter 0.26.0 against a tree-sitter-javascript 0.25.0 grammar; the ABI
 mismatch segfaults the process before any output (exit 139 on a zip,
 `munmap_chunk(): invalid pointer` on a directory).
 
-Four findings fire on the current sources. All four were investigated at v11 and
-none is a defect — do not "fix" them. v11 was approved with all four present, so
-shexli output is not a gate:
+Four rules fire on the current sources, `EGO-A-004` once per file. All four
+were investigated at v11 and none is a defect — do not "fix" them. v11 was
+approved with all four present, so shexli output is not a gate:
 
 - `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
-  `get_maximized()` are reported as removed-on-49 API. Both sit behind the
-  `typeof win.get_maximized === 'function'` feature detection in
+  `get_maximized()` are reported as removed-on-49 API. `get_maximized()` and
+  the `maximize()` / `unmaximize()` calls that pass a flags argument sit behind
+  the `typeof win.get_maximized === 'function'` feature detection in
   `maximizeFlags` / `maximizeWindow` / `unmaximizeWindow`
-  (`window-helpers.js`), so neither runs on GNOME 49. Answer the reviewer with the
-  guard. Narrowing `shell-version` to 45-48 clears both and costs the 49/50
-  users — `shell-version` cannot be widened again without a new review.
+  (`window-helpers.js`), so none of them runs on GNOME 49. The
+  `Meta.MaximizeFlags` enum itself is still there on 49 and later, as the type
+  `get_maximize_flags()` returns; `isFullyMaximized` (`window-helpers.js`) and
+  `_frameRefusal` (`extension.js`) compare against it on every version. Answer
+  the reviewer with the guard and the enum. Narrowing `shell-version` to 45-48
+  clears both findings and costs the 49/50 users — `shell-version` cannot be
+  widened again without a new review.
 - `EGO-A-004` (warning): counts `console.error` toward a threshold of 5 per
   file. Stripping every `console.log` still leaves 15 in `extension.js` and 5
   in `rules.js`, all in catch blocks, which [CODING.md](CODING.md) mandates.

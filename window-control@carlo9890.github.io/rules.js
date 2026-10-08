@@ -120,7 +120,7 @@ export class WindowRules {
         });
     }
 
-    // Asynchronous, so a slow disk never stalls the compositor. A newer read
+    // Asynchronous, so the read never blocks the compositor. A newer read
     // and disable() both cancel the one in flight, and a cancelled read changes
     // nothing.
     _load() {
