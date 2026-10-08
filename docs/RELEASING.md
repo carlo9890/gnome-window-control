@@ -152,10 +152,11 @@ Constraints the review enforces, which the code must keep satisfying:
   pending call and drops the `window-created` handler, the per-window
   `notify::wm-class` / `notify::title` / `shown` / `unmanaged` handlers and the
   per-waiter timeouts that `WaitForWindow` and `WaitForGeometry` arm;
-  `WindowRules.disable()` cancels its file monitor, its debounce timeout and its
-  per-window handlers; `WindowKeybindings.disable()` removes every keybinding
-  it added and cancels a pending unmaximize-then-place. Tear down any new
-  signal or timer on the same path.
+  `WindowRules.disable()` cancels its file monitor, its debounce timeout, a
+  `rules.json` read in flight and its per-window handlers;
+  `WindowKeybindings.disable()` removes every keybinding it added and cancels a
+  pending unmaximize-then-place. Tear down any new signal or timer on the same
+  path.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.
