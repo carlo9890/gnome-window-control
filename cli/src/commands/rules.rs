@@ -98,6 +98,11 @@ fn take_file_option(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>)> {
     Ok((path, rest))
 }
 
+/// The file a subcommand acts on: the `--file` one, else the extension's own.
+fn rules_path(file: Option<PathBuf>) -> Result<PathBuf> {
+    file.map_or_else(default_path, Ok)
+}
+
 /// What reading the rules file produced.
 enum Loaded {
     /// The file does not exist. Not an error: an absent file means no rules.
@@ -130,10 +135,7 @@ fn parse(text: &str, path: &Path) -> Result<Value> {
 fn check(args: &[String]) -> Result<()> {
     let (file, rest) = take_file_option(args)?;
     let json = super::parse_json_flag(&rest)?;
-    let path = match file {
-        Some(path) => path,
-        None => default_path()?,
-    };
+    let path = rules_path(file)?;
 
     let text = match read_file(&path)? {
         Loaded::Absent => {
@@ -264,10 +266,7 @@ fn describe_action(rule: &rules::Rule) -> String {
 fn list(args: &[String]) -> Result<()> {
     let (file, rest) = take_file_option(args)?;
     let json = super::parse_json_flag(&rest)?;
-    let path = match file {
-        Some(path) => path,
-        None => default_path()?,
-    };
+    let path = rules_path(file)?;
     let (raw, compiled) = load(&path)?;
 
     if json {
@@ -312,10 +311,7 @@ fn path_command(args: &[String]) -> Result<()> {
     if let Some(unexpected) = rest.first() {
         return Err(Fail::error(format!("Unexpected argument: {unexpected}")));
     }
-    let path = match file {
-        Some(path) => path,
-        None => default_path()?,
-    };
+    let path = rules_path(file)?;
     println!("{}", path.display());
     Ok(())
 }
@@ -512,10 +508,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // The warning is about the file the extension READS, so `--file` earns
     // neither the warning nor the bus call it costs.
     let is_default_file = file.is_none();
-    let path = match file {
-        Some(path) => path,
-        None => default_path()?,
-    };
+    let path = rules_path(file)?;
     let (mut raw, compiled) = load(&path)?;
 
     let position = match at {
@@ -583,10 +576,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         .map_err(|_| Fail::error("Rule index must be a non-negative number"))?;
 
     let is_default_file = file.is_none();
-    let path = match file {
-        Some(path) => path,
-        None => default_path()?,
-    };
+    let path = rules_path(file)?;
     let (mut raw, _) = load(&path)?;
     if index >= raw.len() {
         return Err(Fail::error(format!(
@@ -625,15 +615,9 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl rules test <WINDOW> [--file PATH] [--json]";
     let (file, args) = take_file_option(args)?;
     let (json, args) = super::take_flag(&args, "--json");
-    let selector = crate::selector::parse_min(0, usage, &args)?;
-    if args.len() > selector.shift {
-        return Err(Fail::error(usage));
-    }
+    let selector = crate::selector::parse_exact(0, usage, &args)?;
 
-    let path = match file {
-        Some(path) => path,
-        None => default_path()?,
-    };
+    let path = rules_path(file)?;
     // The file is read BEFORE the bus call: a broken rules file is the user's
     // problem to fix either way, and reporting it costs nothing.
     let (_, compiled) = load(&path)?;
