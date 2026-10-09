@@ -1,8 +1,32 @@
 # GNOME Window Control
 
-A GNOME Shell extension that provides a D-Bus interface for listing and controlling windows on Wayland. This fills a critical gap: on Wayland, there's no standard way to enumerate windows from the command line (unlike X11's `wmctrl` and `xdotool`).
+[![Build](https://github.com/carlo9890/gnome-window-control/actions/workflows/build.yml/badge.svg)](https://github.com/carlo9890/gnome-window-control/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/carlo9890/gnome-window-control)](https://github.com/carlo9890/gnome-window-control/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/carlo9890/gnome-window-control)](LICENSE)
 
-## Features
+List, move and tile windows on GNOME Shell from a script, a rules file, or the
+keyboard. It works on Wayland, where `wmctrl` and `xdotool` reach only
+XWayland windows.
+
+![wctl commands, a rules.json rule, and the numpad shortcuts that tile a window on a 4x2 grid](docs/images/overview.svg)
+
+One GNOME Shell extension, three ways to use it:
+
+- **From a script** - `wctl`, a single static binary, or any D-Bus client such
+  as `gdbus`. See [Usage](#usage).
+- **On window creation** - rules in `rules.json` place a matching window the
+  moment it opens. See [Automatic window placement](#automatic-window-placement).
+- **From the keyboard** - `Super+Ctrl` plus a numpad key tiles the focused
+  window. See [Keyboard shortcuts](#keyboard-shortcuts).
+
+```bash
+wctl list                                  # every window, with ID, class and title
+wctl tile -c kitty left                    # tile the kitty window to the left column
+wctl place focused right top 50% 100%      # right half of the workarea
+wctl minimize focused                      # minimize the focused window
+```
+
+## What a script can do
 
 - **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
 - **Window info** - Get detailed information about any window
@@ -12,9 +36,6 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
 - **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
 - **Wait for a window** - Block until a matching window is shown, without polling
-- **Automatic placement** - Place matching windows the moment they are shown, from a config file, with no `wctl` call in the loop
-- **Keyboard shortcuts** - Tile the focused window to a grid position from the numpad, configurable, no `wctl` process per key
-- **CLI-friendly** - Easy to use from shell scripts via `gdbus` or the included `wctl` client, a single static binary with no runtime dependencies
 
 ## Compatibility
 
@@ -42,6 +63,19 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
    ```bash
    gnome-extensions enable window-control@carlo9890.github.io
    ```
+
+#### From extensions.gnome.org
+
+Install it from the
+[Window Control page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/),
+with the browser integration or the Extension Manager app.
+
+Every upload there waits for a manual review, so that page can be several
+versions behind the GitHub release, and an older version has no rules and no
+keyboard shortcuts. Run `wctl version --json` and read `capabilities`: `rules`
+and `keybindings` are listed when the loaded extension has them. The same
+command reports `"compatible": false` for an install from that page - see
+[Checking the extension version](#checking-the-extension-version).
 
 #### Upgrading from window-control@hko9890
 
