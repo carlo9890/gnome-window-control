@@ -127,8 +127,12 @@ export function resolvePlacePosition(token, keywords, workareaPos, workareaSize,
 }
 
 // The four `place` tokens against a workarea, sizes first so the alignment
-// keywords can use them. Null when any token is invalid.
+// keywords can use them. Null when any token is invalid. A token is a string
+// or a number: String() renders the array ["left"] as "left", so any other
+// type is refused before the coercion.
 export function resolvePlaceRect(tokens, workarea) {
+    if (!tokens.every(token => typeof token === 'string' || typeof token === 'number'))
+        return null;
     const [x, y, w, h] = tokens.map(String);
     const width = resolvePlaceSize(w, workarea.width);
     const height = resolvePlaceSize(h, workarea.height);
@@ -240,7 +244,8 @@ export function compileRule(rule, index) {
         }
         geometry = { kind: 'place', tokens };
     } else if ('tile' in rule) {
-        if (!Object.hasOwn(TILE_CELLS, rule.tile))
+        // typeof first: hasOwn coerces its key, so ["left"] would pass as "left".
+        if (typeof rule.tile !== 'string' || !Object.hasOwn(TILE_CELLS, rule.tile))
             throw new Error(`${label}.tile: must be one of ${Object.keys(TILE_CELLS).join(', ')}`);
         geometry = { kind: 'tile', position: rule.tile };
     } else if ('center' in rule) {

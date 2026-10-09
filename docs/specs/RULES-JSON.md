@@ -83,8 +83,9 @@ target monitor, never the monitor rectangle.
 
 ### place
 
-`[X, Y, WIDTH, HEIGHT]`, exactly four elements. JSON numbers and strings are
-equivalent; `resolvePlaceRect` coerces with `String`.
+`[X, Y, WIDTH, HEIGHT]`, exactly four elements, each a JSON string or number.
+The two are equivalent; `resolvePlaceRect` coerces with `String`. An element of
+any other type is an unresolvable token.
 
 Resolution order is size first, then position, because the alignment keywords
 need the resolved size.
@@ -164,7 +165,7 @@ matched value, so a window title or WM class cannot reach the journal.
 | Two or more of `place`/`tile`/`center` | `rules[N]: place, tile and center are mutually exclusive` |
 | `place` not 4 elements | `rules[N].place: must be [X, Y, WIDTH, HEIGHT]` |
 | A `place` token unresolvable | `rules[N].place: X is a number or left\|center\|right, ...` |
-| `tile` not a grid position | `rules[N].tile: must be one of ...` |
+| `tile` not a string naming a grid position | `rules[N].tile: must be one of ...` |
 | `center` not an axis | `rules[N].center: must be one of ...` |
 | `workspace`/`monitor` not an integer ≥ 0 | `rules[N].<key>: must be a non-negative integer` |
 | Rule has no action | `rules[N]: has nothing to do (...)` |
