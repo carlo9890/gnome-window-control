@@ -34,7 +34,7 @@ echo "========================================"
 
 require_extension
 
-if ! "$WCTL" version --json 2>/dev/null | jq -e '.capabilities | index("keybindings")' >/dev/null; then
+if ! extension_reports keybindings; then
     echo -e "${YELLOW}SKIP${RESET}: the loaded extension does not report the keybindings capability"
     exit 0
 fi
