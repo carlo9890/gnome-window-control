@@ -246,6 +246,12 @@
       "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
     },
     {
+      "name": "a place token is an array holding a valid token",
+      "document": [{ "match": { "class": "a" }, "place": [["left"], "top", "50%", "100%"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
       "name": "place WIDTH of zero",
       "document": [{ "match": { "class": "a" }, "place": ["0", "0", "0", "100"] }],
       "valid": false,
@@ -284,6 +290,12 @@
     {
       "name": "tile is not a string",
       "document": [{ "match": { "class": "a" }, "tile": 1 }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
+    },
+    {
+      "name": "tile is an array holding a position",
+      "document": [{ "match": { "class": "a" }, "tile": ["left"] }],
       "valid": false,
       "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     },

@@ -119,20 +119,25 @@ tree-sitter 0.26.0 against a tree-sitter-javascript 0.25.0 grammar; the ABI
 mismatch segfaults the process before any output (exit 139 on a zip,
 `munmap_chunk(): invalid pointer` on a directory).
 
-Four findings fire on the current sources. All four were investigated at v11 and
-none is a defect — do not "fix" them. v11 was approved with all four present, so
-shexli output is not a gate:
+Four rules fire on the current sources, `EGO-A-004` once per file. All four
+were investigated at v11 and none is a defect — do not "fix" them. v11 was
+approved with all four present, so shexli output is not a gate:
 
 - `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
-  `get_maximized()` are reported as removed-on-49 API. Both sit behind the
-  `typeof win.get_maximized === 'function'` feature detection in
-  `_maximizeFlags` / `_maximizeWindow` / `_unmaximizeWindow`
-  (`extension.js`), so neither runs on GNOME 49. Answer the reviewer with the
-  guard. Narrowing `shell-version` to 45-48 clears both and costs the 49/50
-  users — `shell-version` cannot be widened again without a new review.
-- `EGO-A-004` (warning): counts `console.error` toward a threshold of 5.
-  Stripping every `console.log` still leaves 15, all in catch blocks, which
-  [CODING.md](CODING.md) mandates.
+  `get_maximized()` are reported as removed-on-49 API. `get_maximized()` and
+  the `maximize()` / `unmaximize()` calls that pass a flags argument sit behind
+  the `typeof win.get_maximized === 'function'` feature detection in
+  `maximizeFlags` / `maximizeWindow` / `unmaximizeWindow`
+  (`window-helpers.js`), so none of them runs on GNOME 49. The
+  `Meta.MaximizeFlags` enum itself is still there on 49 and later, as the type
+  `get_maximize_flags()` returns; `isFullyMaximized` (`window-helpers.js`) and
+  `_frameRefusal` (`extension.js`) compare against it on every version. Answer
+  the reviewer with the guard and the enum. Narrowing `shell-version` to 45-48
+  clears both findings and costs the 49/50 users — `shell-version` cannot be
+  widened again without a new review.
+- `EGO-A-004` (warning): counts `console.error` toward a threshold of 5 per
+  file. Stripping every `console.log` still leaves 15 in `extension.js` and 5
+  in `rules.js`, all in catch blocks, which [CODING.md](CODING.md) mandates.
 - `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
   `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
   calls after setting `this._service = null`.
@@ -152,10 +157,11 @@ Constraints the review enforces, which the code must keep satisfying:
   pending call and drops the `window-created` handler, the per-window
   `notify::wm-class` / `notify::title` / `shown` / `unmanaged` handlers and the
   per-waiter timeouts that `WaitForWindow` and `WaitForGeometry` arm;
-  `WindowRules.disable()` cancels its file monitor, its debounce timeout and its
-  per-window handlers; `WindowKeybindings.disable()` removes every keybinding
-  it added and cancels a pending unmaximize-then-place. Tear down any new
-  signal or timer on the same path.
+  `WindowRules.disable()` cancels its file monitor, its debounce timeout, a
+  `rules.json` read in flight and its per-window handlers;
+  `WindowKeybindings.disable()` removes every keybinding it added and cancels a
+  pending unmaximize-then-place. Tear down any new signal or timer on the same
+  path.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.

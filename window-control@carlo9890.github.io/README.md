@@ -18,7 +18,8 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
 
 2. Install the extension. The script copies it into the extensions directory
    and compiles the settings schema, which the keyboard shortcuts are read
-   from; a plain copy has no compiled schema and fails to enable:
+   from; a plain copy has no compiled schema, so it enables without the
+   shortcuts:
    ```bash
    ./scripts/build.sh install
    ```

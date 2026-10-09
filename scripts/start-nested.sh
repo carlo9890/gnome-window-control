@@ -36,13 +36,15 @@ if [[ "$(gnome-shell --help-all 2>/dev/null)" == *--sm-disable* ]]; then
     SM_DISABLE=(--sm-disable)
 fi
 
-# Start gnome-shell and capture output, backgrounding after initial startup
+# Start gnome-shell and capture output, backgrounding after initial startup.
+# tee runs in a process substitution, not at the end of a pipe: after
+# `shell | tee &`, $! is the PID of tee, and killing tee leaves the shell alive.
 env -u SESSION_MANAGER -u GNOME_SHELL_SESSION_MODE -u DESKTOP_AUTOSTART_ID \
     -u XDG_SESSION_ID -u INVOCATION_ID -u MANAGERPID -u JOURNAL_STREAM \
     GSETTINGS_BACKEND=memory \
-    dbus-run-session gnome-shell --nested --wayland "${SM_DISABLE[@]}" 2>&1 \
-    | tee "$OUTPUT_FILE" &
-GNOME_PID=$!
+    dbus-run-session gnome-shell --nested --wayland "${SM_DISABLE[@]}" \
+    > >(tee "$OUTPUT_FILE") 2>&1 &
+RUNNER_PID=$!
 
 # Wait for gnome-shell to report its display values
 echo "Waiting for nested session to start..."
@@ -63,7 +65,7 @@ for i in {1..30}; do
     fi
     
     # Check if gnome-shell died
-    if ! kill -0 $GNOME_PID 2>/dev/null; then
+    if ! kill -0 $RUNNER_PID 2>/dev/null; then
         echo "ERROR: Nested GNOME Shell failed to start"
         cat "$OUTPUT_FILE"
         exit 1
@@ -78,6 +80,14 @@ done
 # Default values if detection failed
 WAYLAND_DISP=${WAYLAND_DISP:-wayland-1}
 X_DISP=${X_DISP:-:99}
+
+# The shell, not the runner: killing dbus-run-session leaves the shell alive
+# (observed on GNOME 46), while the shell exiting takes the runner with it.
+SHELL_PID="$(pgrep -P "$RUNNER_PID" -x gnome-shell || true)"
+if [ -z "$SHELL_PID" ]; then
+    echo "ERROR: no gnome-shell under dbus-run-session (PID $RUNNER_PID); see $OUTPUT_FILE"
+    exit 1
+fi
 
 echo ""
 echo "=========================================="
@@ -120,11 +130,11 @@ echo "  # Through D-Bus, never 'gnome-extensions enable': that writes dconf,"
 echo "  # which the REAL shell reads, and it can disable your live extension."
 echo ""
 echo "=========================================="
-echo "Nested shell PID: $GNOME_PID"
-echo "Stop it with: kill $GNOME_PID   (never pkill -- it matches the real shell)"
+echo "Nested shell PID: $SHELL_PID"
+echo "Stop it with: kill $SHELL_PID   (never pkill -- it matches the real shell)"
 echo "Log: $OUTPUT_FILE"
 echo "=========================================="
 echo ""
 
 # Wait for gnome-shell to finish
-wait $GNOME_PID 2>/dev/null || true
+wait $RUNNER_PID 2>/dev/null || true

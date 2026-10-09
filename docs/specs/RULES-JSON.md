@@ -83,8 +83,9 @@ target monitor, never the monitor rectangle.
 
 ### place
 
-`[X, Y, WIDTH, HEIGHT]`, exactly four elements. JSON numbers and strings are
-equivalent; `resolvePlaceRect` coerces with `String`.
+`[X, Y, WIDTH, HEIGHT]`, exactly four elements, each a JSON string or number.
+The two are equivalent; `resolvePlaceRect` coerces with `String`. An element of
+any other type is an unresolvable token.
 
 Resolution order is size first, then position, because the alignment keywords
 need the resolved size.
@@ -145,8 +146,8 @@ the same message text. `cli/src/rules.rs` is what produces it.
 
 `compileRules` parses and validates the whole file before any rule takes
 effect. The first problem throws and **no rule from the file is applied** — a
-typo never leaves some rules live and others not. `WindowRules._load` logs the
-message at warning level and runs with zero rules until the file changes.
+typo never leaves some rules live and others not. `WindowRules._compile` logs
+the message at warning level and runs with zero rules until the file changes.
 
 Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
@@ -164,7 +165,7 @@ matched value, so a window title or WM class cannot reach the journal.
 | Two or more of `place`/`tile`/`center` | `rules[N]: place, tile and center are mutually exclusive` |
 | `place` not 4 elements | `rules[N].place: must be [X, Y, WIDTH, HEIGHT]` |
 | A `place` token unresolvable | `rules[N].place: X is a number or left\|center\|right, ...` |
-| `tile` not a grid position | `rules[N].tile: must be one of ...` |
+| `tile` not a string naming a grid position | `rules[N].tile: must be one of ...` |
 | `center` not an axis | `rules[N].center: must be one of ...` |
 | `workspace`/`monitor` not an integer ≥ 0 | `rules[N].<key>: must be a non-negative integer` |
 | Rule has no action | `rules[N]: has nothing to do (...)` |
@@ -261,6 +262,11 @@ A `Gio.FileMonitor` on the directory, not the file, so an editor that saves by
 rename is still seen. Events are debounced by `RELOAD_DEBOUNCE_MS` into one
 reload. A reload replaces the whole rule set and affects windows created
 afterwards. No restart is needed.
+
+The read at `enable()` and every reload are asynchronous (`WindowRules._load`),
+so the rule set changes when the read lands: a window created between
+`enable()` and the first read landing is not placed. A newer read and
+`disable()` cancel the one in flight, and a cancelled read changes nothing.
 
 `window-created` is connected only while at least one rule is loaded, so an
 absent or empty file costs nothing per window.

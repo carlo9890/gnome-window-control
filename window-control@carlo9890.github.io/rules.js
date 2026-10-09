@@ -65,6 +65,7 @@ export class WindowRules {
         this._fileMonitor = null;
         this._fileMonitorId = 0;
         this._reloadId = 0;
+        this._loadCancellable = null;
     }
 
     // Never throws: window rules are secondary to the D-Bus service, so a
@@ -98,6 +99,8 @@ export class WindowRules {
             GLib.source_remove(this._reloadId);
             this._reloadId = 0;
         }
+        this._loadCancellable?.cancel();
+        this._loadCancellable = null;
         if (this._fileMonitor) {
             this._fileMonitor.disconnect(this._fileMonitorId);
             this._fileMonitor.cancel();
@@ -117,22 +120,36 @@ export class WindowRules {
         });
     }
 
+    // Asynchronous, so the read never blocks the compositor. A newer read
+    // and disable() both cancel the one in flight, and a cancelled read changes
+    // nothing.
     _load() {
+        this._loadCancellable?.cancel();
+        const cancellable = new Gio.Cancellable();
+        this._loadCancellable = cancellable;
         const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
-        let text;
-        try {
-            const [, bytes] = file.load_contents(null);
-            text = new TextDecoder().decode(bytes);
-        } catch (e) {
-            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
-                this._rules = [];
-                this._syncWatch();
-                console.log(`[Window Control] no ${RULES_FILE}; window rules off`);
+        file.load_contents_async(cancellable, (source, result) => {
+            if (cancellable.is_cancelled())
+                return;
+            let text;
+            try {
+                const [, bytes] = source.load_contents_finish(result);
+                text = new TextDecoder().decode(bytes);
+            } catch (e) {
+                if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
+                    this._rules = [];
+                    this._syncWatch();
+                    console.log(`[Window Control] no ${RULES_FILE}; window rules off`);
+                    return;
+                }
+                console.error(`[Window Control] ${RULES_FILE}: cannot read: ${e.message}`);
                 return;
             }
-            console.error(`[Window Control] ${RULES_FILE}: cannot read: ${e.message}`);
-            return;
-        }
+            this._compile(text);
+        });
+    }
+
+    _compile(text) {
         try {
             this._rules = compileRules(text);
             console.log(`[Window Control] ${RULES_FILE}: ${this._rules.length} rule(s) loaded`);
