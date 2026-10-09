@@ -1,6 +1,30 @@
 # GNOME Window Control
 
-A GNOME Shell extension that provides a D-Bus interface for listing and controlling windows on Wayland. This fills a critical gap: on Wayland, there's no standard way to enumerate windows from the command line (unlike X11's `wmctrl` and `xdotool`).
+[![Build](https://github.com/carlo9890/gnome-window-control/actions/workflows/build.yml/badge.svg)](https://github.com/carlo9890/gnome-window-control/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/carlo9890/gnome-window-control)](https://github.com/carlo9890/gnome-window-control/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/carlo9890/gnome-window-control)](LICENSE)
+
+List, move and tile windows on GNOME Shell from a script, a rules file, or the
+keyboard. It works on Wayland, where `wmctrl` and `xdotool` reach only
+XWayland windows.
+
+![wctl commands, a rules.json rule, and the numpad shortcuts that tile a window on a 4x2 grid](docs/images/overview.svg)
+
+One GNOME Shell extension, three ways to use it:
+
+- **From a script** - `wctl`, a single static binary, or any D-Bus client such
+  as `gdbus`. See [Usage](#usage).
+- **On window creation** - rules in `rules.json` place a matching window the
+  moment it opens. See [Automatic window placement](#automatic-window-placement).
+- **From the keyboard** - `Super+Ctrl` plus a numpad key tiles the focused
+  window. See [Keyboard shortcuts](#keyboard-shortcuts).
+
+```bash
+wctl list                                  # every window, with ID, class and title
+wctl tile -c kitty left                    # tile the kitty window to the left column
+wctl place focused right top 50% 100%      # right half of the workarea
+wctl activate -c firefox                   # raise and focus the Firefox window
+```
 
 ## Features
 
@@ -25,7 +49,15 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 ### Extension
 
-#### From GitHub Releases (Recommended)
+#### From extensions.gnome.org
+
+Install it from the
+[Window Control page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/),
+with the browser integration or the Extension Manager app. Every upload there
+waits for a manual review, so that page can be behind the latest GitHub
+release.
+
+#### From GitHub Releases (latest version)
 
 1. Download the latest release from the [GitHub Releases page](https://github.com/carlo9890/gnome-window-control/releases)
 
