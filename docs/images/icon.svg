@@ -3,12 +3,8 @@
 <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#g)"/>
 <rect x="40" y="62" width="176" height="112" rx="14" fill="#ffffff" fill-opacity="0.16" stroke="#ffffff" stroke-width="8"/>
 <rect x="56" y="80" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="0.28"/>
-<rect x="94" y="80" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="1"/>
-<rect x="132" y="80" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="1"/>
 <rect x="170" y="80" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="0.28"/>
 <rect x="56" y="118" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="0.28"/>
-<rect x="94" y="118" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="1"/>
-<rect x="132" y="118" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="1"/>
 <rect x="170" y="118" width="32" height="32" rx="5" fill="#ffffff" fill-opacity="0.28"/>
 <rect x="94" y="80" width="70" height="70" rx="6" fill="#ffffff"/>
 <rect x="116" y="174" width="24" height="18" fill="#ffffff"/>

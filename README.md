@@ -23,10 +23,10 @@ One GNOME Shell extension, three ways to use it:
 wctl list                                  # every window, with ID, class and title
 wctl tile -c kitty left                    # tile the kitty window to the left column
 wctl place focused right top 50% 100%      # right half of the workarea
-wctl activate -c firefox                   # raise and focus the Firefox window
+wctl minimize focused                      # minimize the focused window
 ```
 
-## Features
+## What a script can do
 
 - **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
 - **Window info** - Get detailed information about any window
@@ -36,9 +36,6 @@ wctl activate -c firefox                   # raise and focus the Firefox window
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
 - **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
 - **Wait for a window** - Block until a matching window is shown, without polling
-- **Automatic placement** - Place matching windows the moment they are shown, from a config file, with no `wctl` call in the loop
-- **Keyboard shortcuts** - Tile the focused window to a grid position from the numpad, configurable, no `wctl` process per key
-- **CLI-friendly** - Easy to use from shell scripts via `gdbus` or the included `wctl` client, a single static binary with no runtime dependencies
 
 ## Compatibility
 
@@ -49,15 +46,7 @@ wctl activate -c firefox                   # raise and focus the Firefox window
 
 ### Extension
 
-#### From extensions.gnome.org
-
-Install it from the
-[Window Control page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/),
-with the browser integration or the Extension Manager app. Every upload there
-waits for a manual review, so that page can be behind the latest GitHub
-release.
-
-#### From GitHub Releases (latest version)
+#### From GitHub Releases (Recommended)
 
 1. Download the latest release from the [GitHub Releases page](https://github.com/carlo9890/gnome-window-control/releases)
 
@@ -74,6 +63,19 @@ release.
    ```bash
    gnome-extensions enable window-control@carlo9890.github.io
    ```
+
+#### From extensions.gnome.org
+
+Install it from the
+[Window Control page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/),
+with the browser integration or the Extension Manager app.
+
+Every upload there waits for a manual review, so that page can be several
+versions behind the GitHub release, and an older version has no rules and no
+keyboard shortcuts. Run `wctl version --json` and read `capabilities`: `rules`
+and `keybindings` are listed when the loaded extension has them. The same
+command reports `"compatible": false` for an install from that page - see
+[Checking the extension version](#checking-the-extension-version).
 
 #### Upgrading from window-control@hko9890
 

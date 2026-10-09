@@ -104,6 +104,14 @@ then upload the same zip.
    the queue is usually weeks. Every new version needs a new upload and a new
    review.
 
+### Listing images
+
+The listing's screenshot and icon and the GitHub social preview are PNG renders
+of `docs/images/overview.svg` and `docs/images/icon.svg`. Both are written by
+`docs/images/generate.py`; its docstring has the render commands. Upload new
+renders by hand when a default shortcut, a tile position or `shell-version`
+changes.
+
 ### Pre-upload check with shexli
 
 The upload page recommends `shexli`, the static analyzer the reviewer may also

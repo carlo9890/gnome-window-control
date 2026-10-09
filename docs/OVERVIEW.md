@@ -34,6 +34,7 @@ tests/                     test suites (see docs/TESTING.md)
 ├── check-rules-format.js  headless gjs check of the rules.json grammar
 └── vectors/               shared test vectors read by GJS and Rust alike
 docs/                      developer topic docs (this directory)
+└── images/                the README image and the listing icon, written by generate.py
 .github/workflows/         CI (build.yml)
 dist/                      build output (generated zips)
 install-wctl.sh            wctl installer
