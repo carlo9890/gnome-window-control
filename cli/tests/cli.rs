@@ -718,8 +718,31 @@ fn rules_file_surface_needs_no_bus() {
     // No action is a usage error, unless --workspace or --monitor gives the
     // rule something to do.
     expect_die(
-        "Usage: wctl rules add",
+        "A rule needs an action, --workspace or --monitor. Usage: wctl rules add",
         &["rules", "add", "--file", &path, "-c", "a"],
+    );
+    // --at is a position in the file, so a huge one is past the end, not a
+    // malformed number.
+    expect_die(
+        "--at 5000000000 is past the end; the file has 2 rule(s)",
+        &[
+            "rules",
+            "add",
+            "--file",
+            &path,
+            "-c",
+            "a",
+            "tile",
+            "left",
+            "--at",
+            "5000000000",
+        ],
+    );
+    expect_die(
+        "--at must be a non-negative number",
+        &[
+            "rules", "add", "--file", &path, "-c", "a", "tile", "left", "--at", "-1",
+        ],
     );
     expect_die(
         "--workspace must be a non-negative number",
