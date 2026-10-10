@@ -510,6 +510,12 @@
         "tokens": ["center", "center", "50%", "50%"],
         "workarea": { "x": 0, "y": 0, "width": 1001, "height": 1001 },
         "rect": { "x": 250, "y": 250, "width": 500, "height": 500 }
+      },
+      {
+        "name": "centring adds the workarea origin, and an odd negative difference is cut toward zero",
+        "tokens": ["center", "center", "1001", "701"],
+        "workarea": { "x": 100, "y": 50, "width": 800, "height": 600 },
+        "rect": { "x": 0, "y": 0, "width": 1001, "height": 701 }
       }
     ],
 
@@ -559,6 +565,15 @@
           "top-left": { "x": 100, "y": 50, "width": 200, "height": 300 },
           "bottom-right": { "x": 700, "y": 350, "width": 200, "height": 300 }
         }
+      },
+      {
+        "comment": "1003 / 4 = 250.75 and 1001 / 2 = 500.5: a cell is cut, not rounded",
+        "workarea": { "x": 0, "y": 0, "width": 1003, "height": 1001 },
+        "cells": {
+          "top-left": { "x": 0, "y": 0, "width": 250, "height": 500 },
+          "center": { "x": 250, "y": 0, "width": 500, "height": 1000 },
+          "bottom-right": { "x": 750, "y": 500, "width": 250, "height": 500 }
+        }
       }
     ],
 
@@ -597,6 +612,20 @@
         "frame": { "x": 0, "y": 0, "width": 400, "height": 300 },
         "workarea": { "x": 100, "y": 50, "width": 800, "height": 600 },
         "rect": { "x": 300, "y": 200, "width": 400, "height": 300 }
+      },
+      {
+        "name": "an odd difference is cut, not rounded",
+        "axis": "both",
+        "frame": { "x": 0, "y": 0, "width": 401, "height": 301 },
+        "workarea": { "x": 0, "y": 0, "width": 800, "height": 600 },
+        "rect": { "x": 199, "y": 149, "width": 401, "height": 301 }
+      },
+      {
+        "name": "an odd negative difference is cut toward zero",
+        "axis": "both",
+        "frame": { "x": 0, "y": 0, "width": 1001, "height": 701 },
+        "workarea": { "x": 0, "y": 0, "width": 800, "height": 600 },
+        "rect": { "x": -100, "y": -50, "width": 1001, "height": 701 }
       }
     ]
   },
@@ -614,6 +643,7 @@
       { "name": "title does not match a substring", "kind": "title", "value": "vi", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
       { "name": "substring matches inside the title", "kind": "substring", "value": "vi", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
       { "name": "substring matches the whole title", "kind": "substring", "value": "vim", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
+      { "name": "substring matches at the end of the title", "kind": "substring", "value": "im", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
       { "name": "substring is case sensitive", "kind": "substring", "value": "VIM", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
       { "name": "substring against a null title", "kind": "substring", "value": "vim", "window": { "wm_class": "kitty", "title": null, "pid": 100 }, "matches": false },
       { "name": "class against a null class", "kind": "class", "value": "kitty", "window": { "wm_class": null, "title": "vim", "pid": 100 }, "matches": false },
