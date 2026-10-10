@@ -107,14 +107,15 @@ PLACEMENT RULES:
                             Validate the file. Same verdict and same message
                             the extension would log, so a file this accepts
                             is a file the shell will load.
-    rules add <MATCH> <ACTION> [--workspace <N>] [--monitor <N>]
+    rules add <MATCH> [ACTION] [--workspace <N>] [--monitor <N>]
               [--at <N>] [--dry-run]
                             Append a rule (or insert it at --at). MATCH is
                             -c <CLASS>, -t <TITLE> or -s <SUBSTR>; a window ID,
                             focused and -p name a window that already exists,
                             so a rule cannot use them. ACTION is
                             tile <POSITION>, place <X> <Y> <W> <H>, or
-                            center [horizontal|vertical|both].
+                            center [horizontal|vertical|both], and may be
+                            left out when --workspace or --monitor is given.
     rules remove <INDEX> [--dry-run]
                             Remove the rule at INDEX
     rules test <WINDOW> [--json]

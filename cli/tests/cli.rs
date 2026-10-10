@@ -715,8 +715,45 @@ fn rules_file_surface_needs_no_bus() {
         ],
     );
 
+    // No action is a usage error, unless --workspace or --monitor gives the
+    // rule something to do.
+    expect_die(
+        "Usage: wctl rules add",
+        &["rules", "add", "--file", &path, "-c", "a"],
+    );
+    expect_die(
+        "--workspace must be a non-negative number",
+        &[
+            "rules",
+            "add",
+            "--file",
+            &path,
+            "-c",
+            "a",
+            "--workspace",
+            "2147483648",
+        ],
+    );
+
     // None of those refusals touched the file.
     assert_eq!(read(), before, "a refused add must not rewrite the file");
+
+    let moved = dir.join("workspace-only.json");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        moved.to_str().unwrap(),
+        "-c",
+        "Slack",
+        "--workspace",
+        "2",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert_eq!(
+        std::fs::read_to_string(&moved).unwrap(),
+        "[\n  {\n    \"match\": {\n      \"class\": \"Slack\"\n    },\n    \"workspace\": 2\n  }\n]\n"
+    );
 
     // --dry-run prints the document it would write and changes nothing.
     let (out, code) = wctl(&[

@@ -57,7 +57,7 @@ fn warn_if_rules_unsupported(ctx: &Ctx) {
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
 
 const ADD_USAGE: &str =
-    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> <tile POSITION|place X Y W H|center [AXIS]> \
+    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> [tile POSITION|place X Y W H|center [AXIS]] \
 [--workspace N] [--monitor N] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
@@ -441,7 +441,10 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
     })
 }
 
-/// `wctl rules add <MATCH> <ACTION> [--workspace N] [--monitor N] [--at N] [--dry-run]`
+/// `wctl rules add <MATCH> [ACTION] [--workspace N] [--monitor N] [--at N] [--dry-run]`
+///
+/// The action may be left out when `--workspace` or `--monitor` is given: the
+/// grammar accepts a rule that only moves the window there.
 fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (file, args) = take_file_option(args)?;
     let (dry_run, args) = super::take_flag(&args, "--dry-run");
@@ -482,21 +485,28 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                 "{option} must be a non-negative number"
             )));
         }
-        *slot = Some(
-            value
-                .parse::<i64>()
-                .map_err(|_| Fail::error(format!("{option} must be a non-negative number")))?,
-        );
+        // i32 is the bound the rule itself is validated against, and it
+        // keeps a later `as usize` exact for --at.
+        *slot = Some(i64::from(value.parse::<i32>().map_err(|_| {
+            Fail::error(format!("{option} must be a non-negative number"))
+        })?));
         index += 2;
     }
 
     let (match_block, shift) = parse_rule_match(&rest)?;
-    let (action_key, action_value) = parse_rule_action(&rest[shift..])?;
+    let action_args = &rest[shift..];
+    let action = if action_args.is_empty() && (workspace.is_some() || monitor.is_some()) {
+        None
+    } else {
+        Some(parse_rule_action(action_args)?)
+    };
 
     // Built in RULE_KEYS order, so the file reads the way the spec lists them.
     let mut rule = Map::new();
     rule.insert("match".to_string(), Value::Object(match_block));
-    rule.insert(action_key, action_value);
+    if let Some((key, value)) = action {
+        rule.insert(key, value);
+    }
     if let Some(workspace) = workspace {
         rule.insert("workspace".to_string(), Value::from(workspace));
     }
