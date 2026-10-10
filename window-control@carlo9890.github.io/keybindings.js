@@ -59,6 +59,11 @@ export class WindowKeybindings {
         }
     }
 
+    // Whether the shortcuts are served: all of them, or none (see enable).
+    get registered() {
+        return this._names.length > 0;
+    }
+
     disable() {
         for (const name of this._names)
             Main.wm.removeKeybinding(name);
