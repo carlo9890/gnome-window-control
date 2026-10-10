@@ -362,7 +362,9 @@ spawn_test_window() {
         exit 1
     fi
 
-    kitty --title "$title" &
+    # remember_window_size=no: kitty otherwise restores the size and the
+    # maximized state its last window had, from its cache directory.
+    kitty -o remember_window_size=no --title "$title" &
     TEST_WINDOW_PID=$!
 
     # wctl wait replies once the window is shown (mapped and placed), which is
