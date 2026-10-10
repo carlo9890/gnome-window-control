@@ -10,7 +10,7 @@
 
 use std::fmt;
 
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 use crate::model::{self, Ctx, Window};
 use crate::table;
 
@@ -152,7 +152,9 @@ pub fn select_id(windows: &[Window], kind: Kind, value: &str) -> Result<u64> {
     let found: Vec<&Window> = windows.iter().filter(|w| matches(w, kind, value)).collect();
 
     if found.is_empty() {
-        return Err(Fail::error(format!("No window matches {kind} '{value}'")));
+        return Err(
+            Fail::error(format!("No window matches {kind} '{value}'")).with_code(EXIT_NOT_FOUND)
+        );
     }
 
     if found.len() > 1 {
@@ -213,7 +215,7 @@ pub fn lookup(ctx: &mut Ctx, selector: &Selector) -> Result<u64> {
         Kind::Focused => {
             let (id, _, _) = ctx.bus.get_focused()?;
             if id == 0 {
-                return Err(Fail::error("No window focused"));
+                return Err(Fail::error("No window focused").with_code(EXIT_NOT_FOUND));
             }
             Ok(id)
         }
@@ -248,6 +250,7 @@ pub fn filter(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fail::EXIT_ERROR;
     use serde_json::Value;
 
     // Fixture: three windows; id 3 is sticky (workspace_index -1, on all
@@ -354,9 +357,9 @@ mod tests {
     #[test]
     fn select_reports_ambiguity_with_candidates() {
         let windows = fixture();
-        let err = select_id(&windows, Kind::Class, "kitty")
-            .unwrap_err()
-            .to_string();
+        let err = select_id(&windows, Kind::Class, "kitty").unwrap_err();
+        assert_eq!(err.code(), EXIT_ERROR);
+        let err = err.to_string();
         assert!(err.contains("matches 2 windows"), "{err}");
         assert!(err.contains("use an ID:"), "{err}");
         assert!(err.contains("Doc A"), "{err}");
@@ -368,10 +371,9 @@ mod tests {
     #[test]
     fn select_reports_no_match() {
         let windows = fixture();
-        let err = select_id(&windows, Kind::Class, "nope")
-            .unwrap_err()
-            .to_string();
-        assert_eq!(err, "No window matches class 'nope'");
+        let err = select_id(&windows, Kind::Class, "nope").unwrap_err();
+        assert_eq!(err.to_string(), "No window matches class 'nope'");
+        assert_eq!(err.code(), EXIT_NOT_FOUND);
     }
 
     #[test]

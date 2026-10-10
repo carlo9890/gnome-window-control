@@ -100,10 +100,11 @@ TILING & POSITIONING:
 PLACEMENT RULES:
     Rules in ~/.config/gnome-window-control/rules.json place a window the
     moment it appears. The extension re-reads the file on every change; no
-    restart, and none of these subcommands needs a running shell.
+    restart. Only rules test needs a running shell. Every subcommand takes
+    --file <PATH> to act on another file.
     rules list [--json]     Show the rules in file order
     rules path              Print the path of the rules file
-    rules check [--file <PATH>] [--json]
+    rules check [--json]
                             Validate the file. Same verdict and same message
                             the extension would log, so a file this accepts
                             is a file the shell will load.
@@ -207,7 +208,8 @@ EXIT CODES:
     1   Usage error, or a failure with no more specific code below
     2   The window, workspace or monitor does not exist
     3   The shell refused: the frame is pinned by maximize, fullscreen or
-        tiling, or the window is held on all workspaces
+        tiling, the window is held on all workspaces, or it cannot be
+        minimized
     4   Timed out waiting for a window, or for the shell to reply
     5   The extension is not usable: not running, or a version this wctl
         cannot rely on (see wctl version --json)

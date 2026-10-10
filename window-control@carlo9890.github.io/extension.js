@@ -1066,7 +1066,7 @@ class WindowControlService {
 
     // Minimize: Minimize window
     Minimize(windowId) {
-        return this._actOnWindow(windowId, 'Minimize', win => win.minimize());
+        return this._actOnWindow(windowId, 'Minimize', win => this._minimize(win, false));
     }
 
     // Unminimize: Unminimize (restore) window
@@ -1087,11 +1087,21 @@ class WindowControlService {
 
     // MinimizeNoAnimation: Minimize window without the minimize animation
     MinimizeNoAnimation(windowId) {
-        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => {
-            if (!win.is_hidden())
-                this._skipNextEffect(win);
-            win.minimize();
-        });
+        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => this._minimize(win, true));
+    }
+
+    // Helper: minimize, and return whether the window is minimized. Mutter
+    // does not let every window minimize (a skip-taskbar one, for example):
+    // minimize() does nothing there, so a skip armed for it would wait for an
+    // unrelated effect. Such a window counts only when it is minimized
+    // already -- a client can set skip-taskbar on a window it has iconified.
+    _minimize(win, skipEffect) {
+        if (!win.can_minimize())
+            return win.minimized;
+        if (skipEffect && !win.is_hidden())
+            this._skipNextEffect(win);
+        win.minimize();
+        return true;
     }
 
     // Helper: skip the unminimize animation of a window the caller restores

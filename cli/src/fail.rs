@@ -31,7 +31,8 @@ pub const EXIT_ERROR: i32 = 1;
 /// The window, workspace or monitor the command names does not exist.
 pub const EXIT_NOT_FOUND: i32 = 2;
 /// The target exists and the shell declined to act on it -- a frame pinned by
-/// maximize, fullscreen or tiling, or a window mutter holds on all workspaces.
+/// maximize, fullscreen or tiling, a window mutter holds on all workspaces, or
+/// one it does not let minimize.
 pub const EXIT_REFUSED: i32 = 3;
 /// The reply did not arrive in time: `wait` expired, or the shell's main loop
 /// is wedged.

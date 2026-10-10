@@ -239,7 +239,9 @@ export const DBUS_INTERFACE_XML = `
     <!--
       Minimize: Minimize window
       Args: t - window ID
-      Returns: b - success
+      Returns: b - success; false also for a window the shell does not let
+               minimize, a skip-taskbar one for example, unless it is
+               minimized already
     -->
     <method name="Minimize">
       <arg type="t" direction="in" name="window_id"/>
@@ -259,7 +261,7 @@ export const DBUS_INTERFACE_XML = `
     <!--
       MinimizeNoAnimation: Minimize window without the shell's minimize animation
       Args: t - window ID
-      Returns: b - success
+      Returns: b - success, as Minimize reports it
       For a window a caller hides and shows as one gesture, e.g. a popup: the
       animation shrinks the window towards its taskbar icon, or towards a
       corner of the monitor when it has none. Served by an extension that

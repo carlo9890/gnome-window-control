@@ -99,10 +99,11 @@ need the resolved size.
 | `WIDTH`/`HEIGHT` literal | `^[1-9][0-9]*$`, at most 2147483647 | that many pixels |
 | `WIDTH`/`HEIGHT` percent | `^[0-9]+%$`, the number at most 2147483647 | `floor(workarea_size * percent / 100)`, which MUST be > 0 and at most 2147483647 |
 | `X`/`Y` literal | `^-?[0-9]+$`, from -2147483648 to 2147483647 | that pixel coordinate |
-| `X` keyword | `left` \| `center` \| `right` | `wa.x` \| `wa.x + floor((wa.width - width) / 2)` \| `wa.x + wa.width - width` |
-| `Y` keyword | `top` \| `center` \| `bottom` | `wa.y` \| `wa.y + floor((wa.height - height) / 2)` \| `wa.y + wa.height - height` |
+| `X` keyword | `left` \| `center` \| `right` | `wa.x` \| `wa.x + trunc((wa.width - width) / 2)` \| `wa.x + wa.width - width` |
+| `Y` keyword | `top` \| `center` \| `bottom` | `wa.y` \| `wa.y + trunc((wa.height - height) / 2)` \| `wa.y + wa.height - height` |
 
-A percentage above 100 is allowed. A size of `0`, a percentage that floors to 0
+`trunc` cuts toward zero, so a window one pixel larger than the workarea
+stays at offset 0, not -1. A percentage above 100 is allowed. A size of `0`, a percentage that floors to 0
 pixels, a value outside the bounds, and a keyword belonging to the other axis
 are errors.
 
@@ -162,14 +163,24 @@ is refused by both: the extension reports it as the key's own message below,
 `wctl rules check` as `not valid JSON`, because its parser refuses the number
 before validation starts.
 
+`wctl rules check` differs from the extension in four more cases, none of
+which a file written by `wctl rules add` can contain:
+
+| File content | Extension | `wctl rules check` |
+|---|---|---|
+| A lone surrogate escape in a string, such as `"\ud800"` | loads the rule | `not valid JSON` |
+| A byte sequence that is not UTF-8 | loads the rule, with U+FFFD in its place | `Cannot read ...` |
+| Arrays nested 200 levels deep | the key's own message | `not valid JSON` |
+| Two wrong keys in one object, one of them an integer such as `"1"` | names the integer key | names the first one in file order |
+
 | Condition | Result |
 |---|---|
 | Top level not an array | `the top-level value must be an array of rules` |
 | Rule not an object | `rules[N]: must be an object` |
-| Unknown rule key | `rules[N].<key>: unknown key` |
+| Unknown rule key | `rules[N].<key>: unknown key (use ...)` |
 | `match` missing or not an object | `rules[N].match: must be an object` |
 | `match` empty | `rules[N].match: must name at least one of class, title, substr` |
-| Unknown `match` key | `rules[N].match.<key>: unknown key` |
+| Unknown `match` key | `rules[N].match.<key>: unknown key (use ...)` |
 | `match` value not a string | `rules[N].match.<key>: must be a string` |
 | `match` value empty | `rules[N].match.<key>: must not be empty` |
 | Two or more of `place`/`tile`/`center` | `rules[N]: place, tile and center are mutually exclusive` |

@@ -85,7 +85,12 @@ fn take_file_option(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>)> {
     let mut index = 0;
     while index < args.len() {
         if args[index] == "--file" {
-            let Some(value) = args.get(index + 1) else {
+            // A following option is not a path: `--file --json` would
+            // otherwise report "no rules file" for a file named --json.
+            let Some(value) = args
+                .get(index + 1)
+                .filter(|value| !value.is_empty() && !value.starts_with("--"))
+            else {
                 return Err(Fail::error("Option --file requires a value"));
             };
             path = Some(PathBuf::from(value));
@@ -137,7 +142,23 @@ fn check(args: &[String]) -> Result<()> {
     let json = super::parse_json_flag(&rest)?;
     let path = rules_path(file)?;
 
-    let text = match read_file(&path)? {
+    let report_invalid = |message: String| -> Fail {
+        if json {
+            Fail::plain(
+                serde_json::json!({
+                    "path": path.display().to_string(),
+                    "exists": true,
+                    "valid": false,
+                    "error": message,
+                })
+                .to_string(),
+            )
+        } else {
+            Fail::error(message)
+        }
+    };
+
+    let text = match read_file(&path).map_err(|failure| report_invalid(failure.to_string()))? {
         Loaded::Absent => {
             if json {
                 println!(
@@ -155,22 +176,6 @@ fn check(args: &[String]) -> Result<()> {
             return Ok(());
         }
         Loaded::Present { text } => text,
-    };
-
-    let report_invalid = |message: String| -> Fail {
-        if json {
-            Fail::plain(
-                serde_json::json!({
-                    "path": path.display().to_string(),
-                    "exists": true,
-                    "valid": false,
-                    "error": message,
-                })
-                .to_string(),
-            )
-        } else {
-            Fail::error(message)
-        }
     };
 
     let document = match parse(&text, &path) {
@@ -238,6 +243,10 @@ fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
     let temporary = directory.join(format!(".rules.json.{}", std::process::id()));
     std::fs::write(&temporary, &text)
         .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary.display())))?;
+    // The new file takes the place of the old one, so it keeps its mode.
+    if let Ok(metadata) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(&temporary, metadata.permissions());
+    }
     std::fs::rename(&temporary, path).map_err(|e| {
         let _ = std::fs::remove_file(&temporary);
         Fail::error(format!("Cannot replace {}: {e}", path.display()))
@@ -595,20 +604,17 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if !crate::selector::is_window_id(index) {
         return Err(Fail::error("Rule index must be a non-negative number"));
     }
-    let index: usize = index
-        .parse()
-        .map_err(|_| Fail::error("Rule index must be a non-negative number"))?;
 
     let is_default_file = file.is_none();
     let path = rules_path(file)?;
     let (mut raw, _) = load(&path)?;
-    if index >= raw.len() {
+    // A number too large for usize is past the end like any other.
+    let Some(index) = index.parse().ok().filter(|index| *index < raw.len()) else {
         return Err(Fail::error(format!(
             "No rule {index}; the file has {} rule(s)",
             raw.len()
-        ))
-        .with_code(crate::fail::EXIT_NOT_FOUND));
-    }
+        )));
+    };
 
     raw.remove(index);
     if dry_run {

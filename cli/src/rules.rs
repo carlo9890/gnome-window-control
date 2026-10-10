@@ -479,7 +479,6 @@ mod tests {
         }
     }
 
-    /// The geometry vectors, through the same `Rule::resolve` a rule uses.
     #[test]
     fn js_string_renders_numbers_the_way_javascript_does() {
         assert_eq!(js_string(&serde_json::json!(800)), "800");

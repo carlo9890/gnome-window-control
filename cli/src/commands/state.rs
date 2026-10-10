@@ -113,7 +113,21 @@ pub fn minimizing(ctx: &mut Ctx, method: &str, success: &str, args: &[String]) -
     } else {
         ctx.bus.call_bool(method, &(id,))?
     };
-    report(ok, success, not_found(id))
+    report_with(ok, success, || minimizing_failure(ctx, id, method))
+}
+
+/// Why a minimize or an unminimize came back `false`. The extension answers
+/// that for a missing window, and a minimize also for a window mutter does not
+/// let minimize, so the window is looked up to tell the two apart.
+fn minimizing_failure(ctx: &mut Ctx, id: u64, method: &str) -> Fail {
+    if method != "Minimize" {
+        return not_found(id);
+    }
+    ctx.invalidate_windows();
+    match ctx.window_by_id(id) {
+        Ok(_) => Fail::plain(format!("Window {id} cannot be minimized")).with_code(EXIT_REFUSED),
+        Err(failure) => failure,
+    }
 }
 
 /// `above` and `sticky`: a window plus an on/off state.

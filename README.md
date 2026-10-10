@@ -133,8 +133,8 @@ wctl info 12345 --json             # one window's details
 
 # Every command that takes a window accepts a selector instead of an ID:
 #   <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
-# A selector must match exactly one window; otherwise wctl lists the
-# candidates and exits 1.
+# A selector must match exactly one window. With several matches wctl lists
+# the candidates and exits 1; with none it exits 2.
 wctl tile -c kitty left
 wctl close -s "Untitled"
 
@@ -171,7 +171,7 @@ matching the message text:
 | 0 | Success |
 | 1 | Usage error, or a failure with no more specific code below |
 | 2 | The window, workspace or monitor does not exist |
-| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, or the window is held on all workspaces |
+| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, or it cannot be minimized |
 | 4 | Timed out waiting for a window, or for the shell to reply |
 | 5 | The extension is not usable: not running, or a version this `wctl` cannot rely on |
 
@@ -455,9 +455,9 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area |
 | `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |
 | `GetCapabilities` | `() -> as` | The feature names this extension supports, e.g. `['rules']` |
-| `Minimize` | `(t) -> b` | Minimize window |
+| `Minimize` | `(t) -> b` | Minimize window; `false` also for a window the shell does not let minimize |
 | `Unminimize` | `(t) -> b` | Restore minimized window |
-| `MinimizeNoAnimation` | `(t) -> b` | Minimize window without the shell's minimize animation |
+| `MinimizeNoAnimation` | `(t) -> b` | Minimize window without the shell's minimize animation; `false` as `Minimize` reports it |
 | `UnminimizeNoAnimation` | `(t) -> b` | Restore minimized window without the animation |
 | `ActivateNoAnimation` | `(t) -> b` | Activate window by ID, restoring a minimized one without the animation |
 | `Maximize` | `(t) -> b` | Maximize window |

@@ -250,7 +250,7 @@ else
     fi
 
     run_wctl info -c "no-such-class-$$"
-    assert_exit_code 1 "$WCTL_EXIT_CODE" "info -c <no match> exits 1"
+    assert_exit_code 2 "$WCTL_EXIT_CODE" "info -c <no match> exits 2 (not found)"
     assert_contains "$WCTL_OUTPUT" "No window matches" "info -c <no match> says so"
 
     focused_id=$(echo "$all_json" | jq -r '.[] | select(.has_focus) | .id // empty' | head -1)
@@ -260,7 +260,7 @@ else
         assert_equals "$(echo "$WCTL_OUTPUT" | jq -r '.id')" "$focused_id" "info focused resolves to the focused window"
     else
         run_wctl info focused
-        assert_exit_code 1 "$WCTL_EXIT_CODE" "info focused exits 1 when nothing is focused"
+        assert_exit_code 2 "$WCTL_EXIT_CODE" "info focused exits 2 (not found) when nothing is focused"
         assert_contains "$WCTL_OUTPUT" "No window focused" "info focused reports no focused window"
     fi
 
