@@ -35,6 +35,12 @@ echo "========================================"
 require_extension
 
 if ! extension_reports keybindings; then
+    # An extension of wctl's own version has the shortcuts, so a missing
+    # capability there means their registration failed.
+    if "$WCTL" version --json 2>/dev/null | jq -e '.compatible' >/dev/null 2>&1; then
+        echo -e "${RED}FAIL${RESET}: the loaded extension is current but did not register the shortcuts"
+        exit 1
+    fi
     echo -e "${YELLOW}SKIP${RESET}: the loaded extension does not report the keybindings capability"
     exit 0
 fi

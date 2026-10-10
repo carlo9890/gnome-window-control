@@ -490,7 +490,7 @@ echo "--- Wait Test ---"
 info "Testing: wait -p <pid> for a window that appears later"
 WAIT_TITLE="auto-test:wait-target"
 wait_started=$(date +%s%N)
-kitty --title "$WAIT_TITLE" &
+kitty -o remember_window_size=no --title "$WAIT_TITLE" &
 WAIT_KITTY_PID=$!
 run_wctl wait -p "$WAIT_KITTY_PID" --timeout 10
 wait_elapsed_ms=$(( ($(date +%s%N) - wait_started) / 1000000 ))

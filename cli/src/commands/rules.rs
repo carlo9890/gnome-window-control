@@ -367,11 +367,7 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
 
 /// Parse the action of `rules add`, validating through the same grammar the
 /// rule will be validated by.
-fn parse_rule_action(args: &[String]) -> Result<(String, Value)> {
-    let Some(kind) = args.first().map(String::as_str) else {
-        return Err(Fail::error(ADD_USAGE));
-    };
-    let rest = &args[1..];
+fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
     match kind {
         "tile" => {
             let [position] = rest else {
@@ -510,15 +506,14 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
 
     let (match_block, shift) = parse_rule_match(&rest)?;
-    let action_args = &rest[shift..];
-    let action = if !action_args.is_empty() {
-        Some(parse_rule_action(action_args)?)
-    } else if workspace.is_some() || monitor.is_some() {
-        None
-    } else {
-        return Err(Fail::error(format!(
-            "A rule needs an action, --workspace or --monitor. {ADD_USAGE}"
-        )));
+    let action = match rest[shift..].split_first() {
+        Some((kind, action_args)) => Some(parse_rule_action(kind, action_args)?),
+        None if workspace.is_some() || monitor.is_some() => None,
+        None => {
+            return Err(Fail::error(format!(
+                "A rule needs an action, --workspace or --monitor. {ADD_USAGE}"
+            )))
+        }
     };
 
     // Built in RULE_KEYS order, so the file reads the way the spec lists them.

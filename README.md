@@ -271,7 +271,8 @@ as the `wctl` commands:
 - **tile** — a `wctl tile` position (`left`, `top-right`, `center`, ...).
 - **center** — `horizontal`, `vertical`, or `both`; keeps the window's own size.
 - **workspace** — a workspace index; the window is moved there. An index beyond
-  the last workspace puts the window on the last workspace, not on that index.
+  the last workspace adds one workspace at the end and puts the window there;
+  the workspaces up to that index are not created.
 - **monitor** — a monitor index; the workarea that `place`/`tile`/`center`
   resolve against, and where the window is placed.
 
@@ -324,6 +325,9 @@ warns when an earlier rule already matches everything the new one would.
 `add` and `remove` replace the file. If `rules.json` is a symbolic link, for
 example into a dotfiles repository, they replace the link with a regular file
 and the linked copy is no longer updated; edit the linked file by hand instead.
+The extension watches the directory of `rules.json`, not the linked file, so
+run `touch -h ~/.config/gnome-window-control/rules.json` after such an edit to
+load it.
 
 Rules are applied only by an extension that reports the `rules` capability
 (`wctl version --json` lists it). When the running shell has an older one

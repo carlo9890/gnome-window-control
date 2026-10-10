@@ -22,6 +22,13 @@
 
 set -e
 
+# Newer shells have no --nested (observed on 50.1). Matched in bash on the
+# whole help text, for the reason given at SM_DISABLE below.
+if [[ "$(gnome-shell --help-all 2>/dev/null)" != *--nested* ]]; then
+    echo "ERROR: this GNOME Shell has no --nested; use scripts/start-headless.sh" >&2
+    exit 1
+fi
+
 echo "Starting nested GNOME Shell..."
 echo ""
 

@@ -739,6 +739,21 @@ fn rules_file_surface_needs_no_bus() {
         ],
     );
     expect_die(
+        "--at 99999999999999999999999999 is past the end; the file has 2 rule(s)",
+        &[
+            "rules",
+            "add",
+            "--file",
+            &path,
+            "-c",
+            "a",
+            "tile",
+            "left",
+            "--at",
+            "99999999999999999999999999",
+        ],
+    );
+    expect_die(
         "--at must be a non-negative number",
         &[
             "rules", "add", "--file", &path, "-c", "a", "tile", "left", "--at", "-1",

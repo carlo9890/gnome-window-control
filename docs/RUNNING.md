@@ -33,9 +33,8 @@ These exist because of a real incident, recorded at the end of this file.
    `scripts/start-nested.sh` does all of that, and rules 2 and 3 with it — use
    it rather than assembling the command by hand. This hardened form has never
    started a shell; treat the first run as an experiment the user has agreed
-   to. GNOME Shell 50.1 has no `--nested`: the script exits there with
-   `Unknown option --nested` before any shell starts. Use the headless session
-   on such a shell.
+   to. GNOME Shell 50.1 has no `--nested`: the script refuses to start there.
+   Use the headless session on such a shell.
 5. **Prefer not to run a shell at all.** Pure logic (geometry, config parsing)
    is checked headlessly with `gjs -m` and `GI_TYPELIB_PATH` pointed at the
    mutter typelib directory; see the `check-rules.js` pattern in
@@ -56,7 +55,8 @@ reload:
 | tests / scripts | None (run fresh each invocation) |
 
 Reload without logging out via a **nested GNOME Shell session** (runs in a window,
-isolated from your main session; all logs go to the launching terminal):
+isolated from your main session; all logs go to the launching terminal), or,
+on a shell without `--nested`, via the [headless session](#headless-session-no-window-on-the-real-screen):
 
 ```bash
 ./scripts/build.sh install     # copy updated files into the extensions dir

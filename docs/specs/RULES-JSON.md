@@ -214,9 +214,9 @@ Action order within `_apply`:
 
 1. `workspace` — `change_workspace_by_index(index, true)`. For an index beyond
    the last workspace mutter appends one workspace and moves the window there;
-   it does not create the workspaces in between. Observed on GNOME Shell 50.1
-   with dynamic workspaces: index 7 with three workspaces, the last one empty,
-   left the window on index 2.
+   it does not create the workspaces in between, so the window does not end on
+   the rule's index (observed on GNOME Shell 50.1: rule index 7, window on
+   index 2).
 2. `monitor` — skipped with a debug line when the index exceeds
    `get_n_monitors()`.
 3. Geometry — skipped when the window is fullscreen. A maximized window is
