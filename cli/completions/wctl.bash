@@ -78,7 +78,7 @@ _wctl() {
             if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "list path check add remove test" -- "$cur"))
             elif [[ $subcommand == add ]]; then
-                COMPREPLY=($(compgen -W "-c -t -s tile place center --workspace --monitor --at --dry-run --file" -- "$cur"))
+                COMPREPLY=($(compgen -W "-c -t -s --title-prefix --title-suffix tile place center --workspace --monitor --at --dry-run --file" -- "$cur"))
             elif [[ $subcommand == remove ]]; then
                 COMPREPLY=($(compgen -W "--dry-run --file" -- "$cur"))
             elif [[ $subcommand == test ]]; then

@@ -111,7 +111,9 @@ PLACEMENT RULES:
     rules add <MATCH> [ACTION] [--workspace <N>] [--monitor <N>]
               [--at <N>] [--dry-run]
                             Append a rule (or insert it at --at). MATCH is
-                            -c <CLASS>, -t <TITLE> or -s <SUBSTR>; a window ID,
+                            -c <CLASS>, -t <TITLE>, -s <SUBSTR>,
+                            --title-prefix <TEXT> or --title-suffix <TEXT>
+                            (the title starts or ends with it); a window ID,
                             focused and -p name a window that already exists,
                             so a rule cannot use them. ACTION is
                             tile <POSITION>, place <X> <Y> <W> <H>, or

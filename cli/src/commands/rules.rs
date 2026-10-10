@@ -57,7 +57,7 @@ fn warn_if_rules_unsupported(ctx: &Ctx) {
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
 
 const ADD_USAGE: &str =
-    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> [tile POSITION|place X Y W H|center [AXIS]] \
+    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR|--title-prefix TEXT|--title-suffix TEXT> [tile POSITION|place X Y W H|center [AXIS]] \
 [--workspace N] [--monitor N] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
@@ -345,7 +345,8 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
     let refused = |named: &str| {
         Fail::error(format!(
             "{named} names a window that already exists; a rule matches windows \
-             that do not exist yet. Use -c <CLASS>, -t <TITLE> or -s <SUBSTR>."
+             that do not exist yet. Use -c <CLASS>, -t <TITLE>, -s <SUBSTR>, \
+             --title-prefix <TEXT> or --title-suffix <TEXT>."
         ))
     };
 
@@ -354,6 +355,8 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
         "-c" => "class",
         "-t" => "title",
         "-s" => "substr",
+        "--title-prefix" => "title_prefix",
+        "--title-suffix" => "title_suffix",
         "-p" => return Err(refused("-p <PID>")),
         "focused" => return Err(refused("focused")),
         "" => return Err(Fail::error(ADD_USAGE)),
@@ -441,16 +444,19 @@ fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
 ///
 /// First match wins, so a new rule under a more general one is dead. Each of
 /// `earlier`'s predicates must be implied by one of `later`'s: an exact class
-/// or title by the same value, a substring by any title or substring that
-/// contains it.
+/// or title by the same value, a substring by any title predicate whose value
+/// contains it, a prefix or suffix by a title or a like predicate that starts
+/// or ends with it.
 fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
     earlier.matches.iter().all(|general| {
         later.matches.iter().any(
             |specific| match (general.kind.as_str(), specific.kind.as_str()) {
                 ("class", "class") | ("title", "title") => general.value == specific.value,
-                ("substring", "title") | ("substring", "substring") => {
+                ("substring", "title" | "substring" | "prefix" | "suffix") => {
                     specific.value.contains(&general.value)
                 }
+                ("prefix", "title" | "prefix") => specific.value.starts_with(&general.value),
+                ("suffix", "title" | "suffix") => specific.value.ends_with(&general.value),
                 _ => false,
             },
         )

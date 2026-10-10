@@ -31,6 +31,10 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // and is left out when their registration failed;
 // 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
 // 'activate-no-animation' means ActivateNoAnimation is.
+// The match kinds the D-Bus methods take. rules.json has more (see
+// MATCH_KINDS in rules-format.js); those stay out of this interface.
+const SELECTOR_KINDS = ['class', 'title', 'substring', 'pid'];
+
 const CAPABILITIES = ['rules', 'keybindings', 'no-animation', 'activate-no-animation'];
 
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
@@ -261,7 +265,7 @@ class WindowControlService {
     // Helper: the (kind, value) selector predicate, shared with rules.json.
     // See matchPredicate() in rules-format.js for the values it refuses.
     _matchPredicate(kind, value) {
-        return matchPredicate(kind, value);
+        return SELECTOR_KINDS.includes(kind) ? matchPredicate(kind, value) : null;
     }
 
     // Helper: has mutter mapped and placed this window at least once?

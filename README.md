@@ -264,7 +264,8 @@ as the `wctl` commands:
 ```
 
 - **match** — one or more of `class` (exact WM class), `title` (exact title),
-  `substr` (title contains). Several keys must all match.
+  `substr` (title contains), `title_prefix` (title starts with),
+  `title_suffix` (title ends with). Several keys must all match.
 - **place** — `[X, Y, WIDTH, HEIGHT]`, the tokens of `wctl place`: X is a number
   or `left|center|right`, Y a number or `top|center|bottom`, WIDTH/HEIGHT a
   positive number or a percentage like `50%`.

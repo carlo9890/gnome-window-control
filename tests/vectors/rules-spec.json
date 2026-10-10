@@ -159,19 +159,19 @@
       "name": "match is empty",
       "document": [{ "match": {}, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match: must name at least one of class, title, substr"
+      "message": "rules[0].match: must name at least one of class, title, substr, title_prefix, title_suffix"
     },
     {
       "name": "unknown match key",
       "document": [{ "match": { "pid": "123" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.pid: unknown key (use class, title, substr)"
+      "message": "rules[0].match.pid: unknown key (use class, title, substr, title_prefix, title_suffix)"
     },
     {
       "name": "focused is not a match key",
       "document": [{ "match": { "focused": "yes" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.focused: unknown key (use class, title, substr)"
+      "message": "rules[0].match.focused: unknown key (use class, title, substr, title_prefix, title_suffix)"
     },
     {
       "name": "match value is a number",
@@ -184,6 +184,24 @@
       "document": [{ "match": { "title": null }, "tile": "left" }],
       "valid": false,
       "message": "rules[0].match.title: must be a string"
+    },
+    {
+      "name": "title_prefix and title_suffix are match keys, and combine",
+      "document": [{ "match": { "title_prefix": "vim", "title_suffix": "notes" }, "tile": "left" }],
+      "valid": true,
+      "count": 1
+    },
+    {
+      "name": "empty title_prefix would match every window",
+      "document": [{ "match": { "title_prefix": "" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.title_prefix: must not be empty"
+    },
+    {
+      "name": "empty title_suffix would match every window",
+      "document": [{ "match": { "title_suffix": "" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.title_suffix: must not be empty"
     },
     {
       "name": "empty substr would match every window",
@@ -315,13 +333,13 @@
       "name": "constructor is not a match key",
       "document": [{ "match": { "constructor": "a" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.constructor: unknown key (use class, title, substr)"
+      "message": "rules[0].match.constructor: unknown key (use class, title, substr, title_prefix, title_suffix)"
     },
     {
       "name": "hasOwnProperty is not a match key",
       "document": [{ "match": { "hasOwnProperty": "a" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.hasOwnProperty: unknown key (use class, title, substr)"
+      "message": "rules[0].match.hasOwnProperty: unknown key (use class, title, substr, title_prefix, title_suffix)"
     },
     {
       "name": "center is not an axis",
@@ -645,6 +663,14 @@
       { "name": "substring matches the whole title", "kind": "substring", "value": "vim", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
       { "name": "substring matches at the end of the title", "kind": "substring", "value": "im", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
       { "name": "substring is case sensitive", "kind": "substring", "value": "VIM", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "prefix matches the start of the title", "kind": "prefix", "value": "vim", "window": { "wm_class": "kitty", "title": "vim - notes", "pid": 100 }, "matches": true },
+      { "name": "prefix does not match inside the title", "kind": "prefix", "value": "notes", "window": { "wm_class": "kitty", "title": "vim - notes", "pid": 100 }, "matches": false },
+      { "name": "prefix matches the whole title", "kind": "prefix", "value": "vim - notes", "window": { "wm_class": "kitty", "title": "vim - notes", "pid": 100 }, "matches": true },
+      { "name": "prefix is case sensitive", "kind": "prefix", "value": "Vim", "window": { "wm_class": "kitty", "title": "vim - notes", "pid": 100 }, "matches": false },
+      { "name": "suffix matches the end of the title", "kind": "suffix", "value": "notes", "window": { "wm_class": "kitty", "title": "vim - notes", "pid": 100 }, "matches": true },
+      { "name": "suffix does not match the start of the title", "kind": "suffix", "value": "vim", "window": { "wm_class": "kitty", "title": "vim - notes", "pid": 100 }, "matches": false },
+      { "name": "prefix against a null title", "kind": "prefix", "value": "vim", "window": { "wm_class": "kitty", "title": null, "pid": 100 }, "matches": false },
+      { "name": "suffix against a null title", "kind": "suffix", "value": "vim", "window": { "wm_class": "kitty", "title": null, "pid": 100 }, "matches": false },
       { "name": "substring against a null title", "kind": "substring", "value": "vim", "window": { "wm_class": "kitty", "title": null, "pid": 100 }, "matches": false },
       { "name": "class against a null class", "kind": "class", "value": "kitty", "window": { "wm_class": null, "title": "vim", "pid": 100 }, "matches": false },
       { "name": "pid is numeric equality", "kind": "pid", "value": "100", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
@@ -653,6 +679,8 @@
     "no_predicate": [
       { "name": "an unknown kind", "kind": "nonsense", "value": "x" },
       { "name": "an empty substring would match every window", "kind": "substring", "value": "" },
+      { "name": "an empty prefix would match every window", "kind": "prefix", "value": "" },
+      { "name": "an empty suffix would match every window", "kind": "suffix", "value": "" },
       { "name": "pid zero is the unknown-pid sentinel", "kind": "pid", "value": "0" },
       { "name": "a negative pid", "kind": "pid", "value": "-1" },
       { "name": "a non-numeric pid", "kind": "pid", "value": "abc" }

@@ -15,7 +15,8 @@
 //     {"match": {"class": "Slack"},        "workspace": 2}
 //   ]
 //
-// match:     class (exact WM class), title (exact), substr (title contains).
+// match:     class (exact WM class), title (exact), substr (title contains),
+//            title_prefix (title starts with), title_suffix (title ends with).
 //            Several keys must all match.
 // place:     [X, Y, WIDTH, HEIGHT] with the tokens of `wctl place`.
 // tile:      a `wctl tile` position.
