@@ -83,6 +83,8 @@ _wctl() {
                 COMPREPLY=($(compgen -W "--dry-run --file" -- "$cur"))
             elif [[ $subcommand == test ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words) --json --file" -- "$cur"))
+            elif [[ $subcommand == path ]]; then
+                COMPREPLY=($(compgen -W "--file" -- "$cur"))
             else
                 COMPREPLY=($(compgen -W "--file --json" -- "$cur"))
             fi

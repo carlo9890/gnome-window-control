@@ -100,10 +100,11 @@ TILING & POSITIONING:
 PLACEMENT RULES:
     Rules in ~/.config/gnome-window-control/rules.json place a window the
     moment it appears. The extension re-reads the file on every change; no
-    restart, and none of these subcommands needs a running shell.
+    restart. Only rules test needs a running shell. Every subcommand takes
+    --file <PATH> to act on another file.
     rules list [--json]     Show the rules in file order
     rules path              Print the path of the rules file
-    rules check [--file <PATH>] [--json]
+    rules check [--json]
                             Validate the file. Same verdict and same message
                             the extension would log, so a file this accepts
                             is a file the shell will load.

@@ -905,7 +905,7 @@ fn rules_test_guards_fire_before_the_bus() {
 /// README states this: add and remove write a new file in place of a symbolic
 /// link, so the file the link named keeps its content.
 #[test]
-fn rules_add_replaces_a_symbolic_link() {
+fn rules_add_and_remove_replace_a_symbolic_link() {
     let dir = std::env::temp_dir().join(format!("wctl-rules-link-{}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).expect("temp dir");
@@ -929,5 +929,64 @@ fn rules_add_replaces_a_symbolic_link() {
     assert!(std::fs::read_to_string(&link).unwrap().contains("kitty"));
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "[]\n");
 
+    // remove does the same.
+    std::fs::remove_file(&link).expect("remove");
+    std::fs::write(&target, r#"[{"match":{"class":"a"},"tile":"left"}]"#).expect("write");
+    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+    let (out, code) = wctl(&["rules", "remove", "--file", link.to_str().unwrap(), "0"]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert!(!link.symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read_to_string(&link).unwrap(), "[]\n");
+    assert!(std::fs::read_to_string(&target).unwrap().contains("class"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// add and remove write a new file; it keeps the mode of the one it replaces.
+#[test]
+fn rules_add_keeps_the_file_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("wctl-rules-mode-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    std::fs::write(&file, "[]\n").expect("write");
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        file.to_str().unwrap(),
+        "-c",
+        "kitty",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn rules_check_file_option_guards() {
+    // An option is not a path: this used to report "No rules file at --json".
+    expect_die(
+        "Option --file requires a value",
+        &["rules", "check", "--file", "--json"],
+    );
+    expect_die(
+        "Option --file requires a value",
+        &["rules", "check", "--file", ""],
+    );
+
+    // With --json a file that cannot be read is reported as a document too.
+    let dir = std::env::temp_dir().join(format!("wctl-rules-unreadable-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let (out, code) = wctl(&["rules", "check", "--json", "--file", dir.to_str().unwrap()]);
+    assert_eq!(code, 1);
+    assert!(out.contains(r#""error":"Cannot read"#), "printed: {out}");
+    assert!(out.contains(r#""valid":false"#), "printed: {out}");
     std::fs::remove_dir_all(&dir).ok();
 }
