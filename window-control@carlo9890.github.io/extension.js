@@ -1066,7 +1066,7 @@ class WindowControlService {
 
     // Minimize: Minimize window
     Minimize(windowId) {
-        return this._actOnWindow(windowId, 'Minimize', win => win.minimize());
+        return this._actOnWindow(windowId, 'Minimize', win => this._minimize(win, false));
     }
 
     // Unminimize: Unminimize (restore) window
@@ -1087,11 +1087,19 @@ class WindowControlService {
 
     // MinimizeNoAnimation: Minimize window without the minimize animation
     MinimizeNoAnimation(windowId) {
-        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => {
-            if (!win.is_hidden())
-                this._skipNextEffect(win);
-            win.minimize();
-        });
+        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => this._minimize(win, true));
+    }
+
+    // Helper: minimize, or return false for a window mutter does not let
+    // minimize (a skip-taskbar one, for example). minimize() does nothing
+    // there, so a skip armed for it would wait for an unrelated effect.
+    _minimize(win, skipEffect) {
+        if (!win.can_minimize())
+            return false;
+        if (skipEffect && !win.is_hidden())
+            this._skipNextEffect(win);
+        win.minimize();
+        return true;
     }
 
     // Helper: skip the unminimize animation of a window the caller restores

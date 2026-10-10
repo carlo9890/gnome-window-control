@@ -901,3 +901,33 @@ fn rules_test_guards_fire_before_the_bus() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// README states this: add and remove write a new file in place of a symbolic
+/// link, so the file the link named keeps its content.
+#[test]
+fn rules_add_replaces_a_symbolic_link() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-link-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let target = dir.join("dotfiles.json");
+    let link = dir.join("rules.json");
+    std::fs::write(&target, "[]\n").expect("write");
+    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        link.to_str().unwrap(),
+        "-c",
+        "kitty",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert!(!link.symlink_metadata().unwrap().file_type().is_symlink());
+    assert!(std::fs::read_to_string(&link).unwrap().contains("kitty"));
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "[]\n");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
