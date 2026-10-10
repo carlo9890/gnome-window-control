@@ -331,4 +331,6 @@ Both are CI gates — see [../TESTING.md](../TESTING.md).
 Rules are read by the extension alone. The format is not part of the D-Bus
 interface and carries no version field. An extension that applies rules MUST
 report the `rules` capability from `GetCapabilities`; that name, not the
-version number, is how a caller learns the file is read.
+version number, is how a caller learns the file is read. An extension that
+knows `title_prefix` and `title_suffix` MUST also report `rules-title-affix`:
+one without it refuses a file that carries either key.

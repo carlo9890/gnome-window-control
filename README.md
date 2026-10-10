@@ -207,7 +207,7 @@ frame that never settles exits 4 and still reports `"placed":true`.
 ```bash
 wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.14.0","expects_extension":"14","extension":"14","compatible":true,"capabilities":["rules","keybindings","no-animation","activate-no-animation"]}
+# {"wctl":"0.14.0","expects_extension":"14","extension":"14","compatible":true,"capabilities":["rules","rules-title-affix","keybindings","no-animation","activate-no-animation"]}
 ```
 
 `--json` asks the **running shell** what it has loaded. That is the useful
@@ -336,6 +336,10 @@ Rules are applied only by an extension that reports the `rules` capability
 loaded, `add` and `remove` still write the file but warn that no rule will be
 applied until you install the newer extension and restart the shell. With no
 shell running, and with `--file`, they say nothing.
+
+`title_prefix` and `title_suffix` need an extension that also reports
+`rules-title-affix`. An older one refuses a file that has either key and then
+applies no rule at all; `add` and `remove` warn about that too.
 
 ### Checking the file
 

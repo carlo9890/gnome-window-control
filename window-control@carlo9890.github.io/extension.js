@@ -27,11 +27,15 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // Reported by GetCapabilities. A name here is a promise a caller may rely on,
 // so it is added in the same commit as the feature and never removed while the
 // feature is served. 'rules' means rules.json is read and applied;
+// 'rules-title-affix' means its title_prefix and title_suffix match keys are
+// known -- an extension without it refuses a file that carries one, whole;
 // 'keybindings' means the tile shortcuts in the settings schema are served,
 // and is left out when their registration failed;
 // 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
 // 'activate-no-animation' means ActivateNoAnimation is.
-const CAPABILITIES = ['rules', 'keybindings', 'no-animation', 'activate-no-animation'];
+const CAPABILITIES = [
+    'rules', 'rules-title-affix', 'keybindings', 'no-animation', 'activate-no-animation',
+];
 
 // The match kinds the D-Bus methods take. rules.json has more (see
 // MATCH_KINDS in rules-format.js); those stay out of this interface.

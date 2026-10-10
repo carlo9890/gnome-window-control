@@ -30,6 +30,10 @@ pub const RULES_CAPABILITY: &str = "rules";
 ///
 /// The file is already written when it runs, so a shell that does not answer
 /// must cost a moment and no more: `rules add` runs from keybindings, and the
+/// The capability an extension reports when it knows the `title_prefix` and
+/// `title_suffix` match keys.
+const TITLE_AFFIX_CAPABILITY: &str = "rules-title-affix";
+
 /// 25 s a real call is entitled to would read as a hang.
 const CAPABILITY_PROBE: std::time::Duration = std::time::Duration::from_secs(1);
 
@@ -45,12 +49,31 @@ const NO_RULES_SUPPORT: &str =
 /// the capability warns: no shell at all is silent, because editing rules
 /// before a session exists is legitimate.
 fn warn_if_rules_unsupported(ctx: &Ctx) {
-    if ctx
-        .bus
-        .reports_capability(RULES_CAPABILITY, CAPABILITY_PROBE)
-        == Some(false)
-    {
-        eprintln!("Warning: {NO_RULES_SUPPORT}");
+    warn_unless_reported(ctx, RULES_CAPABILITY, NO_RULES_SUPPORT);
+}
+
+fn warn_unless_reported(ctx: &Ctx, capability: &str, warning: &str) {
+    if ctx.bus.reports_capability(capability, CAPABILITY_PROBE) == Some(false) {
+        eprintln!("Warning: {warning}");
+    }
+}
+
+const NO_TITLE_AFFIX_SUPPORT: &str =
+    "The extension GNOME Shell has loaded does not know title_prefix and \
+     title_suffix. It refuses a rules file that has one, so no rule is applied \
+     until a newer extension is loaded: install it, then restart the shell (log \
+     out and back in on Wayland).";
+
+/// Warn when the written file holds a match key the loaded extension refuses.
+/// One unknown key turns every rule off, so this looks at the whole file.
+fn warn_if_title_affix_unsupported(ctx: &Ctx, document: &[Value]) {
+    let uses_affix = document.iter().any(|rule| {
+        rule["match"].as_object().is_some_and(|block| {
+            block.contains_key("title_prefix") || block.contains_key("title_suffix")
+        })
+    });
+    if uses_affix {
+        warn_unless_reported(ctx, TITLE_AFFIX_CAPABILITY, NO_TITLE_AFFIX_SUPPORT);
     }
 }
 
@@ -596,6 +619,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     println!("Added rule {position} to {}", path.display());
     if is_default_file {
         warn_if_rules_unsupported(ctx);
+        warn_if_title_affix_unsupported(ctx, &raw);
     }
     Ok(())
 }
@@ -634,6 +658,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     println!("Removed rule {index} from {}", path.display());
     if is_default_file {
         warn_if_rules_unsupported(ctx);
+        warn_if_title_affix_unsupported(ctx, &raw);
     }
     Ok(())
 }
