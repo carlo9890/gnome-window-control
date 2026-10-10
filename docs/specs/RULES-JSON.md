@@ -178,8 +178,8 @@ matched value, so a window title or WM class cannot reach the journal.
 `place` tokens are validated at load against `PROBE_WORKAREA`
 (1000x1000, in `rules-format.js`), so a grammar error is caught before any
 window exists. A
-percentage valid there but flooring to 0 on a real workarea is skipped at
-apply time instead.
+percentage valid there but resolving to 0 pixels, or to more than 2147483647,
+on a real workarea is skipped at apply time instead.
 
 ## Matching and application
 

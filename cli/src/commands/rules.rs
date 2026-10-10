@@ -262,6 +262,17 @@ fn describe_action(rule: &rules::Rule) -> String {
     }
 }
 
+/// The action in a sentence, where the empty cell of the `list` table would
+/// read as a missing word.
+fn describe_action_or_none(rule: &rules::Rule) -> String {
+    let action = describe_action(rule);
+    if action.is_empty() {
+        "(no geometry)".to_string()
+    } else {
+        action
+    }
+}
+
 /// `wctl rules list [--file PATH] [--json]`
 fn list(args: &[String]) -> Result<()> {
     let (file, rest) = take_file_option(args)?;
@@ -480,16 +491,10 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         let Some(value) = args.get(index + 1) else {
             return Err(Fail::error(format!("Option {option} requires a value")));
         };
-        if !crate::selector::is_window_id(value) {
-            return Err(Fail::error(format!(
-                "{option} must be a non-negative number"
-            )));
-        }
-        // i32 is the bound the rule itself is validated against, and it
-        // keeps a later `as usize` exact for --at.
-        *slot = Some(i64::from(value.parse::<i32>().map_err(|_| {
-            Fail::error(format!("{option} must be a non-negative number"))
-        })?));
+        // i32 is the bound the rule itself is validated against.
+        let number = super::index(value, &option)
+            .map_err(|_| Fail::error(format!("{option} must be a non-negative number")))?;
+        *slot = Some(i64::from(number));
         index += 2;
     }
 
@@ -716,17 +721,13 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     println!(
         "Matched rule {index}: {} -> {}",
         describe_match(rule),
-        if describe_action(rule).is_empty() {
-            "(no geometry)".to_string()
-        } else {
-            describe_action(rule)
-        }
+        describe_action_or_none(rule)
     );
     for shadowed in matching.iter().skip(1) {
         println!(
             "  rule {shadowed} also matches but is shadowed: {} -> {}",
             describe_match(&compiled[*shadowed]),
-            describe_action(&compiled[*shadowed])
+            describe_action_or_none(&compiled[*shadowed])
         );
     }
     if let Some(workspace) = rule.workspace {

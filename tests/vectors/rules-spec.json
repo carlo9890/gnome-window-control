@@ -517,6 +517,7 @@
       { "name": "garbage width", "tokens": ["0", "0", "abc", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
       { "name": "zero width", "tokens": ["0", "0", "0", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
       { "name": "percentage flooring to zero", "tokens": ["0", "0", "1%", "100"], "workarea": { "x": 0, "y": 0, "width": 10, "height": 1000 } },
+      { "name": "percentage valid on the probe workarea, above the int32 bound on this one", "tokens": ["0", "0", "200000000%", "100"], "workarea": { "x": 0, "y": 0, "width": 1920, "height": 1000 } },
       { "name": "X keyword belonging to Y", "tokens": ["top", "top", "100", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
       { "name": "Y keyword belonging to X", "tokens": ["left", "left", "100", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },
       { "name": "a percent sign with no digits", "tokens": ["0", "0", "%", "100"], "workarea": { "x": 0, "y": 0, "width": 1000, "height": 1000 } },

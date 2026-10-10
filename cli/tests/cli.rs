@@ -739,6 +739,7 @@ fn rules_file_surface_needs_no_bus() {
     assert_eq!(read(), before, "a refused add must not rewrite the file");
 
     let moved = dir.join("workspace-only.json");
+    std::fs::remove_file(&moved).ok();
     let (out, code) = wctl(&[
         "rules",
         "add",
