@@ -48,11 +48,15 @@ error:
 | `place` | array of 4 | Geometry action. At most one of `place`/`tile`/`center`. |
 | `tile` | string | Geometry action. |
 | `center` | string | Geometry action. |
-| `workspace` | integer ≥ 0 | Move the window to this workspace index. |
-| `monitor` | integer ≥ 0 | Monitor whose workarea the geometry resolves against, and the monitor the window is moved to. |
+| `workspace` | integer 0 to 2147483647 | Move the window to this workspace index. |
+| `monitor` | integer 0 to 2147483647 | Monitor whose workarea the geometry resolves against, and the monitor the window is moved to. |
 
 A rule MUST carry at least one of `place`, `tile`, `center`, `workspace`,
 `monitor`. A rule with only `match` is an error.
+
+Every index and every pixel value is bounded to a signed 32-bit integer, the
+type mutter takes them as. A JSON number with a zero fraction is an integer:
+`2.0` and `2e0` are `2`.
 
 ## match
 
@@ -92,14 +96,15 @@ need the resolved size.
 
 | Token | Grammar | Resolves to |
 |---|---|---|
-| `WIDTH`/`HEIGHT` literal | `^[1-9][0-9]*$` | that many pixels |
-| `WIDTH`/`HEIGHT` percent | `^[0-9]+%$` | `floor(workarea_size * percent / 100)`, which MUST be > 0 |
-| `X`/`Y` literal | `^-?[0-9]+$` | that pixel coordinate, negative allowed |
+| `WIDTH`/`HEIGHT` literal | `^[1-9][0-9]*$`, at most 2147483647 | that many pixels |
+| `WIDTH`/`HEIGHT` percent | `^[0-9]+%$`, the number at most 2147483647 | `floor(workarea_size * percent / 100)`, which MUST be > 0 and at most 2147483647 |
+| `X`/`Y` literal | `^-?[0-9]+$`, from -2147483648 to 2147483647 | that pixel coordinate |
 | `X` keyword | `left` \| `center` \| `right` | `wa.x` \| `wa.x + floor((wa.width - width) / 2)` \| `wa.x + wa.width - width` |
 | `Y` keyword | `top` \| `center` \| `bottom` | `wa.y` \| `wa.y + floor((wa.height - height) / 2)` \| `wa.y + wa.height - height` |
 
 A percentage above 100 is allowed. A size of `0`, a percentage that floors to 0
-pixels, and a keyword belonging to the other axis are errors.
+pixels, a value outside the bounds, and a keyword belonging to the other axis
+are errors.
 
 ### tile
 
@@ -167,7 +172,7 @@ matched value, so a window title or WM class cannot reach the journal.
 | A `place` token unresolvable | `rules[N].place: X is a number or left\|center\|right, ...` |
 | `tile` not a string naming a grid position | `rules[N].tile: must be one of ...` |
 | `center` not an axis | `rules[N].center: must be one of ...` |
-| `workspace`/`monitor` not an integer ≥ 0 | `rules[N].<key>: must be a non-negative integer` |
+| `workspace`/`monitor` not an integer from 0 to 2147483647 | `rules[N].<key>: must be a non-negative integer` |
 | Rule has no action | `rules[N]: has nothing to do (...)` |
 
 `place` tokens are validated at load against `PROBE_WORKAREA`

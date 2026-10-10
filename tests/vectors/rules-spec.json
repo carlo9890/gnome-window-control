@@ -366,6 +366,79 @@
       "message": "rules[0].monitor: must be a non-negative integer"
     },
     {
+      "name": "workspace written with a zero fraction is an integer",
+      "document": [{ "match": { "class": "a" }, "workspace": 2.0 }],
+      "valid": true
+    },
+    {
+      "name": "workspace written with an exponent is an integer",
+      "document": [{ "match": { "class": "a" }, "workspace": 1e1 }],
+      "valid": true
+    },
+    {
+      "name": "workspace at the int32 bound",
+      "document": [{ "match": { "class": "a" }, "workspace": 2147483647 }],
+      "valid": true
+    },
+    {
+      "name": "workspace above the int32 bound",
+      "document": [{ "match": { "class": "a" }, "workspace": 2147483648 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
+      "name": "monitor above the int32 bound",
+      "document": [{ "match": { "class": "a" }, "monitor": 4294967296 }],
+      "valid": false,
+      "message": "rules[0].monitor: must be a non-negative integer"
+    },
+    {
+      "name": "workspace above the int64 bound",
+      "document": [{ "match": { "class": "a" }, "workspace": 1e19 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
+      "name": "place size at the int32 bound",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, 2147483647, "2147483647"] }],
+      "valid": true
+    },
+    {
+      "name": "place size above the int32 bound",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, 2147483648, 600] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place size string above the int32 bound",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, 800, "99999999999999999999"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place position below the int32 bound",
+      "document": [{ "match": { "class": "a" }, "place": [-2147483649, 0, 800, 600] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place position at the int32 bounds",
+      "document": [{ "match": { "class": "a" }, "place": [-2147483648, 2147483647, 800, 600] }],
+      "valid": true
+    },
+    {
+      "name": "place percentage that resolves above the int32 bound",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, "300000000%", 600] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
+      "name": "place percentage above the int32 bound",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, 800, "2147483648%"] }],
+      "valid": false,
+      "message": "rules[0].place: X is a number or left|center|right, Y a number or top|center|bottom, WIDTH and HEIGHT a positive number or a percentage"
+    },
+    {
       "name": "rule has nothing to do",
       "document": [{ "match": { "class": "a" } }],
       "valid": false,
