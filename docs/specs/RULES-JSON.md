@@ -273,6 +273,10 @@ so the rule set changes when the read lands: a window created between
 `enable()` and the first read landing is not placed. A newer read and
 `disable()` cancel the one in flight, and a cancelled read changes nothing.
 
+A file that is absent, that cannot be read, or that does not validate leaves
+zero rules loaded until the file changes. A directory that cannot be watched
+is logged, and the file is then read once, at `enable()`.
+
 `window-created` is connected only while at least one rule is loaded, so an
 absent or empty file costs nothing per window.
 
