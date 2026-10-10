@@ -95,15 +95,20 @@ export function matchPredicate(kind, value) {
 // The same arithmetic as cli/src/geometry.rs, integer and truncating, so a
 // rule lands on the pixels `wctl place` and `wctl tile` would produce.
 
+// Every pixel value and index is bounded to a signed 32-bit integer: the type
+// mutter takes them as, and the bound cli/src/geometry.rs applies.
+const INT32_MAX = 2147483647;
+const INT32_MIN = -2147483648;
+
 // WIDTH/HEIGHT: positive pixels, or a percentage of the workarea that does not
 // floor to zero. Null when the token is neither.
 export function resolvePlaceSize(token, baseSize) {
     if (/^[1-9][0-9]*$/.test(token))
-        return Number(token);
+        return Number(token) <= INT32_MAX ? Number(token) : null;
     const percent = /^([0-9]+)%$/.exec(token);
-    if (percent) {
+    if (percent && Number(percent[1]) <= INT32_MAX) {
         const value = Math.trunc(baseSize * Number(percent[1]) / 100);
-        return value > 0 ? value : null;
+        return value > 0 && value <= INT32_MAX ? value : null;
     }
     return null;
 }
@@ -112,7 +117,7 @@ export function resolvePlaceSize(token, baseSize) {
 // against the workarea and the window's own size. Null for anything else.
 export function resolvePlacePosition(token, keywords, workareaPos, workareaSize, windowSize) {
     if (/^-?[0-9]+$/.test(token))
-        return Number(token);
+        return Number(token) >= INT32_MIN && Number(token) <= INT32_MAX ? Number(token) : null;
     const [start, center, end] = keywords;
     switch (token) {
     case start:
@@ -189,7 +194,7 @@ function compileIndex(rule, key, label) {
     if (!(key in rule))
         return null;
     const value = rule[key];
-    if (!Number.isInteger(value) || value < 0)
+    if (!Number.isInteger(value) || value < 0 || value > INT32_MAX)
         throw new Error(`${label}.${key}: must be a non-negative integer`);
     return value;
 }

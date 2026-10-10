@@ -107,14 +107,15 @@ PLACEMENT RULES:
                             Validate the file. Same verdict and same message
                             the extension would log, so a file this accepts
                             is a file the shell will load.
-    rules add <MATCH> <ACTION> [--workspace <N>] [--monitor <N>]
+    rules add <MATCH> [ACTION] [--workspace <N>] [--monitor <N>]
               [--at <N>] [--dry-run]
                             Append a rule (or insert it at --at). MATCH is
                             -c <CLASS>, -t <TITLE> or -s <SUBSTR>; a window ID,
                             focused and -p name a window that already exists,
                             so a rule cannot use them. ACTION is
                             tile <POSITION>, place <X> <Y> <W> <H>, or
-                            center [horizontal|vertical|both].
+                            center [horizontal|vertical|both], and may be
+                            left out when --workspace or --monitor is given.
     rules remove <INDEX> [--dry-run]
                             Remove the rule at INDEX
     rules test <WINDOW> [--json]
@@ -170,7 +171,7 @@ EXAMPLES:
     wctl resize focused 800 600       # Resize the focused window to 800x600
     wctl place 12345 center top 50% 100%  # Centered half-width, full workarea height
     wctl place 12345 1280 32 3840 1408    # Exact pixel placement
-    wctl tile -c kitty left           # Tile the kitty window to the left half
+    wctl tile -c kitty left           # Tile the kitty window to the left column
     wctl tile 12345 center            # Tile to center of grid
     wctl center focused               # Center the focused window (both axes)
     wctl center 12345 horizontal      # Center horizontally only
@@ -179,7 +180,7 @@ EXAMPLES:
     wctl place focused center top 50% 100% --settled  # Return once the frame stops moving
     wctl version --json               # Do wctl and the loaded extension agree?
     wctl rules check                  # Is my rules.json valid?
-    wctl rules add -c kitty tile left      # Always tile kitty to the left half
+    wctl rules add -c kitty tile left      # Always tile kitty to the left column
     wctl rules add -s Report place right top 50% 100%   # Right half by title
     wctl rules list                   # What rules do I have?
     wctl rules remove 0               # Drop the first rule

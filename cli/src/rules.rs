@@ -174,10 +174,14 @@ fn compile_index(rule: &Map<String, Value>, key: &str, label: &str) -> Result<Op
     let Some(value) = rule.get(key) else {
         return Ok(None);
     };
-    // as_i64 is None for a float, so 1.5 and 1e300 are both refused here the
-    // way Number.isInteger refuses them.
-    match value.as_i64() {
-        Some(index) if index >= 0 => Ok(Some(index)),
+    // JSON's 2.0 and 2e0 parse to the JS number 2, which Number.isInteger
+    // accepts, so a float with no fraction is an integer here too. as_f64 is
+    // exact over the accepted range, and refuses nothing as_i64 would accept
+    // inside it.
+    match value.as_f64() {
+        Some(index) if index.fract() == 0.0 && (0.0..=f64::from(i32::MAX)).contains(&index) => {
+            Ok(Some(index as i64))
+        }
         _ => Err(format!("{label}.{key}: must be a non-negative integer")),
     }
 }

@@ -57,7 +57,7 @@ fn warn_if_rules_unsupported(ctx: &Ctx) {
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
 
 const ADD_USAGE: &str =
-    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> <tile POSITION|place X Y W H|center [AXIS]> \
+    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> [tile POSITION|place X Y W H|center [AXIS]] \
 [--workspace N] [--monitor N] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
@@ -262,6 +262,17 @@ fn describe_action(rule: &rules::Rule) -> String {
     }
 }
 
+/// The action in a sentence, where the empty cell of the `list` table would
+/// read as a missing word.
+fn describe_action_or_none(rule: &rules::Rule) -> String {
+    let action = describe_action(rule);
+    if action.is_empty() {
+        "(no geometry)".to_string()
+    } else {
+        action
+    }
+}
+
 /// `wctl rules list [--file PATH] [--json]`
 fn list(args: &[String]) -> Result<()> {
     let (file, rest) = take_file_option(args)?;
@@ -441,7 +452,10 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
     })
 }
 
-/// `wctl rules add <MATCH> <ACTION> [--workspace N] [--monitor N] [--at N] [--dry-run]`
+/// `wctl rules add <MATCH> [ACTION] [--workspace N] [--monitor N] [--at N] [--dry-run]`
+///
+/// The action may be left out when `--workspace` or `--monitor` is given: the
+/// grammar accepts a rule that only moves the window there.
 fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (file, args) = take_file_option(args)?;
     let (dry_run, args) = super::take_flag(&args, "--dry-run");
@@ -477,26 +491,27 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         let Some(value) = args.get(index + 1) else {
             return Err(Fail::error(format!("Option {option} requires a value")));
         };
-        if !crate::selector::is_window_id(value) {
-            return Err(Fail::error(format!(
-                "{option} must be a non-negative number"
-            )));
-        }
-        *slot = Some(
-            value
-                .parse::<i64>()
-                .map_err(|_| Fail::error(format!("{option} must be a non-negative number")))?,
-        );
+        // i32 is the bound the rule itself is validated against.
+        let number = super::index(value, &option)
+            .map_err(|_| Fail::error(format!("{option} must be a non-negative number")))?;
+        *slot = Some(i64::from(number));
         index += 2;
     }
 
     let (match_block, shift) = parse_rule_match(&rest)?;
-    let (action_key, action_value) = parse_rule_action(&rest[shift..])?;
+    let action_args = &rest[shift..];
+    let action = if action_args.is_empty() && (workspace.is_some() || monitor.is_some()) {
+        None
+    } else {
+        Some(parse_rule_action(action_args)?)
+    };
 
     // Built in RULE_KEYS order, so the file reads the way the spec lists them.
     let mut rule = Map::new();
     rule.insert("match".to_string(), Value::Object(match_block));
-    rule.insert(action_key, action_value);
+    if let Some((key, value)) = action {
+        rule.insert(key, value);
+    }
     if let Some(workspace) = workspace {
         rule.insert("workspace".to_string(), Value::from(workspace));
     }
@@ -706,17 +721,13 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     println!(
         "Matched rule {index}: {} -> {}",
         describe_match(rule),
-        if describe_action(rule).is_empty() {
-            "(no geometry)".to_string()
-        } else {
-            describe_action(rule)
-        }
+        describe_action_or_none(rule)
     );
     for shadowed in matching.iter().skip(1) {
         println!(
             "  rule {shadowed} also matches but is shadowed: {} -> {}",
             describe_match(&compiled[*shadowed]),
-            describe_action(&compiled[*shadowed])
+            describe_action_or_none(&compiled[*shadowed])
         );
     }
     if let Some(workspace) = rule.workspace {

@@ -52,6 +52,9 @@ export class WindowKeybindings {
                 (display, win) => this._cycleWide(win));
             console.log(`[Window Control] ${this._names.length} keyboard shortcut(s) registered`);
         } catch (e) {
+            // All or none: the shortcuts registered before the failure go too,
+            // so the line below is true.
+            this.disable();
             console.error(`[Window Control] keyboard shortcuts disabled: ${e.message}`);
         }
     }

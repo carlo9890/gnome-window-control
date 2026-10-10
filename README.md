@@ -295,6 +295,7 @@ is ignored until you fix it, so one typo never places a window half-right.
 wctl rules add -c kitty tile left               # Tile every kitty window left
 wctl rules add -s Report place right top 50% 100%
 wctl rules add -t Calculator center both --monitor 1 --workspace 2
+wctl rules add -c Slack --workspace 2            # Only move it to a workspace
 wctl rules list                                 # What is in the file
 wctl rules remove 0                             # Drop a rule by index
 wctl rules path                                 # Where the file lives

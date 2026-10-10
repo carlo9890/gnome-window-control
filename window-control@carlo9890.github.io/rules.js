@@ -69,19 +69,20 @@ export class WindowRules {
     }
 
     // Never throws: window rules are secondary to the D-Bus service, so a
-    // config-dir or monitor failure logs and leaves the extension running with
-    // no rules rather than failing enable() and leaving the service exported
-    // but the extension marked broken.
+    // config-dir or monitor failure logs and leaves the extension running
+    // rather than failing enable() and leaving the service exported but the
+    // extension marked broken. The file is read either way: without the
+    // directory there is none, and without the monitor it is read once.
     enable() {
+        const dir = Gio.File.new_for_path(CONFIG_DIR);
         try {
-            const dir = Gio.File.new_for_path(CONFIG_DIR);
-            try {
-                dir.make_directory_with_parents(null);
-            } catch (e) {
-                if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
-                    throw e;
-            }
-            this._load();
+            dir.make_directory_with_parents(null);
+        } catch (e) {
+            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
+                console.error(`[Window Control] cannot create ${CONFIG_DIR}: ${e.message}`);
+        }
+        this._load();
+        try {
             // The directory rather than the file: a file monitor misses an editor
             // that saves by writing a new file and renaming it over the old one.
             this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
@@ -90,7 +91,7 @@ export class WindowRules {
                     this._scheduleReload();
             });
         } catch (e) {
-            console.error(`[Window Control] window rules disabled: ${e.message}`);
+            console.error(`[Window Control] ${RULES_FILE} is not watched for changes: ${e.message}`);
         }
     }
 
@@ -136,13 +137,14 @@ export class WindowRules {
                 const [, bytes] = source.load_contents_finish(result);
                 text = new TextDecoder().decode(bytes);
             } catch (e) {
-                if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
-                    this._rules = [];
-                    this._syncWatch();
+                // Rules the file no longer yields must not stay active, whatever
+                // the reason it cannot be read.
+                this._rules = [];
+                this._syncWatch();
+                if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
                     console.log(`[Window Control] no ${RULES_FILE}; window rules off`);
-                    return;
-                }
-                console.error(`[Window Control] ${RULES_FILE}: cannot read: ${e.message}`);
+                else
+                    console.error(`[Window Control] ${RULES_FILE}: cannot read: ${e.message}; window rules off`);
                 return;
             }
             this._compile(text);
