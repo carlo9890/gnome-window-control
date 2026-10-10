@@ -13,7 +13,16 @@
 // maximize API in window-helpers.js.
 
 // rules.json match key -> matchPredicate() kind.
-export const MATCH_KINDS = { class: 'class', title: 'title', substr: 'substring' };
+export const MATCH_KINDS = {
+    class: 'class',
+    title: 'title',
+    substr: 'substring',
+    title_prefix: 'prefix',
+    title_suffix: 'suffix',
+};
+
+// The match keys as the validation messages list them.
+const MATCH_KEY_NAMES = Object.keys(MATCH_KINDS).join(', ');
 
 // A tile position as (startCol, endCol, startRow, endRow) of the 4x2 grid.
 export const TILE_CELLS = {
@@ -63,9 +72,9 @@ export const PROBE_WORKAREA = { x: 0, y: 0, width: 1000, height: 1000 };
 // Build the match predicate for a (kind, value) selector. One implementation
 // for WaitForWindow, the ActivateBy* methods and rules.json, so the three
 // cannot disagree about which window a value names. Returns null for an
-// unknown kind, an empty substring (which would match every window) or a pid
-// that is not a positive decimal integer: get_pid() is 0 for a window whose
-// client pid is unknown, so 0 must never be matchable.
+// unknown kind, an empty substring, prefix or suffix (which would match every
+// window) or a pid that is not a positive decimal integer: get_pid() is 0 for
+// a window whose client pid is unknown, so 0 must never be matchable.
 //
 // The window is duck-typed through its getters, which is what keeps this file
 // free of gi://Meta.
@@ -79,6 +88,14 @@ export function matchPredicate(kind, value) {
         if (value === '')
             return null;
         return w => (w.get_title() || '').includes(value);
+    case 'prefix':
+        if (value === '')
+            return null;
+        return w => (w.get_title() || '').startsWith(value);
+    case 'suffix':
+        if (value === '')
+            return null;
+        return w => (w.get_title() || '').endsWith(value);
     case 'pid': {
         if (!/^[0-9]+$/.test(value))
             return null;
@@ -218,22 +235,22 @@ export function compileRule(rule, index) {
         // is a truthy inherited lookup, and the function it returns would reach
         // matchPredicate as a kind and push a null predicate into the rule.
         if (!Object.hasOwn(MATCH_KINDS, key))
-            throw new Error(`${label}.match.${key}: unknown key (use class, title, substr)`);
+            throw new Error(`${label}.match.${key}: unknown key (use ${MATCH_KEY_NAMES})`);
         const kind = MATCH_KINDS[key];
         if (typeof value !== 'string')
             throw new Error(`${label}.match.${key}: must be a string`);
         // Checked here rather than left to matchPredicate, which only refuses an
-        // empty SUBSTRING. An empty class or title builds a predicate that is
-        // true only for a window with no class or no title at all -- never what
-        // the user meant, and a rule that silently never fires is worse than a
-        // message. The spec's validation table says every match value is
-        // non-empty; this is what makes that true.
+        // empty substring, prefix or suffix. An empty class or title builds a
+        // predicate that is true only for a window with no class or no title at
+        // all -- never what the user meant, and a rule that silently never fires
+        // is worse than a message. The spec's validation table says every match
+        // value is non-empty; this is what makes that true.
         if (value === '')
             throw new Error(`${label}.match.${key}: must not be empty`);
         predicates.push(matchPredicate(kind, value));
     }
     if (predicates.length === 0)
-        throw new Error(`${label}.match: must name at least one of class, title, substr`);
+        throw new Error(`${label}.match: must name at least one of ${MATCH_KEY_NAMES}`);
 
     const actions = ['place', 'tile', 'center'].filter(key => key in rule);
     if (actions.length > 1)

@@ -57,7 +57,7 @@ fn warn_if_rules_unsupported(ctx: &Ctx) {
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
 
 const ADD_USAGE: &str =
-    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR> [tile POSITION|place X Y W H|center [AXIS]] \
+    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR|--title-prefix TEXT|--title-suffix TEXT> [tile POSITION|place X Y W H|center [AXIS]] \
 [--workspace N] [--monitor N] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
@@ -338,14 +338,15 @@ fn path_command(args: &[String]) -> Result<()> {
 
 /// Parse the match selector of `rules add`.
 ///
-/// Only the three selectors a STATIC file can carry. A numeric ID, `focused`
+/// Only the selectors a STATIC file can carry. A numeric ID, `focused`
 /// and `-p` all name a window that exists right now, which is exactly what a
 /// rule cannot do: it is evaluated against windows that do not exist yet.
 fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
     let refused = |named: &str| {
         Fail::error(format!(
             "{named} names a window that already exists; a rule matches windows \
-             that do not exist yet. Use -c <CLASS>, -t <TITLE> or -s <SUBSTR>."
+             that do not exist yet. Use -c <CLASS>, -t <TITLE>, -s <SUBSTR>, \
+             --title-prefix <TEXT> or --title-suffix <TEXT>."
         ))
     };
 
@@ -354,6 +355,8 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
         "-c" => "class",
         "-t" => "title",
         "-s" => "substr",
+        "--title-prefix" => "title_prefix",
+        "--title-suffix" => "title_suffix",
         "-p" => return Err(refused("-p <PID>")),
         "focused" => return Err(refused("focused")),
         "" => return Err(Fail::error(ADD_USAGE)),
@@ -441,16 +444,19 @@ fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
 ///
 /// First match wins, so a new rule under a more general one is dead. Each of
 /// `earlier`'s predicates must be implied by one of `later`'s: an exact class
-/// or title by the same value, a substring by any title or substring that
-/// contains it.
+/// or title by the same value, a substring by any title predicate whose value
+/// contains it, a prefix or suffix by a title or a like predicate that starts
+/// or ends with it.
 fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
     earlier.matches.iter().all(|general| {
         later.matches.iter().any(
             |specific| match (general.kind.as_str(), specific.kind.as_str()) {
                 ("class", "class") | ("title", "title") => general.value == specific.value,
-                ("substring", "title") | ("substring", "substring") => {
+                ("substring", "title" | "substring" | "prefix" | "suffix") => {
                     specific.value.contains(&general.value)
                 }
+                ("prefix", "title" | "prefix") => specific.value.starts_with(&general.value),
+                ("suffix", "title" | "suffix") => specific.value.ends_with(&general.value),
                 _ => false,
             },
         )
@@ -477,7 +483,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         match option {
             "--workspace" | "--monitor" | "--at" => {}
             // A selector option's VALUE is never an option name.
-            "-c" | "-t" | "-s" | "-p" => {
+            "-c" | "-t" | "-s" | "-p" | "--title-prefix" | "--title-suffix" => {
                 rest.push(args[index].clone());
                 if let Some(value) = args.get(index + 1) {
                     rest.push(value.clone());
@@ -783,5 +789,48 @@ pub fn rules(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         other => Err(Fail::error(format!(
             "Unknown rules subcommand: {other}. {USAGE}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn rule(key: &str, value: &str) -> rules::Rule {
+        rules::compile_rule(&json!({"match": {key: value}, "tile": "left"}), 0)
+            .expect("a valid rule")
+    }
+
+    /// Each title implication `shadows` knows, then the reverse of each: there
+    /// the earlier rule is the narrower one, and a warning would be false.
+    #[test]
+    fn shadows_follows_what_a_title_predicate_implies() {
+        let cases = [
+            ("substr", "port", "title_prefix", "Report", true),
+            ("substr", "port", "title_suffix", "Report", true),
+            ("title_prefix", "Rep", "title", "Report", true),
+            ("title_prefix", "Rep", "title_prefix", "Report", true),
+            ("title_suffix", "ort", "title", "Report", true),
+            ("title_suffix", "ort", "title_suffix", "Report", true),
+            ("title_prefix", "Report", "substr", "port", false),
+            ("title_suffix", "Report", "substr", "port", false),
+            ("title", "Report", "title_prefix", "Rep", false),
+            ("title_prefix", "Report", "title_prefix", "Rep", false),
+            ("title", "Report", "title_suffix", "ort", false),
+            ("title_suffix", "Report", "title_suffix", "ort", false),
+            ("title_prefix", "Rep", "title_suffix", "Rep", false),
+            ("title_suffix", "ort", "title_prefix", "ort", false),
+        ];
+        for (earlier_key, earlier_value, later_key, later_value, expected) in cases {
+            assert_eq!(
+                shadows(
+                    &rule(earlier_key, earlier_value),
+                    &rule(later_key, later_value)
+                ),
+                expected,
+                "{earlier_key}={earlier_value} before {later_key}={later_value}"
+            );
+        }
     }
 }

@@ -187,6 +187,8 @@ _wctl() {
                         '2:argument:' \
                         '--file[Rules file to use (default: the configured one)]:file:_files' \
                         '--json[Output as JSON]' \
+                        '--title-prefix[Match a title that starts with this]:text:' \
+                        '--title-suffix[Match a title that ends with this]:text:' \
                         '--workspace[Also move the window to this workspace]:index:' \
                         '--monitor[Resolve the geometry on this monitor]:index:' \
                         '--at[Insert at this index instead of appending]:index:' \

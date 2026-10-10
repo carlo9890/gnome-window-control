@@ -264,7 +264,8 @@ as the `wctl` commands:
 ```
 
 - **match** — one or more of `class` (exact WM class), `title` (exact title),
-  `substr` (title contains). Several keys must all match.
+  `substr` (title contains), `title_prefix` (title starts with),
+  `title_suffix` (title ends with). Several keys must all match.
 - **place** — `[X, Y, WIDTH, HEIGHT]`, the tokens of `wctl place`: X is a number
   or `left|center|right`, Y a number or `top|center|bottom`, WIDTH/HEIGHT a
   positive number or a percentage like `50%`.
@@ -311,9 +312,10 @@ INDEX  MATCH             ACTION                    WORKSPACE  MONITOR
 2      title=Calculator  center both               2          1
 ```
 
-A rule matches with `-c <CLASS>`, `-t <TITLE>` or `-s <SUBSTR>` only. A window
-ID, `focused` and `-p <PID>` name a window that already exists, and a rule is
-evaluated against windows that do not exist yet, so those are refused.
+A rule matches with `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`,
+`--title-prefix <TEXT>` or `--title-suffix <TEXT>` only. A window ID, `focused`
+and `-p <PID>` name a window that already exists, and a rule is evaluated
+against windows that do not exist yet, so those are refused.
 
 `add` validates the action through the same grammar `wctl tile` and `wctl place`
 use, appends unless `--at <N>` names a position, and writes atomically. A file

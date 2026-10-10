@@ -37,20 +37,27 @@ pub const PROBE_WORKAREA: Rect = Rect {
 pub const RULE_KEYS: [&str; 6] = ["match", "place", "tile", "center", "workspace", "monitor"];
 
 /// Every `match` key, mapped to the selector kind it means.
-pub const MATCH_KEYS: [(&str, &str); 3] = [
+pub const MATCH_KEYS: [(&str, &str); 5] = [
     ("class", "class"),
     ("title", "title"),
     ("substr", "substring"),
+    ("title_prefix", "prefix"),
+    ("title_suffix", "suffix"),
 ];
+
+/// The `match` keys as the messages list them.
+fn match_key_names() -> String {
+    MATCH_KEYS.map(|(key, _)| key).join(", ")
+}
 
 pub const CENTER_AXES: [&str; 3] = ["horizontal", "vertical", "both"];
 
 /// One `match` predicate: a selector kind and the value it compares against.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Match {
-    /// The rules.json key: `class`, `title` or `substr`.
+    /// The rules.json key, one of `MATCH_KEYS`.
     pub key: String,
-    /// The selector kind it maps to: `class`, `title` or `substring`.
+    /// The predicate kind that key maps to.
     pub kind: String,
     pub value: String,
 }
@@ -80,6 +87,8 @@ impl Rule {
             "class" => wm_class == m.value,
             "title" => title == m.value,
             "substring" => title.contains(&m.value),
+            "prefix" => title.starts_with(&m.value),
+            "suffix" => title.ends_with(&m.value),
             _ => false,
         })
     }
@@ -213,7 +222,8 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
     for (key, value) in match_block {
         let Some((_, kind)) = MATCH_KEYS.iter().find(|(name, _)| name == key) else {
             return Err(format!(
-                "{label}.match.{key}: unknown key (use class, title, substr)"
+                "{label}.match.{key}: unknown key (use {})",
+                match_key_names()
             ));
         };
         let Some(text) = value.as_str() else {
@@ -230,7 +240,8 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
     }
     if matches.is_empty() {
         return Err(format!(
-            "{label}.match: must name at least one of class, title, substr"
+            "{label}.match: must name at least one of {}",
+            match_key_names()
         ));
     }
 
@@ -411,7 +422,7 @@ mod tests {
     }
 
     /// The match vectors, against `Rule::matches_window`. `pid` is not a
-    /// rules.json key, so only the three that are reach this.
+    /// rules.json key, so every kind but that one reaches this.
     #[test]
     fn match_vectors() {
         let vectors = vectors();

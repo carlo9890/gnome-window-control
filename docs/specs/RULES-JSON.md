@@ -68,16 +68,19 @@ two keys are an AND.
 | `class` | WM class, exact | `class` |
 | `title` | title, exact | `title` |
 | `substr` | title contains the value | `substring` |
+| `title_prefix` | title starts with the value | `prefix` |
+| `title_suffix` | title ends with the value | `suffix` |
 
 `MATCH_KINDS` maps these to `matchPredicate`. A value MUST be a non-empty
-string. An empty `substr` would match every window; an empty `class` or `title`
-would match only a window that has none, so a rule carrying one could never
-usefully fire. All three are refused with the same message rather than loaded as
-a rule that silently never matches.
+string. An empty `substr`, `title_prefix` or `title_suffix` would match every
+window; an empty `class` or `title` would match only a window that has none, so
+a rule carrying one could never usefully fire. All five are refused with the
+same message rather than loaded as a rule that silently never matches.
 
 `focused`, numeric window ID and PID are deliberately absent: a static file
 cannot name a window that does not exist yet. `matchPredicate` still supports
-`pid` for the D-Bus callers.
+`pid` for the D-Bus callers. The D-Bus methods take `class`, `title`,
+`substring` and `pid` only: `prefix` and `suffix` are rules.json kinds.
 
 ## Geometry actions
 
@@ -179,7 +182,7 @@ which a file written by `wctl rules add` can contain:
 | Rule not an object | `rules[N]: must be an object` |
 | Unknown rule key | `rules[N].<key>: unknown key (use ...)` |
 | `match` missing or not an object | `rules[N].match: must be an object` |
-| `match` empty | `rules[N].match: must name at least one of class, title, substr` |
+| `match` empty | `rules[N].match: must name at least one of class, title, substr, title_prefix, title_suffix` |
 | Unknown `match` key | `rules[N].match.<key>: unknown key (use ...)` |
 | `match` value not a string | `rules[N].match.<key>: must be a string` |
 | `match` value empty | `rules[N].match.<key>: must not be empty` |

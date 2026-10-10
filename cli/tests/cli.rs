@@ -691,7 +691,7 @@ fn rules_file_surface_needs_no_bus() {
     assert!(rows[0].contains("title=Calc"), "printed: {out}");
     assert!(rows[1].contains("class=kitty"), "printed: {out}");
 
-    // A selector naming an existing window is refused, and names the three
+    // A selector naming an existing window is refused, and names the ones
     // that work in a static file.
     let before = read();
     for selector in [vec!["focused"], vec!["123"], vec!["-p", "999"]] {
@@ -998,5 +998,91 @@ fn rules_check_file_option_guards() {
     assert_eq!(code, 1);
     assert!(out.contains(r#""error":"Cannot read"#), "printed: {out}");
     assert!(out.contains(r#""valid":false"#), "printed: {out}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn rules_add_takes_a_title_prefix_and_suffix() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-prefix-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    let path = file.to_str().unwrap();
+
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--title-prefix",
+        "Report",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--title-suffix",
+        "- Mozilla Firefox",
+        "tile",
+        "right",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(out.contains("title_prefix=Report"), "printed: {out}");
+    assert!(
+        out.contains("title_suffix=- Mozilla Firefox"),
+        "printed: {out}"
+    );
+
+    // A rule under a more general one never fires: a title that starts with
+    // "Report 2026" also starts with "Report".
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--title-prefix",
+        "Report 2026",
+        "tile",
+        "center",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert!(
+        out.contains("rule 0 already matches every window"),
+        "printed: {out}"
+    );
+
+    // The value of a selector option is never read as an option name.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--title-suffix",
+        "--at",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(out.contains("title_suffix=--at"), "printed: {out}");
+
+    expect_die(
+        "--title-prefix requires a value",
+        &[
+            "rules",
+            "add",
+            "--file",
+            path,
+            "--title-prefix",
+            "",
+            "tile",
+            "left",
+        ],
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
