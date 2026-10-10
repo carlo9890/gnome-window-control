@@ -207,7 +207,8 @@ EXIT CODES:
     1   Usage error, or a failure with no more specific code below
     2   The window, workspace or monitor does not exist
     3   The shell refused: the frame is pinned by maximize, fullscreen or
-        tiling, or the window is held on all workspaces
+        tiling, the window is held on all workspaces, or it cannot be
+        minimized
     4   Timed out waiting for a window, or for the shell to reply
     5   The extension is not usable: not running, or a version this wctl
         cannot rely on (see wctl version --json)
