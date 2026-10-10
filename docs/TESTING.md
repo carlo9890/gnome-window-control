@@ -13,10 +13,10 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
 | Keyboard shortcuts (state-changing, in the modification runner) | `tests/test-keybindings.sh` | Yes, plus injected keys | `./tests/test-keybindings.sh` in a headless shell or a VM guest's session (see below) |
 
-The live suites were last run green on 2026-09-27 on GNOME Shell 46.0 (Ubuntu
-24.04) and 50.1 (Ubuntu 26.04), each in the real session of a libvirt guest
-with the extension installed from the built zip (see the guest section in
-[RUNNING.md](RUNNING.md)). Add a version here when you run them on another one.
+The live suites were last run green on 2026-10-10 on GNOME Shell 46.0 (the
+real session of an Ubuntu 24.04 libvirt guest, with the extension installed
+from the built zip) and 50.1 (a headless shell on Ubuntu 26.04); both paths
+are in [RUNNING.md](RUNNING.md). Add a version here when you run them on another one.
 
 ## The keyboard-shortcut suite
 
