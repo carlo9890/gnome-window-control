@@ -604,20 +604,17 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if !crate::selector::is_window_id(index) {
         return Err(Fail::error("Rule index must be a non-negative number"));
     }
-    let index: usize = index
-        .parse()
-        .map_err(|_| Fail::error("Rule index must be a non-negative number"))?;
 
     let is_default_file = file.is_none();
     let path = rules_path(file)?;
     let (mut raw, _) = load(&path)?;
-    if index >= raw.len() {
+    // A number too large for usize is past the end like any other.
+    let Some(index) = index.parse().ok().filter(|index| *index < raw.len()) else {
         return Err(Fail::error(format!(
             "No rule {index}; the file has {} rule(s)",
             raw.len()
-        ))
-        .with_code(crate::fail::EXIT_NOT_FOUND));
-    }
+        )));
+    };
 
     raw.remove(index);
     if dry_run {

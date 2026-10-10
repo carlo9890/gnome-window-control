@@ -833,9 +833,9 @@ fn rules_file_surface_needs_no_bus() {
     assert!(!out.contains("title=Calc"), "printed: {out}");
     assert!(out.contains("class=kitty"), "printed: {out}");
 
-    // An index past the end is a not-found, not a usage error.
-    let (_, code) = wctl(&["rules", "remove", "--file", &path, "99"]);
-    assert_eq!(code, 2, "out-of-range index should be EXIT_NOT_FOUND");
+    // An index past the end is an ordinary error, as --at past the end is.
+    let (out, code) = wctl(&["rules", "remove", "--file", &path, "99"]);
+    assert_eq!(code, 1, "printed: {out}");
 
     // A file that does not parse is never rewritten: add and remove both refuse
     // rather than clobbering whatever the user actually wrote.
@@ -928,6 +928,16 @@ fn rules_add_and_remove_replace_a_symbolic_link() {
     assert!(!link.symlink_metadata().unwrap().file_type().is_symlink());
     assert!(std::fs::read_to_string(&link).unwrap().contains("kitty"));
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "[]\n");
+
+    // An index past the end is an ordinary error, like --at past the end.
+    for index in ["7", "99999999999999999999999999"] {
+        let (out, code) = wctl(&["rules", "remove", "--file", link.to_str().unwrap(), index]);
+        assert_eq!(code, 1, "printed: {out}");
+        assert!(
+            out.contains(&format!("No rule {index}; the file has 1 rule(s)")),
+            "printed: {out}"
+        );
+    }
 
     // remove does the same.
     std::fs::remove_file(&link).expect("remove");
