@@ -34,9 +34,9 @@ GNOME Shell 46 by logging one line at each level and reading back `PRIORITY`):
 | `console.warn()` | 4 (warning) | Yes |
 | `console.error()` | 3 (critical) | Yes |
 
-Writing these lines is a coding rule, not a monitoring one — see
-[CODING.md](CODING.md) for which level a handler may use and what a line may
-contain.
+Writing these lines is a review rule, not a monitoring one — see
+[REVIEWING.md](REVIEWING.md) for which level a handler may use and what a line
+may contain.
 
 ## Interpreting common signals
 

@@ -23,8 +23,9 @@ command fast.
 
 **MUST read [docs/CODING.md](docs/CODING.md) before creating or editing ANY file
 under `window-control@carlo9890.github.io/`, `cli/`, `scripts/` or `tests/`.**
-It owns the JS and Rust style rules, the mandatory `node --check` gate, and the
-recipe for adding a D-Bus method end to end.
+It owns the mandatory `node --check` gate, the build commands, the mechanisms a
+handler or a command must use, and the recipe for adding a D-Bus method end to
+end.
 
 ### Documentation changes
 
@@ -76,6 +77,12 @@ lines land, which levels are visible, and what a silent no-op means.
 
 **MUST read [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before ANY git
 operation** — commit, branch, worktree, push, or opening a PR.
+
+### Reviewing changes
+
+**MUST read [docs/REVIEWING.md](docs/REVIEWING.md) before reviewing a PR or a
+diff.** It carries the quality rules a finished change is held to — the SPDX
+header, handler errors, log levels and log content.
 
 ### Release
 
