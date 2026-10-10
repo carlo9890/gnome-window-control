@@ -691,7 +691,7 @@ fn rules_file_surface_needs_no_bus() {
     assert!(rows[0].contains("title=Calc"), "printed: {out}");
     assert!(rows[1].contains("class=kitty"), "printed: {out}");
 
-    // A selector naming an existing window is refused, and names the three
+    // A selector naming an existing window is refused, and names the ones
     // that work in a static file.
     let before = read();
     for selector in [vec!["focused"], vec!["123"], vec!["-p", "999"]] {
@@ -1055,6 +1055,21 @@ fn rules_add_takes_a_title_prefix_and_suffix() {
         out.contains("rule 0 already matches every window"),
         "printed: {out}"
     );
+
+    // The value of a selector option is never read as an option name.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--title-suffix",
+        "--at",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(out.contains("title_suffix=--at"), "printed: {out}");
 
     expect_die(
         "--title-prefix requires a value",

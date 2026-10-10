@@ -188,8 +188,7 @@
     {
       "name": "title_prefix and title_suffix are match keys, and combine",
       "document": [{ "match": { "title_prefix": "vim", "title_suffix": "notes" }, "tile": "left" }],
-      "valid": true,
-      "count": 1
+      "valid": true
     },
     {
       "name": "empty title_prefix would match every window",

@@ -422,7 +422,7 @@ mod tests {
     }
 
     /// The match vectors, against `Rule::matches_window`. `pid` is not a
-    /// rules.json key, so only the three that are reach this.
+    /// rules.json key, so every kind but that one reaches this.
     #[test]
     fn match_vectors() {
         let vectors = vectors();

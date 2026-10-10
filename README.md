@@ -312,9 +312,10 @@ INDEX  MATCH             ACTION                    WORKSPACE  MONITOR
 2      title=Calculator  center both               2          1
 ```
 
-A rule matches with `-c <CLASS>`, `-t <TITLE>` or `-s <SUBSTR>` only. A window
-ID, `focused` and `-p <PID>` name a window that already exists, and a rule is
-evaluated against windows that do not exist yet, so those are refused.
+A rule matches with `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`,
+`--title-prefix <TEXT>` or `--title-suffix <TEXT>` only. A window ID, `focused`
+and `-p <PID>` name a window that already exists, and a rule is evaluated
+against windows that do not exist yet, so those are refused.
 
 `add` validates the action through the same grammar `wctl tile` and `wctl place`
 use, appends unless `--at <N>` names a position, and writes atomically. A file
