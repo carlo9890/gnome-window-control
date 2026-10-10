@@ -240,7 +240,8 @@ export const DBUS_INTERFACE_XML = `
       Minimize: Minimize window
       Args: t - window ID
       Returns: b - success; false also for a window the shell does not let
-               minimize, a skip-taskbar one for example
+               minimize, a skip-taskbar one for example, unless it is
+               minimized already
     -->
     <method name="Minimize">
       <arg type="t" direction="in" name="window_id"/>

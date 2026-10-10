@@ -1090,12 +1090,14 @@ class WindowControlService {
         return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => this._minimize(win, true));
     }
 
-    // Helper: minimize, or return false for a window mutter does not let
-    // minimize (a skip-taskbar one, for example). minimize() does nothing
-    // there, so a skip armed for it would wait for an unrelated effect.
+    // Helper: minimize, and return whether the window is minimized. Mutter
+    // does not let every window minimize (a skip-taskbar one, for example):
+    // minimize() does nothing there, so a skip armed for it would wait for an
+    // unrelated effect. Such a window counts only when it is minimized
+    // already -- a client can set skip-taskbar on a window it has iconified.
     _minimize(win, skipEffect) {
         if (!win.can_minimize())
-            return false;
+            return win.minimized;
         if (skipEffect && !win.is_hidden())
             this._skipNextEffect(win);
         win.minimize();

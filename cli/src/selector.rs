@@ -250,6 +250,7 @@ pub fn filter(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fail::EXIT_ERROR;
     use serde_json::Value;
 
     // Fixture: three windows; id 3 is sticky (workspace_index -1, on all
@@ -356,9 +357,9 @@ mod tests {
     #[test]
     fn select_reports_ambiguity_with_candidates() {
         let windows = fixture();
-        let err = select_id(&windows, Kind::Class, "kitty")
-            .unwrap_err()
-            .to_string();
+        let err = select_id(&windows, Kind::Class, "kitty").unwrap_err();
+        assert_eq!(err.code(), EXIT_ERROR);
+        let err = err.to_string();
         assert!(err.contains("matches 2 windows"), "{err}");
         assert!(err.contains("use an ID:"), "{err}");
         assert!(err.contains("Doc A"), "{err}");

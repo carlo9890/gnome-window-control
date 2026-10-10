@@ -133,8 +133,8 @@ wctl info 12345 --json             # one window's details
 
 # Every command that takes a window accepts a selector instead of an ID:
 #   <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
-# A selector must match exactly one window; otherwise wctl lists the
-# candidates and exits 1.
+# A selector must match exactly one window. With several matches wctl lists
+# the candidates and exits 1; with none it exits 2.
 wctl tile -c kitty left
 wctl close -s "Untitled"
 
@@ -457,7 +457,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `GetCapabilities` | `() -> as` | The feature names this extension supports, e.g. `['rules']` |
 | `Minimize` | `(t) -> b` | Minimize window; `false` also for a window the shell does not let minimize |
 | `Unminimize` | `(t) -> b` | Restore minimized window |
-| `MinimizeNoAnimation` | `(t) -> b` | Minimize window without the shell's minimize animation |
+| `MinimizeNoAnimation` | `(t) -> b` | Minimize window without the shell's minimize animation; `false` as `Minimize` reports it |
 | `UnminimizeNoAnimation` | `(t) -> b` | Restore minimized window without the animation |
 | `ActivateNoAnimation` | `(t) -> b` | Activate window by ID, restoring a minimized one without the animation |
 | `Maximize` | `(t) -> b` | Maximize window |
