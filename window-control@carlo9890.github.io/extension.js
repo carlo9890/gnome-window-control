@@ -27,7 +27,8 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // Reported by GetCapabilities. A name here is a promise a caller may rely on,
 // so it is added in the same commit as the feature and never removed while the
 // feature is served. 'rules' means rules.json is read and applied;
-// 'keybindings' means the tile shortcuts in the settings schema are served;
+// 'keybindings' means the tile shortcuts in the settings schema are served,
+// and is left out when their registration failed;
 // 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
 // 'activate-no-animation' means ActivateNoAnimation is.
 const CAPABILITIES = ['rules', 'keybindings', 'no-animation', 'activate-no-animation'];
@@ -118,6 +119,8 @@ class WindowControlService {
         // of the method, because on Wayland an install lands on disk and the
         // shell keeps running the old copy until the user logs out.
         this._version = String(metadata.version);
+        // Set by the extension once WindowKeybindings has registered them.
+        this.keybindingsServed = false;
         // WaitForWindow state. The 'window-created' handler is connected only
         // while at least one waiter is pending, so an idle extension costs nothing.
         this._waiters = [];
@@ -598,8 +601,10 @@ class WindowControlService {
     // never removed while the feature is served. 'rules' means WindowRules is
     // enabled, so a rules.json this extension can see is applied.
     GetCapabilities() {
-        console.debug(`[Window Control] GetCapabilities() -> ${CAPABILITIES}`);
-        return CAPABILITIES;
+        const capabilities = CAPABILITIES.filter(
+            name => name !== 'keybindings' || this.keybindingsServed);
+        console.debug(`[Window Control] GetCapabilities() -> ${capabilities}`);
+        return capabilities;
     }
 
     // GetWorkarea: Get usable workspace area for a monitor
@@ -1186,6 +1191,7 @@ export default class WindowControlExtension extends Extension {
             this._rules.enable();
             this._keybindings = new WindowKeybindings();
             this._keybindings.enable(this);
+            this._service.keybindingsServed = this._keybindings.registered;
         } catch (e) {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
             throw e;

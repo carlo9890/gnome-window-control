@@ -367,11 +367,7 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
 
 /// Parse the action of `rules add`, validating through the same grammar the
 /// rule will be validated by.
-fn parse_rule_action(args: &[String]) -> Result<(String, Value)> {
-    let Some(kind) = args.first().map(String::as_str) else {
-        return Err(Fail::error(ADD_USAGE));
-    };
-    let rest = &args[1..];
+fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
     match kind {
         "tile" => {
             let [position] = rest else {
@@ -468,10 +464,9 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let mut rest = Vec::with_capacity(args.len());
     let mut index = 0;
     while index < args.len() {
-        let slot = match args[index].as_str() {
-            "--workspace" => &mut workspace,
-            "--monitor" => &mut monitor,
-            "--at" => &mut at,
+        let option = args[index].as_str();
+        match option {
+            "--workspace" | "--monitor" | "--at" => {}
             // A selector option's VALUE is never an option name.
             "-c" | "-t" | "-s" | "-p" => {
                 rest.push(args[index].clone());
@@ -486,24 +481,39 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                 index += 1;
                 continue;
             }
-        };
-        let option = args[index].clone();
+        }
         let Some(value) = args.get(index + 1) else {
             return Err(Fail::error(format!("Option {option} requires a value")));
         };
-        // i32 is the bound the rule itself is validated against.
-        let number = super::index(value, &option)
-            .map_err(|_| Fail::error(format!("{option} must be a non-negative number")))?;
-        *slot = Some(i64::from(number));
+        let not_a_number = || Fail::error(format!("{option} must be a non-negative number"));
+        if option == "--at" {
+            // A position in the file, not a rule field: any run of digits is
+            // a number here, and one past the end is reported as that.
+            if !crate::selector::is_window_id(value) {
+                return Err(not_a_number());
+            }
+            at = Some(value.clone());
+        } else {
+            // i32 is the bound the rule itself is validated against.
+            let number = i64::from(super::index(value, option).map_err(|_| not_a_number())?);
+            if option == "--workspace" {
+                workspace = Some(number);
+            } else {
+                monitor = Some(number);
+            }
+        }
         index += 2;
     }
 
     let (match_block, shift) = parse_rule_match(&rest)?;
-    let action_args = &rest[shift..];
-    let action = if action_args.is_empty() && (workspace.is_some() || monitor.is_some()) {
-        None
-    } else {
-        Some(parse_rule_action(action_args)?)
+    let action = match rest[shift..].split_first() {
+        Some((kind, action_args)) => Some(parse_rule_action(kind, action_args)?),
+        None if workspace.is_some() || monitor.is_some() => None,
+        None => {
+            return Err(Fail::error(format!(
+                "A rule needs an action, --workspace or --monitor. {ADD_USAGE}"
+            )))
+        }
     };
 
     // Built in RULE_KEYS order, so the file reads the way the spec lists them.
@@ -528,16 +538,15 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
     let position = match at {
         None => raw.len(),
-        Some(at) => {
-            let at = usize::try_from(at).unwrap_or(usize::MAX);
-            if at > raw.len() {
+        Some(at) => match at.parse::<usize>() {
+            Ok(at) if at <= raw.len() => at,
+            _ => {
                 return Err(Fail::error(format!(
                     "--at {at} is past the end; the file has {} rule(s)",
                     raw.len()
-                )));
+                )))
             }
-            at
-        }
+        },
     };
 
     // Validate the rule in the position it will occupy, so the index in any
