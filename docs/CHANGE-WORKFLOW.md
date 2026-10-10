@@ -40,6 +40,8 @@ The regex accepted 0 despite the "must be a positive number" message.
 2. Describe what changed and the test plan (which suites you ran).
 3. Update `README.md` for user-facing changes and the relevant `docs/` topic for
    procedures.
+4. Review the PR against [REVIEWING.md](REVIEWING.md) with
+   `/worktree-flow:worktree-review <pr>`.
 
 The maintainer merges. An agent stops once the PR is open and its checks are
 green.

@@ -183,7 +183,7 @@ export function centerRect(axis, frame, workarea) {
 }
 
 // Validation of one parsed rule. Messages name the key, never its value: the
-// file is the user's own, but the journal outlives it and CODING.md forbids
+// file is the user's own, but the journal outlives it and REVIEWING.md forbids
 // window titles and classes in a log line wherever they come from.
 
 function isPlainObject(value) {

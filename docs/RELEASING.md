@@ -145,7 +145,7 @@ approved with all four present, so shexli output is not a gate:
   widened again without a new review.
 - `EGO-A-004` (warning): counts `console.error` toward a threshold of 5 per
   file. Stripping every `console.log` still leaves 15 in `extension.js` and 6
-  in `rules.js`, all in catch blocks, which [CODING.md](CODING.md) mandates.
+  in `rules.js`, all in catch blocks, which [REVIEWING.md](REVIEWING.md) mandates.
 - `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
   `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
   calls after setting `this._service = null`.

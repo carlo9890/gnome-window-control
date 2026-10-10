@@ -1,6 +1,7 @@
 # Coding
 
-Code style, mandatory syntax validation, building, and how to add a new D-Bus
+What a change needs in order to work: the mandatory syntax validation, the
+mechanisms a handler or a command must use, building, and how to add a new D-Bus
 method end-to-end.
 
 ## JavaScript syntax validation (CRITICAL)
@@ -15,21 +16,11 @@ finishing:
 If it fails, the code has a syntax error and must not be committed.
 `.github/workflows/build.yml` runs the same check as a hard CI gate.
 
-## Every source file
-
-- Start every new `.js` and `.rs` file with the two SPDX lines —
-  `// SPDX-FileCopyrightText: 2026 hko9890` and `// SPDX-License-Identifier: MIT`.
-  No gate catches a missing header.
-
-## JavaScript style (extension.js)
+## JavaScript (extension.js)
 
 - Use ES module (ESM) syntax.
-- Use `const`/`let`, never `var`.
-- Use template literals for string interpolation.
-- Wrap D-Bus method implementations in try/catch and return graceful defaults on
-  error (empty array, `false`, etc.) — never let an exception escape a handler.
-  **Exception: `Move`, `Resize`, `MoveResize`, `WaitForWindow` and
-  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean.**
+- `Move`, `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry` raise
+  named D-Bus errors instead of reporting a boolean.
   The two wait methods return the value asked for (`window_id`, and the settled
   rectangle) and raise when there is none; the three geometry methods return
   nothing at all.
@@ -40,24 +31,12 @@ If it fails, the code has a syntax error and must not be committed.
 - Simple "find window by id, do one action, return bool" handlers should go
   through the shared `_actOnWindow(windowId, label, action)` helper rather than
   re-implementing the find/try-catch/log skeleton.
-- Use `console.debug()` for per-call handler logging, `console.log()` only for
-  the enable/disable lifecycle, and `console.error()` ONLY in catch blocks.
-  `console.log()` is visible by default (journald priority 5, see
-  [MONITORING.md](MONITORING.md)), so a per-call `console.log()` leaves a journal
-  line per `wctl` invocation that outlives the session.
-- Never log window content or a caller-supplied match value, at any level — not a
-  title, and not a WM class. Log the method name and the outcome. A keyword
-  argument (`WaitForWindow`'s `kind`) is fine **once it has been validated**
-  against the four keywords — logged before that, it lets any process on the
-  session bus write arbitrary text, newlines included, into the journal. The
-  value it matches against is never logged.
 
-## Rust style (cli/)
+## Rust (cli/)
 
 - The toolchain is pinned in `.mise.toml`. Run the gates through mise:
   `mise run fmt`, `mise run lint`, `mise run test`, `mise run build`, or
   `mise run ci` for all of them (see [TESTING.md](TESTING.md)).
-- `cargo fmt` is authoritative; clippy must be clean with warnings as errors.
 - Validate arguments before any D-Bus call. The session connection is opened
   lazily in `dbus.rs`, so a usage error must never reach it — that is what keeps
   the guard tests headless. Parse the selector with `selector::parse_exact`
@@ -110,7 +89,7 @@ what it ships are described in [RELEASING.md](RELEASING.md).
    > method ever handles larger uint64 values, use `BigInt`/`GLib.Variant`.
 
    > A method that can fail for more than one reason should raise a named error
-   > (see the JS style rules above) and declare no `success` out-arg. Add the
+   > (see the JavaScript section above) and declare no `success` out-arg. Add the
    > name to `ERROR_*` in `cli/src/dbus.rs` so `map_err` maps it to the right
    > exit code, and call it with `call_unit` rather than `call_bool`.
 
@@ -134,6 +113,4 @@ what it ships are described in [RELEASING.md](RELEASING.md).
    The inventory unit tests cross-check all four, so a command that is missing
    from any of them fails `cargo test`.
 
-5. Update the method table in `README.md`.
-
-6. Run `mise run ci` and `./scripts/build.sh validate` before committing.
+5. Run `mise run ci` and `./scripts/build.sh validate` before committing.
