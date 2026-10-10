@@ -157,6 +157,11 @@ the message at warning level and runs with zero rules until the file changes.
 Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
 
+One verdict has two texts. A number too large for a double, such as `1e400`,
+is refused by both: the extension reports it as the key's own message below,
+`wctl rules check` as `not valid JSON`, because its parser refuses the number
+before validation starts.
+
 | Condition | Result |
 |---|---|
 | Top level not an array | `the top-level value must be an array of rules` |
@@ -207,8 +212,11 @@ Gating, in order:
 
 Action order within `_apply`:
 
-1. `workspace` — `change_workspace_by_index(index, true)`, which creates
-   workspaces up to that index.
+1. `workspace` — `change_workspace_by_index(index, true)`. For an index beyond
+   the last workspace mutter appends one workspace and moves the window there;
+   it does not create the workspaces in between. Observed on GNOME Shell 50.1
+   with dynamic workspaces: index 7 with three workspaces, the last one empty,
+   left the window on index 2.
 2. `monitor` — skipped with a debug line when the index exceeds
    `get_n_monitors()`.
 3. Geometry — skipped when the window is fullscreen. A maximized window is

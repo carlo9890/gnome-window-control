@@ -20,7 +20,7 @@
 // place:     [X, Y, WIDTH, HEIGHT] with the tokens of `wctl place`.
 // tile:      a `wctl tile` position.
 // center:    horizontal | vertical | both, keeps the window's own size.
-// workspace: index, created if needed.
+// workspace: index; one beyond the last lands on the last workspace.
 // monitor:   index; the workarea place/tile/center resolve against.
 //
 // The first matching rule wins, in file order, and is applied exactly once per
