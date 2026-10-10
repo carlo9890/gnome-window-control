@@ -171,7 +171,7 @@ EXAMPLES:
     wctl resize focused 800 600       # Resize the focused window to 800x600
     wctl place 12345 center top 50% 100%  # Centered half-width, full workarea height
     wctl place 12345 1280 32 3840 1408    # Exact pixel placement
-    wctl tile -c kitty left           # Tile the kitty window to the left half
+    wctl tile -c kitty left           # Tile the kitty window to the left column
     wctl tile 12345 center            # Tile to center of grid
     wctl center focused               # Center the focused window (both axes)
     wctl center 12345 horizontal      # Center horizontally only
@@ -180,7 +180,7 @@ EXAMPLES:
     wctl place focused center top 50% 100% --settled  # Return once the frame stops moving
     wctl version --json               # Do wctl and the loaded extension agree?
     wctl rules check                  # Is my rules.json valid?
-    wctl rules add -c kitty tile left      # Always tile kitty to the left half
+    wctl rules add -c kitty tile left      # Always tile kitty to the left column
     wctl rules add -s Report place right top 50% 100%   # Right half by title
     wctl rules list                   # What rules do I have?
     wctl rules remove 0               # Drop the first rule
