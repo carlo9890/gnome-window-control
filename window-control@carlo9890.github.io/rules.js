@@ -62,7 +62,7 @@ export class WindowRules {
     constructor() {
         this._rules = [];
         this._windowCreatedId = 0;
-        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, headStart, cancel}
+        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, headStart, wait}
         this._fileMonitor = null;
         this._fileMonitorId = 0;
         this._reloadId = 0;

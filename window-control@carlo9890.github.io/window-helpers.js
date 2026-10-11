@@ -77,7 +77,7 @@ export class UnmaximizeWait {
             win.connect('size-changed', () => this._settleFromIdle()),
             win.connect('unmanaged', () => {
                 this.destroy();
-                settled(false);
+                this._settled(false);
             }),
         ];
         this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, UNMAXIMIZE_SETTLE_MS, () => {
