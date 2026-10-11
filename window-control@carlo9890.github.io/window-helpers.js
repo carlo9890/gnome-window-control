@@ -59,50 +59,57 @@ export const UNMAXIMIZE_SETTLE_MS = 1000;
 
 // Unmaximize, then call `settled(true)` from an idle callback after the next
 // 'size-changed' or after UNMAXIMIZE_SETTLE_MS, whichever comes first, or
-// `settled(false)` when the window is unmanaged before then. Returns a function
-// that cancels the wait; after it, or after `settled`, nothing is left behind.
+// `settled(false)` when the window is unmanaged before then. The owner calls
+// destroy() to give the wait up; after it, or after `settled`, nothing is left
+// behind.
 //
 // A frame requested while the unmaximize is still in flight is overwritten by
 // the restored size, which is why the callers wait at all. 'size-changed' is
 // emitted from inside mutter's own move-resize, so the frame is requested from
 // an idle callback rather than from the handler: a request made re-entrantly
 // is overwritten when the outer call continues (both measured on GNOME 46).
-export function afterUnmaximize(win, settled) {
-    const ids = [];
-    let timeoutId = 0;
-    let idleId = 0;
-    const cancel = () => {
-        for (const id of ids)
-            win.disconnect(id);
-        ids.length = 0;
-        if (timeoutId)
-            GLib.source_remove(timeoutId);
-        if (idleId)
-            GLib.source_remove(idleId);
-        timeoutId = 0;
-        idleId = 0;
-    };
-    const done = () => {
-        if (idleId)
-            return;
-        idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            idleId = 0;
-            cancel();
-            settled(true);
+export class UnmaximizeWait {
+    constructor(win, settled) {
+        this._win = win;
+        this._settled = settled;
+        this._idleId = 0;
+        this._signalIds = [
+            win.connect('size-changed', () => this._settleFromIdle()),
+            win.connect('unmanaged', () => {
+                this.destroy();
+                settled(false);
+            }),
+        ];
+        this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, UNMAXIMIZE_SETTLE_MS, () => {
+            this._timeoutId = 0;
+            this._settleFromIdle();
             return GLib.SOURCE_REMOVE;
         });
-    };
-    ids.push(
-        win.connect('size-changed', done),
-        win.connect('unmanaged', () => {
-            cancel();
-            settled(false);
-        }));
-    timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, UNMAXIMIZE_SETTLE_MS, () => {
-        timeoutId = 0;
-        done();
-        return GLib.SOURCE_REMOVE;
-    });
-    unmaximizeWindow(win);
-    return cancel;
+        unmaximizeWindow(win);
+    }
+
+    destroy() {
+        for (const id of this._signalIds)
+            this._win.disconnect(id);
+        this._signalIds = [];
+        if (this._timeoutId) {
+            GLib.source_remove(this._timeoutId);
+            this._timeoutId = 0;
+        }
+        if (this._idleId) {
+            GLib.source_remove(this._idleId);
+            this._idleId = 0;
+        }
+    }
+
+    _settleFromIdle() {
+        if (this._idleId)
+            return;
+        this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._idleId = 0;
+            this.destroy();
+            this._settled(true);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
 }
