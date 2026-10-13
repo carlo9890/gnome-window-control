@@ -310,7 +310,7 @@ Defined at the top of the file named; change them there, not here.
 |---|---|---|---|
 | `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title | `rules.js` |
 | `RELOAD_DEBOUNCE_MS` | 100 | one reload per save | `rules.js` |
-| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`afterUnmaximize`, shared with the keyboard shortcuts) |
+| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`, shared with the keyboard shortcuts) |
 
 ## Extending the format
 

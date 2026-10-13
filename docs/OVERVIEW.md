@@ -86,7 +86,7 @@ gnome-window-control-extension-requirements.md   original design spec
   picks its position with `nextWidePosition` from the window's frame (within
   half a cell, so a terminal snapped to its character grid still counts), not
   from remembered state. A maximized window is restored first and placed once
-  the restore has landed, through the `afterUnmaximize` helper in
+  the restore has landed, through the `UnmaximizeWait` class in
   `window-helpers.js` that `rules.js` uses too. The zip ships the schema
   XML only: every install path but a plain copy compiles it, and `build.sh
   install` compiles it for that one.

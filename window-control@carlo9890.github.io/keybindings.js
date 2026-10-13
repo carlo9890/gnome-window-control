@@ -12,7 +12,7 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { nextWidePosition, tileRect } from './rules-format.js';
-import { afterUnmaximize, maximizeFlags, workareaOf } from './window-helpers.js';
+import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
 
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
@@ -34,7 +34,7 @@ const CYCLE_WIDE_BINDING = 'cycle-wide';
 export class WindowKeybindings {
     constructor() {
         this._names = [];
-        this._pending = new Map();        // Meta.Window -> cancel()
+        this._pending = new Map();        // Meta.Window -> UnmaximizeWait
     }
 
     // Never throws: the shortcuts are secondary to the D-Bus service, so a
@@ -68,8 +68,8 @@ export class WindowKeybindings {
         for (const name of this._names)
             Main.wm.removeKeybinding(name);
         this._names = [];
-        for (const cancel of this._pending.values())
-            cancel();
+        for (const wait of this._pending.values())
+            wait.destroy();
         this._pending.clear();
     }
 
@@ -134,7 +134,7 @@ export class WindowKeybindings {
             return;
         }
         this._cancelPending(win);
-        this._pending.set(win, afterUnmaximize(win, landed => {
+        this._pending.set(win, new UnmaximizeWait(win, landed => {
             this._pending.delete(win);
             if (landed)
                 request();
@@ -142,9 +142,9 @@ export class WindowKeybindings {
     }
 
     _cancelPending(win) {
-        const cancel = this._pending.get(win);
-        if (cancel) {
-            cancel();
+        const wait = this._pending.get(win);
+        if (wait) {
+            wait.destroy();
             this._pending.delete(win);
         }
     }

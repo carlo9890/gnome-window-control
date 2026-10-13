@@ -36,7 +36,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import { centerRect, compileRules, resolvePlaceRect, tileRect } from './rules-format.js';
-import { afterUnmaximize, maximizeFlags, workareaOf } from './window-helpers.js';
+import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
@@ -62,7 +62,7 @@ export class WindowRules {
     constructor() {
         this._rules = [];
         this._windowCreatedId = 0;
-        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, headStart, cancel}
+        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, headStart, wait}
         this._fileMonitor = null;
         this._fileMonitorId = 0;
         this._reloadId = 0;
@@ -108,6 +108,8 @@ export class WindowRules {
             this._fileMonitor.cancel();
             this._fileMonitor = null;
         }
+        for (const win of [...this._tracked.keys()])
+            this._untrack(win);
         this._rules = [];
         this._syncWatch();
     }
@@ -211,7 +213,7 @@ export class WindowRules {
             GLib.source_remove(entry.graceId);
         if (entry.applyId)
             GLib.source_remove(entry.applyId);
-        entry.cancel?.();
+        entry.wait?.destroy();
         this._tracked.delete(win);
     }
 
@@ -330,10 +332,10 @@ export class WindowRules {
             // auto-maximized for filling the screen, would have the request
             // dropped outright (see _frameRefusal in extension.js). The rule
             // asked for a rectangle, so the rectangle wins -- once the restore
-            // has landed (see afterUnmaximize). The window stays tracked until
+            // has landed (see UnmaximizeWait). The window stays tracked until
             // then so 'unmanaged' and disable() can still cancel it.
-            const entry = { ids: [], graceId: 0, applyId: 0, shown: true, cancel: null };
-            entry.cancel = afterUnmaximize(win, landed => {
+            const entry = { ids: [], graceId: 0, applyId: 0, shown: true, wait: null };
+            entry.wait = new UnmaximizeWait(win, landed => {
                 this._tracked.delete(win);
                 if (landed)
                     this._placeFrame(win, rule, index, headStartMonitor);
