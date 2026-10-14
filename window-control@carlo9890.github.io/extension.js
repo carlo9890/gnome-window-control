@@ -1194,13 +1194,12 @@ class WindowControlService {
         this._cancelWaiters();
         this._cancelGeometryWatchers();
         this._dbusImpl.unexport();
+        this._dbusImpl = null;
     }
 }
 
 export default class WindowControlExtension extends Extension {
     enable() {
-        console.log(`[${this.metadata.name}] Enabling extension...`);
-
         try {
             this._service = new WindowControlService(this.metadata);
             this._service.export();
@@ -1214,13 +1213,9 @@ export default class WindowControlExtension extends Extension {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
             throw e;
         }
-
-        console.log(`[${this.metadata.name}] Extension enabled`);
     }
 
     disable() {
-        console.log(`[${this.metadata.name}] Disabling extension...`);
-
         if (this._keybindings) {
             this._keybindings.disable();
             this._keybindings = null;
@@ -1238,7 +1233,5 @@ export default class WindowControlExtension extends Extension {
                 console.error(`[${this.metadata.name}] Failed to unregister D-Bus service: ${e.message}`);
             }
         }
-
-        console.log(`[${this.metadata.name}] Extension disabled`);
     }
 }
