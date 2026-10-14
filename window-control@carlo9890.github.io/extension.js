@@ -1194,6 +1194,7 @@ class WindowControlService {
         this._cancelWaiters();
         this._cancelGeometryWatchers();
         this._dbusImpl.unexport();
+        this._dbusImpl = null;
     }
 }
 
