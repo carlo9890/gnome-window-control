@@ -148,7 +148,7 @@ approved with all four present, so shexli output is not a gate:
   in `rules.js`, all in catch blocks, which [REVIEWING.md](REVIEWING.md) mandates.
 - `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
   `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
-  calls after setting `this._service = null`.
+  calls before it sets `this._service = null`.
 
 Constraints the review enforces, which the code must keep satisfying:
 
