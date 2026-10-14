@@ -332,8 +332,9 @@ export class WindowRules {
             // auto-maximized for filling the screen, would have the request
             // dropped outright (see _frameRefusal in extension.js). The rule
             // asked for a rectangle, so the rectangle wins -- once the restore
-            // has landed (see UnmaximizeWait). The window stays tracked until
+            // has landed (see UnmaximizeWait). The window is tracked again until
             // then so 'unmanaged' and disable() can still cancel it.
+            this._untrack(win);
             const entry = { ids: [], graceId: 0, applyId: 0, shown: true, wait: null };
             entry.wait = new UnmaximizeWait(win, landed => {
                 this._tracked.delete(win);
