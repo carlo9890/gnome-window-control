@@ -8,7 +8,7 @@
 # window object is enough.
 _wctl_window_ids() {
     local -a windows
-    local line id title
+    local line id title held=$'\1'
 
     while IFS= read -r line; do
         [[ "$line" == *'"id":'* ]] || continue
@@ -16,6 +16,16 @@ _wctl_window_ids() {
         id="${id%%,*}"
         title="${line#*\"title\":\"}"
         title="${title%%\",\"wm_class\"*}"
+        # As `wctl list` prints it: every control character becomes '?', the
+        # raw ones (DEL, C1) and the ones the JSON escapes alike. $held holds
+        # an escaped backslash, so "\\n" stays a backslash and an 'n'. A colon
+        # needs no quoting: _describe splits at the first one, in the id.
+        title="${title//[[:cntrl:]]/?}"
+        title="${title//\\\\/$held}"
+        title="${title//\\u00[01][[:xdigit:]]/?}"
+        title="${title//\\[bfnrt]/?}"
+        title="${title//\\\"/\"}"
+        title="${title//$held/\\}"
         if [[ ${#title} -gt 50 ]]; then
             title="${title:0:47}..."
         fi
