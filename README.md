@@ -472,7 +472,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Resize` | `(tii) -> ()` | Resize window to (width, height). Raises on failure |
 | `MoveResize` | `(tiiii) -> ()` | Move and resize window. Raises on failure |
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
-| `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area |
+| `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area; `(-1, -1, -1, -1)` for an index that is not a monitor. Raises `Failed` if the lookup throws |
 | `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |
 | `GetCapabilities` | `() -> as` | The feature names this extension supports, e.g. `['rules']` |
 | `Minimize` | `(t) -> b` | Minimize window; `false` also for a window the shell does not let minimize |
@@ -495,8 +495,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 
 ### Errors
 
-`Move`, `Resize` and `MoveResize` return nothing and raise instead; `WaitForWindow`
-and `WaitForGeometry` raise too. The ERRORS block in
+`Move`, `Resize` and `MoveResize` return nothing and raise instead; `WaitForWindow`,
+`WaitForGeometry` and `GetWorkarea` raise too. The ERRORS block in
 `window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
 errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
 raises without declaring them there.
