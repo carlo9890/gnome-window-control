@@ -17,27 +17,16 @@
 
 import GLib from 'gi://GLib';
 
-const ROOT = GLib.path_get_dirname(GLib.path_get_dirname(
-    GLib.canonicalize_filename(import.meta.url.replace('file://', ''), null)));
+import { ROOT, check, report } from './check-helper.js';
 
-const format = await import(`file://${ROOT}/window-control@carlo9890.github.io/rules-format.js`);
+const format = await import(
+    GLib.filename_to_uri(`${ROOT}/window-control@carlo9890.github.io/rules-format.js`, null));
 const {
     compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, nextWidePosition, TILE_CELLS,
 } = format;
 
 const [, bytes] = GLib.file_get_contents(`${ROOT}/tests/vectors/rules-spec.json`);
 const VECTORS = JSON.parse(new TextDecoder().decode(bytes));
-
-let passed = 0;
-const failures = [];
-
-function check(name, condition, detail) {
-    if (condition) {
-        passed += 1;
-        return;
-    }
-    failures.push(detail ? `${name}\n    ${detail}` : name);
-}
 
 function equalRect(actual, expected) {
     return actual !== null && actual !== undefined &&
@@ -192,12 +181,4 @@ for (const vector of VECTORS.match.no_predicate) {
 
 // -- report ----------------------------------------------------------------
 
-if (failures.length > 0) {
-    print(`FAIL  ${failures.length} of ${passed + failures.length} checks failed\n`);
-    for (const failure of failures)
-        print(`  - ${failure}`);
-    print('');
-    imports.system.exit(1);
-}
-
-print(`PASS  ${passed} checks`);
+report();

@@ -33,6 +33,7 @@ scripts/                   build.sh, release.sh, start-nested.sh, debug-dbus.sh
 tests/                     test suites (see docs/TESTING.md)
 ├── check-rules-format.js  headless gjs check of the rules.json grammar
 ├── check-extension-headless.js  the extension against fake windows (needs the mutter typelib)
+├── check-helper.js        the root, check() and report() both checks share (imports only gi://GLib)
 └── vectors/               shared test vectors read by GJS and Rust alike
 docs/                      developer topic docs (this directory)
 └── images/                the README image and the listing icon, written by generate.py

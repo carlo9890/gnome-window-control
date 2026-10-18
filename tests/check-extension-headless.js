@@ -18,21 +18,10 @@
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 
-const ROOT = GLib.path_get_dirname(GLib.path_get_dirname(
-    GLib.filename_from_uri(import.meta.url)[0]));
+import { ROOT, check, report } from './check-helper.js';
+
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
-
-let passed = 0;
-const failures = [];
-
-function check(name, condition, detail) {
-    if (condition) {
-        passed += 1;
-        return;
-    }
-    failures.push(detail ? `${name}\n    ${detail}` : name);
-}
 
 // Nothing here may reach a real session bus or the user's rules.json. The
 // scratch dir is removed however the checks end; a throw still exits 1.
@@ -471,12 +460,4 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
 
 // -- report ----------------------------------------------------------------
 
-if (failures.length > 0) {
-    print(`FAIL  ${failures.length} of ${passed + failures.length} checks failed\n`);
-    for (const failure of failures)
-        print(`  - ${failure}`);
-    print('');
-    imports.system.exit(1);
-}
-
-print(`PASS  ${passed} checks`);
+report();
