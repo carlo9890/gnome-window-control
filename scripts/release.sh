@@ -16,6 +16,10 @@ DIST_DIR="$PROJECT_ROOT/dist"
 # The wctl release asset is a static x86_64 binary. aarch64 is not published.
 CLI_TARGET="x86_64-unknown-linux-musl"
 CLI_BINARY="$PROJECT_ROOT/cli/target/$CLI_TARGET/release/wctl"
+CLI_CHECKSUM="$CLI_BINARY.sha256"
+# The published installer: a copy of install-wctl.sh that downloads this
+# release's wctl, not the latest one.
+INSTALLER="$DIST_DIR/install-wctl.sh"
 
 # Extension metadata
 EXTENSION_UUID="window-control@carlo9890.github.io"
@@ -66,7 +70,8 @@ Usage: $0 --notes-file <path> [options]
 Creates a GitHub release with all required assets:
   - Extension zip file (dist/window-control@carlo9890.github.io_v<version>.zip)
   - wctl CLI binary (statically linked, x86_64)
-  - install-wctl.sh installer
+  - wctl.sha256 checksum
+  - install-wctl.sh installer, pinned to the release tag
 
 Prerequisites:
   - GitHub CLI (gh) installed and authenticated
@@ -171,7 +176,8 @@ get_version() {
     TAG="v${VERSION}"
     ZIP_NAME="${EXTENSION_UUID}_v${VERSION}.zip"
     ZIP_PATH="$DIST_DIR/$ZIP_NAME"
-    
+    ASSETS=("$ZIP_PATH" "$CLI_BINARY" "$CLI_CHECKSUM" "$INSTALLER")
+
     log_info "Version: $VERSION (tag: $TAG)"
 }
 
@@ -224,7 +230,7 @@ check_tag_exists() {
     log_info "Tag $TAG exists"
 }
 
-# Build the wctl binary as a static x86_64 executable.
+# Build the wctl binary as a static x86_64 executable, and its checksum.
 #
 # Static, because the release asset must run on any distribution without
 # matching a glibc version; musl is the only target that gives that, and zbus
@@ -261,7 +267,31 @@ build_cli() {
         exit 1
     fi
 
+    # install-wctl.sh checks the download against this file.
+    (cd "$(dirname "$CLI_BINARY")" && sha256sum wctl > "$CLI_CHECKSUM")
+
     log_info "Build successful: $CLI_BINARY ($(du -h "$CLI_BINARY" | cut -f1), statically linked)"
+}
+
+# Write the published installer: install-wctl.sh with its WCTL_VERSION default
+# set to this release's tag.
+build_installer() {
+    log_step "Writing the installer for $TAG..."
+
+    local default='WCTL_VERSION="${WCTL_VERSION:-latest}"'
+    local pinned="WCTL_VERSION=\"\${WCTL_VERSION:-$TAG}\""
+    local source
+    source=$(< "$PROJECT_ROOT/install-wctl.sh")
+
+    if [[ "$source" != *"$default"* ]]; then
+        log_error "install-wctl.sh has no line: $default"
+        exit 1
+    fi
+
+    printf '%s\n' "${source/"$default"/"$pinned"}" > "$INSTALLER"
+    chmod +x "$INSTALLER"
+
+    log_info "Installer pinned to $TAG: $INSTALLER"
 }
 
 # Build the extension
@@ -281,39 +311,23 @@ build_extension() {
 # Validate all release assets exist
 validate_assets() {
     log_step "Validating release assets..."
-    
-    local missing=0
-    
-    # Check extension zip
-    if [[ ! -f "$ZIP_PATH" ]]; then
-        log_error "Missing: $ZIP_PATH"
-        missing=1
-    else
-        log_info "Found: $ZIP_PATH"
-    fi
-    
-    # Check wctl
-    if [[ ! -f "$CLI_BINARY" ]]; then
-        log_error "Missing: $CLI_BINARY"
-        missing=1
-    else
-        log_info "Found: $CLI_BINARY"
-    fi
-    
-    # Check install-wctl.sh
-    if [[ ! -f "$PROJECT_ROOT/install-wctl.sh" ]]; then
-        log_error "Missing: install-wctl.sh"
-        missing=1
-    else
-        log_info "Found: install-wctl.sh"
-    fi
-    
+
+    local missing=0 asset
+    for asset in "${ASSETS[@]}"; do
+        if [[ ! -f "$asset" ]]; then
+            log_error "Missing: $asset"
+            missing=1
+        else
+            log_info "Found: $asset"
+        fi
+    done
+
     if [[ $missing -eq 1 ]]; then
         log_error "Some release assets are missing. Cannot proceed."
         exit 1
     fi
-    
-    log_info "All 3 release assets validated"
+
+    log_info "All ${#ASSETS[@]} release assets validated"
 }
 
 # Read the release notes from the file given with --notes-file.
@@ -409,10 +423,8 @@ EOF
     gh release create "$TAG" \
         --title "GNOME Window Control $TAG" \
         --notes "$body" \
-        "$ZIP_PATH" \
-        "$CLI_BINARY" \
-        "$PROJECT_ROOT/install-wctl.sh"
-    
+        "${ASSETS[@]}"
+
     log_info "Release $TAG created!"
 }
 
@@ -433,10 +445,10 @@ verify_release() {
     done
     
     echo ""
-    if [[ "$asset_count" -eq 3 ]]; then
-        log_info "Verified: All 3 assets uploaded successfully"
+    if [[ "$asset_count" -eq ${#ASSETS[@]} ]]; then
+        log_info "Verified: All ${#ASSETS[@]} assets uploaded successfully"
     else
-        log_error "Expected 3 assets, found $asset_count"
+        log_error "Expected ${#ASSETS[@]} assets, found $asset_count"
         exit 1
     fi
     
@@ -497,7 +509,8 @@ main() {
     # Step 3: Build the release artifacts
     build_extension
     build_cli
-    
+    build_installer
+
     # Step 4: Validate all assets
     validate_assets
     

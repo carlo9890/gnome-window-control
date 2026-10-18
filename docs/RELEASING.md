@@ -10,10 +10,15 @@
 Prerequisites the script enforces: `gh` authenticated, `mise` installed (pinned
 Rust toolchain), clean working tree, on `main`.
 
-The script guarantees all three assets are attached (extension zip, `wctl`,
-`install-wctl.sh`), that the `metadata.json` and `cli/Cargo.toml` versions match,
-that the local tag `vN` exists (it does not check the remote — `git push --tags`
-is on you), and that the release has notes — it refuses to run without them.
+The script guarantees:
+
+- All four assets are attached: the extension zip, `wctl`, `wctl.sha256`, and
+  `install-wctl.sh` with its `WCTL_VERSION` default set to the tag, so the
+  installer of `vN` installs the `wctl` of `vN`.
+- The `metadata.json` and `cli/Cargo.toml` versions match.
+- The local tag `vN` exists. It does not check the remote, so
+  `git push --tags` is on you.
+- The release has notes. The script refuses to run without them.
 
 ## Release checklist
 

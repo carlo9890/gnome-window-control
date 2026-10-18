@@ -108,11 +108,19 @@ curl -fsSL https://github.com/carlo9890/gnome-window-control/releases/latest/dow
 
 Piped from `curl`, the script downloads the published binary. Run from a
 checkout, it installs a local build when one exists and downloads otherwise;
-`--download` always downloads, `--local` always builds.
+`--download` always downloads, `--local` always builds. `--help` shows the
+options.
 
-Or download `wctl` from the [releases page](https://github.com/carlo9890/gnome-window-control/releases)
+The script checks the download against the release's `wctl.sha256` and runs it
+once before it replaces an installed `wctl`, so a failed download keeps the old
+one. Set `WCTL_VERSION` to install the `wctl` of one release, for example
+`WCTL_VERSION=v16`. The installer attached to a release defaults to that
+release.
+
+Or download `wctl` and `wctl.sha256` from the [releases page](https://github.com/carlo9890/gnome-window-control/releases)
 and put it on your PATH:
 ```bash
+sha256sum -c wctl.sha256
 chmod +x wctl
 mv wctl ~/.local/bin/
 # or
