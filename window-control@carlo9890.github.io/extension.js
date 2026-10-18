@@ -299,9 +299,13 @@ class WindowControlService {
     // minimized/workspace clauses and was called shown while mutter had not yet
     // placed it.
     //
-    // A window that predates the current watch has no such history, so it falls
-    // back to the old reading: hidden while unminimized and on the active
-    // workspace is the only shape a not-yet-mapped window can have.
+    // The mark lasts only as long as the watch that saw the creation:
+    // _untrackWindow() drops it from a window that was not seen shown, because
+    // no handler records a map that happens after the watch ends. A window that
+    // predates the current watch, or outlived the one that saw it created, has
+    // no such history, so it falls back to the old reading: hidden while
+    // unminimized and on the active workspace is the only shape a
+    // not-yet-mapped window can have.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
@@ -1014,6 +1018,8 @@ class WindowControlService {
         for (const id of ids)
             win.disconnect(id);
         this._trackedWindows.delete(win);
+        if (!this._shownWindows.has(win))
+            this._createdWhileWatching.delete(win);
     }
 
     // Reply to every waiter the window satisfies. Returns true if any did.
