@@ -70,11 +70,9 @@ fn is_extension_not_running(err: &zbus::Error) -> bool {
                 .is_some_and(|detail| detail.contains("does not exist")),
             _ => false,
         },
-        // No bus, or a bus with nobody to answer: the transport's own words.
-        other => {
-            let text = other.to_string();
-            text.contains("was not provided") || text.contains("No route to host")
-        }
+        // A session bus that cannot be reached at all is `map_connect_err`'s
+        // case: every failure to open the connection is "not running".
+        _ => false,
     }
 }
 
@@ -85,9 +83,7 @@ fn is_extension_not_running(err: &zbus::Error) -> bool {
 /// `TimedOut` rather than a D-Bus error. `NoReply`/`Timeout` from the bus
 /// daemon mean the same thing from further away, so both classify the same.
 ///
-/// This is matched on the error VALUE, not its text: unlike the
-/// not-running strings below, which had to keep matching the wording gdbus and
-/// busctl produced, nothing pins the shape of this one.
+/// This is matched on the error VALUE, not its text.
 fn is_timeout(err: &zbus::Error) -> bool {
     match err {
         zbus::Error::InputOutput(io) => io.kind() == std::io::ErrorKind::TimedOut,
@@ -146,13 +142,30 @@ fn map_err(err: zbus::Error) -> Fail {
     Fail::error(format!("D-Bus call failed: {err}"))
 }
 
+/// Classify a failure to open the session connection.
+///
+/// No bus at the address, a malformed `DBUS_SESSION_BUS_ADDRESS` and a refused
+/// handshake are all zbus variants of one fact: nothing can serve the
+/// interface. That is "not running" by position, not by the error text. The
+/// transport's own words stay in the message, because they name the address
+/// that is wrong.
+fn map_connect_err(err: zbus::Error) -> Fail {
+    if is_timeout(&err) {
+        return map_err(err);
+    }
+    Fail::error(format!(
+        "Cannot connect to the session bus: {err}. {NOT_RUNNING}"
+    ))
+    .with_code(EXIT_NO_EXTENSION)
+}
+
 /// A session connection whose method calls give up after `timeout`.
 fn session_connection(timeout: Duration) -> Result<Connection> {
     Builder::session()
-        .map_err(map_err)?
+        .map_err(map_connect_err)?
         .method_timeout(timeout)
         .build()
-        .map_err(map_err)
+        .map_err(map_connect_err)
 }
 
 fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
@@ -316,3 +329,4 @@ impl Bus {
         )
     }
 }
+

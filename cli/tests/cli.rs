@@ -342,6 +342,19 @@ fn stray_arguments_are_refused_everywhere() {
     expect_die("Usage: wctl workspace", &["workspace", "1", "2"]);
 }
 
+/// A session bus that cannot be reached is exit 5, like a bus with nobody
+/// serving the interface, and the message still says why.
+#[test]
+fn an_unreachable_bus_is_not_running() {
+    let (out, code) = wctl(&["list"]);
+    assert_eq!(code, 5, "wctl list printed: {out}");
+    assert!(
+        out.contains("Cannot connect to the session bus")
+            && out.contains("Window Control extension is not running."),
+        "wctl list printed: {out}"
+    );
+}
+
 /// A window titled `--json` is still addressable: the output flags are taken
 /// from the argument list, but never out of a selector's value slot.
 #[test]
