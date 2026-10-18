@@ -241,7 +241,9 @@ Action order within `_apply`:
 A window that matches nothing stays under evaluation for
 `LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID
 and first real title can arrive late. After that it is untracked, so a title
-change hours later cannot rearrange a window the user has since placed.
+change hours later cannot rearrange a window the user has since placed. A shown
+window that is not `NORMAL` matches nothing and gets the same period: a retype
+to `NORMAL` within it gets the rule, one after it does not.
 
 ### Initial configuration (GNOME 49 and later)
 
