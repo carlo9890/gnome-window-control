@@ -20,6 +20,9 @@ The script guarantees:
   from. `gh release create --verify-tag` then refuses a tag that is not on the
   remote, so run `git push --tags` first.
 - The release has notes. The script refuses to run without them.
+- A re-run for an existing release replaces its assets and notes in place
+  (`gh release upload --clobber`, `gh release edit`). It never deletes the
+  release, so a failed upload leaves the old one in place.
 
 ## Release checklist
 

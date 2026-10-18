@@ -376,22 +376,22 @@ read_release_notes() {
     log_info "Read $(wc -l < "$NOTES_FILE") lines from $NOTES_FILE"
 }
 
-# Check if release already exists
+# Check if release already exists. An existing release is updated in place,
+# not deleted first: a delete followed by a failed upload leaves no release.
+RELEASE_EXISTS=0
 check_existing_release() {
     log_step "Checking for existing release..."
-    
+
     if gh release view "$TAG" &> /dev/null; then
         log_warn "Release $TAG already exists!"
         echo ""
-        read -p "Do you want to delete and recreate it? (y/N): " confirm
+        read -p "Do you want to replace its assets and notes? (y/N): " confirm
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
             log_error "Aborted by user"
             exit 1
         fi
-        
-        log_info "Deleting existing release..."
-        gh release delete "$TAG" --yes
-        log_info "Existing release deleted"
+
+        RELEASE_EXISTS=1
     else
         log_info "No existing release for $TAG"
     fi
@@ -432,15 +432,21 @@ curl -fsSL https://github.com/$repo_name/releases/download/$TAG/install-wctl.sh 
 EOF
     )
     
-    # Create release with all assets
-    # --verify-tag: refuse to create a tag that was not pushed; gh would
-    # put it on the default-branch tip.
-    gh release create "$TAG" --verify-tag \
-        --title "GNOME Window Control $TAG" \
-        --notes "$body" \
-        "${ASSETS[@]}"
+    local title="GNOME Window Control $TAG"
 
-    log_info "Release $TAG created!"
+    if [[ $RELEASE_EXISTS -eq 1 ]]; then
+        gh release upload "$TAG" "${ASSETS[@]}" --clobber
+        gh release edit "$TAG" --title "$title" --notes "$body"
+        log_info "Release $TAG updated!"
+    else
+        # --verify-tag: refuse to create a tag that was not pushed; gh would
+        # put it on the default-branch tip.
+        gh release create "$TAG" --verify-tag \
+            --title "$title" \
+            --notes "$body" \
+            "${ASSETS[@]}"
+        log_info "Release $TAG created!"
+    fi
 }
 
 # Verify the release
