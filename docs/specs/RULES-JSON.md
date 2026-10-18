@@ -215,11 +215,12 @@ never re-triggers it. This sets the initial placement only.
 
 Gating, in order:
 
-1. Only `Meta.WindowType.NORMAL` windows are considered.
-2. A window still hidden and not yet `shown` is skipped — mutter's initial
+1. A window still hidden and not yet `shown` is skipped — mutter's initial
    placement overrides a frame requested through the window before that, so a
    rule applied earlier would be discarded. The initial configuration below is
    the one earlier way in.
+2. A shown window that is not `Meta.WindowType.NORMAL` matches no rule, and
+   enters the `LATE_IDENTITY_GRACE_MS` period below like any unmatched window.
 3. On a match, the action runs from a `GLib.idle_add` callback, not from inside
    the signal emission: a frame requested re-entrantly is overwritten when the
    outer move-resize continues.
