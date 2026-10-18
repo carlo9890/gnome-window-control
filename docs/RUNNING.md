@@ -235,8 +235,13 @@ gdbus call --session --dest org.gnome.Shell \
   --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
 ```
 
-Run `./scripts/debug-dbus.sh` on the nested session's bus for a one-shot sweep
-of every method; it writes `output/debug-<timestamp>.txt`.
+Run `./scripts/debug-dbus.sh` on the nested or headless session's bus for a
+one-shot sweep of every method. It changes the first window it lists, so it
+refuses to run, with exit 1 and no D-Bus call, when `DBUS_SESSION_BUS_ADDRESS`
+is unset or equals the login session bus that `systemctl --user
+show-environment` reports. Pass `--real-session-ok` to run it on that bus
+anyway. It writes `output/debug-<timestamp>.txt`, which names windows by id
+only: no title and no WM class.
 
 ## Reproduce a reported bug
 

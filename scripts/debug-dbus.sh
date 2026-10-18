@@ -3,8 +3,26 @@
 # Debug script to test Window Control D-Bus methods
 # Run this inside a nested GNOME Shell session
 #
+# Usage: debug-dbus.sh [--real-session-ok]
 
 set -uo pipefail
+
+REAL_SESSION_FLAG="--real-session-ok"
+
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "$REAL_SESSION_FLAG" ) ]]; then
+    echo "Usage: $0 [$REAL_SESSION_FLAG]" >&2
+    exit 2
+fi
+
+if [[ "${1:-}" != "$REAL_SESSION_FLAG" ]]; then
+    LOGIN_BUS=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
+    if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" || "$DBUS_SESSION_BUS_ADDRESS" == "$LOGIN_BUS" ]]; then
+        echo "Refusing to run: DBUS_SESSION_BUS_ADDRESS is unset or is the login session bus." >&2
+        echo "This script changes the first window of the shell on that bus." >&2
+        echo "Point DBUS_SESSION_BUS_ADDRESS at a nested or headless shell, or pass $REAL_SESSION_FLAG." >&2
+        exit 1
+    fi
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -24,17 +42,14 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
     echo "GNOME Shell: $(gnome-shell --version 2>/dev/null || echo 'unknown')"
     echo ""
 
-    echo "=== GetFocused ==="
-    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetFocused" 2>&1
+    echo "=== GetFocused (window id) ==="
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetFocused" 2>&1 | \
+        sed -E 's/^\(uint64 ([0-9]+),.*/\1/'
     echo ""
 
-    echo "=== ListDetailed ==="
-    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1
-    echo ""
-
-    echo "=== ListDetailed (formatted JSON) ==="
+    echo "=== ListDetailed (window ids) ==="
     gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-        sed "s/^('//;s/',)$//" | jq . 2>/dev/null || echo "(jq not available or invalid JSON)"
+        sed "s/^('//;s/',)$//" | jq -c '[.[].id]' 2>/dev/null || echo "(jq not available or invalid JSON)"
     echo ""
 
     # Fetch the window list once, then extract the first window's fields from it
@@ -51,8 +66,6 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         WINDOW_MONITOR=$(echo "$WINDOW_LIST" | jq -r '.[0].monitor_index // 0' 2>/dev/null)
 
         echo "=== Testing with Window ID: $WINDOW_ID ==="
-        echo "    Title: $WINDOW_TITLE"
-        echo "    WM Class: $WINDOW_CLASS"
         echo "    PID: $WINDOW_PID"
         echo "    Workspace: $WINDOW_WORKSPACE"
         echo "    Monitor: $WINDOW_MONITOR"
@@ -81,7 +94,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         if [[ -n "$WINDOW_TITLE" ]]; then
-            echo "=== ActivateByTitle '$WINDOW_TITLE' ==="
+            echo "=== ActivateByTitle (title of $WINDOW_ID) ==="
             gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitle" "$WINDOW_TITLE" 2>&1
             echo ""
 
@@ -91,7 +104,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
             else
                 TITLE_SUBSTR="$WINDOW_TITLE"
             fi
-            echo "=== ActivateByTitleSubstring '$TITLE_SUBSTR' ==="
+            echo "=== ActivateByTitleSubstring (title prefix of $WINDOW_ID) ==="
             gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitleSubstring" "$TITLE_SUBSTR" 2>&1
             echo ""
         else
@@ -102,7 +115,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         fi
 
         if [[ -n "$WINDOW_CLASS" ]]; then
-            echo "=== ActivateByWmClass '$WINDOW_CLASS' ==="
+            echo "=== ActivateByWmClass (wm_class of $WINDOW_ID) ==="
             gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByWmClass" "$WINDOW_CLASS" 2>&1
             echo ""
         else
@@ -278,9 +291,9 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo "============================================"
         echo ""
 
-        echo "=== Final ListDetailed ==="
+        echo "=== Final ListDetailed (window ids) ==="
         gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq . 2>/dev/null || echo "(jq not available)"
+            sed "s/^('//;s/',)$//" | jq -c '[.[].id]' 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "============================================"
