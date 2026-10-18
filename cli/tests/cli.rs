@@ -340,6 +340,7 @@ fn stray_arguments_are_refused_everywhere() {
     expect_die("Usage: wctl focus", &["focus", "focused", "junk"]);
     expect_die("Usage: wctl close", &["close", "-c", "kitty", "now"]);
     expect_die("Usage: wctl workspace", &["workspace", "1", "2"]);
+    expect_die("Unexpected argument: zsh", &["completion", "bash", "zsh"]);
 }
 
 /// A bad place token is a usage error, reported before the workarea is
