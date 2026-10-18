@@ -48,6 +48,11 @@ If it fails, the code has a syntax error and must not be committed.
 - Keep pure, testable logic (geometry math, token resolution, selector parsing)
   in `geometry.rs` and `selector.rs` with `#[cfg(test)]` unit tests that pin
   **hardcoded** expected values.
+- A limit that the extension enforces too (a range, a keyword set, a message)
+  has one value, in a vector file under `tests/vectors/`, and a test on each
+  side asserts it: a GJS check and a Rust test, as `tests/vectors/rules-spec.json`
+  does for the rules grammar ([TESTING.md](TESTING.md#the-rulesjson-grammar-check-a-ci-gate)).
+  A value written into each side separately drifts with no test failing.
 - The CLI grammar is a frozen contract: output strings, usage text and exit
   codes are asserted by the live suites. Do not reword a message without
   changing the suite that pins it.
