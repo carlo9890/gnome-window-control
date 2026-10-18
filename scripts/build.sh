@@ -144,11 +144,14 @@ build() {
     local zip_name="${EXTENSION_UUID}_v${version}.zip"
     local zip_path="$DIST_DIR/$zip_name"
     
-    # Create zip file. gschemas.compiled stays out: gnome-extensions install and
-    # extensions.gnome.org compile the XML themselves, and the review rejects a
-    # shipped compiled schema.
+    # Zip the tracked files only, so a stray or git-ignored file in the
+    # extension directory never ships. That also keeps gschemas.compiled out
+    # (it is ignored): gnome-extensions install and extensions.gnome.org compile
+    # the XML themselves, and the review rejects a shipped compiled schema.
+    # -MM: a listed file missing on disk fails the build; plain zip only warns
+    # and ships the zip without it.
     cd "$EXTENSION_DIR"
-    zip -r "$zip_path" . -x "*.git*" -x "*.DS_Store" -x "schemas/gschemas.compiled"
+    git ls-files | zip -MM "$zip_path" -@
     cd "$PROJECT_ROOT"
     
     log_info "Built: $zip_path"

@@ -39,8 +39,8 @@ installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
 
 `mise run ci` is the gate (see `.mise.toml`); CI runs the same command on a bare
 `ubuntu-latest` runner. None of it needs an extension, a GNOME session, or D-Bus.
-Coverage is not measured; `mise run ci` plus the suites in the minimum-checks
-table are the whole bar.
+Coverage is not measured; `mise run ci`, the two release checks below and the
+suites in the minimum-checks table are the whole bar.
 
 Two kinds of test live there:
 
@@ -56,6 +56,14 @@ Two kinds of test live there:
 The inventory assertions in `cli/src/main.rs` and `cli/tests/cli.rs` keep the
 command list in sync across the dispatch table, the help text and both shell
 completions, so a command that is not wired into all of them fails `cargo test`.
+
+The `cli` job also runs two release checks. Run them locally before a push
+that changes a version or a dependency:
+
+```bash
+./scripts/check-version.sh   # cli/Cargo.toml is 0.<metadata.json version>.0
+mise run build:musl          # the static release binary, and its linkage check
+```
 
 ## The rules.json grammar check (a CI gate)
 

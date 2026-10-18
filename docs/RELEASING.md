@@ -10,10 +10,20 @@
 Prerequisites the script enforces: `gh` authenticated, `mise` installed (pinned
 Rust toolchain), clean working tree, on `main`.
 
-The script guarantees all three assets are attached (extension zip, `wctl`,
-`install-wctl.sh`), that the `metadata.json` and `cli/Cargo.toml` versions match,
-that the local tag `vN` exists (it does not check the remote — `git push --tags`
-is on you), and that the release has notes — it refuses to run without them.
+The script guarantees:
+
+- All four assets are attached: the extension zip, `wctl`, `wctl.sha256`, and
+  `install-wctl.sh` with its `WCTL_VERSION` default set to the tag, so the
+  installer of `vN` installs the `wctl` of `vN`.
+- The `metadata.json` and `cli/Cargo.toml` versions match
+  (`scripts/check-version.sh`, which CI also runs).
+- The tag `vN` points at HEAD, the commit the assets are built from, both
+  locally and on GitHub, so run `git push --tags` first.
+- The release has notes. The script refuses to run without them.
+- A re-run for an existing release replaces its assets and notes in place
+  (`gh release upload --clobber`, `gh release edit`). It never deletes the
+  release. `--clobber` deletes each old asset before it uploads the new one, so
+  after a failed upload, run the script again to restore the missing asset.
 
 ## Release checklist
 
@@ -92,12 +102,14 @@ then upload the same zip.
 
 1. Build the zip: `./scripts/build.sh all`. The archive must have
    `metadata.json` at its root, not inside a subdirectory — `build.sh` zips the
-   contents of the extension directory (`extension.js`, `dbus-interface.js`,
-   `rules.js`, `rules-format.js`, `keybindings.js`, `window-helpers.js`,
-   `schemas/*.gschema.xml`, `metadata.json`, `README.md`, `LICENSE`), so this
-   holds as long as you use it. `gschemas.compiled` is excluded on purpose:
-   the review rejects a shipped compiled schema (`EGO-P-006`), because
-   extensions.gnome.org and `gnome-extensions install` compile the XML.
+   git-tracked files of the extension directory (`extension.js`,
+   `dbus-interface.js`, `rules.js`, `rules-format.js`, `keybindings.js`,
+   `window-helpers.js`, `schemas/*.gschema.xml`, `metadata.json`, `README.md`,
+   `LICENSE`), so this holds as long as you use it. An untracked or ignored
+   file never ships; commit a new file before it can. `gschemas.compiled` is
+   ignored on purpose: the review rejects a shipped compiled schema
+   (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
+   compile the XML.
 2. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
    <https://extensions.gnome.org/upload/>.
 3. Wait for the review. A human reviewer reads every line of the extension, and
@@ -157,8 +169,9 @@ Constraints the review enforces, which the code must keep satisfying:
 - No `eval()`, no `Function()`, no `GLib.spawn` or any other subprocess, and no
   bundled binaries. `wctl` is a separate asset and MUST stay out of the zip.
 - `wctl` is published as a **statically linked x86_64 binary**, built by
-  `release.sh` with `cargo build --release --target x86_64-unknown-linux-musl`.
-  The script refuses to publish a dynamically linked one. aarch64 is not
+  `mise run build:musl` (`cargo build --release --target
+  x86_64-unknown-linux-musl`), which `release.sh` and CI both run. The task
+  fails on a dynamically linked binary (`scripts/check-static.sh`). aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
 - `disable()` must undo everything `enable()` did. `unexport()` fails every

@@ -16,6 +16,10 @@ DIST_DIR="$PROJECT_ROOT/dist"
 # The wctl release asset is a static x86_64 binary. aarch64 is not published.
 CLI_TARGET="x86_64-unknown-linux-musl"
 CLI_BINARY="$PROJECT_ROOT/cli/target/$CLI_TARGET/release/wctl"
+CLI_CHECKSUM="$CLI_BINARY.sha256"
+# The published installer: a copy of install-wctl.sh that downloads this
+# release's wctl, not the latest one.
+INSTALLER="$DIST_DIR/install-wctl.sh"
 
 # Extension metadata
 EXTENSION_UUID="window-control@carlo9890.github.io"
@@ -66,13 +70,15 @@ Usage: $0 --notes-file <path> [options]
 Creates a GitHub release with all required assets:
   - Extension zip file (dist/window-control@carlo9890.github.io_v<version>.zip)
   - wctl CLI binary (statically linked, x86_64)
-  - install-wctl.sh installer
+  - wctl.sha256 checksum
+  - install-wctl.sh installer, pinned to the release tag
 
 Prerequisites:
   - GitHub CLI (gh) installed and authenticated
   - Clean working directory (no uncommitted changes)
   - On main branch
-  - Git tag v<version> must exist (matching metadata.json version)
+  - Git tag v<version> must exist (matching metadata.json version) and
+    point at HEAD, locally and on GitHub
   - Release notes written by hand in a file (see docs/RELEASING.md)
 
 Options:
@@ -171,66 +177,67 @@ get_version() {
     TAG="v${VERSION}"
     ZIP_NAME="${EXTENSION_UUID}_v${VERSION}.zip"
     ZIP_PATH="$DIST_DIR/$ZIP_NAME"
-    
+    ASSETS=("$ZIP_PATH" "$CLI_BINARY" "$CLI_CHECKSUM" "$INSTALLER")
+
     log_info "Version: $VERSION (tag: $TAG)"
 }
 
 # Check the wctl crate version matches metadata.json version
 check_wctl_version() {
     log_step "Checking wctl version..."
-
-    local manifest="$PROJECT_ROOT/cli/Cargo.toml"
-
-    if [[ ! -f "$manifest" ]]; then
-        log_error "cli/Cargo.toml not found at $manifest"
-        exit 1
-    fi
-
-    # Extract the package version (first `version = "..."` under [package])
-    local wctl_version
-    wctl_version=$(awk -F'"' '/^\[package\]/{p=1; next} /^\[/{p=0} p && /^version[[:space:]]*=/{print $2; exit}' "$manifest")
-
-    if [[ -z "$wctl_version" ]]; then
-        log_error "Could not extract version from cli/Cargo.toml"
-        exit 1
-    fi
-
-    # Expected version is 0.<metadata_version>.0
-    local expected_version="0.${VERSION}.0"
-
-    if [[ "$wctl_version" != "$expected_version" ]]; then
-        log_error "wctl version mismatch!"
-        log_error "  cli/Cargo.toml: $wctl_version"
-        log_error "  Expected:       $expected_version"
-        log_error "Update the version in cli/Cargo.toml before releasing."
-        exit 1
-    fi
-
-    log_info "wctl version matches: $wctl_version"
+    "$SCRIPT_DIR/check-version.sh"
 }
 
 # Check git tag exists
 check_tag_exists() {
     log_step "Checking git tag..."
     
-    if ! git -C "$PROJECT_ROOT" rev-parse "$TAG" &> /dev/null; then
+    local tag_commit head_commit remote_commit
+    if ! tag_commit=$(git -C "$PROJECT_ROOT" rev-parse --verify --quiet "refs/tags/$TAG^{commit}"); then
         log_error "Git tag '$TAG' does not exist."
         log_error "Create the tag first:"
         log_error "  git tag $TAG"
         log_error "  git push --tags"
         exit 1
     fi
-    
-    log_info "Tag $TAG exists"
+
+    # The assets are built from HEAD, so a tag on another commit would publish
+    # them under source they were not built from.
+    head_commit=$(git -C "$PROJECT_ROOT" rev-parse HEAD)
+    if [[ "$tag_commit" != "$head_commit" ]]; then
+        log_error "Git tag '$TAG' does not point at HEAD."
+        log_error "  $TAG: $tag_commit"
+        log_error "  HEAD: $head_commit"
+        log_error "Release from the tagged commit, or move the tag to HEAD."
+        exit 1
+    fi
+
+    # gh publishes the release under the tag on GitHub, so that tag must point
+    # at HEAD too: a tag moved locally and not pushed does not.
+    if ! remote_commit=$(gh api "repos/{owner}/{repo}/commits/tags/$TAG" -q .sha 2> /dev/null); then
+        log_error "Git tag '$TAG' is not on GitHub. Push it first:"
+        log_error "  git push origin $TAG"
+        exit 1
+    fi
+    if [[ "$remote_commit" != "$head_commit" ]]; then
+        log_error "Git tag '$TAG' on GitHub does not point at HEAD."
+        log_error "  $TAG on GitHub: $remote_commit"
+        log_error "  HEAD:          $head_commit"
+        log_error "Push the moved tag: git push --force origin $TAG"
+        exit 1
+    fi
+
+    log_info "Tag $TAG points at HEAD, locally and on GitHub"
 }
 
-# Build the wctl binary as a static x86_64 executable.
+# Build the wctl binary as a static x86_64 executable, and its checksum.
 #
 # Static, because the release asset must run on any distribution without
 # matching a glibc version; musl is the only target that gives that, and zbus
-# is pure Rust so it needs no C toolchain.
+# is pure Rust so it needs no C toolchain. The build:musl task refuses a
+# dynamically linked binary; CI runs the same task.
 build_cli() {
-    log_step "Building wctl (x86_64-unknown-linux-musl)..."
+    log_step "Building wctl ($CLI_TARGET)..."
 
     if ! command -v mise &> /dev/null; then
         log_error "mise is not installed; it provides the pinned Rust toolchain."
@@ -239,29 +246,38 @@ build_cli() {
     fi
 
     mise install
-    mise exec -- rustup target add "$CLI_TARGET"
-    (cd "$PROJECT_ROOT/cli" && mise exec -- cargo build --release --target "$CLI_TARGET")
+    mise run build:musl
 
     if [[ ! -f "$CLI_BINARY" ]]; then
         log_error "Build failed: $CLI_BINARY not found"
         exit 1
     fi
 
-    # A dynamically linked asset would break on any host with an older glibc,
-    # so refuse to publish one. The musl target produces a static PIE, which
-    # `file` reports as "static-pie linked", not "statically linked" -- match
-    # both, and reject the dynamic case by its own marker so a future `file`
-    # wording change fails loudly here rather than shipping a dynamic binary.
-    local linkage
-    linkage=$(file "$CLI_BINARY")
-    if [[ "$linkage" == *"dynamically linked"* ]] ||
-       ! [[ "$linkage" == *"statically linked"* || "$linkage" == *"static-pie linked"* ]]; then
-        log_error "wctl is not statically linked:"
-        log_error "  $linkage"
+    # install-wctl.sh checks the download against this file.
+    (cd "$(dirname "$CLI_BINARY")" && sha256sum wctl > "$CLI_CHECKSUM")
+
+    log_info "Build successful: $CLI_BINARY ($(du -h "$CLI_BINARY" | cut -f1), statically linked)"
+}
+
+# Write the published installer: install-wctl.sh with its WCTL_VERSION default
+# set to this release's tag.
+build_installer() {
+    log_step "Writing the installer for $TAG..."
+
+    local default='WCTL_VERSION="${WCTL_VERSION:-latest}"'
+    local pinned="WCTL_VERSION=\"\${WCTL_VERSION:-$TAG}\""
+    local source
+    source=$(< "$PROJECT_ROOT/install-wctl.sh")
+
+    if [[ "$source" != *"$default"* ]]; then
+        log_error "install-wctl.sh has no line: $default"
         exit 1
     fi
 
-    log_info "Build successful: $CLI_BINARY ($(du -h "$CLI_BINARY" | cut -f1), statically linked)"
+    printf '%s\n' "${source/"$default"/"$pinned"}" > "$INSTALLER"
+    chmod +x "$INSTALLER"
+
+    log_info "Installer pinned to $TAG: $INSTALLER"
 }
 
 # Build the extension
@@ -281,39 +297,23 @@ build_extension() {
 # Validate all release assets exist
 validate_assets() {
     log_step "Validating release assets..."
-    
-    local missing=0
-    
-    # Check extension zip
-    if [[ ! -f "$ZIP_PATH" ]]; then
-        log_error "Missing: $ZIP_PATH"
-        missing=1
-    else
-        log_info "Found: $ZIP_PATH"
-    fi
-    
-    # Check wctl
-    if [[ ! -f "$CLI_BINARY" ]]; then
-        log_error "Missing: $CLI_BINARY"
-        missing=1
-    else
-        log_info "Found: $CLI_BINARY"
-    fi
-    
-    # Check install-wctl.sh
-    if [[ ! -f "$PROJECT_ROOT/install-wctl.sh" ]]; then
-        log_error "Missing: install-wctl.sh"
-        missing=1
-    else
-        log_info "Found: install-wctl.sh"
-    fi
-    
+
+    local missing=0 asset
+    for asset in "${ASSETS[@]}"; do
+        if [[ ! -f "$asset" ]]; then
+            log_error "Missing: $asset"
+            missing=1
+        else
+            log_info "Found: $asset"
+        fi
+    done
+
     if [[ $missing -eq 1 ]]; then
         log_error "Some release assets are missing. Cannot proceed."
         exit 1
     fi
-    
-    log_info "All 3 release assets validated"
+
+    log_info "All ${#ASSETS[@]} release assets validated"
 }
 
 # Read the release notes from the file given with --notes-file.
@@ -349,22 +349,22 @@ read_release_notes() {
     log_info "Read $(wc -l < "$NOTES_FILE") lines from $NOTES_FILE"
 }
 
-# Check if release already exists
+# Check if release already exists. An existing release is updated in place,
+# not deleted first: a delete followed by a failed upload leaves no release.
+RELEASE_EXISTS=0
 check_existing_release() {
     log_step "Checking for existing release..."
-    
+
     if gh release view "$TAG" &> /dev/null; then
         log_warn "Release $TAG already exists!"
         echo ""
-        read -p "Do you want to delete and recreate it? (y/N): " confirm
+        read -p "Do you want to replace its assets and notes? (y/N): " confirm
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
             log_error "Aborted by user"
             exit 1
         fi
-        
-        log_info "Deleting existing release..."
-        gh release delete "$TAG" --yes
-        log_info "Existing release deleted"
+
+        RELEASE_EXISTS=1
     else
         log_info "No existing release for $TAG"
     fi
@@ -405,15 +405,23 @@ curl -fsSL https://github.com/$repo_name/releases/download/$TAG/install-wctl.sh 
 EOF
     )
     
-    # Create release with all assets
-    gh release create "$TAG" \
-        --title "GNOME Window Control $TAG" \
-        --notes "$body" \
-        "$ZIP_PATH" \
-        "$CLI_BINARY" \
-        "$PROJECT_ROOT/install-wctl.sh"
-    
-    log_info "Release $TAG created!"
+    local title="GNOME Window Control $TAG"
+
+    if [[ $RELEASE_EXISTS -eq 1 ]]; then
+        # --clobber deletes each old asset before it uploads the new one, so a
+        # failed upload leaves that asset missing until the script runs again.
+        gh release upload "$TAG" "${ASSETS[@]}" --clobber
+        gh release edit "$TAG" --title "$title" --notes "$body"
+        log_info "Release $TAG updated!"
+    else
+        # --verify-tag: refuse to create a tag that was not pushed; gh would
+        # put it on the default-branch tip.
+        gh release create "$TAG" --verify-tag \
+            --title "$title" \
+            --notes "$body" \
+            "${ASSETS[@]}"
+        log_info "Release $TAG created!"
+    fi
 }
 
 # Verify the release
@@ -433,10 +441,10 @@ verify_release() {
     done
     
     echo ""
-    if [[ "$asset_count" -eq 3 ]]; then
-        log_info "Verified: All 3 assets uploaded successfully"
+    if [[ "$asset_count" -eq ${#ASSETS[@]} ]]; then
+        log_info "Verified: All ${#ASSETS[@]} assets uploaded successfully"
     else
-        log_error "Expected 3 assets, found $asset_count"
+        log_error "Expected ${#ASSETS[@]} assets, found $asset_count"
         exit 1
     fi
     
@@ -497,7 +505,8 @@ main() {
     # Step 3: Build the release artifacts
     build_extension
     build_cli
-    
+    build_installer
+
     # Step 4: Validate all assets
     validate_assets
     

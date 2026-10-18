@@ -93,6 +93,16 @@ jobs:
       - name: Run the CLI gates
         run: mise run ci
 
+      # wctl expects the extension version its crate minor version names, so
+      # the pair must move together. release.sh runs the same script.
+      - name: Check the metadata.json / Cargo.toml version pair
+        run: ./scripts/check-version.sh
+
+      # The release asset: the static musl build, with the linkage check
+      # release.sh runs.
+      - name: Build the static musl release binary
+        run: mise run build:musl
+
       - name: Upload wctl artifact
         uses: actions/upload-artifact@v4
         with:
