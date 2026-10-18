@@ -113,9 +113,9 @@ options.
 
 The script checks the download against the release's `wctl.sha256` and runs it
 once before it replaces an installed `wctl`, so a failed download keeps the old
-one. Set `WCTL_VERSION` to install the `wctl` of one release, for example
-`WCTL_VERSION=v16`. The installer attached to a release defaults to that
-release.
+one. Set `WCTL_VERSION` to a release tag (`vN`) to install the `wctl` of that
+release. The installer attached to a release defaults to that release.
+Releases up to v16 have no `wctl.sha256`, so the script cannot install them.
 
 Or download `wctl` and `wctl.sha256` from the [releases page](https://github.com/carlo9890/gnome-window-control/releases)
 and put it on your PATH:

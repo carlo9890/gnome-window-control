@@ -17,13 +17,13 @@ The script guarantees:
   installer of `vN` installs the `wctl` of `vN`.
 - The `metadata.json` and `cli/Cargo.toml` versions match
   (`scripts/check-version.sh`, which CI also runs).
-- The local tag `vN` exists and points at HEAD, the commit the assets are built
-  from. `gh release create --verify-tag` then refuses a tag that is not on the
-  remote, so run `git push --tags` first.
+- The tag `vN` points at HEAD, the commit the assets are built from, both
+  locally and on GitHub, so run `git push --tags` first.
 - The release has notes. The script refuses to run without them.
 - A re-run for an existing release replaces its assets and notes in place
   (`gh release upload --clobber`, `gh release edit`). It never deletes the
-  release, so a failed upload leaves the old one in place.
+  release. `--clobber` deletes each old asset before it uploads the new one, so
+  after a failed upload, run the script again to restore the missing asset.
 
 ## Release checklist
 

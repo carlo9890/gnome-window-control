@@ -78,7 +78,7 @@ Prerequisites:
   - Clean working directory (no uncommitted changes)
   - On main branch
   - Git tag v<version> must exist (matching metadata.json version) and
-    point at HEAD
+    point at HEAD, locally and on GitHub
   - Release notes written by hand in a file (see docs/RELEASING.md)
 
 Options:
@@ -192,8 +192,8 @@ check_wctl_version() {
 check_tag_exists() {
     log_step "Checking git tag..."
     
-    local tag_commit head_commit
-    if ! tag_commit=$(git -C "$PROJECT_ROOT" rev-parse --verify --quiet "$TAG^{commit}"); then
+    local tag_commit head_commit remote_commit
+    if ! tag_commit=$(git -C "$PROJECT_ROOT" rev-parse --verify --quiet "refs/tags/$TAG^{commit}"); then
         log_error "Git tag '$TAG' does not exist."
         log_error "Create the tag first:"
         log_error "  git tag $TAG"
@@ -212,7 +212,22 @@ check_tag_exists() {
         exit 1
     fi
 
-    log_info "Tag $TAG exists and points at HEAD"
+    # gh publishes the release under the tag on GitHub, so that tag must point
+    # at HEAD too: a tag moved locally and not pushed does not.
+    if ! remote_commit=$(gh api "repos/{owner}/{repo}/commits/tags/$TAG" -q .sha 2> /dev/null); then
+        log_error "Git tag '$TAG' is not on GitHub. Push it first:"
+        log_error "  git push origin $TAG"
+        exit 1
+    fi
+    if [[ "$remote_commit" != "$head_commit" ]]; then
+        log_error "Git tag '$TAG' on GitHub does not point at HEAD."
+        log_error "  $TAG on GitHub: $remote_commit"
+        log_error "  HEAD:          $head_commit"
+        log_error "Push the moved tag: git push --force origin $TAG"
+        exit 1
+    fi
+
+    log_info "Tag $TAG points at HEAD, locally and on GitHub"
 }
 
 # Build the wctl binary as a static x86_64 executable, and its checksum.
@@ -393,6 +408,8 @@ EOF
     local title="GNOME Window Control $TAG"
 
     if [[ $RELEASE_EXISTS -eq 1 ]]; then
+        # --clobber deletes each old asset before it uploads the new one, so a
+        # failed upload leaves that asset missing until the script runs again.
         gh release upload "$TAG" "${ASSETS[@]}" --clobber
         gh release edit "$TAG" --title "$title" --notes "$body"
         log_info "Release $TAG updated!"

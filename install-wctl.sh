@@ -3,6 +3,10 @@
 # install-wctl.sh - Install wctl to ~/.local/bin. Run with --help for usage.
 #
 
+# One brace group around the whole script: bash parses all of it before it runs
+# a line, so a download that curl ... | bash cuts short is a syntax error, not a
+# partial run.
+{
 set -euo pipefail
 
 usage() {
@@ -18,9 +22,11 @@ Install wctl to ~/.local/bin.
 
 Piped into bash (curl ... | bash), the script always downloads.
 
-WCTL_VERSION selects the release to download: a tag such as v16, or latest.
+WCTL_VERSION selects the release to download: a tag (vN) or latest. The
+default is latest; the copy attached to a release defaults to that release.
 The download is checked against the release's wctl.sha256 before it replaces
-an installed wctl.
+an installed wctl. Releases up to v16 have no wctl.sha256, so the script
+cannot install them.
 
 wctl is a statically linked binary. The published asset is x86_64 only; on any
 other architecture, build it from source with --local.
@@ -62,7 +68,7 @@ esac
 # Piped into bash there is no script file, so there is no checkout to install
 # from. The current directory is not a fallback: piped from inside a checkout,
 # it would install a stale local build.
-if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     LOCAL_BINARY="$SCRIPT_DIR/cli/target/release/wctl"
 else
@@ -136,7 +142,7 @@ elif [[ "$MODE" == "download" ]]; then
     WCTL_SOURCE="download"
 elif [[ "$MODE" == "auto" ]]; then
     # Auto: use a local build if there is one, else download
-    if [[ -n "$LOCAL_BINARY" && -f "$LOCAL_BINARY" ]]; then
+    if [[ -f "$LOCAL_BINARY" ]]; then
         WCTL_SOURCE="$LOCAL_BINARY"
     else
         WCTL_SOURCE="download"
@@ -165,9 +171,14 @@ if [[ "$WCTL_SOURCE" == "download" ]]; then
     tmp=$(mktemp -p "$INSTALL_DIR" .wctl.XXXXXX)
     trap 'rm -f "$tmp"' EXIT
 
-    if ! fetch "$RELEASE_URL/wctl" "$tmp" || ! checksum=$(fetch "$RELEASE_URL/wctl.sha256" -); then
+    if ! fetch "$RELEASE_URL/wctl" "$tmp"; then
         echo -e "${RED}Error:${RESET} Failed to download wctl from $RELEASE_URL"
         echo "Check your internet connection or try: curl -fsSL $RELEASE_URL/wctl"
+        exit 1
+    fi
+    if ! checksum=$(fetch "$RELEASE_URL/wctl.sha256" -); then
+        echo -e "${RED}Error:${RESET} Failed to download $RELEASE_URL/wctl.sha256"
+        echo "Releases up to v16 have no wctl.sha256; set WCTL_VERSION to a later one."
         exit 1
     fi
 
@@ -191,8 +202,9 @@ if [[ "$WCTL_SOURCE" == "download" ]]; then
     echo -e "${GREEN}Downloaded wctl from GitHub${RESET}"
 else
     echo "Copying wctl from $WCTL_SOURCE..."
-    cp "$WCTL_SOURCE" "$INSTALL_DIR/wctl"
-    chmod +x "$INSTALL_DIR/wctl"
+    # install replaces the file instead of writing into it, which a running
+    # wctl refuses (Text file busy).
+    install -m 755 "$WCTL_SOURCE" "$INSTALL_DIR/wctl"
 fi
 
 echo -e "${GREEN}Successfully installed wctl to $INSTALL_DIR/wctl${RESET}"
@@ -213,3 +225,4 @@ else
     echo ""
     echo "Run 'wctl --help' to get started."
 fi
+}
