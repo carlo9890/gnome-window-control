@@ -20,7 +20,7 @@ _wctl_window_ids() {
             title="${title:0:47}..."
         fi
         windows+=("$id:$title")
-    done < <(wctl list --json 2>/dev/null | sed 's/},{/}\n{/g')
+    done < <(wctl --timeout 1 list --json 2>/dev/null | sed 's/},{/}\n{/g')
 
     windows+=("focused:Focused window")
     _describe -t windows 'window' windows
