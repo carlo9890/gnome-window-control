@@ -370,8 +370,9 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
 
     // -- disable() while a WaitForWindow and a WaitForGeometry are pending ----
 
-    // `unshown` is created during the wait and never mapped, so the teardown
-    // would leave it a first-show watch.
+    // `unshown` is created during the wait and never mapped, so a normal end
+    // of the wait would leave it a first-show watch. The teardown must not
+    // even connect one.
     const pendingWindow = invocation();
     const pendingGeometry = invocation();
     service.WaitForWindowAsync(['class', 'never', 60000], pendingWindow);
@@ -383,7 +384,10 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     ];
     check('the pending waits armed their timers', sources.length === 3 && sources.every(sourceAlive),
         `${sources}`);
+    const unshownConnects = unshown._nextId;
     unexport(service);
+    check('unexport() connects no first-show watch', unshown._nextId === unshownConnects,
+        `${unshown._nextId - unshownConnects} handler(s) connected`);
     check('unexport() fails the pending WaitForWindow with Disabled',
         pendingWindow.reply?.error === DBUS_ERROR_DISABLED && pendingWindow.replies === 1,
         showReply(pendingWindow));

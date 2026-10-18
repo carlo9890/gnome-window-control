@@ -949,14 +949,15 @@ class WindowControlService {
             (display, win) => this._onWindowCreated(win));
     }
 
-    // Disconnect 'window-created' and every per-window handler.
-    _stopWatching() {
+    // Disconnect 'window-created' and every per-window handler. Teardown
+    // passes watchFirstShow = false: it drops every first-show watch anyway.
+    _stopWatching(watchFirstShow = true) {
         if (this._windowCreatedId) {
             global.display.disconnect(this._windowCreatedId);
             this._windowCreatedId = 0;
         }
         for (const win of [...this._trackedWindows.keys()])
-            this._untrackWindow(win);
+            this._untrackWindow(win, watchFirstShow);
     }
 
     // A new window may not carry its wm_class or title yet when 'window-created'
@@ -1002,7 +1003,7 @@ class WindowControlService {
                 this._shownWindows.add(win);
                 evaluate();
             }),
-            win.connect('unmanaged', () => this._untrackWindow(win, true)),
+            win.connect('unmanaged', () => this._untrackWindow(win, false)),
         ];
         this._trackedWindows.set(win, ids);
         this._dropFirstShowWatch(win);
@@ -1031,14 +1032,14 @@ class WindowControlService {
         }
     }
 
-    _untrackWindow(win, unmanaged = false) {
+    _untrackWindow(win, watchFirstShow = true) {
         const ids = this._trackedWindows.get(win);
         if (!ids)
             return;
         for (const id of ids)
             win.disconnect(id);
         this._trackedWindows.delete(win);
-        if (!unmanaged && this._createdWhileWatching.has(win) && !this._shownWindows.has(win))
+        if (watchFirstShow && this._createdWhileWatching.has(win) && !this._shownWindows.has(win))
             this._watchFirstShow(win);
     }
 
@@ -1142,7 +1143,7 @@ class WindowControlService {
             this._unwatchCaller(waiter);
             waiter.invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'Window Control extension disabled');
         }
-        this._stopWatching();
+        this._stopWatching(false);
         for (const win of [...this._firstShowWatches.keys()])
             this._dropFirstShowWatch(win);
         if (pending.length > 0)
