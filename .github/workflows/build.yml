@@ -63,6 +63,11 @@ jobs:
       - name: Install the mutter typelib
         run: |
           pkg=$(apt-cache search --names-only '^gir1\.2-mutter-[0-9]+$' | cut -d' ' -f1 | sort -V | tail -1)
+          # apt-get install "" installs nothing and exits 0.
+          if [ -z "$pkg" ]; then
+            echo "no gir1.2-mutter-<N> package on this runner image" >&2
+            exit 1
+          fi
           sudo apt-get install -y "$pkg"
 
       - name: Check the extension against fake windows (no shell)
