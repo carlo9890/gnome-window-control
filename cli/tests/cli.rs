@@ -409,15 +409,6 @@ fn wait_guards() {
         "Timeout must be a positive",
         &["wait", "-c", "kitty", "--timeout", "abc"],
     );
-    // Above the extension's 10-minute cap, and above the i32 milliseconds.
-    expect_die(
-        "Timeout must be at most 600 seconds",
-        &["wait", "-c", "kitty", "--timeout", "601"],
-    );
-    expect_die(
-        "Timeout must be at most 600 seconds",
-        &["wait", "-c", "kitty", "--timeout", "99999999999"],
-    );
     expect_die(
         "Option --timeout requires a value",
         &["wait", "-c", "kitty", "--timeout"],

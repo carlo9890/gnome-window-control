@@ -477,8 +477,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `ActivateWorkspace` | `(i) -> b` | Switch to a workspace. Hides the Activities overview first (the switch is ignored while it is shown) and returns whether the switch took effect |
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
 | `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
-| `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms` (at most 600000); returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked. |
-| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms`, up to `timeout_ms` (at most 600000), then return it. The reply is deferred, the shell is never blocked. |
+| `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
+| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms`, up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
 
 ### Errors
 
@@ -494,7 +494,7 @@ raises without declaring them there.
 | `org.gnome.Shell.Extensions.WindowControl.Refused` | The frame is pinned by fullscreen, maximize or tiling — the message names which |
 | `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
 | `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending |
-| `org.freedesktop.DBus.Error.InvalidArgs` | An argument was not a finite number, a size was not positive, a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer), or a wait `timeout_ms` was above 600000 (10 minutes) |
+| `org.freedesktop.DBus.Error.InvalidArgs` | An argument was not a finite number, a size was not positive, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
 | `org.freedesktop.DBus.Error.Failed` | The handler raised something unexpected |
 
 **Breaking change in extension version 10.** Before it, those three methods
