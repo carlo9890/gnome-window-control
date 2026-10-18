@@ -338,14 +338,19 @@ pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = place_usage();
     let (json_output, settled, args) = take_output_flags(args);
     let selector = selector::parse_exact(4, &usage, &args)?;
-    let tokens = &args[selector.shift..];
-    // The tokens resolve against the workarea, so they are checked once the
-    // window is known: a percentage has no meaning without it.
+    let tokens = [
+        args[selector.shift].as_str(),
+        &args[selector.shift + 1],
+        &args[selector.shift + 2],
+        &args[selector.shift + 3],
+    ];
+    // The syntax is checked before the bus; the values resolve against the
+    // workarea, so a percentage only gets its pixels once the window is known.
+    geometry::check_place_tokens(tokens)?;
     let id = selector::lookup(ctx, &selector)?;
 
     let (_, monitor_index, workarea) = window_workarea(ctx, id)?;
-    let target =
-        geometry::resolve_place_rect([&tokens[0], &tokens[1], &tokens[2], &tokens[3]], workarea)?;
+    let target = geometry::resolve_place_rect(tokens, workarea)?;
 
     let applied = move_resize_to(ctx, id, target);
     let placement = Placement {
@@ -404,6 +409,7 @@ pub fn resolve_place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let [x, y, width, height] = tokens[..] else {
         return Err(Fail::error(resolve_place_usage()));
     };
+    geometry::check_place_tokens([x, y, width, height])?;
 
     let monitor_index = match monitor {
         Some(index) => index,

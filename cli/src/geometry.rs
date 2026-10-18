@@ -47,40 +47,87 @@ pub fn is_integer(token: &str) -> bool {
     !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
 }
 
-/// Resolve a WIDTH/HEIGHT token: absolute pixels, or a percentage of the
-/// workarea. There is no upper clamp (150% is allowed), but a percentage that
-/// floors to zero pixels is refused.
-///
+/// A WIDTH/HEIGHT token, parsed without a workarea.
+enum SizeToken {
+    Pixels(i64),
+    Percent(i64),
+}
+
+/// An X/Y token, parsed without a workarea.
+enum PositionToken {
+    Pixels(i64),
+    Start,
+    Center,
+    End,
+}
+
+fn invalid_size(token: &str, label: &str) -> Fail {
+    Fail::error(format!(
+        "Invalid {label}: {token}. Use a positive number or percentage like 50%"
+    ))
+}
+
 /// Literals and percentages are bounded to i32, the D-Bus type of the
 /// geometry arguments: a value that could not be sent as requested must not
 /// be reported as requested either.
-pub fn resolve_place_size(token: &str, base_size: i64, label: &str) -> Result<i64> {
+fn parse_place_size(token: &str, label: &str) -> Result<SizeToken> {
     if is_positive_integer(token) {
         if let Ok(value) = token.parse::<i32>() {
-            return Ok(i64::from(value));
+            return Ok(SizeToken::Pixels(i64::from(value)));
         }
     }
 
     if let Some(percent) = token.strip_suffix('%') {
         if !percent.is_empty() && percent.chars().all(|c| c.is_ascii_digit()) {
             if let Ok(percent) = percent.parse::<i32>() {
-                // Both factors fit i32, so the product fits i64.
-                let value = base_size * i64::from(percent) / 100;
-                if value > 0 && value <= i64::from(i32::MAX) {
-                    return Ok(value);
-                }
-                if value <= 0 {
-                    return Err(Fail::error(format!(
-                        "{label} percentage resolves to 0 pixels: {token}"
-                    )));
-                }
+                return Ok(SizeToken::Percent(i64::from(percent)));
             }
         }
     }
 
-    Err(Fail::error(format!(
-        "Invalid {label}: {token}. Use a positive number or percentage like 50%"
-    )))
+    Err(invalid_size(token, label))
+}
+
+fn parse_place_position(token: &str, axis: Axis) -> Result<PositionToken> {
+    if is_integer(token) {
+        if let Ok(value) = token.parse::<i32>() {
+            return Ok(PositionToken::Pixels(i64::from(value)));
+        }
+    }
+
+    match (axis, token) {
+        (Axis::X, "left") | (Axis::Y, "top") => Ok(PositionToken::Start),
+        (_, "center") => Ok(PositionToken::Center),
+        (Axis::X, "right") | (Axis::Y, "bottom") => Ok(PositionToken::End),
+        (Axis::X, _) => Err(Fail::error(format!(
+            "Invalid X position: {token}. Use a number or left|center|right"
+        ))),
+        (Axis::Y, _) => Err(Fail::error(format!(
+            "Invalid Y position: {token}. Use a number or top|center|bottom"
+        ))),
+    }
+}
+
+/// Resolve a WIDTH/HEIGHT token: absolute pixels, or a percentage of the
+/// workarea. There is no upper clamp (150% is allowed), but a percentage that
+/// floors to zero pixels is refused.
+pub fn resolve_place_size(token: &str, base_size: i64, label: &str) -> Result<i64> {
+    match parse_place_size(token, label)? {
+        SizeToken::Pixels(value) => Ok(value),
+        SizeToken::Percent(percent) => {
+            // Both factors fit i32, so the product fits i64.
+            let value = base_size * percent / 100;
+            if value <= 0 {
+                Err(Fail::error(format!(
+                    "{label} percentage resolves to 0 pixels: {token}"
+                )))
+            } else if value > i64::from(i32::MAX) {
+                Err(invalid_size(token, label))
+            } else {
+                Ok(value)
+            }
+        }
+    }
 }
 
 /// Resolve an X/Y token: absolute pixels, or an alignment keyword resolved
@@ -92,30 +139,23 @@ pub fn resolve_place_position(
     workarea_size: i64,
     window_size: i64,
 ) -> Result<i64> {
-    if is_integer(token) {
-        if let Ok(value) = token.parse::<i32>() {
-            return Ok(i64::from(value));
-        }
-    }
+    Ok(match parse_place_position(token, axis)? {
+        PositionToken::Pixels(value) => value,
+        PositionToken::Start => workarea_pos,
+        PositionToken::Center => workarea_pos + (workarea_size - window_size) / 2,
+        PositionToken::End => workarea_pos + workarea_size - window_size,
+    })
+}
 
-    let start = workarea_pos;
-    let center = workarea_pos + (workarea_size - window_size) / 2;
-    let end = workarea_pos + workarea_size - window_size;
-
-    match (axis, token) {
-        (Axis::X, "left") => Ok(start),
-        (Axis::X, "center") => Ok(center),
-        (Axis::X, "right") => Ok(end),
-        (Axis::Y, "top") => Ok(start),
-        (Axis::Y, "center") => Ok(center),
-        (Axis::Y, "bottom") => Ok(end),
-        (Axis::X, _) => Err(Fail::error(format!(
-            "Invalid X position: {token}. Use a number or left|center|right"
-        ))),
-        (Axis::Y, _) => Err(Fail::error(format!(
-            "Invalid Y position: {token}. Use a number or top|center|bottom"
-        ))),
-    }
+/// Check the syntax of the four `place` tokens without a workarea, in the
+/// order `resolve_place_rect` reports them, so a command refuses a typo before
+/// it calls the bus.
+pub fn check_place_tokens(tokens: [&str; 4]) -> Result<()> {
+    parse_place_size(tokens[2], "WIDTH")?;
+    parse_place_size(tokens[3], "HEIGHT")?;
+    parse_place_position(tokens[0], Axis::X)?;
+    parse_place_position(tokens[1], Axis::Y)?;
+    Ok(())
 }
 
 /// Resolve the four `place` tokens against a workarea, in the order the sizes
@@ -394,6 +434,34 @@ mod tests {
             err.to_string(),
             "Invalid X position: sideways. Use a number or left|center|right"
         );
+    }
+
+    #[test]
+    fn place_tokens_are_checked_without_a_workarea() {
+        assert!(check_place_tokens(["center", "top", "50%", "100%"]).is_ok());
+        assert!(check_place_tokens(["-50", "100", "800", "600"]).is_ok());
+        // 0% has the right syntax; only a workarea can refuse it.
+        assert!(check_place_tokens(["0", "0", "0%", "50%"]).is_ok());
+        for (tokens, message) in [
+            (
+                ["sideways", "top", "abc", "100%"],
+                "Invalid WIDTH: abc. Use a positive number or percentage like 50%",
+            ),
+            (
+                ["0", "0", "50%", "9999999999"],
+                "Invalid HEIGHT: 9999999999. Use a positive number or percentage like 50%",
+            ),
+            (
+                ["sideways", "top", "50%", "100%"],
+                "Invalid X position: sideways. Use a number or left|center|right",
+            ),
+            (
+                ["left", "left", "50%", "100%"],
+                "Invalid Y position: left. Use a number or top|center|bottom",
+            ),
+        ] {
+            assert_eq!(check_place_tokens(tokens).unwrap_err().to_string(), message);
+        }
     }
 
     #[test]
