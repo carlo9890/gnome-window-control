@@ -4,10 +4,10 @@
 //
 // Drive the real extension.js, rules.js and keybindings.js against fake
 // windows, without a GNOME Shell and without D-Bus. Run from anywhere, with the
-// mutter typelib directory on GI_TYPELIB_PATH:
+// mutter typelib directory on GI_TYPELIB_PATH (the newest one installed):
 //
-//     GI_TYPELIB_PATH=$(dirname "$(find /usr/lib* -name 'Meta-*.typelib' | head -1)") \
-//         gjs -m tests/check-extension-headless.js
+//     dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) &&
+//         GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js
 //
 // The extension files are copied into a temporary directory, where the
 // shell-only imports (ui/main.js, extensions/extension.js, gi://Shell) are
