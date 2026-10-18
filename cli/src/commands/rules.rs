@@ -708,12 +708,19 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
     let winner = matching.first().copied();
     // The workarea the extension would use: the rule's monitor when it names
-    // one, otherwise the monitor the window is on.
-    let monitor = winner
-        .and_then(|index| compiled[index].monitor)
+    // one, otherwise the monitor the window is on. rules.js skips the rest of
+    // a rule whose monitor does not exist -- the monitor move and the geometry
+    // -- so that is an outcome to report, not an error. A missing monitor the
+    // window itself reports is still an error.
+    let rule_monitor = winner.and_then(|index| compiled[index].monitor);
+    let monitor = rule_monitor
         .map(|monitor| monitor as i32)
         .unwrap_or_else(|| model::number(&window, "monitor_index") as i32);
-    let workarea = super::workarea_of(ctx, monitor)?;
+    let workarea = if rule_monitor.is_some() {
+        super::workarea_if_present(ctx, monitor)?
+    } else {
+        Some(super::workarea_of(ctx, monitor)?)
+    };
     let (x, y, width, height) = model::frame_rect(&window);
     let frame = Rect {
         x,
@@ -721,28 +728,31 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         width,
         height,
     };
-    let target = winner.and_then(|index| compiled[index].resolve(workarea, frame));
+    let target = winner
+        .zip(workarea)
+        .and_then(|(index, workarea)| compiled[index].resolve(workarea, frame));
 
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "window": {"id": id, "wm_class": wm_class, "title": title},
-                "rules_file": path.display().to_string(),
-                "rules": compiled.len(),
-                "matched": winner,
-                "shadowed": matching.iter().skip(1).collect::<Vec<_>>(),
-                "monitor_index": monitor,
-                "workarea": {
-                    "x": workarea.x, "y": workarea.y,
-                    "width": workarea.width, "height": workarea.height,
-                },
-                "target": target.map(|rect| serde_json::json!({
-                    "x": rect.x, "y": rect.y,
-                    "width": rect.width, "height": rect.height,
-                })),
-            })
-        );
+        let mut report = serde_json::json!({
+            "window": {"id": id, "wm_class": wm_class, "title": title},
+            "rules_file": path.display().to_string(),
+            "rules": compiled.len(),
+            "matched": winner,
+            "shadowed": matching.iter().skip(1).collect::<Vec<_>>(),
+            "monitor_index": monitor,
+            "workarea": workarea.map(|rect| serde_json::json!({
+                "x": rect.x, "y": rect.y,
+                "width": rect.width, "height": rect.height,
+            })),
+            "target": target.map(|rect| serde_json::json!({
+                "x": rect.x, "y": rect.y,
+                "width": rect.width, "height": rect.height,
+            })),
+        });
+        if workarea.is_none() {
+            report["skipped"] = serde_json::json!(SKIPPED_NO_SUCH_MONITOR);
+        }
+        println!("{report}");
         return Ok(());
     }
 
@@ -779,6 +789,10 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if let Some(workspace) = rule.workspace {
         println!("  workspace: {workspace}");
     }
+    let Some(workarea) = workarea else {
+        println!("{}", no_such_monitor_line(monitor));
+        return Ok(());
+    };
     println!(
         "  monitor {monitor}, workarea {},{} {}x{}",
         workarea.x, workarea.y, workarea.width, workarea.height
@@ -792,6 +806,12 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         None => println!("  the action resolves to nothing on this workarea; it would be skipped"),
     }
     Ok(())
+}
+
+const SKIPPED_NO_SUCH_MONITOR: &str = "no such monitor";
+
+fn no_such_monitor_line(monitor: i32) -> String {
+    format!("  monitor {monitor} does not exist; the extension skips the rest of this rule")
 }
 
 /// Dispatch the subcommand. Unknown ones are a usage error, and no subcommand
@@ -857,5 +877,14 @@ mod tests {
                 "{earlier_key}={earlier_value} before {later_key}={later_value}"
             );
         }
+    }
+
+    #[test]
+    fn a_missing_rule_monitor_says_the_extension_skips_the_rule() {
+        assert_eq!(
+            no_such_monitor_line(1),
+            "  monitor 1 does not exist; the extension skips the rest of this rule"
+        );
+        assert_eq!(SKIPPED_NO_SUCH_MONITOR, "no such monitor");
     }
 }

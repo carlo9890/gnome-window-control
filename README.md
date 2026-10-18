@@ -275,7 +275,9 @@ as the `wctl` commands:
   the last workspace adds one workspace at the end and puts the window there;
   the workspaces up to that index are not created.
 - **monitor** — a monitor index; the workarea that `place`/`tile`/`center`
-  resolve against, and where the window is placed.
+  resolve against, and where the window is placed. When that monitor does not
+  exist, for example on an undocked laptop, the window is not moved or placed;
+  only `workspace` applies.
 
 `place`, `tile` and `center` are mutually exclusive in one rule; combine any of
 them with `workspace` and `monitor`. The first matching rule wins, in file order,
@@ -380,7 +382,10 @@ Matched rule 0: class=kitty -> tile left
 ```
 
 It names the rule that wins, any later rule the first-match-wins order makes
-dead, the workarea used, and the exact rectangle the action resolves to. This is
+dead, the workarea used, and the exact rectangle the action resolves to. When
+the rule names a monitor that does not exist, it says the extension skips the
+rest of the rule and exits 0; with `--json`, `workarea` and `target` are `null`
+and `"skipped"` is `"no such monitor"`. This is
 the one `rules` subcommand that needs the extension running, because it resolves
 a live window. It never moves anything. Against an extension that does not
 report the `rules` capability it exits 5 instead, because that extension

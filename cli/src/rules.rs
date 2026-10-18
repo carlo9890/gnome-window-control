@@ -178,6 +178,23 @@ fn place_usage(label: &str) -> String {
     )
 }
 
+/// The entries of a JSON object in the order JavaScript enumerates them:
+/// canonical array indices ("1", not "01" and not 4294967295) first, ascending,
+/// then every other key in file order. `Object.keys` and `Object.entries` in
+/// rules-format.js walk that order, so a check that stops at the first bad key
+/// names the same one only if it walks it too.
+fn js_entries(object: &Map<String, Value>) -> Vec<(&String, &Value)> {
+    let mut entries: Vec<_> = object.iter().collect();
+    entries.sort_by_cached_key(|(key, _)| array_index(key).map_or((1, 0), |index| (0, index)));
+    entries
+}
+
+fn array_index(key: &str) -> Option<u32> {
+    key.parse::<u32>()
+        .ok()
+        .filter(|index| *index != u32::MAX && index.to_string() == key)
+}
+
 /// Validate a `workspace` or `monitor` index. Absent is Ok(None).
 fn compile_index(rule: &Map<String, Value>, key: &str, label: &str) -> Result<Option<i64>, String> {
     let Some(value) = rule.get(key) else {
@@ -205,7 +222,7 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
         return Err(format!("{label}: must be an object"));
     };
 
-    for key in rule.keys() {
+    for (key, _) in js_entries(rule) {
         if !RULE_KEYS.contains(&key.as_str()) {
             return Err(format!(
                 "{label}.{key}: unknown key (use {})",
@@ -219,7 +236,7 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
     };
 
     let mut matches = Vec::new();
-    for (key, value) in match_block {
+    for (key, value) in js_entries(match_block) {
         let Some((_, kind)) = MATCH_KEYS.iter().find(|(name, _)| name == key) else {
             return Err(format!(
                 "{label}.match.{key}: unknown key (use {})",
@@ -355,6 +372,21 @@ mod tests {
         }
     }
 
+    fn place_rule(tokens: &Value) -> Rule {
+        let tokens: Vec<String> = tokens.as_array().unwrap().iter().map(js_string).collect();
+        Rule {
+            matches: vec![],
+            action: Some(Action::Place([
+                tokens[0].clone(),
+                tokens[1].clone(),
+                tokens[2].clone(),
+                tokens[3].clone(),
+            ])),
+            workspace: None,
+            monitor: None,
+        }
+    }
+
     /// The geometry vectors, through the same `Rule::resolve` a rule uses.
     /// `geometry.rs` pins these numbers too, from its own unit tests; this
     /// asserts the rules layer reaches them rather than its own arithmetic.
@@ -364,27 +396,21 @@ mod tests {
 
         for case in vectors["geometry"]["place"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
-            let tokens: Vec<String> = case["tokens"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(js_string)
-                .collect();
-            let rule = Rule {
-                matches: vec![],
-                action: Some(Action::Place([
-                    tokens[0].clone(),
-                    tokens[1].clone(),
-                    tokens[2].clone(),
-                    tokens[3].clone(),
-                ])),
-                workspace: None,
-                monitor: None,
-            };
+            let rule = place_rule(&case["tokens"]);
             assert_eq!(
                 rule.resolve(rect(&case["workarea"]), PROBE_WORKAREA),
                 Some(rect(&case["rect"])),
                 "place: {name}"
+            );
+        }
+
+        for case in vectors["geometry"]["place_invalid"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let rule = place_rule(&case["tokens"]);
+            assert_eq!(
+                rule.resolve(rect(&case["workarea"]), PROBE_WORKAREA),
+                None,
+                "place_invalid: {name}"
             );
         }
 
@@ -488,6 +514,21 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn js_entries_puts_array_indices_first_ascending() {
+        let object = serde_json::json!({
+            "b": 0, "10": 0, "a": 0, "2": 0, "01": 0, "+3": 0, "4294967295": 0, "4294967294": 0,
+        });
+        let keys: Vec<&str> = js_entries(object.as_object().unwrap())
+            .into_iter()
+            .map(|(key, _)| key.as_str())
+            .collect();
+        assert_eq!(
+            keys,
+            ["2", "10", "4294967294", "b", "a", "01", "+3", "4294967295"]
+        );
     }
 
     #[test]

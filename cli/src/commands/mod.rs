@@ -129,20 +129,23 @@ pub fn primary_monitor(ctx: &mut Ctx) -> Result<i32> {
         })
 }
 
-/// The workarea of one monitor.
+/// The workarea of one monitor, or None when the shell has no such monitor.
 ///
 /// `GetWorkarea` answers (-1, -1, -1, -1) for an index that does not exist.
 /// Passed through, that sentinel is a negative rectangle every caller would
 /// have to recognise for itself, and the arithmetic built on it produces
-/// nonsense rather than an error. Reported as EXIT_NOT_FOUND it is also
-/// distinguishable from a call that failed, which is what a script probing
-/// "is there a second monitor?" needs.
-pub fn workarea_of(ctx: &mut Ctx, index: i32) -> Result<Rect> {
+/// nonsense rather than an error.
+pub fn workarea_if_present(ctx: &mut Ctx, index: i32) -> Result<Option<Rect>> {
     let rect = ctx.bus.get_workarea(index)?;
-    if rect.2 < 0 || rect.3 < 0 {
-        return Err(Fail::error(format!("No such monitor: {index}")).with_code(EXIT_NOT_FOUND));
-    }
-    Ok(Rect::from(rect))
+    Ok((rect.2 >= 0 && rect.3 >= 0).then(|| Rect::from(rect)))
+}
+
+/// The workarea of one monitor. A monitor that does not exist is reported as
+/// EXIT_NOT_FOUND, distinguishable from a call that failed, which is what a
+/// script probing "is there a second monitor?" needs.
+pub fn workarea_of(ctx: &mut Ctx, index: i32) -> Result<Rect> {
+    workarea_if_present(ctx, index)?
+        .ok_or_else(|| Fail::error(format!("No such monitor: {index}")).with_code(EXIT_NOT_FOUND))
 }
 
 pub fn not_found(id: u64) -> Fail {
