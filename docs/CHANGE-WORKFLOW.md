@@ -15,6 +15,8 @@ Before committing or opening a PR:
 ## Commits
 
 - One logical change per commit.
+- In a PR with several fixes, each fix commit carries its own test. When the
+  fixes share a new test harness, land the harness in an earlier commit.
 - Message format: `<type>: <short description>`, where `<type>` is `feat`, `fix`,
   `docs`, `test`, `build`, `refactor`, or `chore`. Append `!` to the type for a
   breaking change (`feat!: ...`).
