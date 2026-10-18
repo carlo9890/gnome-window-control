@@ -372,6 +372,21 @@ mod tests {
         }
     }
 
+    fn place_rule(tokens: &Value) -> Rule {
+        let tokens: Vec<String> = tokens.as_array().unwrap().iter().map(js_string).collect();
+        Rule {
+            matches: vec![],
+            action: Some(Action::Place([
+                tokens[0].clone(),
+                tokens[1].clone(),
+                tokens[2].clone(),
+                tokens[3].clone(),
+            ])),
+            workspace: None,
+            monitor: None,
+        }
+    }
+
     /// The geometry vectors, through the same `Rule::resolve` a rule uses.
     /// `geometry.rs` pins these numbers too, from its own unit tests; this
     /// asserts the rules layer reaches them rather than its own arithmetic.
@@ -381,27 +396,21 @@ mod tests {
 
         for case in vectors["geometry"]["place"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
-            let tokens: Vec<String> = case["tokens"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(js_string)
-                .collect();
-            let rule = Rule {
-                matches: vec![],
-                action: Some(Action::Place([
-                    tokens[0].clone(),
-                    tokens[1].clone(),
-                    tokens[2].clone(),
-                    tokens[3].clone(),
-                ])),
-                workspace: None,
-                monitor: None,
-            };
+            let rule = place_rule(&case["tokens"]);
             assert_eq!(
                 rule.resolve(rect(&case["workarea"]), PROBE_WORKAREA),
                 Some(rect(&case["rect"])),
                 "place: {name}"
+            );
+        }
+
+        for case in vectors["geometry"]["place_invalid"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let rule = place_rule(&case["tokens"]);
+            assert_eq!(
+                rule.resolve(rect(&case["workarea"]), PROBE_WORKAREA),
+                None,
+                "place_invalid: {name}"
             );
         }
 
