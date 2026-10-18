@@ -42,6 +42,14 @@ installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
 Coverage is not measured; `mise run ci` plus the suites in the minimum-checks
 table are the whole bar.
 
+The `cli` job also runs two release checks. Run them locally before a push
+that changes a version or a dependency:
+
+```bash
+./scripts/check-version.sh   # cli/Cargo.toml is 0.<metadata.json version>.0
+mise run build:musl          # the static release binary, and its linkage check
+```
+
 Two kinds of test live there:
 
 - **Unit tests** in a `#[cfg(test)]` module next to the code they cover —
