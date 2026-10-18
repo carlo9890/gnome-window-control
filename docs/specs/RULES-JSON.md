@@ -292,6 +292,11 @@ rename is still seen. Events are debounced by `RELOAD_DEBOUNCE_MS` into one
 reload. A reload replaces the whole rule set and affects windows created
 afterwards. No restart is needed.
 
+When `rules.json` is a symlink, an edit to its target is not seen: it raises no
+event on the config directory. `touch -h ~/.config/gnome-window-control/rules.json`
+raises one and reloads the file; disabling and enabling the extension reads it
+again too.
+
 The read at `enable()` and every reload are asynchronous (`WindowRules._load`),
 so the rule set changes when the read lands: a window created between
 `enable()` and the first read landing is not placed. A newer read and

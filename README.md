@@ -328,8 +328,9 @@ warns when an earlier rule already matches everything the new one would.
 example into a dotfiles repository, they replace the link with a regular file
 and the linked copy is no longer updated; edit the linked file by hand instead.
 The extension watches the directory of `rules.json`, not the linked file, so
-run `touch -h ~/.config/gnome-window-control/rules.json` after such an edit to
-load it.
+an edit to the linked file is not seen. Run
+`touch -h ~/.config/gnome-window-control/rules.json` after such an edit, or
+disable and enable the extension, to load it.
 
 Rules are applied only by an extension that reports the `rules` capability
 (`wctl version --json` lists it). When the running shell has an older one
