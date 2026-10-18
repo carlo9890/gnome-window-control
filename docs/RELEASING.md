@@ -16,8 +16,9 @@ The script guarantees:
   `install-wctl.sh` with its `WCTL_VERSION` default set to the tag, so the
   installer of `vN` installs the `wctl` of `vN`.
 - The `metadata.json` and `cli/Cargo.toml` versions match.
-- The local tag `vN` exists. It does not check the remote, so
-  `git push --tags` is on you.
+- The local tag `vN` exists and points at HEAD, the commit the assets are built
+  from. `gh release create --verify-tag` then refuses a tag that is not on the
+  remote, so run `git push --tags` first.
 - The release has notes. The script refuses to run without them.
 
 ## Release checklist

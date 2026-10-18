@@ -77,7 +77,8 @@ Prerequisites:
   - GitHub CLI (gh) installed and authenticated
   - Clean working directory (no uncommitted changes)
   - On main branch
-  - Git tag v<version> must exist (matching metadata.json version)
+  - Git tag v<version> must exist (matching metadata.json version) and
+    point at HEAD
   - Release notes written by hand in a file (see docs/RELEASING.md)
 
 Options:
@@ -219,15 +220,27 @@ check_wctl_version() {
 check_tag_exists() {
     log_step "Checking git tag..."
     
-    if ! git -C "$PROJECT_ROOT" rev-parse "$TAG" &> /dev/null; then
+    local tag_commit head_commit
+    if ! tag_commit=$(git -C "$PROJECT_ROOT" rev-parse --verify --quiet "$TAG^{commit}"); then
         log_error "Git tag '$TAG' does not exist."
         log_error "Create the tag first:"
         log_error "  git tag $TAG"
         log_error "  git push --tags"
         exit 1
     fi
-    
-    log_info "Tag $TAG exists"
+
+    # The assets are built from HEAD, so a tag on another commit would publish
+    # them under source they were not built from.
+    head_commit=$(git -C "$PROJECT_ROOT" rev-parse HEAD)
+    if [[ "$tag_commit" != "$head_commit" ]]; then
+        log_error "Git tag '$TAG' does not point at HEAD."
+        log_error "  $TAG: $tag_commit"
+        log_error "  HEAD: $head_commit"
+        log_error "Release from the tagged commit, or move the tag to HEAD."
+        exit 1
+    fi
+
+    log_info "Tag $TAG exists and points at HEAD"
 }
 
 # Build the wctl binary as a static x86_64 executable, and its checksum.
@@ -420,7 +433,9 @@ EOF
     )
     
     # Create release with all assets
-    gh release create "$TAG" \
+    # --verify-tag: refuse to create a tag that was not pushed; gh would
+    # put it on the default-branch tip.
+    gh release create "$TAG" --verify-tag \
         --title "GNOME Window Control $TAG" \
         --notes "$body" \
         "${ASSETS[@]}"
