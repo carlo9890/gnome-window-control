@@ -161,12 +161,16 @@ the message at warning level and runs with zero rules until the file changes.
 Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
 
+The keys of a rule object and of `match` are checked in JavaScript property
+order: integer-like keys such as `"1"` first, ascending, then the other keys in
+file order. Of two bad keys, the message names the first in that order.
+
 One verdict has two texts. A number too large for a double, such as `1e400`,
 is refused by both: the extension reports it as the key's own message below,
 `wctl rules check` as `not valid JSON`, because its parser refuses the number
 before validation starts.
 
-`wctl rules check` differs from the extension in four more cases, none of
+`wctl rules check` differs from the extension in three more cases, none of
 which a file written by `wctl rules add` can contain:
 
 | File content | Extension | `wctl rules check` |
@@ -174,7 +178,6 @@ which a file written by `wctl rules add` can contain:
 | A lone surrogate escape in a string, such as `"\ud800"` | loads the rule | `not valid JSON` |
 | A byte sequence that is not UTF-8 | loads the rule, with U+FFFD in its place | `Cannot read ...` |
 | Arrays nested 200 levels deep | the key's own message | `not valid JSON` |
-| Two wrong keys in one object, one of them an integer such as `"1"` | names the integer key | names the first one in file order |
 
 | Condition | Result |
 |---|---|
