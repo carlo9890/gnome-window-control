@@ -183,10 +183,10 @@ network are needed.
 
 - Set `HOME` to a scratch directory for `install-wctl.sh`: it installs to
   `$HOME/.local/bin`.
-- Run `release.sh` in a throwaway clone on branch `main` with a clean tree and
-  tag `v<metadata.json version>` on `HEAD` (`git tag -f`: before a version
-  bump that tag already exists). It writes `dist/` and `cli/target/` in that
-  clone.
+- Run `release.sh --notes-file <file>` in a throwaway clone on branch `main`
+  with a clean tree and tag `v<metadata.json version>` on `HEAD` (`git tag -f`:
+  before a version bump that tag already exists). It writes `dist/` and
+  `cli/target/` in that clone.
 - Log each stub's arguments to a file and assert the calls from that file.
 
 | Stub | Caller | Call | The stub must |
