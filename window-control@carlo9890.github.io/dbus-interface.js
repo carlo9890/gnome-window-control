@@ -435,6 +435,7 @@ export const DBUS_INTERFACE_XML = `
       immediately. Invalid arguments raise
       org.freedesktop.DBus.Error.InvalidArgs; disabling the extension while a
       call is pending raises org.gnome.Shell.Extensions.WindowControl.Disabled.
+      A pending call whose caller leaves the bus is dropped without a reply.
     -->
     <method name="WaitForWindow">
       <arg type="s" direction="in" name="kind"/>
@@ -461,6 +462,7 @@ export const DBUS_INTERFACE_XML = `
       while waiting, WindowControl.Timeout if the frame never settles,
       org.freedesktop.DBus.Error.InvalidArgs for bad arguments, and
       WindowControl.Disabled if the extension is disabled while pending.
+      A pending call whose caller leaves the bus is dropped without a reply.
     -->
     <method name="WaitForGeometry">
       <arg type="t" direction="in" name="window_id"/>

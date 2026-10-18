@@ -267,14 +267,17 @@ export class WindowRules {
 
     _evaluate(win) {
         const entry = this._tracked.get(win);
-        if (!entry || entry.applyId || win.get_window_type() !== Meta.WindowType.NORMAL)
+        if (!entry || entry.applyId)
             return;
         // Tracked since creation, so "never seen unhidden and 'shown' not yet
         // fired" is exactly "mutter has not placed it yet".
         if (!entry.shown && win.is_hidden())
             return;
         entry.shown = true;
-        const index = this._matchIndex(win);
+        // A shown window that is not NORMAL matches nothing, so it gets the
+        // same grace period as an unmatched one: a retype to NORMAL within it
+        // still gets the rule, and one after it cannot move the window.
+        const index = win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
         if (index >= 0) {
             const rule = this._rules[index];
             // A rule that took the head start resolves against the same

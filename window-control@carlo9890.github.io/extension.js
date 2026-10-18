@@ -138,6 +138,9 @@ class WindowControlService {
         // seen unhidden once has been placed, and that never becomes untrue.
         this._shownWindows = new WeakSet();
         this._createdWhileWatching = new WeakSet();
+        // Meta.Window -> [signal handler ids]: the one-shot 'shown' watch a
+        // window created during a watch keeps after it (see _isUnshown).
+        this._firstShowWatches = new Map();
         // WaitForGeometry state, one entry per pending call.
         this._geometryWatchers = [];
     }
@@ -299,9 +302,12 @@ class WindowControlService {
     // minimized/workspace clauses and was called shown while mutter had not yet
     // placed it.
     //
-    // A window that predates the current watch has no such history, so it falls
-    // back to the old reading: hidden while unminimized and on the active
-    // workspace is the only shape a not-yet-mapped window can have.
+    // A marked window that is not shown yet when the watch ends keeps a
+    // one-shot 'shown' handler (_watchFirstShow), so its map is still recorded
+    // and the answer stays known. A window that predates every watch has no
+    // such history, so it falls back to the old reading: hidden while
+    // unminimized and on the active workspace is the only shape a
+    // not-yet-mapped window can have.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
@@ -768,7 +774,7 @@ class WindowControlService {
                 return;
             }
 
-            waiter = { predicate, invocation, timeoutId: 0 };
+            waiter = { predicate, invocation, timeoutId: 0, callerWatch: null };
             waiter.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
                 waiter.timeoutId = 0;
                 console.debug(`[Window Control] WaitForWindow(${kind}) -> 0 (timeout)`);
@@ -776,6 +782,10 @@ class WindowControlService {
                 return GLib.SOURCE_REMOVE;
             });
             this._waiters.push(waiter);
+            waiter.callerWatch = this._watchCaller(invocation, () => {
+                console.debug(`[Window Control] WaitForWindow(${kind}) dropped (caller left the bus)`);
+                this._retireWaiter(waiter);
+            });
             this._startWatching();
             this._trackExistingWindows();
         } catch (e) {
@@ -823,7 +833,9 @@ class WindowControlService {
                 return;
             }
 
-            watcher = { win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [] };
+            watcher = {
+                win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [], callerWatch: null,
+            };
             // Registered BEFORE anything is connected, and each id is stored
             // as it is obtained: a throw part-way through then lands in the
             // catch below, which retires the watcher and disconnects whatever
@@ -837,6 +849,10 @@ class WindowControlService {
             watcher.signalIds.push(win.connect('unmanaged', () => this._failGeometryWatcher(
                 watcher, DBUS_ERROR_NOT_FOUND,
                 `Window ${windowId} closed while waiting for its frame to settle`)));
+            watcher.callerWatch = this._watchCaller(invocation, () => {
+                if (this._retireGeometryWatcher(watcher))
+                    console.debug(`[Window Control] WaitForGeometry(${windowId}) dropped (caller left the bus)`);
+            });
 
             // The quiet period is attached BEFORE the overall timeout. A caller
             // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
@@ -896,6 +912,7 @@ class WindowControlService {
         for (const id of watcher.signalIds)
             watcher.win.disconnect(id);
         watcher.signalIds = [];
+        this._unwatchCaller(watcher);
         return true;
     }
 
@@ -969,7 +986,7 @@ class WindowControlService {
             this._evaluateWindow(win);
             // Handlers stay connected while ANY waiter is pending: a waiter this
             // window did not satisfy may still be waiting for a title or class
-            // that changes later. _finishWaiter() untracks everything through
+            // that changes later. _retireWaiter() untracks everything through
             // _stopWatching() once the last waiter is gone.
             if (this._waiters.length === 0)
                 this._untrackWindow(win);
@@ -978,10 +995,17 @@ class WindowControlService {
             win.connect('notify::wm-class', evaluate),
             win.connect('notify::title', evaluate),
             win.connect('notify::window-type', evaluate),
-            win.connect('shown', evaluate),
-            win.connect('unmanaged', () => this._untrackWindow(win)),
+            // Recorded here, not by _evaluateWindow(): that returns before
+            // _isUnshown() for a window that is not NORMAL, and a dialog
+            // retyped to NORMAL later must still count as shown.
+            win.connect('shown', () => {
+                this._shownWindows.add(win);
+                evaluate();
+            }),
+            win.connect('unmanaged', () => this._untrackWindow(win, true)),
         ];
         this._trackedWindows.set(win, ids);
+        this._dropFirstShowWatch(win);
     }
 
     // Track every window that already exists when a waiter registers.
@@ -1007,13 +1031,61 @@ class WindowControlService {
         }
     }
 
-    _untrackWindow(win) {
+    _untrackWindow(win, unmanaged = false) {
         const ids = this._trackedWindows.get(win);
         if (!ids)
             return;
         for (const id of ids)
             win.disconnect(id);
         this._trackedWindows.delete(win);
+        if (!unmanaged && this._createdWhileWatching.has(win) && !this._shownWindows.has(win))
+            this._watchFirstShow(win);
+    }
+
+    // Keep one 'shown' handler on a window that was created during a watch and
+    // is not shown when the watch ends: without it nothing records its map, and
+    // a later wait would take the hidden window for one mutter has not placed.
+    _watchFirstShow(win) {
+        const ids = [
+            win.connect('shown', () => {
+                this._shownWindows.add(win);
+                this._dropFirstShowWatch(win);
+            }),
+            win.connect('unmanaged', () => this._dropFirstShowWatch(win)),
+        ];
+        this._firstShowWatches.set(win, ids);
+    }
+
+    _dropFirstShowWatch(win) {
+        const ids = this._firstShowWatches.get(win);
+        if (!ids)
+            return;
+        for (const id of ids)
+            win.disconnect(id);
+        this._firstShowWatches.delete(win);
+    }
+
+    // Call onGone once the caller of `invocation` leaves the bus, so a deferred
+    // call whose caller was killed does not keep its handlers and timers until
+    // timeout_ms. A name watch, not a bare NameOwnerChanged subscription: the
+    // watch asks for the owner after it subscribes, so a caller that left
+    // before this handler ran (killed right after it sent the call) is seen
+    // too; a subscription alone misses it. Returns null for a call with no
+    // sender (a peer-to-peer connection), where there is no name to watch.
+    _watchCaller(invocation, onGone) {
+        const sender = invocation.get_sender();
+        if (!sender)
+            return null;
+        const connection = invocation.get_connection();
+        const id = connection.watch_name(sender, Gio.BusNameWatcherFlags.NONE, null, () => onGone());
+        return { connection, id };
+    }
+
+    _unwatchCaller(entry) {
+        if (!entry.callerWatch)
+            return;
+        entry.callerWatch.connection.unwatch_name(entry.callerWatch.id);
+        entry.callerWatch = null;
     }
 
     // Reply to every waiter the window satisfies. Returns true if any did.
@@ -1035,39 +1107,44 @@ class WindowControlService {
     _finishWaiter(waiter, windowId) {
         this._retireWaiter(waiter);
         waiter.invocation.return_value(new GLib.Variant('(t)', [windowId]));
-        if (this._waiters.length === 0)
-            this._stopWatching();
     }
 
     // Retire a registered waiter with a D-Bus error instead of a window ID.
     _failWaiter(waiter, message) {
         this._retireWaiter(waiter);
         waiter.invocation.return_dbus_error(DBUS_ERROR_FAILED, message);
-        if (this._waiters.length === 0)
-            this._stopWatching();
     }
 
-    // Drop a waiter's timeout source and remove it from the pending list, so
-    // exactly one reply can still be sent on its invocation.
+    // Drop a waiter's timeout source and caller watch and remove it from the
+    // pending list, so exactly one reply can still be sent on its invocation.
+    // A waiter whose caller left the bus is only retired: there is no one to
+    // reply to. The last waiter gone ends the watch.
     _retireWaiter(waiter) {
         if (waiter.timeoutId) {
             GLib.source_remove(waiter.timeoutId);
             waiter.timeoutId = 0;
         }
+        this._unwatchCaller(waiter);
         this._waiters = this._waiters.filter(w => w !== waiter);
+        if (this._waiters.length === 0)
+            this._stopWatching();
     }
 
-    // Fail every pending WaitForWindow call and drop all signal handlers and
-    // timeout sources. Called from disable(); leaves nothing behind.
+    // Fail every pending WaitForWindow call and drop all signal handlers,
+    // caller watches and timeout sources. Called from disable(); leaves nothing
+    // behind.
     _cancelWaiters() {
         const pending = this._waiters;
         this._waiters = [];
         for (const waiter of pending) {
             if (waiter.timeoutId)
                 GLib.source_remove(waiter.timeoutId);
+            this._unwatchCaller(waiter);
             waiter.invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'Window Control extension disabled');
         }
         this._stopWatching();
+        for (const win of [...this._firstShowWatches.keys()])
+            this._dropFirstShowWatch(win);
         if (pending.length > 0)
             console.debug(`[Window Control] cancelled ${pending.length} pending WaitForWindow call(s)`);
     }

@@ -338,8 +338,9 @@ warns when an earlier rule already matches everything the new one would.
 example into a dotfiles repository, they replace the link with a regular file
 and the linked copy is no longer updated; edit the linked file by hand instead.
 The extension watches the directory of `rules.json`, not the linked file, so
-run `touch -h ~/.config/gnome-window-control/rules.json` after such an edit to
-load it.
+an edit to the linked file is not seen. Run
+`touch -h ~/.config/gnome-window-control/rules.json` after such an edit, or
+disable and enable the extension, to load it.
 
 Rules are applied only by an extension that reports the `rules` capability
 (`wctl version --json` lists it). When the running shell has an older one
@@ -489,8 +490,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `ActivateWorkspace` | `(i) -> b` | Switch to a workspace. Hides the Activities overview first (the switch is ignored while it is shown) and returns whether the switch took effect |
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
 | `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
-| `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked. |
-| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms`, up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked. |
+| `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
+| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms`, up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
 
 ### Errors
 

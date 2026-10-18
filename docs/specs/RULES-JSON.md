@@ -220,11 +220,12 @@ never re-triggers it. This sets the initial placement only.
 
 Gating, in order:
 
-1. Only `Meta.WindowType.NORMAL` windows are considered.
-2. A window still hidden and not yet `shown` is skipped — mutter's initial
+1. A window still hidden and not yet `shown` is skipped — mutter's initial
    placement overrides a frame requested through the window before that, so a
    rule applied earlier would be discarded. The initial configuration below is
    the one earlier way in.
+2. A shown window that is not `Meta.WindowType.NORMAL` matches no rule, and
+   enters the `LATE_IDENTITY_GRACE_MS` period below like any unmatched window.
 3. On a match, the action runs from a `GLib.idle_add` callback, not from inside
    the signal emission: a frame requested re-entrantly is overwritten when the
    outer move-resize continues.
@@ -247,7 +248,9 @@ Action order within `_apply`:
 A window that matches nothing stays under evaluation for
 `LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID
 and first real title can arrive late. After that it is untracked, so a title
-change hours later cannot rearrange a window the user has since placed.
+change hours later cannot rearrange a window the user has since placed. A shown
+window that is not `NORMAL` matches nothing and gets the same period: a retype
+to `NORMAL` within it gets the rule, one after it does not.
 
 ### Initial configuration (GNOME 49 and later)
 
@@ -295,6 +298,11 @@ A `Gio.FileMonitor` on the directory, not the file, so an editor that saves by
 rename is still seen. Events are debounced by `RELOAD_DEBOUNCE_MS` into one
 reload. A reload replaces the whole rule set and affects windows created
 afterwards. No restart is needed.
+
+When `rules.json` is a symlink, an edit to its target is not seen: it raises no
+event on the config directory. `touch -h ~/.config/gnome-window-control/rules.json`
+raises one and reloads the file; disabling and enabling the extension reads it
+again too.
 
 The read at `enable()` and every reload are asynchronous (`WindowRules._load`),
 so the rule set changes when the read lands: a window created between
