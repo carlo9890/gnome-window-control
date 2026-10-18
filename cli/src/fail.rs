@@ -84,6 +84,11 @@ impl Fail {
         self.code
     }
 
+    #[cfg(test)]
+    pub fn is_plain(&self) -> bool {
+        matches!(self.stream, Stream::Stdout)
+    }
+
     /// Write the message on the right stream and return the process exit code.
     pub fn report(&self) -> i32 {
         match self.stream {
