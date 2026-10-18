@@ -20,7 +20,7 @@ use unicode_width::UnicodeWidthStr;
 /// @tsv escaped these before `column` saw them. `unicode_width` also scores
 /// control characters as zero, so the padding is wrong even when the row
 /// survives -- replacing them with one printable character fixes both.
-fn sanitize(cell: &str) -> String {
+pub(crate) fn sanitize(cell: &str) -> String {
     if !cell.chars().any(|c| c.is_control()) {
         return cell.to_string();
     }
@@ -97,6 +97,14 @@ mod tests {
     fn tabs_and_carriage_returns_are_replaced_too() {
         let rows = vec![vec!["a\tb".to_string(), "c\rd".to_string()]];
         assert_eq!(render(&rows), "a?b  c?d\n");
+    }
+
+    #[test]
+    fn a_title_cannot_forge_a_line_or_reach_the_terminal() {
+        assert_eq!(
+            sanitize("evil\nClass:     forged\x1b[31mRED\x1b[0m"),
+            "evil?Class:     forged?[31mRED?[0m"
+        );
     }
 
     #[test]

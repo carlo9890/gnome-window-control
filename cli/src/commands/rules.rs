@@ -746,7 +746,11 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    println!("Window {id}  class={wm_class}  title={title}");
+    println!(
+        "Window {id}  class={}  title={}",
+        crate::table::sanitize(&wm_class),
+        crate::table::sanitize(&title)
+    );
     if compiled.is_empty() {
         match read_file(&path)? {
             Loaded::Absent => println!("No rules file at {}", path.display()),
