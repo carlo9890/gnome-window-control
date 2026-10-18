@@ -26,14 +26,14 @@ use crate::rules;
 /// The capability an extension reports when it applies rules.json.
 pub const RULES_CAPABILITY: &str = "rules";
 
-/// How long the warning check waits for the shell.
-///
-/// The file is already written when it runs, so a shell that does not answer
-/// must cost a moment and no more: `rules add` runs from keybindings, and the
 /// The capability an extension reports when it knows the `title_prefix` and
 /// `title_suffix` match keys.
 const TITLE_AFFIX_CAPABILITY: &str = "rules-title-affix";
 
+/// How long the warning check waits for the shell.
+///
+/// The file is already written when it runs, so a shell that does not answer
+/// must cost a moment and no more: `rules add` runs from keybindings, and the
 /// 25 s a real call is entitled to would read as a hang.
 const CAPABILITY_PROBE: std::time::Duration = std::time::Duration::from_secs(1);
 
