@@ -44,7 +44,7 @@ jobs:
           done
 
       # The rules.json grammar, pinned to tests/vectors/rules-spec.json -- the
-      # same vectors the crate's rules_spec_vectors test reads, which is what
+      # same vectors the crate's rules tests read, which is what
       # keeps the GJS and the Rust validator from drifting apart.
       #
       # rules-format.js imports nothing, so plain gjs loads it without the

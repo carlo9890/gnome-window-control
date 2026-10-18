@@ -79,15 +79,18 @@ D-Bus, no mutter typelib: `rules-format.js` imports nothing, which is why the
 extension job in `.github/workflows/build.yml` can run this on `ubuntu-latest`
 with only the `gjs` package.
 
-**Every vector group MUST be read from both sides**, so `wctl rules check` and
-the extension cannot disagree about whether a file is valid, about the message
-text or about a rectangle. The GJS check reads every group; in
-`cli/src/rules.rs`, `rules_spec_vectors` reads `validation`, `geometry_vectors`
-reads `geometry`, and `match_vectors` reads `match.cases`. A new group gets a
-reader on each side in the same commit: a group that only one side reads pins
-nothing across the pair. Adding a validation rule means adding a case to the
-vectors in the same commit, and [specs/RULES-JSON.md](specs/RULES-JSON.md) is
-the normative definition both follow.
+**Every vector group MUST be read from both sides**, with the exception below,
+so `wctl rules check` and the extension cannot disagree about whether a file is
+valid, about the message text or about a rectangle. The GJS check reads every
+group; in `cli/src/rules.rs`, `rules_spec_vectors` reads `validation`,
+`geometry_vectors` reads `geometry`, and `match_vectors` reads `match.cases`.
+Two parts are read by the GJS check only, because `rules.json` has no `pid` key
+and the CLI builds no predicate from a bare kind: the `pid` cases and
+`match.no_predicate`. A new group gets a reader on each side in the same commit:
+a group that only one side reads pins nothing across the pair. Adding a
+validation rule means adding a case to the vectors in the same commit, and
+[specs/RULES-JSON.md](specs/RULES-JSON.md) is the normative definition both
+follow.
 
 `env -u GI_TYPELIB_PATH` is not decoration: it is what proves the module still
 loads without the typelib. Drop it and a stray `gi://` import goes unnoticed
