@@ -708,12 +708,19 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
     let winner = matching.first().copied();
     // The workarea the extension would use: the rule's monitor when it names
-    // one, otherwise the monitor the window is on.
+    // one, otherwise the monitor the window is on. rules.js skips the rest of
+    // a rule whose monitor does not exist -- the monitor move and the geometry
+    // -- so that is an outcome to report, not an error. A missing monitor the
+    // window itself reports is still an error.
     let rule_monitor = winner.and_then(|index| compiled[index].monitor);
     let monitor = rule_monitor
         .map(|monitor| monitor as i32)
         .unwrap_or_else(|| model::number(&window, "monitor_index") as i32);
-    let workarea = rule_workarea(super::workarea_of(ctx, monitor), rule_monitor.is_some())?;
+    let workarea = if rule_monitor.is_some() {
+        super::workarea_if_present(ctx, monitor)?
+    } else {
+        Some(super::workarea_of(ctx, monitor)?)
+    };
     let (x, y, width, height) = model::frame_rect(&window);
     let frame = Rect {
         x,
@@ -803,18 +810,6 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 const SKIPPED_NO_SUCH_MONITOR: &str = "no such monitor";
 
-/// The workarea a rule resolves against, or None when the rule names a monitor
-/// that does not exist. rules.js skips the rest of such a rule -- the monitor
-/// move and the geometry -- so that is an outcome to report, not an error. A
-/// missing monitor the window itself reports is still an error.
-fn rule_workarea(workarea: Result<Rect>, rule_names_monitor: bool) -> Result<Option<Rect>> {
-    match workarea {
-        Ok(rect) => Ok(Some(rect)),
-        Err(fail) if rule_names_monitor && fail.code() == crate::fail::EXIT_NOT_FOUND => Ok(None),
-        Err(fail) => Err(fail),
-    }
-}
-
 fn no_such_monitor_line(monitor: i32) -> String {
     format!("  monitor {monitor} does not exist; the extension skips the rest of this rule")
 }
@@ -882,27 +877,6 @@ mod tests {
                 "{earlier_key}={earlier_value} before {later_key}={later_value}"
             );
         }
-    }
-
-    #[test]
-    fn a_missing_rule_monitor_is_an_outcome_and_any_other_failure_an_error() {
-        let workarea = Rect {
-            x: 0,
-            y: 32,
-            width: 1920,
-            height: 1048,
-        };
-        let not_found =
-            || Err(Fail::error("No such monitor: 1").with_code(crate::fail::EXIT_NOT_FOUND));
-        assert_eq!(rule_workarea(Ok(workarea), true).unwrap(), Some(workarea));
-        assert_eq!(rule_workarea(not_found(), true).unwrap(), None);
-        assert_eq!(rule_workarea(not_found(), false).unwrap_err().code(), 2);
-        assert_eq!(
-            rule_workarea(Err(Fail::error("timed out").with_code(4)), true)
-                .unwrap_err()
-                .code(),
-            4
-        );
     }
 
     #[test]

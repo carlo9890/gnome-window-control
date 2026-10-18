@@ -384,7 +384,8 @@ Matched rule 0: class=kitty -> tile left
 It names the rule that wins, any later rule the first-match-wins order makes
 dead, the workarea used, and the exact rectangle the action resolves to. When
 the rule names a monitor that does not exist, it says the extension skips the
-rest of the rule (`"skipped": "no such monitor"` with `--json`). This is
+rest of the rule and exits 0; with `--json`, `workarea` and `target` are `null`
+and `"skipped"` is `"no such monitor"`. This is
 the one `rules` subcommand that needs the extension running, because it resolves
 a live window. It never moves anything. Against an extension that does not
 report the `rules` capability it exits 5 instead, because that extension
