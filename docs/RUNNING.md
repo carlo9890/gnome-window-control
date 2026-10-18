@@ -88,8 +88,8 @@ or `Alt+F2` → `r` → Enter on X11.
 ### Reach the nested session
 
 A second terminal needs the nested display and the nested bus. `start-nested.sh`
-prints the display; the bus address exists only inside the nested process, so
-read it back from `/proc`:
+prints both. To get the bus address again later, read it from the nested
+process in `/proc`:
 
 ```bash
 nested=$(pgrep -f '^gnome-shell --nested')
@@ -235,8 +235,14 @@ gdbus call --session --dest org.gnome.Shell \
   --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
 ```
 
-Run `./scripts/debug-dbus.sh` on the nested session's bus for a one-shot sweep
-of every method; it writes `output/debug-<timestamp>.txt`.
+Run `./scripts/debug-dbus.sh` on the nested or headless session's bus for a
+one-shot sweep of every method. It changes the first window it lists, so it
+exits 1 before any D-Bus call when `DBUS_SESSION_BUS_ADDRESS` is unset, when
+`systemctl --user show-environment` reports no `DBUS_SESSION_BUS_ADDRESS`, or
+when the two are equal. The check compares address strings, so export the
+address the start script printed, unchanged. Pass `--real-session-ok` to run it
+on the login bus anyway. It writes `output/debug-<timestamp>.txt`, which names
+windows by id only: no title and no WM class.
 
 ## Reproduce a reported bug
 

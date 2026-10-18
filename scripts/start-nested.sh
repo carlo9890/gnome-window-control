@@ -95,6 +95,7 @@ if [ -z "$SHELL_PID" ]; then
     echo "ERROR: no gnome-shell under dbus-run-session (PID $RUNNER_PID); see $OUTPUT_FILE"
     exit 1
 fi
+BUS="$(tr '\0' '\n' < "/proc/$SHELL_PID/environ" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')"
 
 echo ""
 echo "=========================================="
@@ -109,6 +110,7 @@ echo "In another terminal, run these commands:"
 echo ""
 echo "  export WAYLAND_DISPLAY=$WAYLAND_DISP"
 echo "  export DISPLAY=$X_DISP"
+echo "  export DBUS_SESSION_BUS_ADDRESS='$BUS'"
 echo ""
 echo "  # Launch a test window in the nested session"
 echo "  gedit &"

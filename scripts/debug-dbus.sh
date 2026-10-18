@@ -1,10 +1,29 @@
 #!/usr/bin/env bash
 #
 # Debug script to test Window Control D-Bus methods
-# Run this inside a nested GNOME Shell session
+# Run this on the bus of a nested or headless GNOME Shell (docs/RUNNING.md)
 #
+# Usage: debug-dbus.sh [--real-session-ok]
 
 set -uo pipefail
+
+REAL_SESSION_FLAG="--real-session-ok"
+
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "$REAL_SESSION_FLAG" ) ]]; then
+    echo "Usage: $0 [$REAL_SESSION_FLAG]" >&2
+    exit 2
+fi
+
+if [[ "${1:-}" != "$REAL_SESSION_FLAG" ]]; then
+    LOGIN_BUS=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
+    if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" || -z "$LOGIN_BUS" || "$DBUS_SESSION_BUS_ADDRESS" == "$LOGIN_BUS" ]]; then
+        echo "Refusing to run: DBUS_SESSION_BUS_ADDRESS is unset or is the login session bus," >&2
+        echo "or systemctl --user show-environment reports no login session bus to compare it with." >&2
+        echo "This script changes the first window of the shell on that bus." >&2
+        echo "Point DBUS_SESSION_BUS_ADDRESS at a nested or headless shell, or pass $REAL_SESSION_FLAG." >&2
+        exit 1
+    fi
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -17,6 +36,21 @@ DBUS_DEST="org.gnome.Shell"
 DBUS_PATH="/org/gnome/Shell/Extensions/WindowControl"
 DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
 
+# gdbus prints the JSON as a GVariant string: in double quotes when it holds an
+# apostrophe, with each backslash and quote escaped. Undo exactly that.
+list_detailed() {
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
+        sed -E "s/^\\(['\"]//; s/['\"],\\)\$//; s/\\\\([\\\\'\"])/\\1/g"
+}
+
+# gdbus parses an argument as GVariant text before it falls back to a plain
+# string. A quoted literal reaches the method unchanged, and cannot fail to
+# parse and so print the title into the output.
+gvariant_string() {
+    local s=${1//\\/\\\\}
+    printf '"%s"' "${s//\"/\\\"}"
+}
+
 {
     echo "Window Control D-Bus Debug"
     echo "=========================="
@@ -24,22 +58,17 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
     echo "GNOME Shell: $(gnome-shell --version 2>/dev/null || echo 'unknown')"
     echo ""
 
-    echo "=== GetFocused ==="
-    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetFocused" 2>&1
+    echo "=== GetFocused (window id) ==="
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.GetFocused" 2>&1 | \
+        sed -E 's/^\(uint64 ([0-9]+),.*/\1/'
     echo ""
 
-    echo "=== ListDetailed ==="
-    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1
+    WINDOW_LIST=$(list_detailed)
+
+    echo "=== ListDetailed (window ids) ==="
+    echo "$WINDOW_LIST" | jq -c '[.[].id]' 2>/dev/null || echo "(jq not available or invalid JSON)"
     echo ""
 
-    echo "=== ListDetailed (formatted JSON) ==="
-    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-        sed "s/^('//;s/',)$//" | jq . 2>/dev/null || echo "(jq not available or invalid JSON)"
-    echo ""
-
-    # Fetch the window list once, then extract the first window's fields from it
-    WINDOW_LIST=$(gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>/dev/null | \
-        sed "s/^('//;s/',)$//")
     WINDOW_ID=$(echo "$WINDOW_LIST" | jq -r '.[0].id // empty' 2>/dev/null)
 
     if [[ -n "$WINDOW_ID" ]]; then
@@ -51,8 +80,6 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         WINDOW_MONITOR=$(echo "$WINDOW_LIST" | jq -r '.[0].monitor_index // 0' 2>/dev/null)
 
         echo "=== Testing with Window ID: $WINDOW_ID ==="
-        echo "    Title: $WINDOW_TITLE"
-        echo "    WM Class: $WINDOW_CLASS"
         echo "    PID: $WINDOW_PID"
         echo "    Workspace: $WINDOW_WORKSPACE"
         echo "    Monitor: $WINDOW_MONITOR"
@@ -81,8 +108,8 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         if [[ -n "$WINDOW_TITLE" ]]; then
-            echo "=== ActivateByTitle '$WINDOW_TITLE' ==="
-            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitle" "$WINDOW_TITLE" 2>&1
+            echo "=== ActivateByTitle (title of $WINDOW_ID) ==="
+            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitle" "$(gvariant_string "$WINDOW_TITLE")" 2>&1
             echo ""
 
             # Extract first 5 chars of title for substring test (if long enough)
@@ -91,8 +118,8 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
             else
                 TITLE_SUBSTR="$WINDOW_TITLE"
             fi
-            echo "=== ActivateByTitleSubstring '$TITLE_SUBSTR' ==="
-            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitleSubstring" "$TITLE_SUBSTR" 2>&1
+            echo "=== ActivateByTitleSubstring (title prefix of $WINDOW_ID) ==="
+            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByTitleSubstring" "$(gvariant_string "$TITLE_SUBSTR")" 2>&1
             echo ""
         else
             echo "=== ActivateByTitle - SKIPPED (no title) ==="
@@ -102,8 +129,8 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         fi
 
         if [[ -n "$WINDOW_CLASS" ]]; then
-            echo "=== ActivateByWmClass '$WINDOW_CLASS' ==="
-            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByWmClass" "$WINDOW_CLASS" 2>&1
+            echo "=== ActivateByWmClass (wm_class of $WINDOW_ID) ==="
+            gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ActivateByWmClass" "$(gvariant_string "$WINDOW_CLASS")" 2>&1
             echo ""
         else
             echo "=== ActivateByWmClass - SKIPPED (no wm_class) ==="
@@ -142,8 +169,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Verify minimized state ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_minimized}" 2>/dev/null || echo "(jq not available)"
+        list_detailed | jq ".[] | select(.id == $WINDOW_ID) | {is_minimized}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== Unminimize $WINDOW_ID ==="
@@ -162,8 +188,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Verify maximized state ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_maximized}" 2>/dev/null || echo "(jq not available)"
+        list_detailed | jq ".[] | select(.id == $WINDOW_ID) | {is_maximized}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== Unmaximize $WINDOW_ID ==="
@@ -182,8 +207,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Verify fullscreen state ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_fullscreen}" 2>/dev/null || echo "(jq not available)"
+        list_detailed | jq ".[] | select(.id == $WINDOW_ID) | {is_fullscreen}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== Unfullscreen $WINDOW_ID ==="
@@ -192,8 +216,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Verify unfullscreen state ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_fullscreen}" 2>/dev/null || echo "(jq not available)"
+        list_detailed | jq ".[] | select(.id == $WINDOW_ID) | {is_fullscreen}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "============================================"
@@ -207,8 +230,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Verify above state ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_above}" 2>/dev/null || echo "(jq not available)"
+        list_detailed | jq ".[] | select(.id == $WINDOW_ID) | {is_above}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== SetAbove $WINDOW_ID false ==="
@@ -227,8 +249,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Verify sticky state ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_on_all_workspaces}" 2>/dev/null || echo "(jq not available)"
+        list_detailed | jq ".[] | select(.id == $WINDOW_ID) | {is_on_all_workspaces}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "=== SetSticky $WINDOW_ID false ==="
@@ -237,8 +258,7 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== Verify unsticky state ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {is_on_all_workspaces}" 2>/dev/null || echo "(jq not available)"
+        list_detailed | jq ".[] | select(.id == $WINDOW_ID) | {is_on_all_workspaces}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "============================================"
@@ -278,9 +298,8 @@ DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo "============================================"
         echo ""
 
-        echo "=== Final ListDetailed ==="
-        gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" --method "$DBUS_IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq . 2>/dev/null || echo "(jq not available)"
+        echo "=== Final state of $WINDOW_ID ==="
+        list_detailed | jq -c ".[] | select(.id == $WINDOW_ID) | {frame_rect, is_minimized, is_maximized, is_fullscreen, is_above, is_on_all_workspaces, workspace_index, monitor_index}" 2>/dev/null || echo "(jq not available)"
         echo ""
 
         echo "============================================"
