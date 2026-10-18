@@ -48,14 +48,27 @@ jobs:
       # keeps the GJS and the Rust validator from drifting apart.
       #
       # rules-format.js imports nothing, so plain gjs loads it without the
-      # mutter typelib (not packaged for ubuntu-latest). GI_TYPELIB_PATH is
-      # unset explicitly so a runner that gains one later cannot hide a
-      # regression that would break this job on the next runner image.
+      # mutter typelib. It runs before the typelib is installed, and
+      # GI_TYPELIB_PATH is unset explicitly, so a stray gi:// import fails here.
       - name: Install gjs
         run: sudo apt-get update && sudo apt-get install -y gjs
 
       - name: Check the rules.json grammar against the shared vectors
         run: env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
+
+      # extension.js, rules.js and keybindings.js import gi://Meta, so this
+      # check needs the mutter typelib. The package name carries the mutter
+      # API version (gir1.2-mutter-14 on Ubuntu 24.04), so take the newest
+      # one the runner image has.
+      - name: Install the mutter typelib
+        run: |
+          pkg=$(apt-cache search --names-only '^gir1\.2-mutter-[0-9]+$' | cut -d' ' -f1 | sort -V | tail -1)
+          sudo apt-get install -y "$pkg"
+
+      - name: Check the extension against fake windows (no shell)
+        run: |
+          GI_TYPELIB_PATH=$(dirname "$(find /usr/lib* -name 'Meta-*.typelib' | head -1)") \
+            gjs -m tests/check-extension-headless.js
 
       - name: Make build script executable
         run: chmod +x scripts/build.sh

@@ -9,6 +9,7 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 |-------|-------|------------------|---------|
 | Crate tests (CI gate) | `cli/src/**` + `cli/tests/cli.rs` | No — headless | `mise run ci` (`mise run test` is the inner-loop subset) |
 | Rules grammar (CI gate) | `tests/check-rules-format.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js` |
+| Extension against fake windows (CI gate) | `tests/check-extension-headless.js` | No — headless, needs the mutter typelib | `GI_TYPELIB_PATH=$(dirname "$(find /usr/lib* -name 'Meta-*.typelib' \| head -1)") gjs -m tests/check-extension-headless.js` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
 | Keyboard shortcuts (state-changing, in the modification runner) | `tests/test-keybindings.sh` | Yes, plus injected keys | `./tests/test-keybindings.sh` in a headless shell or a VM guest's session (see below) |
@@ -82,21 +83,34 @@ follow.
 loads without the typelib. Drop it and a stray `gi://` import goes unnoticed
 locally and breaks CI.
 
-## Other headless GJS checks (no shell needed)
-
-Extension logic that does need `Meta` — anything in `rules.js`, `extension.js`
-or `window-helpers.js` — can still be exercised with `gjs -m` outside a shell,
-by pointing `GI_TYPELIB_PATH` at the mutter typelib directory
-(`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46) and importing the module by
-`file://` URL:
+## The extension check against fake windows (a CI gate)
 
 ```bash
-GI_TYPELIB_PATH=/usr/lib/x86_64-linux-gnu/mutter-14 gjs -m check.js
+GI_TYPELIB_PATH=$(dirname "$(find /usr/lib* -name 'Meta-*.typelib' | head -1)") \
+    gjs -m tests/check-extension-headless.js
 ```
 
-Those are written per change rather than checked in. Anything reachable this way
-must be verified this way before a shell is even considered; see the hard rules
-in [RUNNING.md](RUNNING.md).
+Runs the real `extension.js`, `rules.js` and `keybindings.js` against fake
+windows and a fake display that count their signal handlers. No GNOME session,
+no D-Bus: the check copies the extension files into a temporary directory and
+points the shell-only imports (`ui/main.js`, `extensions/extension.js`,
+`gi://Shell`) at stubs written there. It needs the mutter typelib
+(`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package `gir1.2-mutter-14`),
+which the extension job in `.github/workflows/build.yml` installs.
+
+It pins:
+
+- the `disable()` teardown that [RELEASING.md](RELEASING.md) requires:
+  `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
+  `Disabled` and leaves no handler or timer, and `WindowKeybindings.disable()`
+  destroys a pending `UnmaximizeWait`;
+- the 600000 ms `timeout_ms` cap of both wait methods;
+- `WaitForWindow` for a window created during an earlier wait and mapped after it;
+- the rules grace period for a window that is not `NORMAL` when shown.
+
+Add a case here for extension logic a fake window can drive. Anything reachable
+this way must be verified this way before a shell is even considered; see the
+hard rules in [RUNNING.md](RUNNING.md).
 
 ## Query and modification tests
 
@@ -159,7 +173,8 @@ Examples: `tests/test-workspaces-monitors.sh` (query),
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
 `tests/vectors/`. It is headless and takes well under a second, so there is no
-reason to skip it.
+reason to skip it. Run the extension check against fake windows for any change
+to `extension.js`, `rules.js`, `keybindings.js` or `window-helpers.js`.
 
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
 [CODING.md](CODING.md)) and an actual reload-and-run in a shell (see
