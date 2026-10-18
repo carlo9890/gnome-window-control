@@ -19,10 +19,9 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 
 const ROOT = GLib.path_get_dirname(GLib.path_get_dirname(
-    GLib.canonicalize_filename(import.meta.url.replace('file://', ''), null)));
+    GLib.filename_from_uri(import.meta.url)[0]));
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
-const DBUS_ERROR_INVALID_ARGS = 'org.freedesktop.DBus.Error.InvalidArgs';
 
 // Nothing here may reach a real session bus or the user's rules.json.
 const SCRATCH = GLib.dir_make_tmp('wctl-check-XXXXXX');
@@ -127,7 +126,6 @@ class FakeWindow extends Emitter {
     located_on_workspace() { return true; }
     get_client_type() { return Meta.WindowClientType.WAYLAND; }
     is_fullscreen() { return false; }
-    get_maximize_flags() { return this.maximizeFlags; }
     unmaximize() { this.maximizeFlags = 0; }
     get_monitor() { return 0; }
     get_workspace() { return workspace; }
@@ -148,6 +146,15 @@ class FakeWindow extends Emitter {
     }
 }
 
+// The maximize getter of the shell this typelib belongs to, so window-helpers.js
+// takes the branch that shell takes: get_maximized() up to GNOME 48,
+// get_maximize_flags() from 49.
+const MAXIMIZE_GETTER = typeof Meta.Window.prototype.get_maximized === 'function'
+    ? 'get_maximized' : 'get_maximize_flags';
+FakeWindow.prototype[MAXIMIZE_GETTER] = function () {
+    return this.maximizeFlags;
+};
+
 const windows = [];
 const display = new Emitter();
 Object.assign(display, { get_n_monitors: () => 1, get_current_monitor: () => 0 });
@@ -166,9 +173,37 @@ globalThis.global = {
     get_current_time: () => 0,
 };
 
+// The session bus as the extension sees it: NameOwnerChanged subscriptions,
+// and a way to make a caller leave.
+const bus = {
+    subscriptions: new Map(),
+    nextId: 1,
+    signal_subscribe(sender, iface, member, path, arg0, flags, callback) {
+        const id = this.nextId++;
+        this.subscriptions.set(id, { arg0, callback });
+        return id;
+    },
+    signal_unsubscribe(id) {
+        if (!this.subscriptions.delete(id))
+            throw new Error(`bad subscription id ${id}`);
+    },
+    leave(name) {
+        const params = new GLib.Variant('(sss)', [name, name, '']);
+        for (const { arg0, callback } of [...this.subscriptions.values()]) {
+            if (arg0 === name)
+                callback(this, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                    'NameOwnerChanged', params);
+        }
+    },
+};
+let nextCaller = 1;
+
 // The reply a fake invocation got: {value} or {error, message}, null while none.
+// Each call comes from its own caller, named in call.sender.
 function invocation() {
-    const call = { reply: null, replies: 0 };
+    const call = { reply: null, replies: 0, sender: `:1.${nextCaller++}` };
+    call.get_sender = () => call.sender;
+    call.get_connection = () => bus;
     call.return_value = variant => {
         call.reply = { value: variant.deepUnpack() };
         call.replies += 1;
@@ -197,9 +232,9 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
 
 // -- WaitForWindow: a window created during an earlier wait ------------------
 //
-// B is created while `wait A` is pending and maps only after that wait ended,
-// with no handler left to see it. A later `wait B` must still find it once it
-// is minimized, as it finds C, which predates every wait.
+// B is created while `wait A` is pending and maps only after that wait ended.
+// Its one-shot 'shown' watch records the map, so a later `wait B` finds it once
+// it is minimized, as it finds C, which predates every wait.
 
 {
     const service = new WindowControlService({ version: 0 });
@@ -211,8 +246,11 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     const b = createWindow({ id: 2, wmClass: 'B' });
     createWindow({ id: 1, wmClass: 'A' }).map();
     check('wait A replies with A', showReply(waitA) === '{"value":[1]}', showReply(waitA));
-    check('wait A leaves no handler on B', b.handlerCount() === 0, `${b.handlerCount()} handler(s)`);
+    check('wait A leaves only the first-show watch on B', b.handlerCount() === 2,
+        `${b.handlerCount()} handler(s)`);
     b.map();
+    check('the first-show watch is gone once B is shown', b.handlerCount() === 0,
+        `${b.handlerCount()} handler(s)`);
     b.minimize();
     const waitC = invocation();
     const waitB = invocation();
@@ -227,34 +265,96 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     windows.length = 0;
 }
 
-// -- WaitForWindow / WaitForGeometry: the timeout_ms cap ---------------------
+// -- WaitForWindow: a window created minimized during an earlier wait ---------
+//
+// M is created minimized while `wait A` is pending and is not mapped when that
+// wait ends. A later `wait M` must not take it for a placed window: it replies
+// only once M is shown.
+
+{
+    const service = new WindowControlService({ version: 0 });
+    const waitA = invocation();
+    service.WaitForWindowAsync(['class', 'A', 5000], waitA);
+    const m = createWindow({ id: 9, wmClass: 'M' });
+    m.minimized = true;
+    createWindow({ id: 1, wmClass: 'A' }).map();
+    const waitM = invocation();
+    service.WaitForWindowAsync(['class', 'M', 5000], waitM);
+    check('wait M does not reply for a window mutter has not placed', waitM.reply === null, showReply(waitM));
+    m.minimized = false;
+    m.map();
+    check('wait M replies once M is shown', showReply(waitM) === '{"value":[9]}', showReply(waitM));
+    unexport(service);
+    windows.length = 0;
+}
+
+// -- WaitForWindow: a dialog shown, hidden, then retyped to NORMAL -----------
+//
+// Its 'shown' came while it was not NORMAL, so _evaluateWindow() never saw it
+// unhidden; the 'shown' handler must have recorded it.
+
+{
+    const service = new WindowControlService({ version: 0 });
+    const wait = invocation();
+    service.WaitForWindowAsync(['class', 'D', 300], wait);
+    const dialog = createWindow({ id: 6, wmClass: 'D', type: Meta.WindowType.MODAL_DIALOG });
+    dialog.map();
+    dialog.minimize();
+    dialog.type = Meta.WindowType.NORMAL;
+    dialog.emit('notify::window-type');
+    check('wait D finds a dialog shown before it was retyped to NORMAL', showReply(wait) === '{"value":[6]}',
+        showReply(wait));
+    unexport(service);
+    windows.length = 0;
+}
+
+// -- WaitForWindow / WaitForGeometry: the caller leaves the bus ---------------
+//
+// A killed caller's wait is dropped at once, with no reply and nothing left
+// behind, while another caller's wait stays pending.
 
 {
     const service = new WindowControlService({ version: 0 });
     const win = createWindow({ id: 7, wmClass: 'X' });
     win.map();
-    const overWindow = invocation();
-    const overGeometry = invocation();
-    service.WaitForWindowAsync(['class', 'never', 600001], overWindow);
-    service.WaitForGeometryAsync([7, 100, 600001], overGeometry);
-    check('WaitForWindow refuses timeout_ms 600001', overWindow.reply?.error === DBUS_ERROR_INVALID_ARGS,
-        showReply(overWindow));
-    check('WaitForGeometry refuses timeout_ms 600001', overGeometry.reply?.error === DBUS_ERROR_INVALID_ARGS,
-        showReply(overGeometry));
-    check('a refused wait leaves no handler', display.handlerCount() === 0 && win.handlerCount() === 0,
-        `display ${display.handlerCount()}, window ${win.handlerCount()}`);
+    const goneWindow = invocation();
+    const goneGeometry = invocation();
+    const stays = invocation();
+    service.WaitForWindowAsync(['class', 'never', 60000], goneWindow);
+    service.WaitForGeometryAsync([7, 60000, 60000], goneGeometry);
+    service.WaitForWindowAsync(['class', 'never', 60000], stays);
+    const goneSources = [
+        service._waiters[0].timeoutId,
+        service._geometryWatchers[0].quietId,
+        service._geometryWatchers[0].timeoutId,
+    ];
+    check('each pending wait watches its caller', bus.subscriptions.size === 3,
+        `${bus.subscriptions.size} subscription(s)`);
+    bus.leave(goneWindow.sender);
+    bus.leave(goneGeometry.sender);
+    check('a wait whose caller left gets no reply', goneWindow.replies === 0 && goneGeometry.replies === 0,
+        `${showReply(goneWindow)} ${showReply(goneGeometry)}`);
+    check('a wait whose caller left keeps no timer', !goneSources.some(sourceAlive),
+        `${goneSources.filter(sourceAlive)}`);
+    check('another caller\'s wait stays pending', service._waiters.length === 1 && stays.reply === null &&
+        service._geometryWatchers.length === 0 && bus.subscriptions.size === 1,
+        `waiters ${service._waiters.length}, watchers ${service._geometryWatchers.length}, ` +
+        `subscriptions ${bus.subscriptions.size}`);
+    bus.leave(stays.sender);
+    check('the last caller leaving drops every handler',
+        display.handlerCount() === 0 && win.handlerCount() === 0 && bus.subscriptions.size === 0,
+        `display ${display.handlerCount()}, window ${win.handlerCount()}, ` +
+        `subscriptions ${bus.subscriptions.size}`);
 
     // -- disable() while a WaitForWindow and a WaitForGeometry are pending ----
-    //
-    // 600000 is the cap itself, so these two also prove it is accepted.
 
+    // `unshown` is created during the wait and never mapped, so the teardown
+    // would leave it a first-show watch.
     const pendingWindow = invocation();
     const pendingGeometry = invocation();
-    service.WaitForWindowAsync(['class', 'never', 600000], pendingWindow);
-    service.WaitForGeometryAsync([7, 600000, 600000], pendingGeometry);
-    check('WaitForWindow accepts timeout_ms 600000', pendingWindow.reply === null, showReply(pendingWindow));
-    check('WaitForGeometry accepts timeout_ms 600000', pendingGeometry.reply === null,
-        showReply(pendingGeometry));
+    service.WaitForWindowAsync(['class', 'never', 60000], pendingWindow);
+    service.WaitForGeometryAsync([7, 60000, 60000], pendingGeometry);
+    const unshown = createWindow({ id: 10, wmClass: 'U' });
     const sources = [
         ...service._waiters.map(waiter => waiter.timeoutId),
         ...service._geometryWatchers.flatMap(watcher => [watcher.quietId, watcher.timeoutId]),
@@ -268,8 +368,11 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     check('unexport() fails the pending WaitForGeometry with Disabled',
         pendingGeometry.reply?.error === DBUS_ERROR_DISABLED && pendingGeometry.replies === 1,
         showReply(pendingGeometry));
-    check('unexport() leaves no handler', display.handlerCount() === 0 && win.handlerCount() === 0,
-        `display ${display.handlerCount()}, window ${win.handlerCount()}`);
+    check('unexport() leaves no handler, subscription or first-show watch',
+        display.handlerCount() === 0 && win.handlerCount() === 0 && unshown.handlerCount() === 0 &&
+        bus.subscriptions.size === 0,
+        `display ${display.handlerCount()}, window ${win.handlerCount()}, ` +
+        `unshown ${unshown.handlerCount()}, subscriptions ${bus.subscriptions.size}`);
     check('unexport() leaves no timer', !sources.some(sourceAlive), `${sources.filter(sourceAlive)}`);
     windows.length = 0;
 }

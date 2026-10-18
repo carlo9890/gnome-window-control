@@ -102,10 +102,12 @@ It pins:
 
 - the `disable()` teardown that [RELEASING.md](RELEASING.md) requires:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
-  `Disabled` and leaves no handler or timer, and `WindowKeybindings.disable()`
-  destroys a pending `UnmaximizeWait`;
-- the 600000 ms `timeout_ms` cap of both wait methods;
-- `WaitForWindow` for a window created during an earlier wait and mapped after it;
+  `Disabled` and leaves no handler, subscription or timer, and
+  `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
+- both wait methods drop a call, with no reply, when its caller leaves the bus;
+- `WaitForWindow` for a window created during an earlier wait and mapped after
+  it, for one created minimized during an earlier wait and not yet mapped, and
+  for a dialog retyped to `NORMAL` after it was shown and hidden;
 - the rules grace period for a window that is not `NORMAL` when shown.
 
 Add a case here for extension logic a fake window can drive. Anything reachable
@@ -164,17 +166,17 @@ Examples: `tests/test-workspaces-monitors.sh` (query),
 
 ## Minimum checks before a PR
 
-| Action | `mise run ci` | Rules grammar | Query | Modification |
-|--------|---------------|---------------|-------|--------------|
-| Before commit | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
-| Before push | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
-| Before release | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** |
+| Action | `mise run ci` | Rules grammar | Fake windows | Query | Modification |
+|--------|---------------|---------------|--------------|-------|--------------|
+| Before commit | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
+| Before push | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
+| Before release | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** |
 
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
-`tests/vectors/`. It is headless and takes well under a second, so there is no
-reason to skip it. Run the extension check against fake windows for any change
-to `extension.js`, `rules.js`, `keybindings.js` or `window-helpers.js`.
+`tests/vectors/`. The fake-windows column applies to any change to
+`extension.js`, `rules.js`, `keybindings.js` or `window-helpers.js`. Both are
+headless and take seconds, so there is no reason to skip them.
 
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
 [CODING.md](CODING.md)) and an actual reload-and-run in a shell (see
