@@ -784,7 +784,7 @@ class WindowControlService {
             this._waiters.push(waiter);
             waiter.callerWatch = this._watchCaller(invocation, () => {
                 console.debug(`[Window Control] WaitForWindow(${kind}) dropped (caller left the bus)`);
-                this._dropWaiter(waiter);
+                this._retireWaiter(waiter);
             });
             this._startWatching();
             this._trackExistingWindows();
@@ -986,7 +986,7 @@ class WindowControlService {
             this._evaluateWindow(win);
             // Handlers stay connected while ANY waiter is pending: a waiter this
             // window did not satisfy may still be waiting for a title or class
-            // that changes later. _finishWaiter() untracks everything through
+            // that changes later. _retireWaiter() untracks everything through
             // _stopWatching() once the last waiter is gone.
             if (this._waiters.length === 0)
                 this._untrackWindow(win);
@@ -1067,28 +1067,24 @@ class WindowControlService {
 
     // Call onGone once the caller of `invocation` leaves the bus, so a deferred
     // call whose caller was killed does not keep its handlers and timers until
-    // timeout_ms. A caller that left before the subscription is not seen: its
-    // call ends at the timeout. Returns null for a call with no sender (a
-    // peer-to-peer connection), where there is no name to watch.
+    // timeout_ms. A name watch, not a bare NameOwnerChanged subscription: the
+    // watch asks for the owner after it subscribes, so a caller that left
+    // before this handler ran (killed right after it sent the call) is seen
+    // too; a subscription alone misses it. Returns null for a call with no
+    // sender (a peer-to-peer connection), where there is no name to watch.
     _watchCaller(invocation, onGone) {
         const sender = invocation.get_sender();
         if (!sender)
             return null;
         const connection = invocation.get_connection();
-        const id = connection.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus',
-            'NameOwnerChanged', '/org/freedesktop/DBus', sender, Gio.DBusSignalFlags.NONE,
-            (conn, from, path, iface, signal, params) => {
-                const [, , newOwner] = params.deepUnpack();
-                if (newOwner === '')
-                    onGone();
-            });
+        const id = connection.watch_name(sender, Gio.BusNameWatcherFlags.NONE, null, () => onGone());
         return { connection, id };
     }
 
     _unwatchCaller(entry) {
         if (!entry.callerWatch)
             return;
-        entry.callerWatch.connection.signal_unsubscribe(entry.callerWatch.id);
+        entry.callerWatch.connection.unwatch_name(entry.callerWatch.id);
         entry.callerWatch = null;
     }
 
@@ -1111,27 +1107,18 @@ class WindowControlService {
     _finishWaiter(waiter, windowId) {
         this._retireWaiter(waiter);
         waiter.invocation.return_value(new GLib.Variant('(t)', [windowId]));
-        if (this._waiters.length === 0)
-            this._stopWatching();
     }
 
     // Retire a registered waiter with a D-Bus error instead of a window ID.
     _failWaiter(waiter, message) {
         this._retireWaiter(waiter);
         waiter.invocation.return_dbus_error(DBUS_ERROR_FAILED, message);
-        if (this._waiters.length === 0)
-            this._stopWatching();
-    }
-
-    // Retire a waiter whose caller left the bus. There is no one to reply to.
-    _dropWaiter(waiter) {
-        this._retireWaiter(waiter);
-        if (this._waiters.length === 0)
-            this._stopWatching();
     }
 
     // Drop a waiter's timeout source and caller watch and remove it from the
     // pending list, so exactly one reply can still be sent on its invocation.
+    // A waiter whose caller left the bus is only retired: there is no one to
+    // reply to. The last waiter gone ends the watch.
     _retireWaiter(waiter) {
         if (waiter.timeoutId) {
             GLib.source_remove(waiter.timeoutId);
@@ -1139,10 +1126,12 @@ class WindowControlService {
         }
         this._unwatchCaller(waiter);
         this._waiters = this._waiters.filter(w => w !== waiter);
+        if (this._waiters.length === 0)
+            this._stopWatching();
     }
 
     // Fail every pending WaitForWindow call and drop all signal handlers,
-    // subscriptions and timeout sources. Called from disable(); leaves nothing
+    // caller watches and timeout sources. Called from disable(); leaves nothing
     // behind.
     _cancelWaiters() {
         const pending = this._waiters;

@@ -104,7 +104,8 @@ It pins:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
   `Disabled` and leaves no handler, subscription or timer, and
   `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
-- both wait methods drop a call, with no reply, when its caller leaves the bus;
+- both wait methods drop a call, with no reply, when its caller leaves the bus,
+  also when the caller left before the call was handled;
 - `WaitForWindow` for a window created during an earlier wait and mapped after
   it, for one created minimized during an earlier wait and not yet mapped, and
   for a dialog retyped to `NORMAL` after it was shown and hidden;

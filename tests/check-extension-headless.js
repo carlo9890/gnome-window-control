@@ -173,26 +173,33 @@ globalThis.global = {
     get_current_time: () => 0,
 };
 
-// The session bus as the extension sees it: NameOwnerChanged subscriptions,
-// and a way to make a caller leave.
+// The session bus as the extension sees it: name watches, and a way to make a
+// caller leave. As in GDBus, a watch on a name that has already left reports it
+// gone from the main loop.
 const bus = {
-    subscriptions: new Map(),
+    watches: new Map(),
+    gone: new Set(),
     nextId: 1,
-    signal_subscribe(sender, iface, member, path, arg0, flags, callback) {
+    watch_name(name, flags, appeared, vanished) {
         const id = this.nextId++;
-        this.subscriptions.set(id, { arg0, callback });
+        this.watches.set(id, { name, vanished });
+        if (this.gone.has(name)) {
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this.watches.get(id)?.vanished(this, name);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
         return id;
     },
-    signal_unsubscribe(id) {
-        if (!this.subscriptions.delete(id))
-            throw new Error(`bad subscription id ${id}`);
+    unwatch_name(id) {
+        if (!this.watches.delete(id))
+            throw new Error(`bad watch id ${id}`);
     },
     leave(name) {
-        const params = new GLib.Variant('(sss)', [name, name, '']);
-        for (const { arg0, callback } of [...this.subscriptions.values()]) {
-            if (arg0 === name)
-                callback(this, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
-                    'NameOwnerChanged', params);
+        this.gone.add(name);
+        for (const [id, watch] of [...this.watches]) {
+            if (watch.name === name && this.watches.has(id))
+                watch.vanished(this, name);
         }
     },
 };
@@ -328,8 +335,8 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
         service._geometryWatchers[0].quietId,
         service._geometryWatchers[0].timeoutId,
     ];
-    check('each pending wait watches its caller', bus.subscriptions.size === 3,
-        `${bus.subscriptions.size} subscription(s)`);
+    check('each pending wait watches its caller', bus.watches.size === 3,
+        `${bus.watches.size} watch(es)`);
     bus.leave(goneWindow.sender);
     bus.leave(goneGeometry.sender);
     check('a wait whose caller left gets no reply', goneWindow.replies === 0 && goneGeometry.replies === 0,
@@ -337,14 +344,29 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     check('a wait whose caller left keeps no timer', !goneSources.some(sourceAlive),
         `${goneSources.filter(sourceAlive)}`);
     check('another caller\'s wait stays pending', service._waiters.length === 1 && stays.reply === null &&
-        service._geometryWatchers.length === 0 && bus.subscriptions.size === 1,
+        service._geometryWatchers.length === 0 && bus.watches.size === 1,
         `waiters ${service._waiters.length}, watchers ${service._geometryWatchers.length}, ` +
-        `subscriptions ${bus.subscriptions.size}`);
+        `watches ${bus.watches.size}`);
     bus.leave(stays.sender);
     check('the last caller leaving drops every handler',
-        display.handlerCount() === 0 && win.handlerCount() === 0 && bus.subscriptions.size === 0,
+        display.handlerCount() === 0 && win.handlerCount() === 0 && bus.watches.size === 0,
         `display ${display.handlerCount()}, window ${win.handlerCount()}, ` +
-        `subscriptions ${bus.subscriptions.size}`);
+        `watches ${bus.watches.size}`);
+
+    // A fire-and-forget caller has left before its call is handled.
+    const leftFirstWindow = invocation();
+    const leftFirstGeometry = invocation();
+    bus.leave(leftFirstWindow.sender);
+    bus.leave(leftFirstGeometry.sender);
+    service.WaitForWindowAsync(['class', 'never', 60000], leftFirstWindow);
+    service.WaitForGeometryAsync([7, 60000, 60000], leftFirstGeometry);
+    await sleep(50);
+    check('a wait whose caller left before it was handled is dropped',
+        service._waiters.length === 0 && service._geometryWatchers.length === 0 &&
+        leftFirstWindow.replies === 0 && leftFirstGeometry.replies === 0 &&
+        display.handlerCount() === 0 && win.handlerCount() === 0 && bus.watches.size === 0,
+        `waiters ${service._waiters.length}, watchers ${service._geometryWatchers.length}, ` +
+        `display ${display.handlerCount()}, window ${win.handlerCount()}, watches ${bus.watches.size}`);
 
     // -- disable() while a WaitForWindow and a WaitForGeometry are pending ----
 
@@ -368,11 +390,11 @@ const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     check('unexport() fails the pending WaitForGeometry with Disabled',
         pendingGeometry.reply?.error === DBUS_ERROR_DISABLED && pendingGeometry.replies === 1,
         showReply(pendingGeometry));
-    check('unexport() leaves no handler, subscription or first-show watch',
+    check('unexport() leaves no handler, caller watch or first-show watch',
         display.handlerCount() === 0 && win.handlerCount() === 0 && unshown.handlerCount() === 0 &&
-        bus.subscriptions.size === 0,
+        bus.watches.size === 0,
         `display ${display.handlerCount()}, window ${win.handlerCount()}, ` +
-        `unshown ${unshown.handlerCount()}, subscriptions ${bus.subscriptions.size}`);
+        `unshown ${unshown.handlerCount()}, watches ${bus.watches.size}`);
     check('unexport() leaves no timer', !sources.some(sourceAlive), `${sources.filter(sourceAlive)}`);
     windows.length = 0;
 }
