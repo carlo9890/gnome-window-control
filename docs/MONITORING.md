@@ -47,6 +47,10 @@ may contain.
   for the one case GDBus conflates, the detail text) that produce this message,
   including the `WindowControl.Disabled` error the extension returns when it is
   disabled while a `WaitForWindow` or `WaitForGeometry` call is pending.
+- **The message starts with "Cannot connect to the session bus"** — wctl
+  reached no bus at all (`map_connect_err` in `cli/src/dbus.rs`); check
+  `DBUS_SESSION_BUS_ADDRESS` against the address the message names before you
+  touch the extension.
 - **`wctl list`/`info`/`focused` return empty or error** — check the log for a
   JavaScript exception in `ListDetailed`; the handler returns `'[]'` on any throw.
 - **A method silently no-ops** — the handler caught an exception and returned
