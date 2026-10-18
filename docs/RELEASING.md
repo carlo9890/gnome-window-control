@@ -101,12 +101,14 @@ then upload the same zip.
 
 1. Build the zip: `./scripts/build.sh all`. The archive must have
    `metadata.json` at its root, not inside a subdirectory — `build.sh` zips the
-   contents of the extension directory (`extension.js`, `dbus-interface.js`,
-   `rules.js`, `rules-format.js`, `keybindings.js`, `window-helpers.js`,
-   `schemas/*.gschema.xml`, `metadata.json`, `README.md`, `LICENSE`), so this
-   holds as long as you use it. `gschemas.compiled` is excluded on purpose:
-   the review rejects a shipped compiled schema (`EGO-P-006`), because
-   extensions.gnome.org and `gnome-extensions install` compile the XML.
+   git-tracked files of the extension directory (`extension.js`,
+   `dbus-interface.js`, `rules.js`, `rules-format.js`, `keybindings.js`,
+   `window-helpers.js`, `schemas/*.gschema.xml`, `metadata.json`, `README.md`,
+   `LICENSE`), so this holds as long as you use it. An untracked or ignored
+   file never ships; commit a new file before it can. `gschemas.compiled` is
+   ignored on purpose: the review rejects a shipped compiled schema
+   (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
+   compile the XML.
 2. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
    <https://extensions.gnome.org/upload/>.
 3. Wait for the review. A human reviewer reads every line of the extension, and
