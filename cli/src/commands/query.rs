@@ -11,6 +11,7 @@ use crate::commands::{
 use crate::fail::{Fail, Result, EXIT_NO_EXTENSION};
 use crate::model::{self, Ctx, Window};
 use crate::selector;
+use crate::table::sanitize;
 
 fn workspace_cell(window: &Window) -> String {
     let index = model::number(window, "workspace_index");
@@ -159,9 +160,10 @@ fn print_window(window: &Window, json_output: bool) {
     };
 
     println!("Window:    {}", model::id(window));
-    println!("Title:     {}", model::text(window, "title"));
-    println!("Class:     {}", model::text(window, "wm_class"));
-    println!("Instance:  {}", model::text(window, "wm_class_instance"));
+    let text = |key| sanitize(model::text(window, key));
+    println!("Title:     {}", text("title"));
+    println!("Class:     {}", text("wm_class"));
+    println!("Instance:  {}", text("wm_class_instance"));
     println!("PID:       {}", model::number(window, "pid"));
     println!("Workspace: {}", workspace_cell(window));
     println!("Monitor:   {}", model::number(window, "monitor_index"));

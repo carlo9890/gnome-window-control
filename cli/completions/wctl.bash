@@ -4,7 +4,7 @@
 # Window IDs come straight out of the compact JSON list. No jq: wctl has no
 # runtime dependencies and its completion must not add one.
 _wctl_get_window_ids() {
-    wctl list --json 2>/dev/null | grep -o '"id":[0-9]\+' | cut -d: -f2
+    wctl --timeout 1 list --json 2>/dev/null | grep -o '"id":[0-9]\+' | cut -d: -f2
 }
 
 # Words accepted where a <WINDOW> selector goes: ids, "focused", and the

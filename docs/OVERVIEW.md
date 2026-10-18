@@ -53,8 +53,9 @@ gnome-window-control-extension-requirements.md   original design spec
   lives in `dbus-interface.js` and is imported into `extension.js`.
 - `wctl` speaks D-Bus directly through **zbus's blocking API** — no gdbus, no
   busctl, no jq, and no async runtime. It has no runtime dependencies at all: the
-  release asset is a static musl binary. Failures funnel through
-  `is_extension_not_running` in `dbus.rs` for a consistent hint.
+  release asset is a static musl binary. Failures funnel through `map_err`
+  (a call) and `map_connect_err` (the connection) in `dbus.rs` for a
+  consistent hint.
 - The session connection is opened **lazily**, so every argument-validation error
   is reported without touching the bus. That is what keeps the guard tests in
   `cli/tests/cli.rs` headless.

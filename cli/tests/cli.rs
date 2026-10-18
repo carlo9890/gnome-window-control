@@ -340,6 +340,64 @@ fn stray_arguments_are_refused_everywhere() {
     expect_die("Usage: wctl focus", &["focus", "focused", "junk"]);
     expect_die("Usage: wctl close", &["close", "-c", "kitty", "now"]);
     expect_die("Usage: wctl workspace", &["workspace", "1", "2"]);
+    expect_die("Unexpected argument: zsh", &["completion", "bash", "zsh"]);
+}
+
+/// A bad place token is a usage error, reported before the workarea is
+/// fetched: with the bus unreachable, reaching it would print the connect
+/// error instead.
+#[test]
+fn place_tokens_are_checked_before_any_bus_call() {
+    let cases = [
+        (
+            ["sideways", "0", "50%", "50%"],
+            "Invalid X position: sideways. Use a number or left|center|right",
+        ),
+        (
+            ["0", "left", "50%", "50%"],
+            "Invalid Y position: left. Use a number or top|center|bottom",
+        ),
+        (
+            ["0", "0", "bogus", "50%"],
+            "Invalid WIDTH: bogus. Use a positive number or percentage like 50%",
+        ),
+        (
+            ["0", "0", "50%", "-5"],
+            "Invalid HEIGHT: -5. Use a positive number or percentage like 50%",
+        ),
+        (
+            ["0", "0", "0%", "50%"],
+            "WIDTH percentage resolves to 0 pixels: 0%",
+        ),
+    ];
+    for (tokens, message) in cases {
+        for command in [
+            ["place", "123"].as_slice(),
+            ["place", "-c", "kitty"].as_slice(),
+            ["resolve-place"].as_slice(),
+        ] {
+            let args = [command, tokens.as_slice()].concat();
+            let (out, code) = wctl(&args);
+            assert_eq!(code, 1, "wctl {args:?} printed: {out}");
+            assert!(
+                out.contains(message) && !out.contains("connect"),
+                "wctl {args:?} should print {message:?}, printed: {out}"
+            );
+        }
+    }
+}
+
+/// A session bus that cannot be reached is exit 5, like a bus with nobody
+/// serving the interface, and the message still says why.
+#[test]
+fn an_unreachable_bus_is_not_running() {
+    let (out, code) = wctl(&["list"]);
+    assert_eq!(code, 5, "wctl list printed: {out}");
+    assert!(
+        out.contains("Cannot connect to the session bus")
+            && out.contains("Window Control extension is not running."),
+        "wctl list printed: {out}"
+    );
 }
 
 /// A window titled `--json` is still addressable: the output flags are taken
@@ -447,6 +505,7 @@ fn list_filter_guards() {
 fn dispatch_guards() {
     expect_die("Unknown shell: elvish", &["completion", "elvish"]);
     expect_die("Usage: wctl completion", &["completion"]);
+    expect_die("Usage: wctl completion", &["completion", ""]);
     expect_die("Unknown command", &["no-such-command"]);
 }
 

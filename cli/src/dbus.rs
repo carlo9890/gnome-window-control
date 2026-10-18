@@ -70,11 +70,9 @@ fn is_extension_not_running(err: &zbus::Error) -> bool {
                 .is_some_and(|detail| detail.contains("does not exist")),
             _ => false,
         },
-        // No bus, or a bus with nobody to answer: the transport's own words.
-        other => {
-            let text = other.to_string();
-            text.contains("was not provided") || text.contains("No route to host")
-        }
+        // A session bus that cannot be reached at all is `map_connect_err`'s
+        // case: every failure to open the connection is "not running".
+        _ => false,
     }
 }
 
@@ -85,9 +83,7 @@ fn is_extension_not_running(err: &zbus::Error) -> bool {
 /// `TimedOut` rather than a D-Bus error. `NoReply`/`Timeout` from the bus
 /// daemon mean the same thing from further away, so both classify the same.
 ///
-/// This is matched on the error VALUE, not its text: unlike the
-/// not-running strings below, which had to keep matching the wording gdbus and
-/// busctl produced, nothing pins the shape of this one.
+/// This is matched on the error VALUE, not its text.
 fn is_timeout(err: &zbus::Error) -> bool {
     match err {
         zbus::Error::InputOutput(io) => io.kind() == std::io::ErrorKind::TimedOut,
@@ -146,13 +142,30 @@ fn map_err(err: zbus::Error) -> Fail {
     Fail::error(format!("D-Bus call failed: {err}"))
 }
 
+/// Classify a failure to open the session connection.
+///
+/// No bus at the address, a malformed `DBUS_SESSION_BUS_ADDRESS` and a refused
+/// handshake are all zbus variants of one fact: nothing can serve the
+/// interface. That is "not running" by position, not by the error text. The
+/// transport's own words stay in the message, because they name the address
+/// that is wrong.
+fn map_connect_err(err: zbus::Error) -> Fail {
+    if is_timeout(&err) {
+        return map_err(err);
+    }
+    Fail::error(format!(
+        "Cannot connect to the session bus: {err}. {NOT_RUNNING}"
+    ))
+    .with_code(EXIT_NO_EXTENSION)
+}
+
 /// A session connection whose method calls give up after `timeout`.
 fn session_connection(timeout: Duration) -> Result<Connection> {
     Builder::session()
-        .map_err(map_err)?
+        .map_err(map_connect_err)?
         .method_timeout(timeout)
         .build()
-        .map_err(map_err)
+        .map_err(map_connect_err)
 }
 
 fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
@@ -314,5 +327,128 @@ impl Bus {
             &(window_id, quiet_ms, timeout_ms),
             client_bound,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::fail::EXIT_ERROR;
+
+    fn method_error(name: &str, detail: &str) -> zbus::Error {
+        let reply = zbus::Message::method_call(PATH, "Probe")
+            .expect("a valid path and member")
+            .build(&())
+            .expect("an empty body");
+        zbus::Error::MethodError(
+            zbus::names::ErrorName::try_from(name)
+                .expect("a valid error name")
+                .into(),
+            Some(detail.to_string()),
+            reply,
+        )
+    }
+
+    fn timed_out() -> zbus::Error {
+        zbus::Error::InputOutput(std::sync::Arc::new(std::io::Error::from(
+            std::io::ErrorKind::TimedOut,
+        )))
+    }
+
+    /// The exit code, whether the message goes to stdout, and the message.
+    fn mapped(fail: Fail) -> (i32, bool, String) {
+        (fail.code(), fail.is_plain(), fail.to_string())
+    }
+
+    #[test]
+    fn named_extension_errors_keep_their_code_and_stream() {
+        assert_eq!(
+            mapped(map_err(method_error(ERROR_NOT_FOUND, "Window 7 not found"))),
+            (2, true, "Window 7 not found".to_string())
+        );
+        assert_eq!(
+            mapped(map_err(method_error(
+                ERROR_REFUSED,
+                "Window 7 is maximized"
+            ))),
+            (3, true, "Window 7 is maximized".to_string())
+        );
+        assert_eq!(
+            mapped(map_err(method_error(
+                ERROR_SETTLE_TIMEOUT,
+                "No window matched"
+            ))),
+            (4, false, "No window matched".to_string())
+        );
+    }
+
+    #[test]
+    fn a_reply_that_never_came_is_a_timeout() {
+        for err in [
+            method_error("org.freedesktop.DBus.Error.NoReply", "no reply"),
+            method_error("org.freedesktop.DBus.Error.Timeout", "timed out"),
+            timed_out(),
+        ] {
+            let (code, plain, _) = mapped(map_err(err));
+            assert_eq!((code, plain), (4, false));
+        }
+    }
+
+    #[test]
+    fn nobody_serving_the_interface_is_not_running() {
+        for err in [
+            method_error(ERROR_SERVICE_UNKNOWN, "The name is not activatable"),
+            method_error(ERROR_DISABLED, "The extension was disabled"),
+            method_error(
+                ERROR_UNKNOWN_METHOD,
+                "Object does not exist at path \u{201c}/org/gnome/Shell/Extensions/WindowControl\u{201d}",
+            ),
+        ] {
+            assert_eq!(mapped(map_err(err)), (5, false, NOT_RUNNING.to_string()));
+        }
+    }
+
+    #[test]
+    fn a_missing_method_is_an_outdated_extension() {
+        let (code, plain, message) = mapped(map_err(method_error(
+            ERROR_UNKNOWN_METHOD,
+            "No such method \u{201c}GetCapabilities\u{201d}",
+        )));
+        assert_eq!((code, plain), (5, false));
+        assert!(
+            message.contains("older than this wctl"),
+            "printed: {message}"
+        );
+    }
+
+    #[test]
+    fn the_detail_of_a_generic_failure_is_never_read() {
+        let (code, plain, message) = mapped(map_err(method_error(
+            "org.freedesktop.DBus.Error.Failed",
+            "Workspace 9 does not exist",
+        )));
+        assert_eq!((code, plain), (EXIT_ERROR, false));
+        assert!(
+            message.starts_with("D-Bus call failed: "),
+            "printed: {message}"
+        );
+    }
+
+    #[test]
+    fn a_session_bus_that_cannot_be_reached_is_not_running() {
+        for err in [
+            zbus::Error::Address("Invalid address".to_string()),
+            zbus::Error::Handshake("refused".to_string()),
+        ] {
+            let (code, plain, message) = mapped(map_connect_err(err));
+            assert_eq!((code, plain), (5, false));
+            assert!(
+                message.starts_with("Cannot connect to the session bus: ")
+                    && message.ends_with(NOT_RUNNING),
+                "printed: {message}"
+            );
+        }
+        assert_eq!(map_connect_err(timed_out()).code(), 4);
     }
 }
