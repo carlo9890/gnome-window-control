@@ -162,8 +162,10 @@ Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
 
 The keys of a rule object and of `match` are checked in JavaScript property
-order: integer-like keys such as `"1"` first, ascending, then the other keys in
-file order. Of two bad keys, the message names the first in that order.
+order: array indices first, ascending, then the other keys in file order. An
+array index is the decimal form of an integer from 0 to 4294967294, with no
+sign and no leading zero: `"1"` is one, `"01"` and `"4294967295"` are not. The
+message names the first key in that order that fails a check.
 
 One verdict has two texts. A number too large for a double, such as `1e400`,
 is refused by both: the extension reports it as the key's own message below,

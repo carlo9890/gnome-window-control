@@ -185,7 +185,7 @@ fn place_usage(label: &str) -> String {
 /// names the same one only if it walks it too.
 fn js_entries(object: &Map<String, Value>) -> Vec<(&String, &Value)> {
     let mut entries: Vec<_> = object.iter().collect();
-    entries.sort_by_key(|(key, _)| array_index(key).map_or((1, 0), |index| (0, index)));
+    entries.sort_by_cached_key(|(key, _)| array_index(key).map_or((1, 0), |index| (0, index)));
     entries
 }
 

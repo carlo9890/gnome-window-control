@@ -359,6 +359,24 @@
       "message": "rules[0].1: unknown key (use match, place, tile, center, workspace, monitor)"
     },
     {
+      "name": "a key with a leading zero is not an array index and keeps its file position",
+      "document": [{ "match": { "class": "", "01": "x" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.class: must not be empty"
+    },
+    {
+      "name": "the largest array index is checked before an earlier empty value",
+      "document": [{ "match": { "class": "", "4294967294": "x" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.4294967294: unknown key (use class, title, substr, title_prefix, title_suffix)"
+    },
+    {
+      "name": "one past the largest array index keeps its file position",
+      "document": [{ "match": { "class": "", "4294967295": "x" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.class: must not be empty"
+    },
+    {
       "name": "center is not an axis",
       "document": [{ "match": { "class": "a" }, "center": "middle" }],
       "valid": false,
