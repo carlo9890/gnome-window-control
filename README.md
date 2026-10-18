@@ -275,7 +275,9 @@ as the `wctl` commands:
   the last workspace adds one workspace at the end and puts the window there;
   the workspaces up to that index are not created.
 - **monitor** — a monitor index; the workarea that `place`/`tile`/`center`
-  resolve against, and where the window is placed.
+  resolve against, and where the window is placed. When that monitor does not
+  exist, for example on an undocked laptop, the window is not moved or placed;
+  only `workspace` applies.
 
 `place`, `tile` and `center` are mutually exclusive in one rule; combine any of
 them with `workspace` and `monitor`. The first matching rule wins, in file order,

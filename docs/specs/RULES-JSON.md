@@ -234,8 +234,9 @@ Action order within `_apply`:
    it does not create the workspaces in between, so the window does not end on
    the rule's index (observed on GNOME Shell 50.1: rule index 7, window on
    index 2).
-2. `monitor` — skipped with a debug line when the index exceeds
-   `get_n_monitors()`.
+2. `monitor` — when the index is not below `get_n_monitors()`, the rest of
+   the rule (the monitor move and the geometry) is skipped with a debug line.
+   The workspace step has already run.
 3. Geometry — skipped when the window is fullscreen. A maximized window is
    unmaximized first, and the frame is requested after the next `size-changed`
    or `UNMAXIMIZE_SETTLE_MS`, whichever comes first, because a frame requested
