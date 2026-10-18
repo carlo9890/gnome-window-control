@@ -56,9 +56,10 @@ ACTIVATION COMMANDS:
     focus <WINDOW>          Focus window (without raising)
     wait -c|-t|-s|-p <VALUE> [--timeout <SECONDS>]
                             Wait until a matching window is shown and print its ID
-                            (default timeout 10 s; exits 4 on timeout). Returns
-                            only once the window is mapped and placed, so a
-                            geometry command issued right after it sticks.
+                            (default timeout 10 s, at most 600 s; exits 4 on
+                            timeout). Returns only once the window is mapped
+                            and placed, so a geometry command issued right
+                            after it sticks.
 
 INFO COMMANDS:
     info <WINDOW>           Show detailed window information

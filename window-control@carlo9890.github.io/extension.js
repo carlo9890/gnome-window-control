@@ -41,6 +41,11 @@ const CAPABILITIES = [
 // MATCH_KINDS in rules-format.js); those stay out of this interface.
 const SELECTOR_KINDS = ['class', 'title', 'substring', 'pid'];
 
+// The longest timeout_ms WaitForWindow and WaitForGeometry accept. Nothing
+// watches the caller, so a pending call outlives a caller that was killed and
+// keeps its handlers and timers until timeout_ms; the cap bounds that.
+const MAX_WAIT_TIMEOUT_MS = 600000;
+
 const DBUS_OBJECT_PATH = '/org/gnome/Shell/Extensions/WindowControl';
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 const DBUS_ERROR_NOT_FOUND = 'org.gnome.Shell.Extensions.WindowControl.NotFound';
@@ -757,10 +762,12 @@ class WindowControlService {
         let waiter = null;
         try {
             const predicate = this._matchPredicate(kind, value);
-            if (!predicate || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+            if (!predicate || !Number.isInteger(timeoutMs) || timeoutMs <= 0 ||
+                timeoutMs > MAX_WAIT_TIMEOUT_MS) {
                 console.debug(`[Window Control] WaitForWindow() -> InvalidArgs`);
                 invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
-                    `WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0`);
+                    'WaitForWindow: kind must be class|title|substring|pid (pid numeric) and ' +
+                    `0 < timeout_ms <= ${MAX_WAIT_TIMEOUT_MS}`);
                 return;
             }
             console.debug(`[Window Control] WaitForWindow(${kind}, ..., ${timeoutMs}) validated`);
@@ -812,10 +819,11 @@ class WindowControlService {
         let watcher = null;
         try {
             if (!Number.isInteger(quietMs) || quietMs <= 0 ||
-                !Number.isInteger(timeoutMs) || timeoutMs < quietMs) {
+                !Number.isInteger(timeoutMs) || timeoutMs < quietMs ||
+                timeoutMs > MAX_WAIT_TIMEOUT_MS) {
                 console.debug(`[Window Control] WaitForGeometry() -> InvalidArgs`);
                 invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
-                    'WaitForGeometry: quiet_ms > 0 and timeout_ms >= quiet_ms');
+                    `WaitForGeometry: quiet_ms > 0 and quiet_ms <= timeout_ms <= ${MAX_WAIT_TIMEOUT_MS}`);
                 return;
             }
 

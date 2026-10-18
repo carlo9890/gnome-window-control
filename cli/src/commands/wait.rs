@@ -21,6 +21,9 @@ const USAGE: &str =
 /// against a shell that never replies at all.
 const CLIENT_GRACE_SECONDS: u64 = 5;
 
+/// The longest `--timeout`: the extension's `MAX_WAIT_TIMEOUT_MS` (10 minutes).
+const MAX_TIMEOUT_SECONDS: i32 = 600;
+
 pub fn wait(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let mut kind: Option<selector::Kind> = None;
     let mut value = String::new();
@@ -84,14 +87,15 @@ pub fn wait(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 }
 
 fn parse_timeout(token: &str) -> Result<i32> {
-    let seconds = if is_positive_integer(token) {
-        token.parse::<i32>().ok()
-    } else {
-        None
-    };
-    // A timeout large enough to overflow the millisecond argument is refused
-    // here rather than by the extension.
-    seconds
-        .filter(|s| s.checked_mul(1000).is_some())
-        .ok_or_else(|| Fail::error("Timeout must be a positive number of seconds"))
+    if !is_positive_integer(token) {
+        return Err(Fail::error("Timeout must be a positive number of seconds"));
+    }
+    // The extension refuses a timeout_ms above its cap with InvalidArgs; a
+    // timeout above it is refused here, before any bus call.
+    match token.parse::<i32>() {
+        Ok(seconds) if seconds <= MAX_TIMEOUT_SECONDS => Ok(seconds),
+        _ => Err(Fail::error(format!(
+            "Timeout must be at most {MAX_TIMEOUT_SECONDS} seconds"
+        ))),
+    }
 }

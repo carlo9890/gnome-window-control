@@ -138,9 +138,10 @@ export const DBUS_INTERFACE_XML = `
             the extension was disabled while a WaitForWindow or
             WaitForGeometry call was pending
         org.freedesktop.DBus.Error.InvalidArgs
-            an argument was not a finite number, a size was not positive, or a
+            an argument was not a finite number, a size was not positive, a
             wait selector was refused (unknown kind, empty substring, pid that
-            is not a positive decimal integer)
+            is not a positive decimal integer), or a wait timeout_ms was above
+            600000 (10 minutes)
         org.freedesktop.DBus.Error.Failed
             the handler raised something unexpected
 
@@ -425,7 +426,7 @@ export const DBUS_INTERFACE_XML = `
       WaitForWindow: Block until a window matching the selector is shown
       Args: s - kind: "class" | "title" | "substring" | "pid"
             s - value to match
-            i - timeout in milliseconds (> 0)
+            i - timeout in milliseconds (> 0, at most 600000)
       Returns: t - window ID (0 on timeout)
       The reply is deferred until a matching window has been shown (mapped and
       placed by mutter) or the timeout elapses; the shell main loop is never
@@ -447,7 +448,7 @@ export const DBUS_INTERFACE_XML = `
       WaitForGeometry: Block until a window's frame has stopped changing
       Args: t - window ID
             i - quiet_ms: how long the frame must hold still (> 0)
-            i - timeout_ms: give up after this (>= quiet_ms)
+            i - timeout_ms: give up after this (>= quiet_ms, at most 600000)
       Returns: (iiii) - the settled frame rect
       The reply is deferred until size-changed and position-changed have both
       been silent for quiet_ms, then carries the frame as it then stands. Only
