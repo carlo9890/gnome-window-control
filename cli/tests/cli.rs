@@ -388,14 +388,15 @@ fn place_tokens_are_checked_before_any_bus_call() {
 }
 
 /// A session bus that cannot be reached is exit 5, like a bus with nobody
-/// serving the interface, and the message still says why.
+/// serving the interface, but the message points at the bus address.
 #[test]
-fn an_unreachable_bus_is_not_running() {
+fn an_unreachable_bus_names_the_session_bus() {
     let (out, code) = wctl(&["list"]);
     assert_eq!(code, 5, "wctl list printed: {out}");
     assert!(
         out.contains("Cannot connect to the session bus")
-            && out.contains("Window Control extension is not running."),
+            && out.contains("DBUS_SESSION_BUS_ADDRESS")
+            && !out.contains("extension is not running"),
         "wctl list printed: {out}"
     );
 }

@@ -21,6 +21,8 @@ pub const PATH: &str = "/org/gnome/Shell/Extensions/WindowControl";
 pub const IFACE: &str = "org.gnome.Shell.Extensions.WindowControl";
 
 const NOT_RUNNING: &str = "Window Control extension is not running. Enable it in GNOME Extensions.";
+const NO_SESSION_BUS: &str = "Run wctl from the user's graphical session, or set \
+     DBUS_SESSION_BUS_ADDRESS to its bus (sudo, ssh and cron do not set it).";
 
 /// Errors the interface raises by name.
 ///
@@ -71,7 +73,7 @@ fn is_extension_not_running(err: &zbus::Error) -> bool {
             _ => false,
         },
         // A session bus that cannot be reached at all is `map_connect_err`'s
-        // case: every failure to open the connection is "not running".
+        // case, and says so by its own message.
         _ => false,
     }
 }
@@ -145,16 +147,18 @@ fn map_err(err: zbus::Error) -> Fail {
 /// Classify a failure to open the session connection.
 ///
 /// No bus at the address, a malformed `DBUS_SESSION_BUS_ADDRESS` and a refused
-/// handshake are all zbus variants of one fact: nothing can serve the
-/// interface. That is "not running" by position, not by the error text. The
-/// transport's own words stay in the message, because they name the address
-/// that is wrong.
+/// handshake are all zbus variants of one fact: wctl reached no session bus.
+/// The extension may be fine -- sudo, ssh and cron run without the graphical
+/// session's bus address -- so the hint names the bus, not the extension. It
+/// keeps exit 5 by position, not by the error text, and the transport's own
+/// words stay in the message, because they name the address that is wrong.
+///
+/// No timeout branch: zbus 5 applies `method_timeout` to method calls only,
+/// never to the connect and the handshake, so a failure here is never the
+/// shell being slow to reply.
 fn map_connect_err(err: zbus::Error) -> Fail {
-    if is_timeout(&err) {
-        return map_err(err);
-    }
     Fail::error(format!(
-        "Cannot connect to the session bus: {err}. {NOT_RUNNING}"
+        "Cannot connect to the session bus: {err}. {NO_SESSION_BUS}"
     ))
     .with_code(EXIT_NO_EXTENSION)
 }
@@ -436,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn a_session_bus_that_cannot_be_reached_is_not_running() {
+    fn a_session_bus_that_cannot_be_reached_names_the_bus() {
         for err in [
             zbus::Error::Address("Invalid address".to_string()),
             zbus::Error::Handshake("refused".to_string()),
@@ -445,10 +449,10 @@ mod tests {
             assert_eq!((code, plain), (5, false));
             assert!(
                 message.starts_with("Cannot connect to the session bus: ")
-                    && message.ends_with(NOT_RUNNING),
+                    && message.ends_with(NO_SESSION_BUS)
+                    && !message.contains(NOT_RUNNING),
                 "printed: {message}"
             );
         }
-        assert_eq!(map_connect_err(timed_out()).code(), 4);
     }
 }
