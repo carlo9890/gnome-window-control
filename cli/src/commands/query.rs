@@ -105,7 +105,7 @@ pub fn focused(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         return Ok(());
     };
 
-    print_window(window, json_output);
+    print!("{}", window_text(window, json_output));
     Ok(())
 }
 
@@ -127,17 +127,15 @@ pub fn info(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         return Err(not_found(id));
     };
 
-    print_window(window, json_output);
+    print!("{}", window_text(window, json_output));
     Ok(())
 }
 
-fn print_window(window: &Window, json_output: bool) {
+/// The `info` and `focused` output for one window, newline-terminated.
+fn window_text(window: &Window, json_output: bool) -> String {
     if json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(window).unwrap_or_else(|_| window.to_string())
-        );
-        return;
+        let json = serde_json::to_string_pretty(window).unwrap_or_else(|_| window.to_string());
+        return format!("{json}\n");
     }
 
     let (x, y, width, height) = model::frame_rect(window);
@@ -159,25 +157,32 @@ fn print_window(window: &Window, json_output: bool) {
         states.join(", ")
     };
 
-    println!("Window:    {}", model::id(window));
     let text = |key| sanitize(model::text(window, key));
-    println!("Title:     {}", text("title"));
-    println!("Class:     {}", text("wm_class"));
-    println!("Instance:  {}", text("wm_class_instance"));
-    println!("PID:       {}", model::number(window, "pid"));
-    println!("Workspace: {}", workspace_cell(window));
-    println!("Monitor:   {}", model::number(window, "monitor_index"));
-    println!(
-        "Focused:   {}",
-        if model::flag(window, "has_focus") {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    println!("Position:  {x}, {y}");
-    println!("Size:      {width} x {height}");
-    println!("States:    {states}");
+    let focused = if model::flag(window, "has_focus") {
+        "yes"
+    } else {
+        "no"
+    };
+    format!(
+        "Window:    {}\n\
+         Title:     {}\n\
+         Class:     {}\n\
+         Instance:  {}\n\
+         PID:       {}\n\
+         Workspace: {}\n\
+         Monitor:   {}\n\
+         Focused:   {focused}\n\
+         Position:  {x}, {y}\n\
+         Size:      {width} x {height}\n\
+         States:    {states}\n",
+        model::id(window),
+        text("title"),
+        text("wm_class"),
+        text("wm_class_instance"),
+        model::number(window, "pid"),
+        workspace_cell(window),
+        model::number(window, "monitor_index"),
+    )
 }
 
 pub fn workspaces(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -368,5 +373,41 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             document["message"] = Value::String(failure.to_string());
             Err(Fail::plain(document.to_string()).with_code(failure.code()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn window_text_cannot_be_forged_by_a_title_or_a_class() {
+        let window = json!({
+            "id": 12,
+            "title": "evil\nClass:     forged\u{1b}[31mRED",
+            "wm_class": "kitty\u{1b}]0;x\u{7}",
+            "wm_class_instance": "kitty\t1",
+            "pid": 42,
+            "workspace_index": 0,
+            "monitor_index": 1,
+            "has_focus": true,
+            "is_maximized": true,
+            "frame_rect": {"x": 10, "y": 20, "width": 800, "height": 600},
+        });
+        assert_eq!(
+            window_text(&window, false),
+            "Window:    12\n\
+             Title:     evil?Class:     forged?[31mRED\n\
+             Class:     kitty?]0;x?\n\
+             Instance:  kitty?1\n\
+             PID:       42\n\
+             Workspace: 0\n\
+             Monitor:   1\n\
+             Focused:   yes\n\
+             Position:  10, 20\n\
+             Size:      800 x 600\n\
+             States:    maximized\n"
+        );
     }
 }

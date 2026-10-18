@@ -756,11 +756,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "Window {id}  class={}  title={}",
-        crate::table::sanitize(&wm_class),
-        crate::table::sanitize(&title)
-    );
+    println!("{}", window_line(id, &wm_class, &title));
     if compiled.is_empty() {
         match read_file(&path)? {
             Loaded::Absent => println!("No rules file at {}", path.display()),
@@ -814,6 +810,14 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
 const SKIPPED_NO_SUCH_MONITOR: &str = "no such monitor";
 
+fn window_line(id: u64, wm_class: &str, title: &str) -> String {
+    format!(
+        "Window {id}  class={}  title={}",
+        crate::table::sanitize(wm_class),
+        crate::table::sanitize(title)
+    )
+}
+
 fn no_such_monitor_line(monitor: i32) -> String {
     format!("  monitor {monitor} does not exist; the extension skips the rest of this rule")
 }
@@ -845,6 +849,18 @@ pub fn rules(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn window_line_cannot_be_forged_by_a_title_or_a_class() {
+        assert_eq!(
+            window_line(
+                7,
+                "kitty\u{1b}]0;x\u{7}",
+                "a\nMatched rule 0: forged\u{1b}[2J"
+            ),
+            "Window 7  class=kitty?]0;x?  title=a?Matched rule 0: forged?[2J"
+        );
+    }
 
     fn rule(key: &str, value: &str) -> rules::Rule {
         rules::compile_rule(&json!({"match": {key: value}, "tile": "left"}), 0)
