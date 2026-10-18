@@ -14,7 +14,7 @@ pub const ZSH: &str = include_str!("../../completions/_wctl");
 
 pub fn completion(args: &[String]) -> Result<()> {
     let shell = match args {
-        [] => return Err(Fail::error("Usage: wctl completion <bash|zsh>")),
+        [] => "",
         [shell] => shell.as_str(),
         [_, extra, ..] => return Err(Fail::error(format!("Unexpected argument: {extra}"))),
     };
@@ -27,6 +27,7 @@ pub fn completion(args: &[String]) -> Result<()> {
             print!("{ZSH}");
             Ok(())
         }
+        "" => Err(Fail::error("Usage: wctl completion <bash|zsh>")),
         other => Err(Fail::error(format!(
             "Unknown shell: {other}. Supported: bash, zsh"
         ))),

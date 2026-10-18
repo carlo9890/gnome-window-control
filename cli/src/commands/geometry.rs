@@ -338,12 +338,7 @@ pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = place_usage();
     let (json_output, settled, args) = take_output_flags(args);
     let selector = selector::parse_exact(4, &usage, &args)?;
-    let tokens = [
-        args[selector.shift].as_str(),
-        &args[selector.shift + 1],
-        &args[selector.shift + 2],
-        &args[selector.shift + 3],
-    ];
+    let tokens: [&str; 4] = std::array::from_fn(|i| args[selector.shift + i].as_str());
     // The syntax is checked before the bus; the values resolve against the
     // workarea, so a percentage only gets its pixels once the window is known.
     geometry::check_place_tokens(tokens)?;

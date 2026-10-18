@@ -67,9 +67,15 @@ fn invalid_size(token: &str, label: &str) -> Fail {
     ))
 }
 
+fn zero_pixels(token: &str, label: &str) -> Fail {
+    Fail::error(format!("{label} percentage resolves to 0 pixels: {token}"))
+}
+
 /// Literals and percentages are bounded to i32, the D-Bus type of the
 /// geometry arguments: a value that could not be sent as requested must not
 /// be reported as requested either.
+///
+/// 0% is refused here, because it resolves to 0 pixels on every workarea.
 fn parse_place_size(token: &str, label: &str) -> Result<SizeToken> {
     if is_positive_integer(token) {
         if let Ok(value) = token.parse::<i32>() {
@@ -79,8 +85,10 @@ fn parse_place_size(token: &str, label: &str) -> Result<SizeToken> {
 
     if let Some(percent) = token.strip_suffix('%') {
         if !percent.is_empty() && percent.chars().all(|c| c.is_ascii_digit()) {
-            if let Ok(percent) = percent.parse::<i32>() {
-                return Ok(SizeToken::Percent(i64::from(percent)));
+            match percent.parse::<i32>() {
+                Ok(0) => return Err(zero_pixels(token, label)),
+                Ok(percent) => return Ok(SizeToken::Percent(i64::from(percent))),
+                Err(_) => {}
             }
         }
     }
@@ -118,9 +126,7 @@ pub fn resolve_place_size(token: &str, base_size: i64, label: &str) -> Result<i6
             // Both factors fit i32, so the product fits i64.
             let value = base_size * percent / 100;
             if value <= 0 {
-                Err(Fail::error(format!(
-                    "{label} percentage resolves to 0 pixels: {token}"
-                )))
+                Err(zero_pixels(token, label))
             } else if value > i64::from(i32::MAX) {
                 Err(invalid_size(token, label))
             } else {
@@ -147,9 +153,9 @@ pub fn resolve_place_position(
     })
 }
 
-/// Check the syntax of the four `place` tokens without a workarea, in the
-/// order `resolve_place_rect` reports them, so a command refuses a typo before
-/// it calls the bus.
+/// Check the syntax of the four `place` tokens without a workarea, so a
+/// command refuses a typo before it calls the bus. `resolve_place_rect` runs
+/// this first too, so every caller reports the same token first.
 pub fn check_place_tokens(tokens: [&str; 4]) -> Result<()> {
     parse_place_size(tokens[2], "WIDTH")?;
     parse_place_size(tokens[3], "HEIGHT")?;
@@ -164,6 +170,7 @@ pub fn check_place_tokens(tokens: [&str; 4]) -> Result<()> {
 /// The one implementation of that arithmetic: `place` applies the result and
 /// `resolve-place` only reports it, so the two cannot disagree.
 pub fn resolve_place_rect(tokens: [&str; 4], workarea: Rect) -> Result<Rect> {
+    check_place_tokens(tokens)?;
     let width = resolve_place_size(tokens[2], workarea.width, "WIDTH")?;
     let height = resolve_place_size(tokens[3], workarea.height, "HEIGHT")?;
     let x = resolve_place_position(tokens[0], Axis::X, workarea.x, workarea.width, width)?;
@@ -440,12 +447,22 @@ mod tests {
     fn place_tokens_are_checked_without_a_workarea() {
         assert!(check_place_tokens(["center", "top", "50%", "100%"]).is_ok());
         assert!(check_place_tokens(["-50", "100", "800", "600"]).is_ok());
-        // 0% has the right syntax; only a workarea can refuse it.
-        assert!(check_place_tokens(["0", "0", "0%", "50%"]).is_ok());
+        // 1% has the right syntax; only a workarea narrower than 100 px
+        // refuses it.
+        assert!(check_place_tokens(["0", "0", "1%", "50%"]).is_ok());
         for (tokens, message) in [
             (
                 ["sideways", "top", "abc", "100%"],
                 "Invalid WIDTH: abc. Use a positive number or percentage like 50%",
+            ),
+            // 0% is 0 pixels on every workarea, so no workarea is needed.
+            (
+                ["sideways", "top", "0%", "100%"],
+                "WIDTH percentage resolves to 0 pixels: 0%",
+            ),
+            (
+                ["0", "0", "50%", "00%"],
+                "HEIGHT percentage resolves to 0 pixels: 00%",
             ),
             (
                 ["0", "0", "50%", "9999999999"],

@@ -186,14 +186,15 @@ _wctl() {
                         '1:subcommand:(list path check add remove test)'
                         '--file[Rules file to use (default: the configured one)]:file:_files'
                     )
+                    local rule_match='(-c -t -s --title-prefix --title-suffix)'
                     case $words[2] in
                         add)
                             _arguments "${rules_args[@]}" \
-                                '-c[Match a WM class]:class:' \
-                                '-t[Match an exact title]:title:' \
-                                '-s[Match a title substring]:substring:' \
-                                '--title-prefix[Match a title that starts with this]:text:' \
-                                '--title-suffix[Match a title that ends with this]:text:' \
+                                "${rule_match}-c[Match a WM class]:class:" \
+                                "${rule_match}-t[Match an exact title]:title:" \
+                                "${rule_match}-s[Match a title substring]:substring:" \
+                                "${rule_match}--title-prefix[Match a title that starts with this]:text:" \
+                                "${rule_match}--title-suffix[Match a title that ends with this]:text:" \
                                 '2:action:(tile place center)' \
                                 '--workspace[Also move the window to this workspace]:index:' \
                                 '--monitor[Resolve the geometry on this monitor]:index:' \
@@ -213,8 +214,11 @@ _wctl() {
                         path)
                             _arguments "${rules_args[@]}"
                             ;;
-                        *)
+                        list|check)
                             _arguments "${rules_args[@]}" '--json[Output as JSON]'
+                            ;;
+                        *)
+                            _arguments "${rules_args[1]}"
                             ;;
                     esac
                     ;;

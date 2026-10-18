@@ -365,6 +365,10 @@ fn place_tokens_are_checked_before_any_bus_call() {
             ["0", "0", "50%", "-5"],
             "Invalid HEIGHT: -5. Use a positive number or percentage like 50%",
         ),
+        (
+            ["0", "0", "0%", "50%"],
+            "WIDTH percentage resolves to 0 pixels: 0%",
+        ),
     ];
     for (tokens, message) in cases {
         for command in [
@@ -501,6 +505,7 @@ fn list_filter_guards() {
 fn dispatch_guards() {
     expect_die("Unknown shell: elvish", &["completion", "elvish"]);
     expect_die("Usage: wctl completion", &["completion"]);
+    expect_die("Usage: wctl completion", &["completion", ""]);
     expect_die("Unknown command", &["no-such-command"]);
 }
 
