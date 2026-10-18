@@ -47,3 +47,15 @@ run = "cargo build --release"
 [tasks.ci]
 description = "Everything CI gates on"
 depends = ["fmt:check", "lint", "test", "build"]
+
+# The release asset: a static x86_64 binary that runs on any distribution
+# without matching a glibc version. CI and release.sh both build it here.
+[tasks."build:musl"]
+description = "Build the static x86_64 release binary and check its linkage"
+depends = ["components"]
+dir = "{{config_root}}/cli"
+run = [
+  "rustup target add x86_64-unknown-linux-musl",
+  "cargo build --release --target x86_64-unknown-linux-musl",
+  "../scripts/check-static.sh target/x86_64-unknown-linux-musl/release/wctl",
+]

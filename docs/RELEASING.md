@@ -15,7 +15,8 @@ The script guarantees:
 - All four assets are attached: the extension zip, `wctl`, `wctl.sha256`, and
   `install-wctl.sh` with its `WCTL_VERSION` default set to the tag, so the
   installer of `vN` installs the `wctl` of `vN`.
-- The `metadata.json` and `cli/Cargo.toml` versions match.
+- The `metadata.json` and `cli/Cargo.toml` versions match
+  (`scripts/check-version.sh`, which CI also runs).
 - The local tag `vN` exists and points at HEAD, the commit the assets are built
   from. `gh release create --verify-tag` then refuses a tag that is not on the
   remote, so run `git push --tags` first.
@@ -168,8 +169,9 @@ Constraints the review enforces, which the code must keep satisfying:
 - No `eval()`, no `Function()`, no `GLib.spawn` or any other subprocess, and no
   bundled binaries. `wctl` is a separate asset and MUST stay out of the zip.
 - `wctl` is published as a **statically linked x86_64 binary**, built by
-  `release.sh` with `cargo build --release --target x86_64-unknown-linux-musl`.
-  The script refuses to publish a dynamically linked one. aarch64 is not
+  `mise run build:musl` (`cargo build --release --target
+  x86_64-unknown-linux-musl`), which `release.sh` and CI both run. The task
+  fails on a dynamically linked binary (`scripts/check-static.sh`). aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
 - `disable()` must undo everything `enable()` did. `unexport()` fails every

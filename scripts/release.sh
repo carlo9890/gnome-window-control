@@ -185,35 +185,7 @@ get_version() {
 # Check the wctl crate version matches metadata.json version
 check_wctl_version() {
     log_step "Checking wctl version..."
-
-    local manifest="$PROJECT_ROOT/cli/Cargo.toml"
-
-    if [[ ! -f "$manifest" ]]; then
-        log_error "cli/Cargo.toml not found at $manifest"
-        exit 1
-    fi
-
-    # Extract the package version (first `version = "..."` under [package])
-    local wctl_version
-    wctl_version=$(awk -F'"' '/^\[package\]/{p=1; next} /^\[/{p=0} p && /^version[[:space:]]*=/{print $2; exit}' "$manifest")
-
-    if [[ -z "$wctl_version" ]]; then
-        log_error "Could not extract version from cli/Cargo.toml"
-        exit 1
-    fi
-
-    # Expected version is 0.<metadata_version>.0
-    local expected_version="0.${VERSION}.0"
-
-    if [[ "$wctl_version" != "$expected_version" ]]; then
-        log_error "wctl version mismatch!"
-        log_error "  cli/Cargo.toml: $wctl_version"
-        log_error "  Expected:       $expected_version"
-        log_error "Update the version in cli/Cargo.toml before releasing."
-        exit 1
-    fi
-
-    log_info "wctl version matches: $wctl_version"
+    "$SCRIPT_DIR/check-version.sh"
 }
 
 # Check git tag exists
@@ -247,9 +219,10 @@ check_tag_exists() {
 #
 # Static, because the release asset must run on any distribution without
 # matching a glibc version; musl is the only target that gives that, and zbus
-# is pure Rust so it needs no C toolchain.
+# is pure Rust so it needs no C toolchain. The build:musl task refuses a
+# dynamically linked binary; CI runs the same task.
 build_cli() {
-    log_step "Building wctl (x86_64-unknown-linux-musl)..."
+    log_step "Building wctl ($CLI_TARGET)..."
 
     if ! command -v mise &> /dev/null; then
         log_error "mise is not installed; it provides the pinned Rust toolchain."
@@ -258,25 +231,10 @@ build_cli() {
     fi
 
     mise install
-    mise exec -- rustup target add "$CLI_TARGET"
-    (cd "$PROJECT_ROOT/cli" && mise exec -- cargo build --release --target "$CLI_TARGET")
+    mise run build:musl
 
     if [[ ! -f "$CLI_BINARY" ]]; then
         log_error "Build failed: $CLI_BINARY not found"
-        exit 1
-    fi
-
-    # A dynamically linked asset would break on any host with an older glibc,
-    # so refuse to publish one. The musl target produces a static PIE, which
-    # `file` reports as "static-pie linked", not "statically linked" -- match
-    # both, and reject the dynamic case by its own marker so a future `file`
-    # wording change fails loudly here rather than shipping a dynamic binary.
-    local linkage
-    linkage=$(file "$CLI_BINARY")
-    if [[ "$linkage" == *"dynamically linked"* ]] ||
-       ! [[ "$linkage" == *"statically linked"* || "$linkage" == *"static-pie linked"* ]]; then
-        log_error "wctl is not statically linked:"
-        log_error "  $linkage"
         exit 1
     fi
 
