@@ -23,7 +23,8 @@ If it fails, the code has a syntax error and must not be committed.
   named D-Bus errors instead of reporting a boolean.
   The two wait methods return the value asked for (`window_id`, and the settled
   rectangle) and raise when there is none; the three geometry methods return
-  nothing at all.
+  nothing at all. `GetWorkarea` returns `(-1, -1, -1, -1)` only for an index
+  that is not a monitor, and raises `Failed` when its lookup throws.
   The names, and the reason each method raises, are in the ERRORS block in
   `dbus-interface.js`; add to that list rather than inventing a name at the
   throw site. `_geometryCall()` re-raises an unexpected exception as

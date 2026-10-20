@@ -16,8 +16,9 @@ the correct form.
   returns a graceful default on error (empty array, `false`, etc.) — no exception
   escapes a handler. Flag a handler that lets one escape. Two cases are correct
   and are no finding: a handler that goes through `_actOnWindow`, and `Move`,
-  `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry`, which raise named
-  D-Bus errors ([CODING.md](CODING.md#javascript-extensionjs) has both).
+  `Resize`, `MoveResize`, `WaitForWindow`, `WaitForGeometry` and `GetWorkarea`,
+  which raise named D-Bus errors ([CODING.md](CODING.md#javascript-extensionjs)
+  has both).
 - **Log levels**: per-call handler logging uses `console.debug()`; `console.log()`
   appears only in the enable/disable lifecycle; `console.error()` appears ONLY in
   a catch block. Flag each other use. `console.log()` is visible by default

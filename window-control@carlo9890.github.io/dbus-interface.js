@@ -124,8 +124,10 @@ export const DBUS_INTERFACE_XML = `
       or they raise one of the names below, because a bare boolean could not say
       WHICH failure happened and every caller had to guess it back by refetching
       the window and reading its flags -- a guess that cannot see tiling at all.
-      WaitForWindow and WaitForGeometry raise too, for the same reason. This is
-      the complete list; a handler never invents a name at the throw site.
+      WaitForWindow and WaitForGeometry raise too, for the same reason.
+      GetWorkarea raises Failed when its lookup throws, so its -1 answer means
+      only "no such monitor". This is the complete list; a handler never
+      invents a name at the throw site.
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
             no window has that id (WaitForGeometry: or it closed mid-wait)
@@ -225,7 +227,8 @@ export const DBUS_INTERFACE_XML = `
     <!--
       GetWorkarea: Get usable workspace area for a monitor
       Args: i - monitor index
-      Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if invalid)
+      Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if the index is not
+               a monitor); raises Failed if the lookup throws (see ERRORS above)
     -->
     <method name="GetWorkarea">
       <arg type="i" direction="in" name="monitor_index"/>
