@@ -32,8 +32,18 @@ the correct form.
   logged before that: it lets any process on the session bus write arbitrary
   text, newlines included, into the journal. The value it matches against is
   never logged.
+- **Client text in plain output**: a window field a client sets (a title, a
+  `wm_class`, any other window field) that `wctl` prints outside `--json` goes
+  through `table::sanitize` in `cli/src/table.rs`. `table::render` already
+  sanitizes every cell; flag a field printed by any other path without it. A
+  raw newline in a title forges a row or a field of the output.
 
 ## Project-specific rules
 
 - A new D-Bus method comes with its row in the method table in `README.md` — flag
   a method in `dbus-interface.js` that the table does not list.
+- A script under `scripts/` that sends a state-changing call to `org.gnome.Shell`
+  refuses to run on the login session bus unless the caller opts in. Flag one
+  without that guard; `scripts/debug-dbus.sh` is the correct form: it compares
+  `DBUS_SESSION_BUS_ADDRESS` with the bus `systemctl --user show-environment`
+  reports, and `--real-session-ok` is the opt-in.

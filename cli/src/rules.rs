@@ -7,9 +7,9 @@
 //! `window-control@carlo9890.github.io/rules-format.js`. That is deliberate --
 //! `wctl` cannot load GJS, and the whole point of `wctl rules check` is to give
 //! the same verdict without a running shell. The two are kept honest by
-//! `tests/vectors/rules-spec.json`, which both read: the `rules_spec_vectors`
-//! test below asserts every case, and `tests/check-rules-format.js` asserts the
-//! same ones against the extension.
+//! `tests/vectors/rules-spec.json`, which both read: the `rules_spec_vectors`,
+//! `geometry_vectors` and `match_vectors` tests below assert its groups, and
+//! `tests/check-rules-format.js` asserts the same ones against the extension.
 //!
 //! So the error strings here are not this file's to choose. They are the
 //! extension's messages, reproduced exactly, and `docs/specs/RULES-JSON.md` is

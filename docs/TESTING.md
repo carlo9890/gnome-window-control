@@ -79,11 +79,16 @@ D-Bus, no mutter typelib: `rules-format.js` imports nothing, which is why the
 extension job in `.github/workflows/build.yml` can run this on `ubuntu-latest`
 with only the `gjs` package.
 
-**The same vectors are read from Rust** by the `rules_spec_vectors` test in
-`cli/src/rules.rs`, so `wctl rules check` and the extension cannot disagree
-about whether a file is valid or about the message text. Changing a message or
-a formula on one side fails the other side's check. Adding a validation rule
-means adding a case to the vectors in the same commit, and
+**Every vector group MUST be read from both sides**, with the exception below,
+so `wctl rules check` and the extension cannot disagree about whether a file is
+valid, about the message text or about a rectangle. The GJS check reads every
+group; in `cli/src/rules.rs`, `rules_spec_vectors` reads `validation`,
+`geometry_vectors` reads `geometry`, and `match_vectors` reads `match.cases`.
+Two parts are read by the GJS check only, because `rules.json` has no `pid` key
+and the CLI builds no predicate from a bare kind: the `pid` cases and
+`match.no_predicate`. A new group gets a reader on each side in the same commit:
+a group that only one side reads pins nothing across the pair. Adding a
+validation rule means adding a case to the vectors in the same commit, and
 [specs/RULES-JSON.md](specs/RULES-JSON.md) is the normative definition both
 follow.
 
@@ -177,6 +182,34 @@ two cannot drift silently.
 
 Examples: `tests/test-workspaces-monitors.sh` (query),
 `tests/test-modifications.sh` (modification).
+
+## Driving install-wctl.sh and release.sh offline
+
+No CI job runs `install-wctl.sh` or `scripts/release.sh`. After a change to
+either, run it end to end with stubs first on `PATH`: no GNOME Shell and no
+network are needed.
+
+- Set `HOME` to a scratch directory for `install-wctl.sh`: it installs to
+  `$HOME/.local/bin`.
+- Run `release.sh --notes-file <file>` in a throwaway clone on branch `main`
+  with a clean tree and tag `v<metadata.json version>` on `HEAD` (`git tag -f`:
+  before a version bump that tag already exists). It writes `dist/` and
+  `cli/target/` in that clone.
+- Log each stub's arguments to a file and assert the calls from that file.
+
+| Stub | Caller | Call | The stub must |
+|------|--------|------|---------------|
+| `curl` | `install-wctl.sh` (download) | `curl -fsSL <url> -o <file>`; `<file>` is `-` for `wctl.sha256` | for `<url>` ending in `/wctl`, write an executable that exits 0 on `--version` to `<file>`; for `/wctl.sha256`, print `<sha256>  wctl` of that executable; exit non-zero for any other URL |
+| `wget` | `install-wctl.sh` (download), only when no `curl` is on `PATH` | `wget -q <url> -O <file>` | do the same as `curl` |
+| `mise` | `install-wctl.sh --local`, only when `cli/target/release/wctl` is missing | `mise run build` in the repository root | create `cli/target/release/wctl` |
+| `mise` | `release.sh` | `mise install`, then `mise run build:musl` | exit 0; on `build:musl`, create `cli/target/x86_64-unknown-linux-musl/release/wctl` |
+| `gh` | `release.sh` | `gh auth status` | exit 0 |
+| | | `gh api repos/{owner}/{repo}/commits/tags/<tag> -q .sha` | print the `HEAD` commit |
+| | | `gh release view <tag>` before `create` | exit non-zero; exit 0 makes the script prompt on stdin |
+| | | `gh repo view --json nameWithOwner -q .nameWithOwner` | print `<owner>/<repo>` |
+| | | `gh release create <tag> --verify-tag ...` | exit 0, and make the next `release view` succeed |
+| | | `gh release view <tag>` after `create`, plain and with `--json assets -q '.assets \| length'`, `-q '.assets[].name'`, `--json url -q .url` | exit 0; print `4`, four asset names, a URL |
+| `file` | `scripts/check-static.sh`, which only the real `mise run build:musl` runs | `file <binary>` | print a line with `static-pie linked` to pass, `dynamically linked` to fail |
 
 ## Minimum checks before a PR
 
