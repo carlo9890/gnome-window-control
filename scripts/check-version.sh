@@ -3,8 +3,8 @@
 # check-version.sh - Check that cli/Cargo.toml is 0.<N>.0 for metadata.json
 # version N.
 #
-# wctl compiles its minor version in as the extension version it expects, so a
-# pair out of step makes every install report "compatible": false. CI and
+# wctl compiles its minor version in as the newest extension version it works
+# with, so a pair out of step reports the wrong "compatible" range. CI and
 # release.sh both run this check.
 #
 

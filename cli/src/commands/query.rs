@@ -320,10 +320,10 @@ pub fn workarea(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 /// `gnome-extensions info`, which reports the same loaded value but needs two
 /// more programs and the extension UUID -- is what this replaces.
 ///
-/// `compatible` asserts the release rule spelled out at
-/// `crate::EXPECTED_EXTENSION_VERSION`: wctl's minor version is the extension
-/// version it was built against. A mismatch exits non-zero, because the fix is
-/// the same one a missing extension needs.
+/// `compatible` asserts that the loaded extension is in the range from
+/// `crate::MIN_EXTENSION_VERSION` to `crate::EXPECTED_EXTENSION_VERSION`. A
+/// version outside it exits non-zero, because the fix is the same one a missing
+/// extension needs.
 pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // Only `--json` reaches here: `main::run` answers the bare form before a
     // connection exists, and parse_json_flag rejects every other token. So
@@ -334,11 +334,16 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let mut document = serde_json::json!({
         "wctl": crate::VERSION,
         "expects_extension": crate::EXPECTED_EXTENSION_VERSION,
+        "min_extension": crate::MIN_EXTENSION_VERSION,
     });
 
     match ctx.bus.get_version() {
         Ok(loaded) => {
-            let compatible = loaded == crate::EXPECTED_EXTENSION_VERSION;
+            let compatible = in_version_range(
+                &loaded,
+                crate::MIN_EXTENSION_VERSION,
+                crate::EXPECTED_EXTENSION_VERSION,
+            );
             document["extension"] = Value::String(loaded);
             document["compatible"] = Value::Bool(compatible);
             // What the extension supports, which the number cannot say: an
@@ -357,9 +362,10 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                 return Ok(());
             }
             document["message"] = Value::String(format!(
-                "wctl {} expects extension version {}. Install the matching extension and \
-                 restart GNOME Shell (log out and back in on Wayland).",
+                "wctl {} works with extension versions {} to {}. Install a matching \
+                 extension and restart GNOME Shell (log out and back in on Wayland).",
                 crate::VERSION,
+                crate::MIN_EXTENSION_VERSION,
                 crate::EXPECTED_EXTENSION_VERSION
             ));
             Err(Fail::plain(document.to_string()).with_code(EXIT_NO_EXTENSION))
@@ -376,10 +382,38 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
 }
 
+/// True when `loaded` is an integer version from `min` to `max`, both included.
+fn in_version_range(loaded: &str, min: &str, max: &str) -> bool {
+    let number = |text: &str| text.parse::<u32>().ok();
+    match (number(loaded), number(min), number(max)) {
+        (Some(loaded), Some(min), Some(max)) => (min..=max).contains(&loaded),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_version_from_the_baseline_to_the_expected_one_is_in_range() {
+        assert!(in_version_range("16", "16", "17"));
+        assert!(in_version_range("17", "16", "17"));
+        assert!(!in_version_range("15", "16", "17"));
+        assert!(!in_version_range("18", "16", "17"));
+        assert!(!in_version_range("", "16", "17"));
+        assert!(!in_version_range("16.1", "16", "17"));
+    }
+
+    #[test]
+    fn the_baseline_is_not_newer_than_the_expected_version() {
+        assert!(in_version_range(
+            crate::MIN_EXTENSION_VERSION,
+            crate::MIN_EXTENSION_VERSION,
+            crate::EXPECTED_EXTENSION_VERSION
+        ));
+    }
 
     #[test]
     fn window_text_cannot_be_forged_by_a_title_or_a_class() {

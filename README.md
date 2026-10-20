@@ -215,13 +215,14 @@ frame that never settles exits 4 and still reports `"placed":true`.
 ```bash
 wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.16.0","expects_extension":"16","extension":"16","compatible":true,"capabilities":["rules","rules-title-affix","keybindings","no-animation","activate-no-animation"]}
+# {"wctl":"0.16.0","expects_extension":"16","min_extension":"16","extension":"16","compatible":true,"capabilities":["rules","rules-title-affix","keybindings","no-animation","activate-no-animation"]}
 ```
 
 `--json` asks the **running shell** what it has loaded. That is the useful
 question: on Wayland an install lands on disk while the shell keeps serving the
 old code until you log out, so `metadata.json` can say 10 while the answer here
-is still 9. A mismatch exits 5.
+is still 9. `compatible` is true for every extension version from
+`min_extension` to `expects_extension`; outside that range the command exits 5.
 
 `capabilities` is what the extension says it supports, by name. Ask for a name
 rather than comparing version numbers: an install from extensions.gnome.org
