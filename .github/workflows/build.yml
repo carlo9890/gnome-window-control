@@ -59,7 +59,8 @@ jobs:
       # extension.js, rules.js and keybindings.js import gi://Meta, so this
       # check needs the mutter typelib. The package name carries the mutter
       # API version (gir1.2-mutter-14 on Ubuntu 24.04), so take the newest
-      # one the runner image has.
+      # one the runner image has. The next step reads the typelib directory
+      # from that package, so an older typelib on the image is never used.
       - name: Install the mutter typelib
         run: |
           pkg=$(apt-cache search --names-only '^gir1\.2-mutter-[0-9]+$' | cut -d' ' -f1 | sort -V | tail -1)
@@ -69,11 +70,17 @@ jobs:
             exit 1
           fi
           sudo apt-get install -y "$pkg"
+          echo "MUTTER_TYPELIB_PKG=$pkg" >> "$GITHUB_ENV"
 
       - name: Check the extension against fake windows (no shell)
         run: |
-          GI_TYPELIB_PATH=$(dirname "$(find /usr/lib* -name 'Meta-*.typelib' | head -1)") \
-            gjs -m tests/check-extension-headless.js
+          typelib=$(dpkg -L "$MUTTER_TYPELIB_PKG" | grep -m1 '/Meta-[0-9]*\.typelib$' || true)
+          # dirname "" is ".", which would hide a missing typelib.
+          if [ -z "$typelib" ]; then
+            echo "no Meta-*.typelib in $MUTTER_TYPELIB_PKG" >&2
+            exit 1
+          fi
+          GI_TYPELIB_PATH=$(dirname "$typelib") gjs -m tests/check-extension-headless.js
 
       - name: Make build script executable
         run: chmod +x scripts/build.sh

@@ -9,7 +9,7 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 |-------|-------|------------------|---------|
 | Crate tests (CI gate) | `cli/src/**` + `cli/tests/cli.rs` | No — headless | `mise run ci` (`mise run test` is the inner-loop subset) |
 | Rules grammar (CI gate) | `tests/check-rules-format.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js` |
-| Extension against fake windows (CI gate) | `tests/check-extension-headless.js` | No — headless, needs the mutter typelib | `GI_TYPELIB_PATH=$(dirname "$(find /usr/lib* -name 'Meta-*.typelib' \| head -1)") gjs -m tests/check-extension-headless.js` |
+| Extension against fake windows (CI gate) | `tests/check-extension-headless.js` | No — headless, needs the mutter typelib | `dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' \| sort -V \| tail -1) && GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
 | Keyboard shortcuts (state-changing, in the modification runner) | `tests/test-keybindings.sh` | Yes, plus injected keys | `./tests/test-keybindings.sh` in a headless shell or a VM guest's session (see below) |
@@ -94,9 +94,12 @@ locally and breaks CI.
 ## The extension check against fake windows (a CI gate)
 
 ```bash
-GI_TYPELIB_PATH=$(dirname "$(find /usr/lib* -name 'Meta-*.typelib' | head -1)") \
-    gjs -m tests/check-extension-headless.js
+dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) &&
+    GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js
 ```
+
+With several mutter typelibs installed, this picks the newest one; with none,
+it stops with `no Meta-*.typelib installed`.
 
 Runs the real `extension.js`, `rules.js` and `keybindings.js` against fake
 windows and a fake display that count their signal handlers. No GNOME session,
