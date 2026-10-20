@@ -54,6 +54,10 @@ If it fails, the code has a syntax error and must not be committed.
   side asserts it: a GJS check and a Rust test, as `tests/vectors/rules-spec.json`
   does for the rules grammar ([TESTING.md](TESTING.md#the-rulesjson-grammar-check-a-ci-gate)).
   A value written into each side separately drifts with no test failing.
+- `wctl` works with every extension version from `MIN_EXTENSION_VERSION`
+  (`cli/src/main.rs`) up. Gate a call to a method or a behavior newer than that
+  version on its capability name from `GetCapabilities`, as `commands/rules.rs`
+  does with `TITLE_AFFIX_CAPABILITY`. Only the maintainer raises the baseline.
 - The CLI grammar is a frozen contract: output strings, usage text and exit
   codes are asserted by the live suites. Do not reword a message without
   changing the suite that pins it.
@@ -93,6 +97,9 @@ what it ships are described in [RELEASING.md](RELEASING.md).
    > GJS quirk: D-Bus `t` (uint64) args arrive as plain JS numbers, which lose
    > precision above 2^53. Mutter window IDs are well within that range, but if a
    > method ever handles larger uint64 values, use `BigInt`/`GLib.Variant`.
+
+   > Add a capability name for the method to `GetCapabilities` in the same
+   > commit, so that `wctl` can gate its call on it (see the Rust section above).
 
    > A method that can fail for more than one reason should raise a named error
    > (see the JavaScript section above) and declare no `success` out-arg. Add the

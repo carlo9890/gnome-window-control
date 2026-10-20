@@ -37,6 +37,14 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// asserts as `compatible`.
 pub const EXPECTED_EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION_MINOR");
 
+/// The oldest extension version this build still works with.
+///
+/// wctl works with every extension from this version up to
+/// `EXPECTED_EXTENSION_VERSION`, and `wctl version --json` asserts that range
+/// as `compatible`. A feature newer than this version is gated on a capability
+/// name from `GetCapabilities`; only the maintainer raises this baseline.
+pub const MIN_EXTENSION_VERSION: &str = "16";
+
 /// Every command wctl dispatches, in the order the help text introduces them.
 ///
 /// The help text and both completion scripts are authored by hand, so a unit

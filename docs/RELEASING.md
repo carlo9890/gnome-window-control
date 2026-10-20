@@ -35,8 +35,9 @@ commit.
    `window-control@carlo9890.github.io/metadata.json`.
 2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version
    format below) — `wctl` compiles its minor version in as
-   `EXPECTED_EXTENSION_VERSION`, so a mismatch makes every install report
-   `compatible: false`, and `scripts/release.sh` hard-fails on it.
+   `EXPECTED_EXTENSION_VERSION`, the top of the range `wctl version --json`
+   reports as `compatible`, and `scripts/release.sh` hard-fails on a mismatch.
+   Leave `MIN_EXTENSION_VERSION` (`cli/src/main.rs`) as it is.
 3. Refresh the lock: `(cd cli && cargo update -p wctl)` — otherwise the tag
    ships a lock pinning the old version and the release build dirties the tree.
 4. Commit on a branch (`chore: bump version to vN`), open the PR, wait for the
