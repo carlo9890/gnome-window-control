@@ -19,6 +19,7 @@ export const MATCH_KINDS = {
     substr: 'substring',
     title_prefix: 'prefix',
     title_suffix: 'suffix',
+    class_prefix: 'class_prefix',
 };
 
 // The match keys as the validation messages list them.
@@ -72,8 +73,8 @@ export const PROBE_WORKAREA = { x: 0, y: 0, width: 1000, height: 1000 };
 // Build the match predicate for a (kind, value) selector. One implementation
 // for WaitForWindow, the ActivateBy* methods and rules.json, so the three
 // cannot disagree about which window a value names. Returns null for an
-// unknown kind, an empty substring, prefix or suffix (which would match every
-// window) or a pid that is not a positive decimal integer: get_pid() is 0 for
+// unknown kind, an empty substring, prefix, suffix or class prefix (which
+// would match every window) or a pid that is not a positive decimal integer: get_pid() is 0 for
 // a window whose client pid is unknown, so 0 must never be matchable.
 //
 // The window is duck-typed through its getters, which is what keeps this file
@@ -96,6 +97,10 @@ export function matchPredicate(kind, value) {
         if (value === '')
             return null;
         return w => (w.get_title() || '').endsWith(value);
+    case 'class_prefix':
+        if (value === '')
+            return null;
+        return w => (w.get_wm_class() || '').startsWith(value);
     case 'pid': {
         if (!/^[0-9]+$/.test(value))
             return null;

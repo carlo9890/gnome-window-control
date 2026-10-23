@@ -16,8 +16,8 @@
 //   ]
 //
 // match:     class (exact WM class), title (exact), substr (title contains),
-//            title_prefix (title starts with), title_suffix (title ends with).
-//            Several keys must all match.
+//            title_prefix (title starts with), title_suffix (title ends with),
+//            class_prefix (WM class starts with). Several keys must all match.
 // place:     [X, Y, WIDTH, HEIGHT] with the tokens of `wctl place`.
 // tile:      a `wctl tile` position.
 // center:    horizontal | vertical | both, keeps the window's own size.

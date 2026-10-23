@@ -37,12 +37,13 @@ pub const PROBE_WORKAREA: Rect = Rect {
 pub const RULE_KEYS: [&str; 6] = ["match", "place", "tile", "center", "workspace", "monitor"];
 
 /// Every `match` key, mapped to the selector kind it means.
-pub const MATCH_KEYS: [(&str, &str); 5] = [
+pub const MATCH_KEYS: [(&str, &str); 6] = [
     ("class", "class"),
     ("title", "title"),
     ("substr", "substring"),
     ("title_prefix", "prefix"),
     ("title_suffix", "suffix"),
+    ("class_prefix", "class_prefix"),
 ];
 
 /// The `match` keys as the messages list them.
@@ -89,6 +90,7 @@ impl Rule {
             "substring" => title.contains(&m.value),
             "prefix" => title.starts_with(&m.value),
             "suffix" => title.ends_with(&m.value),
+            "class_prefix" => wm_class.starts_with(&m.value),
             _ => false,
         })
     }

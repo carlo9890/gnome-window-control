@@ -26,10 +26,6 @@ use crate::rules;
 /// The capability an extension reports when it applies rules.json.
 pub const RULES_CAPABILITY: &str = "rules";
 
-/// The capability an extension reports when it knows the `title_prefix` and
-/// `title_suffix` match keys.
-const TITLE_AFFIX_CAPABILITY: &str = "rules-title-affix";
-
 /// How long the warning check waits for the shell.
 ///
 /// The file is already written when it runs, so a shell that does not answer
@@ -58,29 +54,46 @@ fn warn_unless_reported(ctx: &Ctx, capability: &str, warning: &str) {
     }
 }
 
-const NO_TITLE_AFFIX_SUPPORT: &str =
-    "The extension GNOME Shell has loaded does not know title_prefix and \
-     title_suffix. It refuses a rules file that has one, so no rule is applied \
-     until a newer extension is loaded: install it, then restart the shell (log \
-     out and back in on Wayland).";
+/// The match keys added after `rules`, each with the capability an extension
+/// reports when it knows them and the warning for one that does not.
+const NEWER_MATCH_KEYS: [(&[&str], &str, &str); 2] = [
+    (
+        &["title_prefix", "title_suffix"],
+        "rules-title-affix",
+        "The extension GNOME Shell has loaded does not know title_prefix and \
+         title_suffix. It refuses a rules file that has one, so no rule is applied \
+         until a newer extension is loaded: install it, then restart the shell (log \
+         out and back in on Wayland).",
+    ),
+    (
+        &["class_prefix"],
+        "rules-class-prefix",
+        "The extension GNOME Shell has loaded does not know class_prefix. It \
+         refuses a rules file that has it, so no rule is applied until a newer \
+         extension is loaded: install it, then restart the shell (log out and \
+         back in on Wayland).",
+    ),
+];
 
 /// Warn when the written file holds a match key the loaded extension refuses.
 /// One unknown key turns every rule off, so this looks at the whole file.
-fn warn_if_title_affix_unsupported(ctx: &Ctx, document: &[Value]) {
-    let uses_affix = document.iter().any(|rule| {
-        rule["match"].as_object().is_some_and(|block| {
-            block.contains_key("title_prefix") || block.contains_key("title_suffix")
-        })
-    });
-    if uses_affix {
-        warn_unless_reported(ctx, TITLE_AFFIX_CAPABILITY, NO_TITLE_AFFIX_SUPPORT);
+fn warn_if_match_keys_unsupported(ctx: &Ctx, document: &[Value]) {
+    for (keys, capability, warning) in NEWER_MATCH_KEYS {
+        let uses_key = document.iter().any(|rule| {
+            rule["match"]
+                .as_object()
+                .is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
+        });
+        if uses_key {
+            warn_unless_reported(ctx, capability, warning);
+        }
     }
 }
 
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
 
 const ADD_USAGE: &str =
-    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR|--title-prefix TEXT|--title-suffix TEXT> [tile POSITION|place X Y W H|center [AXIS]] \
+    "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR|--title-prefix TEXT|--title-suffix TEXT|--class-prefix TEXT> [tile POSITION|place X Y W H|center [AXIS]] \
 [--workspace N] [--monitor N] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
@@ -369,7 +382,7 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
         Fail::error(format!(
             "{named} names a window that already exists; a rule matches windows \
              that do not exist yet. Use -c <CLASS>, -t <TITLE>, -s <SUBSTR>, \
-             --title-prefix <TEXT> or --title-suffix <TEXT>."
+             --title-prefix <TEXT>, --title-suffix <TEXT> or --class-prefix <TEXT>."
         ))
     };
 
@@ -380,6 +393,7 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
         "-s" => "substr",
         "--title-prefix" => "title_prefix",
         "--title-suffix" => "title_suffix",
+        "--class-prefix" => "class_prefix",
         "-p" => return Err(refused("-p <PID>")),
         "focused" => return Err(refused("focused")),
         "" => return Err(Fail::error(ADD_USAGE)),
@@ -469,7 +483,8 @@ fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
 /// `earlier`'s predicates must be implied by one of `later`'s: an exact class
 /// or title by the same value, a substring by any title predicate whose value
 /// contains it, a prefix or suffix by a title or a like predicate that starts
-/// or ends with it.
+/// or ends with it, and a class prefix by a class or a class prefix that
+/// starts with it.
 fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
     earlier.matches.iter().all(|general| {
         later.matches.iter().any(
@@ -480,6 +495,9 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
                 }
                 ("prefix", "title" | "prefix") => specific.value.starts_with(&general.value),
                 ("suffix", "title" | "suffix") => specific.value.ends_with(&general.value),
+                ("class_prefix", "class" | "class_prefix") => {
+                    specific.value.starts_with(&general.value)
+                }
                 _ => false,
             },
         )
@@ -619,7 +637,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     println!("Added rule {position} to {}", path.display());
     if is_default_file {
         warn_if_rules_unsupported(ctx);
-        warn_if_title_affix_unsupported(ctx, &raw);
+        warn_if_match_keys_unsupported(ctx, &raw);
     }
     Ok(())
 }
@@ -658,7 +676,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     println!("Removed rule {index} from {}", path.display());
     if is_default_file {
         warn_if_rules_unsupported(ctx);
-        warn_if_title_affix_unsupported(ctx, &raw);
+        warn_if_match_keys_unsupported(ctx, &raw);
     }
     Ok(())
 }
@@ -886,6 +904,47 @@ mod tests {
             ("title_suffix", "Report", "title_suffix", "ort", false),
             ("title_prefix", "Rep", "title_suffix", "Rep", false),
             ("title_suffix", "ort", "title_prefix", "ort", false),
+        ];
+        for (earlier_key, earlier_value, later_key, later_value, expected) in cases {
+            assert_eq!(
+                shadows(
+                    &rule(earlier_key, earlier_value),
+                    &rule(later_key, later_value)
+                ),
+                expected,
+                "{earlier_key}={earlier_value} before {later_key}={later_value}"
+            );
+        }
+    }
+
+    /// The class implications, then their reverse, as for the title above.
+    #[test]
+    fn shadows_follows_what_a_class_prefix_implies() {
+        let cases = [
+            ("class_prefix", "chrome-", "class", "chrome-a-Default", true),
+            (
+                "class_prefix",
+                "chrome-",
+                "class_prefix",
+                "chrome-github",
+                true,
+            ),
+            (
+                "class",
+                "chrome-a-Default",
+                "class_prefix",
+                "chrome-",
+                false,
+            ),
+            (
+                "class_prefix",
+                "chrome-github",
+                "class_prefix",
+                "chrome-",
+                false,
+            ),
+            ("class_prefix", "chrome-", "title_prefix", "chrome-", false),
+            ("title_prefix", "chrome-", "class_prefix", "chrome-", false),
         ];
         for (earlier_key, earlier_value, later_key, later_value, expected) in cases {
             assert_eq!(

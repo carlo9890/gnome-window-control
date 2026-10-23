@@ -215,7 +215,7 @@ frame that never settles exits 4 and still reports `"placed":true`.
 ```bash
 wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.16.0","expects_extension":"16","min_extension":"16","extension":"16","compatible":true,"capabilities":["rules","rules-title-affix","keybindings","no-animation","activate-no-animation"]}
+# {"wctl":"0.16.0","expects_extension":"16","min_extension":"16","extension":"16","compatible":true,"capabilities":["rules","rules-title-affix","rules-class-prefix","keybindings","no-animation","activate-no-animation"]}
 ```
 
 `--json` asks the **running shell** what it has loaded. That is the useful
@@ -274,7 +274,9 @@ as the `wctl` commands:
 
 - **match** — one or more of `class` (exact WM class), `title` (exact title),
   `substr` (title contains), `title_prefix` (title starts with),
-  `title_suffix` (title ends with). Several keys must all match.
+  `title_suffix` (title ends with), `class_prefix` (WM class starts with, for
+  apps that put a per-window part in the class, such as a Chrome app window's
+  `chrome-github.com__<owner>_<repo>-Default`). Several keys must all match.
 - **place** — `[X, Y, WIDTH, HEIGHT]`, the tokens of `wctl place`: X is a number
   or `left|center|right`, Y a number or `top|center|bottom`, WIDTH/HEIGHT a
   positive number or a percentage like `50%`.
@@ -324,7 +326,8 @@ INDEX  MATCH             ACTION                    WORKSPACE  MONITOR
 ```
 
 A rule matches with `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`,
-`--title-prefix <TEXT>` or `--title-suffix <TEXT>` only. A window ID, `focused`
+`--title-prefix <TEXT>`, `--title-suffix <TEXT>` or `--class-prefix <TEXT>`
+only. A window ID, `focused`
 and `-p <PID>` name a window that already exists, and a rule is evaluated
 against windows that do not exist yet, so those are refused.
 
@@ -351,7 +354,8 @@ shell running, and with `--file`, they say nothing.
 
 `title_prefix` and `title_suffix` need an extension that also reports
 `rules-title-affix`. An older one refuses a file that has either key and then
-applies no rule at all; `add` and `remove` warn about that too.
+applies no rule at all; `add` and `remove` warn about that too. `class_prefix`
+needs `rules-class-prefix` in the same way.
 
 ### Checking the file
 
