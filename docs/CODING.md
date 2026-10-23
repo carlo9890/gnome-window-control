@@ -57,7 +57,7 @@ If it fails, the code has a syntax error and must not be committed.
 - `wctl` works with every extension version from `MIN_EXTENSION_VERSION`
   (`cli/src/main.rs`) up. Gate a call to a method or a behavior newer than that
   version on its capability name from `GetCapabilities`, as `commands/rules.rs`
-  does with `TITLE_AFFIX_CAPABILITY`. Only the maintainer raises the baseline.
+  does with `NEWER_MATCH_KEYS`. Only the maintainer raises the baseline.
 - The CLI grammar is a frozen contract: output strings, usage text and exit
   codes are asserted by the live suites. Do not reword a message without
   changing the suite that pins it.
