@@ -77,6 +77,16 @@ pub fn validate_pid(token: &str) -> Result<i32> {
         .ok_or_else(|| Fail::error("PID must be a number"))
 }
 
+/// Refuse a match value the extension would refuse: a PID that is not one,
+/// and an empty substring, which matches every window.
+pub fn validate_value(kind: Kind, value: &str) -> Result<()> {
+    match kind {
+        Kind::Pid => validate_pid(value).map(|_| ()),
+        Kind::Substring if value.is_empty() => Err(Fail::error("Substring must not be empty")),
+        _ => Ok(()),
+    }
+}
+
 /// Map a selector option to its kind. Shared by the resolver and `wait`.
 pub fn kind_for_option(option: &str) -> Result<Kind> {
     match option {
@@ -104,9 +114,7 @@ pub fn parse(args: &[String]) -> Result<Selector> {
             }
             let kind = kind_for_option(first)?;
             let value = args[1].clone();
-            if kind == Kind::Pid {
-                validate_pid(&value)?;
-            }
+            validate_value(kind, &value)?;
             Ok(Selector {
                 kind,
                 value,

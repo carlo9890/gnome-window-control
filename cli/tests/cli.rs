@@ -419,6 +419,9 @@ fn selector_option_guards() {
     expect_die("Unknown option: -x", &["tile", "-x", "left"]);
     expect_die("Option -c requires an argument", &["tile", "-c"]);
     expect_die("PID must be a number", &["tile", "-p", "abc", "left"]);
+    // An empty substring matches every window, so with one window open it
+    // would close that one.
+    expect_die("Substring must not be empty", &["close", "-s", ""]);
 }
 
 #[test]
