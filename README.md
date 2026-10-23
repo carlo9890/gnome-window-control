@@ -136,6 +136,7 @@ checkout — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 wctl list                          # every window; --json for the full document
+                                   # (has_been_shown: false until mutter has mapped it)
 wctl focused                       # the focused window
 wctl info 12345 --json             # one window's details
 

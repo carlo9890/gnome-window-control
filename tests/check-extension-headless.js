@@ -101,7 +101,10 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         }
     }
 
-    const workspace = { get_work_area_for_monitor: () => ({ x: 0, y: 0, width: 1920, height: 1080 }) };
+    const workspace = {
+        get_work_area_for_monitor: () => ({ x: 0, y: 0, width: 1920, height: 1080 }),
+        index: () => 0,
+    };
 
     class FakeWindow extends Emitter {
         constructor({ id, wmClass, type = Meta.WindowType.NORMAL, maximizeFlags = 0 }) {
@@ -112,6 +115,13 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
 
         get_id() { return this.id; }
         get_wm_class() { return this.wmClass; }
+        get_wm_class_instance() { return ''; }
+        get_sandboxed_app_id() { return ''; }
+        get_gtk_application_id() { return ''; }
+        has_focus() { return false; }
+        is_above() { return false; }
+        is_on_all_workspaces() { return false; }
+        is_skip_taskbar() { return false; }
         get_title() { return ''; }
         get_pid() { return 1; }
         get_window_type() { return this.type; }
@@ -309,6 +319,48 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         windows.length = 0;
     }
 
+    // -- ListDetailed: has_been_shown -------------------------------------------
+    //
+    // N is created while no wait runs, and created minimized, so it is hidden and
+    // not on screen without having been mapped. The service records it from
+    // creation, so the listing and a later wait both know it is unshown. O
+    // predates the service and is hidden and unminimized: the fallback reading.
+
+    {
+        const old = createWindow({ id: 12, wmClass: 'O' });
+        const service = new WindowControlService({ version: 0 });
+        const shown = () => Object.fromEntries(JSON.parse(service.ListDetailed())
+            .map(doc => [doc.id, doc.has_been_shown]));
+        const created = createWindow({ id: 11, wmClass: 'N' });
+        created.minimized = true;
+        check('a window created minimized has not been shown', shown()[11] === false,
+            JSON.stringify(shown()));
+        check('a window that predates the service and looks unmapped has not been shown',
+            shown()[12] === false, JSON.stringify(shown()));
+        check('a window created while no wait runs keeps only a first-show watch',
+            created.handlerCount() === 2, `${created.handlerCount()} handler(s)`);
+        const wait = invocation();
+        service.WaitForWindowAsync(['class', 'N', 5000], wait);
+        check('a wait does not reply for a window created minimized and never mapped',
+            wait.reply === null, showReply(wait));
+        created.minimized = false;
+        created.map();
+        check('the wait replies once the window is shown', showReply(wait) === '{"value":[11]}',
+            showReply(wait));
+        created.minimize();
+        check('a shown window stays shown once minimized', shown()[11] === true,
+            JSON.stringify(shown()));
+        check('a shown window keeps no handler', created.handlerCount() === 0,
+            `${created.handlerCount()} handler(s)`);
+        const unshown = createWindow({ id: 13, wmClass: 'U' });
+        unexport(service);
+        check('unexport() drops the record of new windows and its first-show watches',
+            display.handlerCount() === 0 && unshown.handlerCount() === 0 && old.handlerCount() === 0,
+            `display ${display.handlerCount()}, unshown ${unshown.handlerCount()}, ` +
+            `old ${old.handlerCount()}`);
+        windows.length = 0;
+    }
+
     // -- WaitForWindow / WaitForGeometry: the caller leaves the bus ---------------
     //
     // A killed caller's wait is dropped at once, with no reply and nothing left
@@ -343,8 +395,9 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             `waiters ${service._waiters.length}, watchers ${service._geometryWatchers.length}, ` +
             `watches ${bus.watches.size}`);
         bus.leave(stays.sender);
+        // What stays on the display is the service's own record of new windows.
         check('the last caller leaving drops every handler',
-            display.handlerCount() === 0 && win.handlerCount() === 0 && bus.watches.size === 0,
+            display.handlerCount() === 1 && win.handlerCount() === 0 && bus.watches.size === 0,
             `display ${display.handlerCount()}, window ${win.handlerCount()}, ` +
             `watches ${bus.watches.size}`);
 
@@ -359,7 +412,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('a wait whose caller left before it was handled is dropped',
             service._waiters.length === 0 && service._geometryWatchers.length === 0 &&
             leftFirstWindow.replies === 0 && leftFirstGeometry.replies === 0 &&
-            display.handlerCount() === 0 && win.handlerCount() === 0 && bus.watches.size === 0,
+            display.handlerCount() === 1 && win.handlerCount() === 0 && bus.watches.size === 0,
             `waiters ${service._waiters.length}, watchers ${service._geometryWatchers.length}, ` +
             `display ${display.handlerCount()}, window ${win.handlerCount()}, watches ${bus.watches.size}`);
 
@@ -426,6 +479,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         global.workspace_manager = manager;
         check('GetWorkarea raises Failed when the lookup throws', showReply(failed) ===
             '{"error":"org.freedesktop.DBus.Error.Failed","message":"no workarea"}', showReply(failed));
+        unexport(service);
     }
 
     // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
