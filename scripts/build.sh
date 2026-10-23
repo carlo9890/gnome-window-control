@@ -180,8 +180,9 @@ install_local() {
     # Remove existing installation
     rm -rf "$target_dir"
     
-    # Copy extension
-    cp -r "$EXTENSION_DIR" "$target_dir"
+    # The files the zip ships, and no stray untracked one.
+    mkdir -p "$target_dir"
+    (cd "$EXTENSION_DIR" && git ls-files -z | xargs -0 cp --parents -t "$target_dir")
 
     # A plain copy is the one install path nothing compiles the schema on, and
     # Extension.getSettings() reads only gschemas.compiled.
