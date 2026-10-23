@@ -112,29 +112,8 @@ impl Rule {
             Action::Tile(position) => geometry::tile_cells(position)
                 .ok()
                 .map(|cells| geometry::tile_rect(cells, workarea)),
-            Action::Center(axis) => Some(center_rect(axis, frame, workarea)),
+            Action::Center(axis) => Some(geometry::center_rect(axis, frame, workarea)),
         }
-    }
-}
-
-/// The centring formula `center` shares with `place center`. Mirrors
-/// centerRect in rules-format.js.
-pub fn center_rect(axis: &str, frame: Rect, workarea: Rect) -> Rect {
-    let horizontal = axis == "horizontal" || axis == "both";
-    let vertical = axis == "vertical" || axis == "both";
-    Rect {
-        x: if horizontal {
-            workarea.x + (workarea.width - frame.width) / 2
-        } else {
-            frame.x
-        },
-        y: if vertical {
-            workarea.y + (workarea.height - frame.height) / 2
-        } else {
-            frame.y
-        },
-        width: frame.width,
-        height: frame.height,
     }
 }
 

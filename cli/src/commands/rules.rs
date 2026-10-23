@@ -464,16 +464,7 @@ fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
         "center" => {
             let axis = match rest {
                 [] => "both",
-                [axis] => match axis.as_str() {
-                    "h" | "horizontal" => "horizontal",
-                    "v" | "vertical" => "vertical",
-                    "both" => "both",
-                    other => {
-                        return Err(Fail::error(format!(
-                            "Invalid axis: {other}. Must be 'horizontal', 'vertical', or 'both'"
-                        )))
-                    }
-                },
+                [axis] => crate::geometry::parse_center_axis(axis)?,
                 _ => {
                     return Err(Fail::error(
                         "Usage: wctl rules add <MATCH> center [horizontal|vertical|both]",
