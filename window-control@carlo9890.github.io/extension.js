@@ -1277,13 +1277,20 @@ class WindowControlService {
         this._dbusImpl.export(Gio.DBus.session, DBUS_OBJECT_PATH);
     }
 
+    // Also tears down a service whose export() failed. The D-Bus object is
+    // unexported even when the cleanup before it throws, so the next enable()
+    // can export it again.
     unexport() {
-        global.display.disconnect(this._windowCreatedId);
-        this._windowCreatedId = 0;
-        this._cancelWaiters();
-        this._cancelGeometryWatchers();
-        this._dbusImpl.unexport();
-        this._dbusImpl = null;
+        try {
+            global.display.disconnect(this._windowCreatedId);
+            this._windowCreatedId = 0;
+            this._cancelWaiters();
+            this._cancelGeometryWatchers();
+        } finally {
+            if (this._dbusImpl.get_connection())
+                this._dbusImpl.unexport();
+            this._dbusImpl = null;
+        }
     }
 }
 
@@ -1300,6 +1307,9 @@ export default class WindowControlExtension extends Extension {
             this._service.keybindingsServed = this._keybindings.registered;
         } catch (e) {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
+            // The shell does not call disable() for an extension whose
+            // enable() threw, so nothing set up so far may outlive it.
+            this.disable();
             throw e;
         }
     }
@@ -1314,9 +1324,10 @@ export default class WindowControlExtension extends Extension {
             this._rules = null;
         }
         if (this._service) {
+            const service = this._service;
+            this._service = null;
             try {
-                this._service.unexport();
-                this._service = null;
+                service.unexport();
                 console.log(`[${this.metadata.name}] D-Bus service unregistered`);
             } catch (e) {
                 console.error(`[${this.metadata.name}] Failed to unregister D-Bus service: ${e.message}`);

@@ -229,14 +229,8 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         return JSON.stringify(call.reply);
     }
 
-    // unexport() as disable() calls it. The service was never exported, so its
-    // D-Bus skeleton is swapped for one that has nothing to unexport.
-    function unexport(service) {
-        service._dbusImpl = { unexport() {} };
-        service.unexport();
-    }
-
-    const { WindowControlService } = await import(`file://${EXT}/extension.js`);
+    const { WindowControlService, default: WindowControlExtension } =
+        await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
 
@@ -271,7 +265,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             showReply(waitC));
         check('wait B finds the window created during wait A', showReply(waitB) === '{"value":[2]}',
             showReply(waitB));
-        unexport(service);
+        service.unexport();
         windows.length = 0;
     }
 
@@ -295,7 +289,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         m.minimized = false;
         m.map();
         check('wait M replies once M is shown', showReply(waitM) === '{"value":[9]}', showReply(waitM));
-        unexport(service);
+        service.unexport();
         windows.length = 0;
     }
 
@@ -315,7 +309,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         dialog.emit('notify::window-type');
         check('wait D finds a dialog shown before it was retyped to NORMAL',
             showReply(wait) === '{"value":[6]}', showReply(wait));
-        unexport(service);
+        service.unexport();
         windows.length = 0;
     }
 
@@ -353,7 +347,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('a shown window keeps no handler', created.handlerCount() === 0,
             `${created.handlerCount()} handler(s)`);
         const unshown = createWindow({ id: 13, wmClass: 'U' });
-        unexport(service);
+        service.unexport();
         check('unexport() drops the record of new windows and its first-show watches',
             display.handlerCount() === 0 && unshown.handlerCount() === 0 && old.handlerCount() === 0,
             `display ${display.handlerCount()}, unshown ${unshown.handlerCount()}, ` +
@@ -433,7 +427,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('the pending waits armed their timers', sources.length === 3 && sources.every(sourceAlive),
             `${sources}`);
         const unshownConnects = unshown._nextId;
-        unexport(service);
+        service.unexport();
         check('unexport() connects no first-show watch', unshown._nextId === unshownConnects,
             `${unshown._nextId - unshownConnects} handler(s) connected`);
         check('unexport() fails the pending WaitForWindow with Disabled',
@@ -479,7 +473,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         global.workspace_manager = manager;
         check('GetWorkarea raises Failed when the lookup throws', showReply(failed) ===
             '{"error":"org.freedesktop.DBus.Error.Failed","message":"no workarea"}', showReply(failed));
-        unexport(service);
+        service.unexport();
     }
 
     // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
@@ -502,6 +496,31 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('a cancelled UnmaximizeWait never places the window', win.moves.length === 0,
             JSON.stringify(win.moves));
         windows.length = 0;
+    }
+
+    // -- enable() when the D-Bus export fails -------------------------------------
+    //
+    // The shell calls no disable() for an extension whose enable() threw.
+
+    {
+        const extension = new WindowControlExtension();
+        extension.metadata = { name: 'Window Control', version: 1 };
+        const realExport = WindowControlService.prototype.export;
+        WindowControlService.prototype.export = () => {
+            throw new Error('an object is already exported at this path');
+        };
+        let threw = false;
+        try {
+            extension.enable();
+        } catch {
+            threw = true;
+        } finally {
+            WindowControlService.prototype.export = realExport;
+        }
+        check('enable() rethrows a failed export', threw);
+        check('a failed enable() leaves no handler on the display and no service',
+            display.handlerCount() === 0 && extension._service === null,
+            `${display.handlerCount()} handler(s), service ${extension._service}`);
     }
 
     // -- WindowRules: a window that is not NORMAL when shown ----------------------
