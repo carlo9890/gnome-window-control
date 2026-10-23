@@ -35,7 +35,8 @@ LISTING COMMANDS:
       --workspace <N>       Only windows on workspace N (sticky windows included)
       --monitor <N>         Only windows on monitor N
       --class <CLASS>       Only windows with this WM class
-    focused [--json]        Show detailed info for the focused window
+    focused [--json]        Show detailed info for the focused window;
+                            with --json, null when no window has focus
     workspaces [--json]     List workspaces
     monitors [--json]       List monitors
     workarea [<MONITOR>] [--json]

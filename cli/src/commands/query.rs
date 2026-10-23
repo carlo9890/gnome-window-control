@@ -100,13 +100,18 @@ pub fn focused(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let json_output = parse_json_flag(args)?;
 
     let windows = ctx.windows()?;
-    let Some(window) = windows.iter().find(|w| model::flag(w, "has_focus")) else {
-        println!("No window focused");
-        return Ok(());
-    };
-
-    print!("{}", window_text(window, json_output));
+    print!("{}", focused_text(&windows, json_output));
     Ok(())
+}
+
+/// The `focused` output, newline-terminated. With `--json` and no focused
+/// window it is the JSON `null`, so a caller parses every answer as JSON.
+fn focused_text(windows: &[Window], json_output: bool) -> String {
+    match windows.iter().find(|w| model::flag(w, "has_focus")) {
+        Some(window) => window_text(window, json_output),
+        None if json_output => "null\n".to_string(),
+        None => "No window focused\n".to_string(),
+    }
 }
 
 pub fn info(ctx: &mut Ctx, args: &[String]) -> Result<()> {
@@ -395,6 +400,14 @@ fn in_version_range(loaded: &str, min: &str, max: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn focused_without_a_focused_window_is_null_in_json_and_text_otherwise() {
+        let windows = vec![json!({ "id": 1, "has_focus": false })];
+        assert_eq!(focused_text(&windows, true), "null\n");
+        assert_eq!(focused_text(&windows, false), "No window focused\n");
+        assert_eq!(focused_text(&[], true), "null\n");
+    }
 
     #[test]
     fn a_version_from_the_baseline_to_the_expected_one_is_in_range() {
