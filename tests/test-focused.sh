@@ -69,8 +69,9 @@ fi
 # ============================================================================
 
 run_wctl focused --json
-if [[ "$WCTL_OUTPUT" == "No window focused" ]]; then
-    pass "focused --json shows 'No window focused' when no focus (expected)"
+if [[ "$WCTL_OUTPUT" == "null" ]]; then
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "focused --json exits with code 0"
+    pass "focused --json prints null when no window has focus (expected)"
 else
     assert_exit_code 0 "$WCTL_EXIT_CODE" "focused --json exits with code 0"
     assert_json_valid "$WCTL_OUTPUT" "focused --json returns valid JSON"

@@ -178,9 +178,9 @@ Constraints the review enforces, which the code must keep satisfying:
 - `disable()` must undo everything `enable()` did. `unexport()` fails every
   pending call and drops the `window-created` handler, the per-window
   `notify::wm-class` / `notify::title` / `notify::window-type` / `shown` /
-  `unmanaged` handlers, the first-show handlers a window created during a wait
-  keeps after it, and the per-call timeouts and caller name watches that
-  `WaitForWindow` and `WaitForGeometry` arm;
+  `unmanaged` handlers, the first-show handlers a window created while the
+  extension runs keeps until its first map, and the per-call timeouts and
+  caller name watches that `WaitForWindow` and `WaitForGeometry` arm;
   `WindowRules.disable()` cancels its file monitor, its debounce timeout, a
   `rules.json` read in flight and its per-window handlers;
   `WindowKeybindings.disable()` removes every keybinding it added and cancels a

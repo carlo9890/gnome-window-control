@@ -29,12 +29,14 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // feature is served. 'rules' means rules.json is read and applied;
 // 'rules-title-affix' means its title_prefix and title_suffix match keys are
 // known -- an extension without it refuses a file that carries one, whole;
+// 'rules-class-prefix' means the same for its class_prefix match key;
 // 'keybindings' means the tile shortcuts in the settings schema are served,
 // and is left out when their registration failed;
 // 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
 // 'activate-no-animation' means ActivateNoAnimation is.
 const CAPABILITIES = [
-    'rules', 'rules-title-affix', 'keybindings', 'no-animation', 'activate-no-animation',
+    'rules', 'rules-title-affix', 'rules-class-prefix', 'keybindings', 'no-animation',
+    'activate-no-animation',
 ];
 
 // The match kinds the D-Bus methods take. rules.json has more (see
@@ -129,18 +131,22 @@ class WindowControlService {
         this._version = String(metadata.version);
         // Set by the extension once WindowKeybindings has registered them.
         this.keybindingsServed = false;
-        // WaitForWindow state. The 'window-created' handler is connected only
-        // while at least one waiter is pending, so an idle extension costs nothing.
+        // WaitForWindow state. A window is tracked only while at least one
+        // waiter is pending.
         this._waiters = [];
-        this._windowCreatedId = 0;
         this._trackedWindows = new Map();   // Meta.Window -> [signal handler ids]
         // Mutter exposes no "has been mapped" getter, so record it: a window
         // seen unhidden once has been placed, and that never becomes untrue.
         this._shownWindows = new WeakSet();
-        this._createdWhileWatching = new WeakSet();
-        // Meta.Window -> [signal handler ids]: the one-shot 'shown' watch a
-        // window created during a watch keeps after it (see _isUnshown).
+        // Every window created while the service runs, and a one-shot 'shown'
+        // watch on each untracked one until its first map (Meta.Window ->
+        // [signal handler ids]), so _isUnshown() knows the answer for all of
+        // them. A window costs two handlers until it is first shown, and none
+        // after.
+        this._createdSinceStart = new WeakSet();
         this._firstShowWatches = new Map();
+        this._windowCreatedId = global.display.connect('window-created',
+            (display, win) => this._onWindowCreated(win));
         // WaitForGeometry state, one entry per pending call.
         this._geometryWatchers = [];
     }
@@ -295,23 +301,22 @@ class WindowControlService {
     //
     // is_hidden() alone cannot answer this: minimized windows and windows on
     // another workspace are hidden too, and both are placed. For a window
-    // watched since 'window-created' the answer is known outright -- if it has
-    // never been seen unhidden it has never been mapped, whatever the reason it
-    // is hidden now. That is the case the old test got wrong: a window created
-    // on a non-active workspace, or created minimized, failed its
-    // minimized/workspace clauses and was called shown while mutter had not yet
-    // placed it.
+    // created while the service runs the answer is known outright -- its
+    // first-show watch records the map, so if it has never been seen unhidden
+    // it has never been mapped, whatever the reason it is hidden now. That is
+    // the case the old test got wrong: a window created on a non-active
+    // workspace, or created minimized, failed its minimized/workspace clauses
+    // and was called shown while mutter had not yet placed it.
     //
-    // A marked window that is not shown yet when the watch ends keeps a
-    // one-shot 'shown' handler (_watchFirstShow), so its map is still recorded
-    // and the answer stays known. A window that predates every watch has no
-    // such history, so it falls back to the old reading: hidden while
-    // unminimized and on the active workspace is the only shape a
-    // not-yet-mapped window can have.
+    // A window that predates the service (it is rebuilt at every enable,
+    // and GNOME disables the extension while the screen is locked) has no such
+    // history, so it falls back to the old reading: hidden while unminimized
+    // and on the active workspace is the only shape a not-yet-mapped window can
+    // have.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
-        if (this._createdWhileWatching.has(win))
+        if (this._createdSinceStart.has(win))
             return true;
         return !win.minimized &&
             win.located_on_workspace(global.workspace_manager.get_active_workspace());
@@ -435,6 +440,9 @@ class WindowControlService {
                         width: frameRect.width,
                         height: frameRect.height,
                     },
+                    // Has mutter mapped and placed it at least once? Exact for a
+                    // window created since enable; see _isUnshown() for the rest.
+                    has_been_shown: !this._isUnshown(win),
                 });
             }
             
@@ -793,7 +801,6 @@ class WindowControlService {
                 console.debug(`[Window Control] WaitForWindow(${kind}) dropped (caller left the bus)`);
                 this._retireWaiter(waiter);
             });
-            this._startWatching();
             this._trackExistingWindows();
         } catch (e) {
             console.error(`[Window Control] WaitForWindow() error: ${e.message}`);
@@ -948,36 +955,30 @@ class WindowControlService {
             console.debug(`[Window Control] cancelled ${pending.length} pending WaitForGeometry call(s)`);
     }
 
-    // Connect 'window-created' (idempotent).
-    _startWatching() {
-        if (this._windowCreatedId)
-            return;
-        this._windowCreatedId = global.display.connect('window-created',
-            (display, win) => this._onWindowCreated(win));
-    }
-
-    // Disconnect 'window-created' and every per-window handler. Teardown
-    // passes watchFirstShow = false: it drops every first-show watch anyway.
+    // Drop every per-window handler. Teardown passes watchFirstShow = false:
+    // it drops every first-show watch anyway.
     _stopWatching(watchFirstShow = true) {
-        if (this._windowCreatedId) {
-            global.display.disconnect(this._windowCreatedId);
-            this._windowCreatedId = 0;
-        }
         for (const win of [...this._trackedWindows.keys()])
             this._untrackWindow(win, watchFirstShow);
     }
 
-    // A new window may not carry its wm_class or title yet when 'window-created'
-    // fires (on Wayland the app id arrives with a later commit), and it is not
-    // shown (mapped and placed) until the client commits its first buffer, so
-    // evaluate now and again when either property is set and when the window is
-    // shown. Handlers are dropped once the window matched, was unmanaged, or no
-    // waiter is left.
+    // Remember that this window was seen from creation: _isUnshown() needs to
+    // tell "mutter has not mapped it yet" from "mapped, currently hidden", and
+    // for such a window the record of its first map makes that knowable. With
+    // no waiter pending, the first-show watch records it.
+    //
+    // With one pending, the window is tracked instead. A new window may not
+    // carry its wm_class or title yet when 'window-created' fires (on Wayland
+    // the app id arrives with a later commit), and it is not shown (mapped and
+    // placed) until the client commits its first buffer, so evaluate now and
+    // again when either property is set and when the window is shown. Handlers
+    // are dropped once the window matched, was unmanaged, or no waiter is left.
     _onWindowCreated(win) {
-        // Remember that this window was watched from creation: _isUnshown()
-        // needs to tell "mutter has not mapped it yet" from "mapped, currently
-        // hidden", and for a window seen from the start that is knowable.
-        this._createdWhileWatching.add(win);
+        this._createdSinceStart.add(win);
+        if (this._waiters.length === 0) {
+            this._watchFirstShow(win);
+            return;
+        }
         this._trackWindow(win);
         this._evaluateWindow(win);
     }
@@ -1018,9 +1019,10 @@ class WindowControlService {
 
     // Track every window that already exists when a waiter registers.
     //
-    // 'window-created' only fires for windows created after _startWatching(),
-    // so without this two cases never wake a waiter: the window created in the
-    // gap just before the call, which has already missed the signal and is
+    // 'window-created' tracks only the windows created while a waiter is
+    // pending, so without this two cases never wake a waiter: the window
+    // created in the gap just before the call, which has already missed the
+    // signal and is
     // still unshown; and any window already on screen whose title or class
     // changes later -- `wait -t 'Report.pdf - LibreOffice Writer'` against an
     // already-open LibreOffice, or `wait -c` against a Wayland client whose
@@ -1046,12 +1048,12 @@ class WindowControlService {
         for (const id of ids)
             win.disconnect(id);
         this._trackedWindows.delete(win);
-        if (watchFirstShow && this._createdWhileWatching.has(win) && !this._shownWindows.has(win))
+        if (watchFirstShow && this._createdSinceStart.has(win) && !this._shownWindows.has(win))
             this._watchFirstShow(win);
     }
 
-    // Keep one 'shown' handler on a window that was created during a watch and
-    // is not shown when the watch ends: without it nothing records its map, and
+    // Keep one 'shown' handler on a window created while the service runs that
+    // is not shown yet and not tracked: without it nothing records its map, and
     // a later wait would take the hidden window for one mutter has not placed.
     _watchFirstShow(win) {
         const ids = [
@@ -1276,6 +1278,8 @@ class WindowControlService {
     }
 
     unexport() {
+        global.display.disconnect(this._windowCreatedId);
+        this._windowCreatedId = 0;
         this._cancelWaiters();
         this._cancelGeometryWatchers();
         this._dbusImpl.unexport();

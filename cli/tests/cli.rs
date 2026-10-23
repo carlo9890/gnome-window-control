@@ -1146,3 +1146,78 @@ fn rules_add_takes_a_title_prefix_and_suffix() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn rules_add_takes_a_class_prefix() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-class-prefix-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    let path = file.to_str().unwrap();
+
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--class-prefix",
+        "chrome-github.com__",
+        "place",
+        "center",
+        "top",
+        "50%",
+        "100%",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(
+        out.contains("class_prefix=chrome-github.com__"),
+        "printed: {out}"
+    );
+    // A class that starts with the prefix is covered by the earlier rule.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "-c",
+        "chrome-github.com__hk9890_revier-Default",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert!(
+        out.contains("rule 0 already matches every window"),
+        "printed: {out}"
+    );
+
+    // The value of a selector option is never read as an option name.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--class-prefix",
+        "--at",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(out.contains("class_prefix=--at"), "printed: {out}");
+
+    expect_die(
+        "--class-prefix requires a value",
+        &[
+            "rules",
+            "add",
+            "--file",
+            path,
+            "--class-prefix",
+            "",
+            "tile",
+            "left",
+        ],
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -196,7 +196,7 @@ _wctl() {
                         '1:subcommand:(list path check add remove test)'
                         '--file[Rules file to use (default: the configured one)]:file:_files'
                     )
-                    local rule_match='(-c -t -s --title-prefix --title-suffix)'
+                    local rule_match='(-c -t -s --title-prefix --title-suffix --class-prefix)'
                     case $words[2] in
                         add)
                             _arguments "${rules_args[@]}" \
@@ -205,6 +205,7 @@ _wctl() {
                                 "${rule_match}-s[Match a title substring]:substring:" \
                                 "${rule_match}--title-prefix[Match a title that starts with this]:text:" \
                                 "${rule_match}--title-suffix[Match a title that ends with this]:text:" \
+                                "${rule_match}--class-prefix[Match a WM class that starts with this]:text:" \
                                 '2:action:(tile place center)' \
                                 '--workspace[Also move the window to this workspace]:index:' \
                                 '--monitor[Resolve the geometry on this monitor]:index:' \

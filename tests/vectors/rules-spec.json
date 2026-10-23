@@ -159,19 +159,19 @@
       "name": "match is empty",
       "document": [{ "match": {}, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match: must name at least one of class, title, substr, title_prefix, title_suffix"
+      "message": "rules[0].match: must name at least one of class, title, substr, title_prefix, title_suffix, class_prefix"
     },
     {
       "name": "unknown match key",
       "document": [{ "match": { "pid": "123" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.pid: unknown key (use class, title, substr, title_prefix, title_suffix)"
+      "message": "rules[0].match.pid: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix)"
     },
     {
       "name": "focused is not a match key",
       "document": [{ "match": { "focused": "yes" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.focused: unknown key (use class, title, substr, title_prefix, title_suffix)"
+      "message": "rules[0].match.focused: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix)"
     },
     {
       "name": "match value is a number",
@@ -201,6 +201,17 @@
       "document": [{ "match": { "title_suffix": "" }, "tile": "left" }],
       "valid": false,
       "message": "rules[0].match.title_suffix: must not be empty"
+    },
+    {
+      "name": "class_prefix is a match key, and combines with a title key",
+      "document": [{ "match": { "class_prefix": "chrome-github.com__", "title_suffix": "GitHub" }, "tile": "left" }],
+      "valid": true
+    },
+    {
+      "name": "empty class_prefix would match every window",
+      "document": [{ "match": { "class_prefix": "" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.class_prefix: must not be empty"
     },
     {
       "name": "empty substr would match every window",
@@ -332,25 +343,25 @@
       "name": "constructor is not a match key",
       "document": [{ "match": { "constructor": "a" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.constructor: unknown key (use class, title, substr, title_prefix, title_suffix)"
+      "message": "rules[0].match.constructor: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix)"
     },
     {
       "name": "hasOwnProperty is not a match key",
       "document": [{ "match": { "hasOwnProperty": "a" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.hasOwnProperty: unknown key (use class, title, substr, title_prefix, title_suffix)"
+      "message": "rules[0].match.hasOwnProperty: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix)"
     },
     {
       "name": "an integer match key is checked before an earlier empty value",
       "document": [{ "match": { "class": "", "1": "x" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.1: unknown key (use class, title, substr, title_prefix, title_suffix)"
+      "message": "rules[0].match.1: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix)"
     },
     {
       "name": "an integer match key is checked before an earlier value that is not a string",
       "document": [{ "match": { "class": 5, "1": "x" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.1: unknown key (use class, title, substr, title_prefix, title_suffix)"
+      "message": "rules[0].match.1: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix)"
     },
     {
       "name": "an integer rule key is checked before an earlier unknown key",
@@ -368,7 +379,7 @@
       "name": "the largest array index is checked before an earlier empty value",
       "document": [{ "match": { "class": "", "4294967294": "x" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.4294967294: unknown key (use class, title, substr, title_prefix, title_suffix)"
+      "message": "rules[0].match.4294967294: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix)"
     },
     {
       "name": "one past the largest array index keeps its file position",
@@ -708,6 +719,12 @@
       { "name": "suffix against a null title", "kind": "suffix", "value": "vim", "window": { "wm_class": "kitty", "title": null, "pid": 100 }, "matches": false },
       { "name": "substring against a null title", "kind": "substring", "value": "vim", "window": { "wm_class": "kitty", "title": null, "pid": 100 }, "matches": false },
       { "name": "class against a null class", "kind": "class", "value": "kitty", "window": { "wm_class": null, "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "class_prefix matches the start of the class", "kind": "class_prefix", "value": "chrome-github.com__", "window": { "wm_class": "chrome-github.com__hk9890_revier-Default", "title": "revier", "pid": 100 }, "matches": true },
+      { "name": "class_prefix does not match inside the class", "kind": "class_prefix", "value": "github.com__", "window": { "wm_class": "chrome-github.com__hk9890_revier-Default", "title": "revier", "pid": 100 }, "matches": false },
+      { "name": "class_prefix matches the whole class", "kind": "class_prefix", "value": "kitty", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
+      { "name": "class_prefix is case sensitive", "kind": "class_prefix", "value": "Kit", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "class_prefix does not read the title", "kind": "class_prefix", "value": "vim", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false },
+      { "name": "class_prefix against a null class", "kind": "class_prefix", "value": "kitty", "window": { "wm_class": null, "title": "kitty", "pid": 100 }, "matches": false },
       { "name": "pid is numeric equality", "kind": "pid", "value": "100", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": true },
       { "name": "pid mismatch", "kind": "pid", "value": "101", "window": { "wm_class": "kitty", "title": "vim", "pid": 100 }, "matches": false }
     ],
@@ -716,6 +733,7 @@
       { "name": "an empty substring would match every window", "kind": "substring", "value": "" },
       { "name": "an empty prefix would match every window", "kind": "prefix", "value": "" },
       { "name": "an empty suffix would match every window", "kind": "suffix", "value": "" },
+      { "name": "an empty class prefix would match every window", "kind": "class_prefix", "value": "" },
       { "name": "pid zero is the unknown-pid sentinel", "kind": "pid", "value": "0" },
       { "name": "a negative pid", "kind": "pid", "value": "-1" },
       { "name": "a non-numeric pid", "kind": "pid", "value": "abc" }

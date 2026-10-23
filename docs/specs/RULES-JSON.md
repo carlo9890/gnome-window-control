@@ -70,17 +70,20 @@ two keys are an AND.
 | `substr` | title contains the value | `substring` |
 | `title_prefix` | title starts with the value | `prefix` |
 | `title_suffix` | title ends with the value | `suffix` |
+| `class_prefix` | WM class starts with the value | `class_prefix` |
 
 `MATCH_KINDS` maps these to `matchPredicate`. A value MUST be a non-empty
-string. An empty `substr`, `title_prefix` or `title_suffix` would match every
-window; an empty `class` or `title` would match only a window that has none, so
-a rule carrying one could never usefully fire. All five are refused with the
-same message rather than loaded as a rule that silently never matches.
+string. An empty `substr`, `title_prefix`, `title_suffix` or `class_prefix`
+would match every window; an empty `class` or `title` would match only a window
+that has none, so a rule carrying one could never usefully fire. All six are
+refused with the same message rather than loaded as a rule that silently never
+matches.
 
 `focused`, numeric window ID and PID are deliberately absent: a static file
 cannot name a window that does not exist yet. `matchPredicate` still supports
 `pid` for the D-Bus callers. The D-Bus methods take `class`, `title`,
-`substring` and `pid` only: `prefix` and `suffix` are rules.json kinds.
+`substring` and `pid` only: `prefix`, `suffix` and `class_prefix` are
+rules.json kinds.
 
 ## Geometry actions
 
@@ -187,7 +190,7 @@ which a file written by `wctl rules add` can contain:
 | Rule not an object | `rules[N]: must be an object` |
 | Unknown rule key | `rules[N].<key>: unknown key (use ...)` |
 | `match` missing or not an object | `rules[N].match: must be an object` |
-| `match` empty | `rules[N].match: must name at least one of class, title, substr, title_prefix, title_suffix` |
+| `match` empty | `rules[N].match: must name at least one of class, title, substr, title_prefix, title_suffix, class_prefix` |
 | Unknown `match` key | `rules[N].match.<key>: unknown key (use ...)` |
 | `match` value not a string | `rules[N].match.<key>: must be a string` |
 | `match` value empty | `rules[N].match.<key>: must not be empty` |
@@ -347,4 +350,5 @@ interface and carries no version field. An extension that applies rules MUST
 report the `rules` capability from `GetCapabilities`; that name, not the
 version number, is how a caller learns the file is read. An extension that
 knows `title_prefix` and `title_suffix` MUST also report `rules-title-affix`:
-one without it refuses a file that carries either key.
+one without it refuses a file that carries either key. An extension that knows
+`class_prefix` MUST report `rules-class-prefix`, for the same reason.

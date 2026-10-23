@@ -35,7 +35,8 @@ LISTING COMMANDS:
       --workspace <N>       Only windows on workspace N (sticky windows included)
       --monitor <N>         Only windows on monitor N
       --class <CLASS>       Only windows with this WM class
-    focused [--json]        Show detailed info for the focused window
+    focused [--json]        Show detailed info for the focused window;
+                            with --json, null when no window has focus
     workspaces [--json]     List workspaces
     monitors [--json]       List monitors
     workarea [<MONITOR>] [--json]
@@ -113,7 +114,9 @@ PLACEMENT RULES:
                             Append a rule (or insert it at --at). MATCH is
                             -c <CLASS>, -t <TITLE>, -s <SUBSTR>,
                             --title-prefix <TEXT> or --title-suffix <TEXT>
-                            (the title starts or ends with it); a window ID,
+                            (the title starts or ends with it), or
+                            --class-prefix <TEXT> (the WM class starts with
+                            it); a window ID,
                             focused and -p name a window that already exists,
                             so a rule cannot use them. ACTION is
                             tile <POSITION>, place <X> <Y> <W> <H>, or

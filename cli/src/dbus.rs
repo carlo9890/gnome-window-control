@@ -53,29 +53,29 @@ pub const DEFAULT_TIMEOUT_SECONDS: u64 = 25;
 
 /// Classify a failed call as "the extension is not running".
 ///
-/// Matched on the error NAME wherever one exists. The one text match left is
-/// the case GDBus genuinely conflates: it raises UnknownMethod both for a
-/// missing object ("Object does not exist at path ...", the extension is not
-/// running) and for a missing method ("No such method ...", the extension is
-/// too old), and only the detail tells them apart (measured on GNOME 46).
+/// Matched on the error NAME alone. UnknownMethod is not here: GDBus raises
+/// it both for a missing object (the extension is not running) and for a
+/// missing method (the extension is too old), and only its detail, which GDBus
+/// translates into the shell's locale, tells them apart. `map_err` asks the
+/// object instead (see `serves_object`).
 ///
-/// The detail of any OTHER named error is never consulted: the extension
-/// forwards arbitrary exception messages under org.freedesktop.DBus.Error.Failed,
-/// and a message that happened to contain "does not exist" must not send the
-/// user to re-enable an extension that just answered.
+/// The detail of a named error is never consulted: the extension forwards
+/// arbitrary exception messages under org.freedesktop.DBus.Error.Failed, and a
+/// message that happened to contain "does not exist" must not send the user to
+/// re-enable an extension that just answered.
 fn is_extension_not_running(err: &zbus::Error) -> bool {
     match err {
-        zbus::Error::MethodError(name, detail, _) => match name.as_str() {
-            ERROR_SERVICE_UNKNOWN | ERROR_DISABLED => true,
-            ERROR_UNKNOWN_METHOD => detail
-                .as_deref()
-                .is_some_and(|detail| detail.contains("does not exist")),
-            _ => false,
-        },
+        zbus::Error::MethodError(name, _, _) => {
+            matches!(name.as_str(), ERROR_SERVICE_UNKNOWN | ERROR_DISABLED)
+        }
         // A session bus that cannot be reached at all is `map_connect_err`'s
         // case, and says so by its own message.
         _ => false,
     }
+}
+
+fn is_unknown_method(err: &zbus::Error) -> bool {
+    matches!(err, zbus::Error::MethodError(name, _, _) if name.as_str() == ERROR_UNKNOWN_METHOD)
 }
 
 /// Classify a failed call as "the reply never came".
@@ -97,7 +97,11 @@ fn is_timeout(err: &zbus::Error) -> bool {
     }
 }
 
-fn map_err(err: zbus::Error) -> Fail {
+/// Map a failed call to the message and exit code wctl reports.
+///
+/// `serves_object` is asked only for an UnknownMethod, to tell an extension
+/// that is not running from one too old to serve the method.
+fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
     if is_timeout(&err) {
         return Fail::error(
             "GNOME Shell did not reply in time. Raise --timeout, or check that the shell is responding.",
@@ -119,18 +123,15 @@ fn map_err(err: zbus::Error) -> Fail {
         }
     }
 
-    // BEFORE the UnknownMethod check below: is_extension_not_running() claims
-    // the "Object does not exist" shape of UnknownMethod, and only "No such
-    // method" falls through to be reported as an outdated extension.
-    if is_extension_not_running(&err) {
+    if is_extension_not_running(&err) || (is_unknown_method(&err) && !serves_object()) {
         return Fail::error(NOT_RUNNING).with_code(EXIT_NO_EXTENSION);
     }
 
-    // The shell is on the bus and serving the object, but not this method -- so
-    // what it loaded is older than this binary. On Wayland that is the ordinary
+    // The shell is serving the object, but not this method -- so what it
+    // loaded is older than this binary. On Wayland that is the ordinary
     // state right after an upgrade, until the user logs out.
     if let zbus::Error::MethodError(name, detail, _) = &err {
-        if name.as_str() == ERROR_UNKNOWN_METHOD {
+        if is_unknown_method(&err) {
             let message = detail.clone().unwrap_or_else(|| name.to_string());
             return Fail::error(format!(
                 "{message}. The extension GNOME Shell has loaded is older than this wctl. \
@@ -173,7 +174,33 @@ fn session_connection(timeout: Duration) -> Result<Connection> {
 }
 
 fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
-    Proxy::new(conn, DEST, PATH, IFACE).map_err(map_err)
+    Proxy::new(conn, DEST, PATH, IFACE).map_err(|err| map_err(err, || false))
+}
+
+/// Is the extension's object exported on `conn`?
+///
+/// Asked through org.freedesktop.DBus.Properties, which GDBus answers for
+/// every exported object, so the answer does not depend on which methods the
+/// loaded extension has: one too old to serve GetVersion is still found.
+fn serves_object(conn: &Connection) -> bool {
+    conn.call_method(
+        Some(DEST),
+        PATH,
+        Some("org.freedesktop.DBus.Properties"),
+        "GetAll",
+        &(IFACE,),
+    )
+    .is_ok()
+}
+
+fn call_on<B, R>(conn: &Connection, method: &str, body: &B) -> Result<R>
+where
+    B: serde::ser::Serialize + DynamicType,
+    R: serde::de::DeserializeOwned + zbus::zvariant::Type,
+{
+    proxy(conn)?
+        .call(method, body)
+        .map_err(|err| map_err(err, || serves_object(conn)))
 }
 
 pub struct Bus {
@@ -207,8 +234,7 @@ impl Bus {
         B: serde::ser::Serialize + DynamicType,
         R: serde::de::DeserializeOwned + zbus::zvariant::Type,
     {
-        let conn = self.conn()?;
-        proxy(conn)?.call(method, body).map_err(map_err)
+        call_on(self.conn()?, method, body)
     }
 
     /// Call a method that returns a JSON document as a string.
@@ -249,9 +275,7 @@ impl Bus {
         B: serde::ser::Serialize + DynamicType,
         R: serde::de::DeserializeOwned + zbus::zvariant::Type,
     {
-        let conn = session_connection(client_bound)?;
-        let reply = proxy(&conn)?.call(method, body);
-        reply.map_err(map_err)
+        call_on(&session_connection(client_bound)?, method, body)
     }
 
     /// The extension version the running shell has loaded.
@@ -268,31 +292,23 @@ impl Bus {
         self.call("GetCapabilities", &())
     }
 
-    /// Does the loaded extension report `capability`?
+    /// The feature names the loaded extension reports, or `None` when nobody
+    /// answered.
     ///
-    /// `None` is "nobody answered": no bus, no shell, a disabled extension or a
-    /// shell that stayed silent. `Some(false)` is an answer -- an extension that
-    /// serves the method without the name, or one too old to serve it at all,
-    /// which says "No such method". A caller that must not fail without a shell
-    /// acts on `Some(false)` alone.
+    /// `None` is no bus, no shell, a disabled extension or a shell that stayed
+    /// silent. `Some` is an answer, and it is empty for an extension whose
+    /// object is served but that is too old to serve GetCapabilities at all. A
+    /// caller that must not fail without a shell acts on `Some` alone.
     ///
     /// It runs on its OWN connection with `bound` as the reply timeout, because
     /// the caller has already done its work: a shell that never answers must
     /// cost a moment, not the full `--timeout` a real call is entitled to.
-    pub fn reports_capability(&self, capability: &str, bound: Duration) -> Option<bool> {
+    pub fn reported_capabilities(&self, bound: Duration) -> Option<Vec<String>> {
         let conn = session_connection(bound).ok()?;
         let proxy = proxy(&conn).ok()?;
         match proxy.call::<_, _, Vec<String>>("GetCapabilities", &()) {
-            Ok(names) => Some(names.iter().any(|name| name == capability)),
-            // Matched positively: GDBus translates this detail into the shell's
-            // locale, so an unrecognised UnknownMethod shape -- a disabled
-            // extension in a German session included -- stays `None`.
-            Err(zbus::Error::MethodError(name, detail, _)) => (name.as_str()
-                == ERROR_UNKNOWN_METHOD
-                && detail
-                    .as_deref()
-                    .is_some_and(|detail| detail.contains("No such method")))
-            .then_some(false),
+            Ok(names) => Some(names),
+            Err(err) if is_unknown_method(&err) => serves_object(&conn).then(Vec::new),
             Err(_) => None,
         }
     }
@@ -365,24 +381,34 @@ mod tests {
         (fail.code(), fail.is_plain(), fail.to_string())
     }
 
+    /// `map_err` for an error whose classification must not ask the object.
+    fn mapped_unasked(err: zbus::Error) -> (i32, bool, String) {
+        mapped(map_err(err, || panic!("the object was asked")))
+    }
+
+    /// The two UnknownMethod details GDBus gives, in English and in German:
+    /// the detail is translated, so it must not decide anything.
+    fn unknown_method_details() -> [&'static str; 4] {
+        [
+            "Object does not exist at path \u{201c}/org/gnome/Shell/Extensions/WindowControl\u{201d}",
+            "No such method \u{201c}GetCapabilities\u{201d}",
+            "Objekt existiert nicht im Pfad \u{bb}/org/gnome/Shell/Extensions/WindowControl\u{ab}",
+            "Keine derartige Methode \u{bb}GetCapabilities\u{ab}",
+        ]
+    }
+
     #[test]
     fn named_extension_errors_keep_their_code_and_stream() {
         assert_eq!(
-            mapped(map_err(method_error(ERROR_NOT_FOUND, "Window 7 not found"))),
+            mapped_unasked(method_error(ERROR_NOT_FOUND, "Window 7 not found")),
             (2, true, "Window 7 not found".to_string())
         );
         assert_eq!(
-            mapped(map_err(method_error(
-                ERROR_REFUSED,
-                "Window 7 is maximized"
-            ))),
+            mapped_unasked(method_error(ERROR_REFUSED, "Window 7 is maximized")),
             (3, true, "Window 7 is maximized".to_string())
         );
         assert_eq!(
-            mapped(map_err(method_error(
-                ERROR_SETTLE_TIMEOUT,
-                "No window matched"
-            ))),
+            mapped_unasked(method_error(ERROR_SETTLE_TIMEOUT, "No window matched")),
             (4, false, "No window matched".to_string())
         );
     }
@@ -394,7 +420,7 @@ mod tests {
             method_error("org.freedesktop.DBus.Error.Timeout", "timed out"),
             timed_out(),
         ] {
-            let (code, plain, _) = mapped(map_err(err));
+            let (code, plain, _) = mapped_unasked(err);
             assert_eq!((code, plain), (4, false));
         }
     }
@@ -404,34 +430,42 @@ mod tests {
         for err in [
             method_error(ERROR_SERVICE_UNKNOWN, "The name is not activatable"),
             method_error(ERROR_DISABLED, "The extension was disabled"),
-            method_error(
-                ERROR_UNKNOWN_METHOD,
-                "Object does not exist at path \u{201c}/org/gnome/Shell/Extensions/WindowControl\u{201d}",
-            ),
         ] {
-            assert_eq!(mapped(map_err(err)), (5, false, NOT_RUNNING.to_string()));
+            assert_eq!(mapped_unasked(err), (5, false, NOT_RUNNING.to_string()));
         }
     }
 
     #[test]
-    fn a_missing_method_is_an_outdated_extension() {
-        let (code, plain, message) = mapped(map_err(method_error(
-            ERROR_UNKNOWN_METHOD,
-            "No such method \u{201c}GetCapabilities\u{201d}",
-        )));
-        assert_eq!((code, plain), (5, false));
-        assert!(
-            message.contains("older than this wctl"),
-            "printed: {message}"
-        );
+    fn an_unknown_method_without_the_object_is_not_running_in_any_locale() {
+        for detail in unknown_method_details() {
+            let err = method_error(ERROR_UNKNOWN_METHOD, detail);
+            assert_eq!(
+                mapped(map_err(err, || false)),
+                (5, false, NOT_RUNNING.to_string()),
+                "detail: {detail}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_method_on_a_served_object_is_an_outdated_extension_in_any_locale() {
+        for detail in unknown_method_details() {
+            let err = method_error(ERROR_UNKNOWN_METHOD, detail);
+            let (code, plain, message) = mapped(map_err(err, || true));
+            assert_eq!((code, plain), (5, false), "detail: {detail}");
+            assert!(
+                message.contains("older than this wctl"),
+                "printed: {message}"
+            );
+        }
     }
 
     #[test]
     fn the_detail_of_a_generic_failure_is_never_read() {
-        let (code, plain, message) = mapped(map_err(method_error(
+        let (code, plain, message) = mapped_unasked(method_error(
             "org.freedesktop.DBus.Error.Failed",
             "Workspace 9 does not exist",
-        )));
+        ));
         assert_eq!((code, plain), (EXIT_ERROR, false));
         assert!(
             message.starts_with("D-Bus call failed: "),
