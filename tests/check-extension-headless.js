@@ -319,9 +319,14 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // not on screen without having been mapped. The service records it from
     // creation, so the listing and a later wait both know it is unshown. O
     // predates the service and is hidden and unminimized: the fallback reading.
+    // T predates it too and is hidden only because P, its parent, is minimized.
 
     {
         const old = createWindow({ id: 12, wmClass: 'O' });
+        const parent = createWindow({ id: 14, wmClass: 'P' });
+        parent.minimized = true;
+        const transient = createWindow({ id: 15, wmClass: 'T' });
+        transient.get_transient_for = () => parent;
         const service = new WindowControlService({ version: 0 });
         const shown = () => Object.fromEntries(JSON.parse(service.ListDetailed())
             .map(doc => [doc.id, doc.has_been_shown]));
@@ -331,6 +336,8 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             JSON.stringify(shown()));
         check('a window that predates the service and looks unmapped has not been shown',
             shown()[12] === false, JSON.stringify(shown()));
+        check('a window hidden because its parent is minimized has been shown',
+            shown()[15] === true, JSON.stringify(shown()));
         check('a window created while no wait runs keeps only a first-show watch',
             created.handlerCount() === 2, `${created.handlerCount()} handler(s)`);
         const wait = invocation();

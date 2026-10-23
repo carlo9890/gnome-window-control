@@ -312,12 +312,17 @@ class WindowControlService {
     // and GNOME disables the extension while the screen is locked) has no such
     // history, so it falls back to the old reading: hidden while unminimized
     // and on the active workspace is the only shape a not-yet-mapped window can
-    // have.
+    // have. Mutter also hides a transient window while a window it is transient
+    // for is minimized, so such a window counts as placed.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
         if (this._createdSinceStart.has(win))
             return true;
+        for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for()) {
+            if (parent.minimized)
+                return false;
+        }
         return !win.minimized &&
             win.located_on_workspace(global.workspace_manager.get_active_workspace());
     }
