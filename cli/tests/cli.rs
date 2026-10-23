@@ -1208,6 +1208,32 @@ fn rules_add_takes_a_class_prefix() {
     assert_eq!(code, 0, "printed: {out}");
     let (out, _) = wctl(&["rules", "list", "--file", path]);
     assert!(out.contains("class_prefix=--at"), "printed: {out}");
+    // Nor is it taken for --dry-run or --file.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--class-prefix",
+        "--dry-run",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--title-prefix",
+        "--file",
+        "tile",
+        "left",
+        "--file",
+        path,
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(out.contains("class_prefix=--dry-run"), "printed: {out}");
+    assert!(out.contains("title_prefix=--file"), "printed: {out}");
 
     expect_die(
         "--class-prefix requires a value",

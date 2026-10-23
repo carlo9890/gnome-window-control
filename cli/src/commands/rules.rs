@@ -111,7 +111,8 @@ pub fn default_path() -> Result<PathBuf> {
     Ok(base.join("gnome-window-control").join("rules.json"))
 }
 
-/// Take `--file PATH` out of the argument list, leaving the rest.
+/// Take `--file PATH` out of the argument list, leaving the rest. The value of
+/// another option is skipped, so `-t --file` matches the title `--file`.
 fn take_file_option(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>)> {
     let mut path = None;
     let mut rest = Vec::with_capacity(args.len());
@@ -127,6 +128,9 @@ fn take_file_option(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>)> {
                 return Err(Fail::error("Option --file requires a value"));
             };
             path = Some(PathBuf::from(value));
+            index += 2;
+        } else if super::VALUE_OPTIONS.contains(&args[index].as_str()) {
+            rest.extend(args[index..].iter().take(2).cloned());
             index += 2;
         } else {
             rest.push(args[index].clone());
@@ -521,11 +525,8 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         match option {
             "--workspace" | "--monitor" | "--at" => {}
             // A selector option's VALUE is never an option name.
-            "-c" | "-t" | "-s" | "-p" | "--title-prefix" | "--title-suffix" | "--class-prefix" => {
-                rest.push(args[index].clone());
-                if let Some(value) = args.get(index + 1) {
-                    rest.push(value.clone());
-                }
+            _ if super::VALUE_OPTIONS.contains(&option) => {
+                rest.extend(args[index..].iter().take(2).cloned());
                 index += 2;
                 continue;
             }
