@@ -8,7 +8,7 @@
 //! `add` and `remove` open it only after the default file is written, to warn
 //! that the loaded extension does not report the `rules` capability. `test`
 //! opens it to resolve a live window, and refuses an extension without that
-//! capability.
+//! capability or without the capability of a match key the file holds.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -71,20 +71,29 @@ fn warn_if_unsupported(ctx: &Ctx, document: &[Value]) {
     let Some(reported) = ctx.bus.reported_capabilities(CAPABILITY_PROBE) else {
         return;
     };
-    let lacks = |capability: &str| !reported.iter().any(|name| name == capability);
-    if lacks(RULES_CAPABILITY) {
+    if !reported.iter().any(|name| name == RULES_CAPABILITY) {
         eprintln!("Warning: {NO_RULES_SUPPORT}");
     }
-    for (keys, capability, warning) in NEWER_MATCH_KEYS {
-        let uses_key = document.iter().any(|rule| {
-            rule["match"]
-                .as_object()
-                .is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
-        });
-        if uses_key && lacks(capability) {
-            eprintln!("Warning: {warning}");
-        }
+    for warning in refused_keys(&reported, document) {
+        eprintln!("Warning: {warning}");
     }
+}
+
+/// The warning of each `NEWER_MATCH_KEYS` entry that the document uses and the
+/// extension does not report.
+fn refused_keys(reported: &[String], document: &[Value]) -> Vec<&'static str> {
+    NEWER_MATCH_KEYS
+        .iter()
+        .filter(|(keys, capability, _)| {
+            let uses_key = document.iter().any(|rule| {
+                rule["match"]
+                    .as_object()
+                    .is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
+            });
+            uses_key && !reported.iter().any(|name| name == capability)
+        })
+        .map(|(_, _, warning)| *warning)
+        .collect()
 }
 
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
@@ -695,7 +704,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let path = rules_path(file)?;
     // The file is read BEFORE the bus call: a broken rules file is the user's
     // problem to fix either way, and reporting it costs nothing.
-    let (_, compiled) = load(&path)?;
+    let (raw, compiled) = load(&path)?;
 
     // A match reported against an extension that ignores the file would
     // explain a placement that never happens. This command needs the shell
@@ -704,6 +713,10 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let capabilities = ctx.bus.get_capabilities()?;
     if !capabilities.iter().any(|name| name == RULES_CAPABILITY) {
         return Err(Fail::error(NO_RULES_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
+    }
+    // One match key the extension does not know makes it refuse the whole file.
+    if let Some(warning) = refused_keys(&capabilities, &raw).first() {
+        return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
 
     let id = crate::selector::lookup(ctx, &selector)?;
@@ -874,6 +887,30 @@ mod tests {
             ),
             "Window 7  class=kitty?]0;x?  title=a?Matched rule 0: forged?[2J"
         );
+    }
+
+    #[test]
+    fn refused_keys_names_each_key_the_extension_does_not_report() {
+        let document = [
+            json!({"match": {"class_prefix": "chrome-"}, "tile": "left"}),
+            json!({"match": {"title_suffix": " - Mozilla"}, "tile": "right"}),
+        ];
+        let reported = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+
+        assert_eq!(
+            refused_keys(&reported(&["rules"]), &document),
+            vec![NEWER_MATCH_KEYS[0].2, NEWER_MATCH_KEYS[1].2]
+        );
+        assert_eq!(
+            refused_keys(&reported(&["rules", "rules-title-affix"]), &document),
+            vec![NEWER_MATCH_KEYS[1].2]
+        );
+        assert!(refused_keys(
+            &reported(&["rules", "rules-title-affix", "rules-class-prefix"]),
+            &document
+        )
+        .is_empty());
+        assert!(refused_keys(&reported(&["rules"]), &document[..0]).is_empty());
     }
 
     fn rule(key: &str, value: &str) -> rules::Rule {
