@@ -1191,6 +1191,21 @@ fn rules_add_takes_a_class_prefix() {
         "printed: {out}"
     );
 
+    // The value of a selector option is never read as an option name.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--class-prefix",
+        "--at",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(out.contains("class_prefix=--at"), "printed: {out}");
+
     expect_die(
         "--class-prefix requires a value",
         &[

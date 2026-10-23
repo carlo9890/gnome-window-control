@@ -131,7 +131,7 @@ fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
     // loaded is older than this binary. On Wayland that is the ordinary
     // state right after an upgrade, until the user logs out.
     if let zbus::Error::MethodError(name, detail, _) = &err {
-        if name.as_str() == ERROR_UNKNOWN_METHOD {
+        if is_unknown_method(&err) {
             let message = detail.clone().unwrap_or_else(|| name.to_string());
             return Fail::error(format!(
                 "{message}. The extension GNOME Shell has loaded is older than this wctl. \
@@ -177,12 +177,20 @@ fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
     Proxy::new(conn, DEST, PATH, IFACE).map_err(|err| map_err(err, || false))
 }
 
-/// Does the extension's object answer on `conn`?
+/// Is the extension's object exported on `conn`?
 ///
-/// Every extension wctl supports serves GetVersion, so an answer means the
-/// object is exported and an UnknownMethod was about the method alone.
+/// Asked through org.freedesktop.DBus.Properties, which GDBus answers for
+/// every exported object, so the answer does not depend on which methods the
+/// loaded extension has: one too old to serve GetVersion is still found.
 fn serves_object(conn: &Connection) -> bool {
-    proxy(conn).is_ok_and(|proxy| proxy.call::<_, _, String>("GetVersion", &()).is_ok())
+    conn.call_method(
+        Some(DEST),
+        PATH,
+        Some("org.freedesktop.DBus.Properties"),
+        "GetAll",
+        &(IFACE,),
+    )
+    .is_ok()
 }
 
 fn call_on<B, R>(conn: &Connection, method: &str, body: &B) -> Result<R>
@@ -284,23 +292,23 @@ impl Bus {
         self.call("GetCapabilities", &())
     }
 
-    /// Does the loaded extension report `capability`?
+    /// The feature names the loaded extension reports, or `None` when nobody
+    /// answered.
     ///
-    /// `None` is "nobody answered": no bus, no shell, a disabled extension or a
-    /// shell that stayed silent. `Some(false)` is an answer -- an extension that
-    /// serves the method without the name, or one too old to serve it at all,
-    /// which says "No such method". A caller that must not fail without a shell
-    /// acts on `Some(false)` alone.
+    /// `None` is no bus, no shell, a disabled extension or a shell that stayed
+    /// silent. `Some` is an answer, and it is empty for an extension whose
+    /// object is served but that is too old to serve GetCapabilities at all. A
+    /// caller that must not fail without a shell acts on `Some` alone.
     ///
     /// It runs on its OWN connection with `bound` as the reply timeout, because
     /// the caller has already done its work: a shell that never answers must
     /// cost a moment, not the full `--timeout` a real call is entitled to.
-    pub fn reports_capability(&self, capability: &str, bound: Duration) -> Option<bool> {
+    pub fn reported_capabilities(&self, bound: Duration) -> Option<Vec<String>> {
         let conn = session_connection(bound).ok()?;
         let proxy = proxy(&conn).ok()?;
         match proxy.call::<_, _, Vec<String>>("GetCapabilities", &()) {
-            Ok(names) => Some(names.iter().any(|name| name == capability)),
-            Err(err) if is_unknown_method(&err) => serves_object(&conn).then_some(false),
+            Ok(names) => Some(names),
+            Err(err) if is_unknown_method(&err) => serves_object(&conn).then(Vec::new),
             Err(_) => None,
         }
     }

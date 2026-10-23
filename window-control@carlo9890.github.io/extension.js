@@ -131,22 +131,22 @@ class WindowControlService {
         this._version = String(metadata.version);
         // Set by the extension once WindowKeybindings has registered them.
         this.keybindingsServed = false;
-        // WaitForWindow state. Its 'window-created' handler is connected only
-        // while at least one waiter is pending.
+        // WaitForWindow state. A window is tracked only while at least one
+        // waiter is pending.
         this._waiters = [];
-        this._windowCreatedId = 0;
         this._trackedWindows = new Map();   // Meta.Window -> [signal handler ids]
         // Mutter exposes no "has been mapped" getter, so record it: a window
         // seen unhidden once has been placed, and that never becomes untrue.
         this._shownWindows = new WeakSet();
         // Every window created while the service runs, and a one-shot 'shown'
-        // watch on each until its first map (Meta.Window -> [signal handler
-        // ids]), so _isUnshown() knows the answer for all of them. A window
-        // costs two handlers until it is first shown, and none after.
+        // watch on each untracked one until its first map (Meta.Window ->
+        // [signal handler ids]), so _isUnshown() knows the answer for all of
+        // them. A window costs two handlers until it is first shown, and none
+        // after.
         this._createdSinceStart = new WeakSet();
         this._firstShowWatches = new Map();
-        this._recordCreatedId = global.display.connect('window-created',
-            (display, win) => this._recordCreated(win));
+        this._windowCreatedId = global.display.connect('window-created',
+            (display, win) => this._onWindowCreated(win));
         // WaitForGeometry state, one entry per pending call.
         this._geometryWatchers = [];
     }
@@ -801,7 +801,6 @@ class WindowControlService {
                 console.debug(`[Window Control] WaitForWindow(${kind}) dropped (caller left the bus)`);
                 this._retireWaiter(waiter);
             });
-            this._startWatching();
             this._trackExistingWindows();
         } catch (e) {
             console.error(`[Window Control] WaitForWindow() error: ${e.message}`);
@@ -956,44 +955,32 @@ class WindowControlService {
             console.debug(`[Window Control] cancelled ${pending.length} pending WaitForGeometry call(s)`);
     }
 
-    // Connect 'window-created' (idempotent).
-    _startWatching() {
-        if (this._windowCreatedId)
-            return;
-        this._windowCreatedId = global.display.connect('window-created',
-            (display, win) => this._onWindowCreated(win));
-    }
-
-    // Disconnect 'window-created' and every per-window handler. Teardown
-    // passes watchFirstShow = false: it drops every first-show watch anyway.
+    // Drop every per-window handler. Teardown passes watchFirstShow = false:
+    // it drops every first-show watch anyway.
     _stopWatching(watchFirstShow = true) {
-        if (this._windowCreatedId) {
-            global.display.disconnect(this._windowCreatedId);
-            this._windowCreatedId = 0;
-        }
         for (const win of [...this._trackedWindows.keys()])
             this._untrackWindow(win, watchFirstShow);
     }
 
-    // A new window may not carry its wm_class or title yet when 'window-created'
-    // fires (on Wayland the app id arrives with a later commit), and it is not
-    // shown (mapped and placed) until the client commits its first buffer, so
-    // evaluate now and again when either property is set and when the window is
-    // shown. Handlers are dropped once the window matched, was unmanaged, or no
-    // waiter is left.
-    _onWindowCreated(win) {
-        this._trackWindow(win);
-        this._evaluateWindow(win);
-    }
-
     // Remember that this window was seen from creation: _isUnshown() needs to
     // tell "mutter has not mapped it yet" from "mapped, currently hidden", and
-    // for such a window the first-show watch makes that knowable. A tracked
-    // window records its map through _trackWindow() instead.
-    _recordCreated(win) {
+    // for such a window the record of its first map makes that knowable. With
+    // no waiter pending, the first-show watch records it.
+    //
+    // With one pending, the window is tracked instead. A new window may not
+    // carry its wm_class or title yet when 'window-created' fires (on Wayland
+    // the app id arrives with a later commit), and it is not shown (mapped and
+    // placed) until the client commits its first buffer, so evaluate now and
+    // again when either property is set and when the window is shown. Handlers
+    // are dropped once the window matched, was unmanaged, or no waiter is left.
+    _onWindowCreated(win) {
         this._createdSinceStart.add(win);
-        if (!this._trackedWindows.has(win))
+        if (this._waiters.length === 0) {
             this._watchFirstShow(win);
+            return;
+        }
+        this._trackWindow(win);
+        this._evaluateWindow(win);
     }
 
     // Connect the per-window handlers. Does not evaluate: the caller has
@@ -1032,9 +1019,10 @@ class WindowControlService {
 
     // Track every window that already exists when a waiter registers.
     //
-    // 'window-created' only fires for windows created after _startWatching(),
-    // so without this two cases never wake a waiter: the window created in the
-    // gap just before the call, which has already missed the signal and is
+    // 'window-created' tracks only the windows created while a waiter is
+    // pending, so without this two cases never wake a waiter: the window
+    // created in the gap just before the call, which has already missed the
+    // signal and is
     // still unshown; and any window already on screen whose title or class
     // changes later -- `wait -t 'Report.pdf - LibreOffice Writer'` against an
     // already-open LibreOffice, or `wait -c` against a Wayland client whose
@@ -1290,8 +1278,8 @@ class WindowControlService {
     }
 
     unexport() {
-        global.display.disconnect(this._recordCreatedId);
-        this._recordCreatedId = 0;
+        global.display.disconnect(this._windowCreatedId);
+        this._windowCreatedId = 0;
         this._cancelWaiters();
         this._cancelGeometryWatchers();
         this._dbusImpl.unexport();

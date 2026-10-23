@@ -74,8 +74,9 @@ export const PROBE_WORKAREA = { x: 0, y: 0, width: 1000, height: 1000 };
 // for WaitForWindow, the ActivateBy* methods and rules.json, so the three
 // cannot disagree about which window a value names. Returns null for an
 // unknown kind, an empty substring, prefix, suffix or class prefix (which
-// would match every window) or a pid that is not a positive decimal integer: get_pid() is 0 for
-// a window whose client pid is unknown, so 0 must never be matchable.
+// would match every window) or a pid that is not a positive decimal integer:
+// get_pid() is 0 for a window whose client pid is unknown, so 0 must never be
+// matchable.
 //
 // The window is duck-typed through its getters, which is what keeps this file
 // free of gi://Meta.
@@ -245,11 +246,12 @@ export function compileRule(rule, index) {
         if (typeof value !== 'string')
             throw new Error(`${label}.match.${key}: must be a string`);
         // Checked here rather than left to matchPredicate, which only refuses an
-        // empty substring, prefix or suffix. An empty class or title builds a
-        // predicate that is true only for a window with no class or no title at
-        // all -- never what the user meant, and a rule that silently never fires
-        // is worse than a message. The spec's validation table says every match
-        // value is non-empty; this is what makes that true.
+        // empty substring, prefix, suffix or class prefix. An empty class or
+        // title builds a predicate that is true only for a window with no class
+        // or no title at all -- never what the user meant, and a rule that
+        // silently never fires is worse than a message. The spec's validation
+        // table says every match value is non-empty; this is what makes that
+        // true.
         if (value === '')
             throw new Error(`${label}.match.${key}: must not be empty`);
         predicates.push(matchPredicate(kind, value));

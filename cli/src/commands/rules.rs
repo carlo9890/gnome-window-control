@@ -38,22 +38,6 @@ const NO_RULES_SUPPORT: &str =
      'wctl version --json', install a newer extension, then restart the shell \
      (log out and back in on Wayland).";
 
-/// Warn, without failing, that the file will not be applied yet.
-///
-/// The file is valid either way and takes effect once the extension is updated,
-/// so writing it is not refused. Only a shell that answers and does not report
-/// the capability warns: no shell at all is silent, because editing rules
-/// before a session exists is legitimate.
-fn warn_if_rules_unsupported(ctx: &Ctx) {
-    warn_unless_reported(ctx, RULES_CAPABILITY, NO_RULES_SUPPORT);
-}
-
-fn warn_unless_reported(ctx: &Ctx, capability: &str, warning: &str) {
-    if ctx.bus.reports_capability(capability, CAPABILITY_PROBE) == Some(false) {
-        eprintln!("Warning: {warning}");
-    }
-}
-
 /// The match keys added after `rules`, each with the capability an extension
 /// reports when it knows them and the warning for one that does not.
 const NEWER_MATCH_KEYS: [(&[&str], &str, &str); 2] = [
@@ -75,17 +59,30 @@ const NEWER_MATCH_KEYS: [(&[&str], &str, &str); 2] = [
     ),
 ];
 
-/// Warn when the written file holds a match key the loaded extension refuses.
-/// One unknown key turns every rule off, so this looks at the whole file.
-fn warn_if_match_keys_unsupported(ctx: &Ctx, document: &[Value]) {
+/// Warn, without failing, that the written file will not be applied yet: the
+/// loaded extension does not apply rules, or it refuses a match key the file
+/// holds. One unknown key turns every rule off, so this looks at the whole file.
+///
+/// The file is valid either way and takes effect once the extension is updated,
+/// so writing it is not refused. Only a shell that answers warns: no shell at
+/// all is silent, because editing rules before a session exists is legitimate.
+/// The shell is asked once, so a silent one costs one `CAPABILITY_PROBE`.
+fn warn_if_unsupported(ctx: &Ctx, document: &[Value]) {
+    let Some(reported) = ctx.bus.reported_capabilities(CAPABILITY_PROBE) else {
+        return;
+    };
+    let lacks = |capability: &str| !reported.iter().any(|name| name == capability);
+    if lacks(RULES_CAPABILITY) {
+        eprintln!("Warning: {NO_RULES_SUPPORT}");
+    }
     for (keys, capability, warning) in NEWER_MATCH_KEYS {
         let uses_key = document.iter().any(|rule| {
             rule["match"]
                 .as_object()
                 .is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
         });
-        if uses_key {
-            warn_unless_reported(ctx, capability, warning);
+        if uses_key && lacks(capability) {
+            eprintln!("Warning: {warning}");
         }
     }
 }
@@ -524,7 +521,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         match option {
             "--workspace" | "--monitor" | "--at" => {}
             // A selector option's VALUE is never an option name.
-            "-c" | "-t" | "-s" | "-p" | "--title-prefix" | "--title-suffix" => {
+            "-c" | "-t" | "-s" | "-p" | "--title-prefix" | "--title-suffix" | "--class-prefix" => {
                 rest.push(args[index].clone());
                 if let Some(value) = args.get(index + 1) {
                     rest.push(value.clone());
@@ -636,8 +633,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     write_atomically(&path, &raw)?;
     println!("Added rule {position} to {}", path.display());
     if is_default_file {
-        warn_if_rules_unsupported(ctx);
-        warn_if_match_keys_unsupported(ctx, &raw);
+        warn_if_unsupported(ctx, &raw);
     }
     Ok(())
 }
@@ -675,8 +671,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     write_atomically(&path, &raw)?;
     println!("Removed rule {index} from {}", path.display());
     if is_default_file {
-        warn_if_rules_unsupported(ctx);
-        warn_if_match_keys_unsupported(ctx, &raw);
+        warn_if_unsupported(ctx, &raw);
     }
     Ok(())
 }
