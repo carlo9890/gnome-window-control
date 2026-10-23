@@ -339,11 +339,10 @@ file with a typo in it is not clobbered. `--dry-run` prints the document it
 would write and changes nothing. Because the first matching rule wins, `add`
 warns when an earlier rule already matches everything the new one would.
 
-`add` and `remove` replace the file. If `rules.json` is a symbolic link, for
-example into a dotfiles repository, they replace the link with a regular file
-and the linked copy is no longer updated; edit the linked file by hand instead.
-The extension watches the directory of `rules.json`, not the linked file, so
-an edit to the linked file is not seen. Run
+If `rules.json` is a symbolic link, for example into a dotfiles repository,
+`add` and `remove` write the linked file and keep the link, and the extension
+loads the change. The extension watches the directory of `rules.json`, not the
+linked file, so an edit you make to the linked file is not seen. Run
 `touch -h ~/.config/gnome-window-control/rules.json` after such an edit, or
 disable and enable the extension, to load it.
 
