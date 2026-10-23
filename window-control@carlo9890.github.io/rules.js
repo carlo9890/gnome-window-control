@@ -145,7 +145,7 @@ export class WindowRules {
                 this._rules = [];
                 this._syncWatch();
                 if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-                    console.log(`[Window Control] no ${RULES_FILE}; window rules off`);
+                    console.debug(`[Window Control] no ${RULES_FILE}; window rules off`);
                 else
                     console.error(`[Window Control] ${RULES_FILE}: cannot read: ${e.message}; window rules off`);
                 return;
@@ -157,7 +157,7 @@ export class WindowRules {
     _compile(text) {
         try {
             this._rules = compileRules(text);
-            console.log(`[Window Control] ${RULES_FILE}: ${this._rules.length} rule(s) loaded`);
+            console.debug(`[Window Control] ${RULES_FILE}: ${this._rules.length} rule(s) loaded`);
         } catch (e) {
             this._rules = [];
             console.warn(`[Window Control] ${RULES_FILE}: ${e.message}; window rules off`);
