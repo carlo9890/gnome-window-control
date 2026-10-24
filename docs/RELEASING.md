@@ -140,9 +140,10 @@ tree-sitter 0.26.0 against a tree-sitter-javascript 0.25.0 grammar; the ABI
 mismatch segfaults the process before any output (exit 139 on a zip,
 `munmap_chunk(): invalid pointer` on a directory).
 
-Four rules fire on the current sources, `EGO-A-004` once per file. All four
-were investigated at v11 and none is a defect — do not "fix" them. v11 was
-approved with all four present, so shexli output is not a gate:
+Five rules fire on the current sources, `EGO-A-004` once per file. The first
+four were investigated at v11, `EGO-L-003` at v17, and none is a defect — do
+not "fix" them. v11 was approved with those four present, so shexli output is
+not a gate:
 
 - `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
   `get_maximized()` are reported as removed-on-49 API. `get_maximized()` and
@@ -161,7 +162,12 @@ approved with all four present, so shexli output is not a gate:
   in `rules.js`, all in catch blocks, which [REVIEWING.md](REVIEWING.md) mandates.
 - `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
   `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
-  calls before it sets `this._service = null`.
+  calls on the service it takes out of `this._service`.
+- `EGO-L-003` (warning): wants the `window-created` handler that the
+  `WindowControlService` constructor connects disconnected in `disable()`. It
+  is disconnected in `WindowControlService.unexport()`, which `disable()`
+  calls; `tests/check-extension-headless.js` asserts that no handler is left.
+  Answer the reviewer with that call chain.
 
 Constraints the review enforces, which the code must keep satisfying:
 
