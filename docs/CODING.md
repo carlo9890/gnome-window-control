@@ -19,19 +19,22 @@ If it fails, the code has a syntax error and must not be committed.
 ## JavaScript (extension.js)
 
 - Use ES module (ESM) syntax.
+- Read the GNOME guidelines that the
+  [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) links
+  before you write extension code, and write the code and its comments to them:
+  a human reviewer reads every line of each upload, and a violation costs a new
+  release.
 - `Move`, `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry` raise
   named D-Bus errors instead of reporting a boolean.
   The two wait methods return the value asked for (`window_id`, and the settled
   rectangle) and raise when there is none; the three geometry methods return
-  nothing at all. `GetWorkarea` returns `(-1, -1, -1, -1)` only for an index
-  that is not a monitor, and raises `Failed` when its lookup throws.
+  nothing at all. `GetWorkarea` returns `(-1, -1, -1, -1)` for an index that is
+  not a monitor.
   The names, and the reason each method raises, are in the ERRORS block in
   `dbus-interface.js`; add to that list rather than inventing a name at the
-  throw site. `_geometryCall()` re-raises an unexpected exception as
-  `org.freedesktop.DBus.Error.Failed`, so nothing escapes untyped.
-- Simple "find window by id, do one action, return bool" handlers should go
-  through the shared `_actOnWindow(windowId, label, action)` helper rather than
-  re-implementing the find/try-catch/log skeleton.
+  throw site.
+- Simple "find window by id, do one action, return bool" handlers go through
+  the shared `_actOnWindow(windowId, label, action)` helper.
 
 ## Rust (cli/)
 
