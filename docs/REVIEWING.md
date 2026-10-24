@@ -4,6 +4,38 @@ Project-specific review rules. The generic review lenses are covered by the
 `project-review-*` skills — this file records only the local delta. Where it
 conflicts with a skill's default, this file wins.
 
+## extensions.gnome.org review
+
+Required for every review that touches `window-control@carlo9890.github.io/`.
+A human reviewer on extensions.gnome.org reads every line of each upload and
+rejects it at the first violation; this review runs first, so that one passes.
+Do every step, on every such review:
+
+1. Fetch the
+   [review guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html)
+   and the
+   [best practices](https://gjs.guide/extensions/review-guidelines/best-practices.html)
+   with WebFetch. Check every line under review against every rule on both
+   pages. Where this file and the pages conflict, the pages win.
+2. Read every comment as that reviewer does: it reads as a human maintainer
+   wrote it, by the
+   [AI-generated](https://gjs.guide/extensions/review-guidelines/review-guidelines.html#extensions-must-not-be-ai-generated)
+   and [Comments](https://gjs.guide/extensions/review-guidelines/best-practices.html#comments)
+   rules.
+3. Run shexli, GNOME's own analyzer, from the repo root. Pin `tree-sitter`:
+   shexli 0.2.1 pins neither dependency, and tree-sitter 0.26.0 segfaults it
+   before any output. Pass the absolute path; a relative one fails with a
+   `ValueError`.
+
+   ```bash
+   pip install -U shexli 'tree-sitter==0.25.2'
+   shexli "$PWD/window-control@carlo9890.github.io"
+   ```
+
+4. Flag each guideline violation, and each shexli finding that
+   [Out of scope](#out-of-scope--non-blocking) does not list — also one that
+   existing code repeats, or that a rule in this file seems to allow.
+
 ## Quality rules
 
 How finished code must look. Each rule is a condition to check on the diff, with
@@ -12,13 +44,6 @@ the correct form.
 - **SPDX header**: a new `.js` or `.rs` file starts with the two SPDX lines —
   `// SPDX-FileCopyrightText: 2026 hko9890` and `// SPDX-License-Identifier: MIT`.
   Flag a new file without them; no gate catches a missing header.
-- **Handler errors**: a D-Bus method implementation is wrapped in try/catch and
-  returns a graceful default on error (empty array, `false`, etc.) — no exception
-  escapes a handler. Flag a handler that lets one escape. Two cases are correct
-  and are no finding: a handler that goes through `_actOnWindow`, and `Move`,
-  `Resize`, `MoveResize`, `WaitForWindow`, `WaitForGeometry` and `GetWorkarea`,
-  which raise named D-Bus errors ([CODING.md](CODING.md#javascript-extensionjs)
-  has both).
 - **Log levels**: per-call handler logging uses `console.debug()`; `console.log()`
   appears only in the enable/disable lifecycle; `console.error()` appears ONLY in
   a catch block. Flag each other use. `console.log()` is visible by default
@@ -47,3 +72,28 @@ the correct form.
   without that guard; `scripts/debug-dbus.sh` is the correct form: it compares
   `DBUS_SESSION_BUS_ADDRESS` with the bus `systemctl --user show-environment`
   reports, and `--real-session-ok` is the opt-in.
+
+## Out of scope / non-blocking
+
+- These shexli findings are no defect; do not "fix" them. Answer the
+  extensions.gnome.org reviewer with the reason each one gives:
+  - `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
+    `get_maximized()` are reported as removed-on-49 API. `get_maximized()` and
+    the `maximize()` / `unmaximize()` calls that pass a flags argument sit behind
+    the `typeof win.get_maximized === 'function'` feature detection in
+    `maximizeFlags` / `maximizeWindow` / `unmaximizeWindow`
+    (`window-helpers.js`), so none of them runs on GNOME 49. The
+    `Meta.MaximizeFlags` enum itself is still there on 49 and later, as the type
+    `get_maximize_flags()` returns; `isFullyMaximized` (`window-helpers.js`) and
+    `_frameRefusal` (`extension.js`) compare against it on every version. Answer
+    the reviewer with the guard and the enum. Narrowing `shell-version` to 45-48
+    clears both findings and costs the 49/50 users — `shell-version` cannot be
+    widened again without a new review.
+  - `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
+    `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
+    calls on the service it takes out of `this._service`.
+  - `EGO-L-003` (warning): wants the `window-created` handler that the
+    `WindowControlService` constructor connects disconnected in `disable()`. It
+    is disconnected in `WindowControlService.unexport()`, which `disable()`
+    calls; `tests/check-extension-headless.js` asserts that no handler is left.
+    Answer the reviewer with that call chain.

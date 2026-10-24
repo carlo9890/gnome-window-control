@@ -111,9 +111,13 @@ then upload the same zip.
    ignored on purpose: the review rejects a shipped compiled schema
    (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
    compile the XML.
-2. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
+2. Run the
+   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review),
+   shexli included, over every `.js` file in the zip: the whole extension, not
+   only the diff since the last upload. Fix each violation before the upload.
+3. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
    <https://extensions.gnome.org/upload/>.
-3. Wait for the review. A human reviewer reads every line of the extension, and
+4. Wait for the review. A human reviewer reads every line of the extension, and
    the queue is usually weeks. Every new version needs a new upload and a new
    review.
 
@@ -125,51 +129,9 @@ of `docs/images/overview.svg` and `docs/images/icon.svg`. Both are written by
 renders by hand when a default shortcut, a tile position or `shell-version`
 changes.
 
-### Pre-upload check with shexli
+### Constraints the review enforces
 
-The upload page recommends `shexli`, the static analyzer the reviewer may also
-run. Run it on the built zip before uploading:
-
-```bash
-pip install -U shexli 'tree-sitter==0.25.2'
-shexli dist/window-control@carlo9890.github.io_v<version>.zip
-```
-
-**Pin `tree-sitter==0.25.2`.** shexli 0.2.1 pins neither dependency and resolves
-tree-sitter 0.26.0 against a tree-sitter-javascript 0.25.0 grammar; the ABI
-mismatch segfaults the process before any output (exit 139 on a zip,
-`munmap_chunk(): invalid pointer` on a directory).
-
-Five rules fire on the current sources, `EGO-A-004` once per file. The first
-four were investigated at v11, `EGO-L-003` at v17, and none is a defect — do
-not "fix" them. v11 was approved with those four present, so shexli output is
-not a gate:
-
-- `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
-  `get_maximized()` are reported as removed-on-49 API. `get_maximized()` and
-  the `maximize()` / `unmaximize()` calls that pass a flags argument sit behind
-  the `typeof win.get_maximized === 'function'` feature detection in
-  `maximizeFlags` / `maximizeWindow` / `unmaximizeWindow`
-  (`window-helpers.js`), so none of them runs on GNOME 49. The
-  `Meta.MaximizeFlags` enum itself is still there on 49 and later, as the type
-  `get_maximize_flags()` returns; `isFullyMaximized` (`window-helpers.js`) and
-  `_frameRefusal` (`extension.js`) compare against it on every version. Answer
-  the reviewer with the guard and the enum. Narrowing `shell-version` to 45-48
-  clears both findings and costs the 49/50 users — `shell-version` cannot be
-  widened again without a new review.
-- `EGO-A-004` (warning): counts `console.error` toward a threshold of 5 per
-  file. Stripping every `console.log` still leaves 15 in `extension.js` and 6
-  in `rules.js`, all in catch blocks, which [REVIEWING.md](REVIEWING.md) mandates.
-- `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
-  `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
-  calls on the service it takes out of `this._service`.
-- `EGO-L-003` (warning): wants the `window-created` handler that the
-  `WindowControlService` constructor connects disconnected in `disable()`. It
-  is disconnected in `WindowControlService.unexport()`, which `disable()`
-  calls; `tests/check-extension-headless.js` asserts that no handler is left.
-  Answer the reviewer with that call chain.
-
-Constraints the review enforces, which the code must keep satisfying:
+The code must keep satisfying:
 
 - The `uuid` is permanent. Never change it again — a new UUID is a new listing
   and loses every existing user.

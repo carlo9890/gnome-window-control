@@ -81,8 +81,9 @@ operation** — commit, branch, worktree, push, or opening a PR.
 ### Reviewing changes
 
 **MUST read [docs/REVIEWING.md](docs/REVIEWING.md) before reviewing a PR or a
-diff.** It carries the quality rules a finished change is held to — the SPDX
-header, handler errors, log levels and log content.
+diff.** It carries the quality rules a finished change is held to — the
+extensions.gnome.org review guidelines, the SPDX header, log levels and log
+content.
 
 ### Release
 
