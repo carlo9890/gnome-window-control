@@ -177,12 +177,18 @@ install_local() {
 
     require_glib_compile_schemas
 
-    # Remove existing installation
+    # The files the zip ships, and no stray untracked one. Listed before the
+    # old copy is removed, so a tree git cannot list keeps it.
+    local files untracked
+    files=$(git -C "$EXTENSION_DIR" ls-files)
+    untracked=$(git -C "$EXTENSION_DIR" ls-files --others --exclude-standard)
+
     rm -rf "$target_dir"
-    
-    # The files the zip ships, and no stray untracked one.
     mkdir -p "$target_dir"
-    (cd "$EXTENSION_DIR" && git ls-files -z | xargs -0 cp --parents -t "$target_dir")
+    (cd "$EXTENSION_DIR" && xargs -d '\n' cp --parents -t "$target_dir" <<<"$files")
+    if [[ -n "$untracked" ]]; then
+        log_warn "Not installed, because git does not track them (git add a new file first): ${untracked//$'\n'/ }"
+    fi
 
     # A plain copy is the one install path nothing compiles the schema on, and
     # Extension.getSettings() reads only gschemas.compiled.
