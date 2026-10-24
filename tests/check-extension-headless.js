@@ -20,6 +20,25 @@ import Meta from 'gi://Meta';
 
 import { ROOT, check, report } from './check-helper.js';
 
+// Every console line, with its GLib level, so a check can assert the level a
+// line is logged at. A line above debug level still reaches stderr.
+const consoleLines = [];
+GLib.log_set_writer_func((level, fields) => {
+    const message = new TextDecoder().decode(fields.MESSAGE);
+    consoleLines.push({ level, message });
+    if (level !== GLib.LogLevelFlags.LEVEL_DEBUG)
+        printerr(message);
+    return GLib.LogWriterOutput.HANDLED;
+});
+
+// The console.log() lines (journald priority 5, visible by default) logged
+// since `from`, an index into consoleLines.
+function noticesSince(from) {
+    return consoleLines.slice(from)
+        .filter(line => line.level === GLib.LogLevelFlags.LEVEL_MESSAGE)
+        .map(line => line.message);
+}
+
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 
@@ -538,11 +557,24 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     {
         const configDir = `${SCRATCH}/config/gnome-window-control`;
         GLib.mkdir_with_parents(configDir, 0o755);
-        write(`${configDir}/rules.json`, '[{"match":{"class":"app"},"tile":"left"}]');
+        // The first load finds no file, and the write after it reloads. A load
+        // runs at every enable() and a reload after every save and every
+        // `wctl rules add`, so neither may leave a notice-level journal line
+        // (REVIEWING.md).
         const rules = new WindowRules();
+        const linesBeforeLoad = consoleLines.length;
         rules.enable();
         await sleep(300);
+        write(`${configDir}/rules.json`, '[{"match":{"class":"app"},"tile":"left"}]');
+        await sleep(300);
         check('rules.json is loaded', rules._rules.length === 1, `${rules._rules.length} rule(s)`);
+        const loads = consoleLines.slice(linesBeforeLoad).map(line => line.message)
+            .filter(message => message.includes('window rules off') || message.includes('rule(s) loaded'));
+        check('the load found no file and the reload found the rule', loads.length === 2 &&
+            loads[0].includes('no rules.json') && loads[1].includes('1 rule(s) loaded'),
+            JSON.stringify(loads));
+        check('loading and reloading rules.json log nothing at notice level',
+            noticesSince(linesBeforeLoad).length === 0, JSON.stringify(noticesSince(linesBeforeLoad)));
         const early = createWindow({ id: 4, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
         const late = createWindow({ id: 5, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
         early.map();
