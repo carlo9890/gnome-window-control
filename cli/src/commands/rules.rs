@@ -281,39 +281,55 @@ fn load(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
 /// A symlinked `path`, say into a dotfiles repository, is written through: the
 /// file it points to is replaced, then the link is replaced by an identical one.
 /// Replacing the link with the file would cut the repository copy off, and
-/// writing only the target would raise no event in the watched directory.
+/// writing only the target would raise no event in the watched directory. A
+/// dangling link names the file to create. The new link is made before the
+/// target is touched, so a link that cannot be made changes nothing.
 fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
     let text = format!(
         "{}\n",
         serde_json::to_string_pretty(document).map_err(|e| Fail::error(e.to_string()))?
     );
-    let link = std::fs::read_link(path).ok();
-    let target = match link {
-        Some(_) => std::fs::canonicalize(path)
-            .map_err(|e| Fail::error(format!("Cannot resolve {}: {e}", path.display())))?,
-        None => path.to_path_buf(),
+    let Ok(link) = std::fs::read_link(path) else {
+        return replace_file(path, &text);
     };
-    let directory = target.parent().unwrap_or(Path::new("."));
+    let link_directory = path.parent().unwrap_or(Path::new("."));
+    let target = match std::fs::canonicalize(path) {
+        Ok(target) => target,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => link_directory.join(&link),
+        Err(e) => {
+            return Err(Fail::error(format!(
+                "Cannot resolve {}: {e}",
+                path.display()
+            )))
+        }
+    };
+
+    let temporary_link = link_directory.join(format!(".rules.json.link.{}", std::process::id()));
+    let _ = std::fs::remove_file(&temporary_link);
+    std::os::unix::fs::symlink(&link, &temporary_link)
+        .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary_link.display())))?;
+    if let Err(failure) = replace_file(&target, &text) {
+        let _ = std::fs::remove_file(&temporary_link);
+        return Err(failure);
+    }
+    rename_over(&temporary_link, path)
+}
+
+/// Replace the regular file at `path` with `text` through a temporary file in
+/// its directory.
+fn replace_file(path: &Path, text: &str) -> Result<()> {
+    let directory = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(directory)
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
 
     let temporary = directory.join(format!(".rules.json.{}", std::process::id()));
-    std::fs::write(&temporary, &text)
+    std::fs::write(&temporary, text)
         .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary.display())))?;
     // The new file takes the place of the old one, so it keeps its mode.
-    if let Ok(metadata) = std::fs::metadata(&target) {
+    if let Ok(metadata) = std::fs::metadata(path) {
         let _ = std::fs::set_permissions(&temporary, metadata.permissions());
     }
-    rename_over(&temporary, &target)?;
-
-    let Some(link) = link else {
-        return Ok(());
-    };
-    let link_directory = path.parent().unwrap_or(Path::new("."));
-    let temporary_link = link_directory.join(format!(".rules.json.link.{}", std::process::id()));
-    std::os::unix::fs::symlink(&link, &temporary_link)
-        .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary_link.display())))?;
-    rename_over(&temporary_link, path)
+    rename_over(&temporary, path)
 }
 
 fn rename_over(temporary: &Path, path: &Path) -> Result<()> {

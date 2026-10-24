@@ -1018,6 +1018,29 @@ fn rules_add_and_remove_write_through_a_symbolic_link() {
     );
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "[]\n");
 
+    // A link made before its target exists, into a directory that does not
+    // exist yet either: add creates both and keeps the link.
+    std::fs::remove_file(&link).expect("remove");
+    std::os::unix::fs::symlink("dotfiles/rules.json", &link).expect("symlink");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        link.to_str().unwrap(),
+        "-c",
+        "kitty",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        Path::new("dotfiles/rules.json")
+    );
+    assert!(std::fs::read_to_string(dir.join("dotfiles/rules.json"))
+        .unwrap()
+        .contains("kitty"));
+
     std::fs::remove_dir_all(&dir).ok();
 }
 
