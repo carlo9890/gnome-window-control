@@ -336,6 +336,10 @@ mod tests {
             "PID must be a number"
         );
         assert_eq!(
+            parse(&args(&["-s", ""])).unwrap_err().to_string(),
+            "Substring must not be empty"
+        );
+        assert_eq!(
             parse(&args(&["-c"])).unwrap_err().to_string(),
             "Option -c requires an argument"
         );
