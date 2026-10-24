@@ -68,7 +68,7 @@ for i in {1..30}; do
         WAYLAND_DISP=$(grep -oP "WAYLAND_DISPLAY=\K\S+" "$OUTPUT_FILE" 2>/dev/null || true)
     fi
     if [ -z "$X_DISP" ]; then
-        X_DISP=$(grep -oP "DISPLAY=\K\S+" "$OUTPUT_FILE" 2>/dev/null || true)
+        X_DISP=$(grep -oP "(?<![A-Z_])DISPLAY=\K\S+" "$OUTPUT_FILE" 2>/dev/null || true)
     fi
     
     # Check if gnome-shell died

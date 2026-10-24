@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::commands::{monitor_index, primary_monitor, take_flag, workarea_of};
 use crate::fail::{Fail, Result};
-use crate::geometry::{self, Axis, Rect, TILE_USAGE};
+use crate::geometry::{self, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
 
@@ -466,49 +466,35 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         .map(String::as_str)
         .unwrap_or("both");
 
-    let (axis, message) = match axis {
-        "h" | "horizontal" => ("horizontal", "Window centered horizontally"),
-        "v" | "vertical" => ("vertical", "Window centered vertically"),
-        "both" | "" => ("both", "Window centered"),
-        other => {
-            return Err(Fail::error(format!(
-                "Invalid axis: {other}. Must be 'horizontal', 'vertical', or 'both'"
-            )))
-        }
+    let axis = geometry::parse_center_axis(axis)?;
+    let message = match axis {
+        "horizontal" => "Window centered horizontally",
+        "vertical" => "Window centered vertically",
+        _ => "Window centered",
     };
     let id = selector::lookup(ctx, &selector)?;
 
     let (window, monitor_index, workarea) = window_workarea(ctx, id)?;
     let (win_x, win_y, win_w, win_h) = model::frame_rect(&window);
 
-    // Centring is the workarea-relative "center" token, so it reuses the one
-    // implementation of that formula. Size is preserved, so this is a Move.
-    let mut x = win_x;
-    let mut y = win_y;
-    if axis == "horizontal" || axis == "both" {
-        x = geometry::resolve_place_position("center", Axis::X, workarea.x, workarea.width, win_w)?;
-    }
-    if axis == "vertical" || axis == "both" {
-        y = geometry::resolve_place_position(
-            "center",
-            Axis::Y,
-            workarea.y,
-            workarea.height,
-            win_h,
-        )?;
-    }
-
-    let applied = ctx.bus.call_unit("Move", &(id, as_i32(x), as_i32(y)));
-    let placement = Placement {
-        monitor_index,
-        workarea,
-        // A centre is a move, so the size is the window's own, unchanged.
-        target: Rect {
-            x,
-            y,
+    // Size is preserved, so this is a Move.
+    let target = geometry::center_rect(
+        axis,
+        Rect {
+            x: win_x,
+            y: win_y,
             width: win_w,
             height: win_h,
         },
+        workarea,
+    );
+    let applied = ctx
+        .bus
+        .call_unit("Move", &(id, as_i32(target.x), as_i32(target.y)));
+    let placement = Placement {
+        monitor_index,
+        workarea,
+        target,
     };
     report_placement(ctx, id, &placement, applied, settled, message, json_output)
 }

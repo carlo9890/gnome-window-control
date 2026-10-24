@@ -148,9 +148,49 @@ pub fn resolve_place_position(
     Ok(match parse_place_position(token, axis)? {
         PositionToken::Pixels(value) => value,
         PositionToken::Start => workarea_pos,
-        PositionToken::Center => workarea_pos + (workarea_size - window_size) / 2,
+        PositionToken::Center => centered(workarea_pos, workarea_size, window_size),
         PositionToken::End => workarea_pos + workarea_size - window_size,
     })
+}
+
+/// The one centring formula: the `center` token of `place`, `wctl center` and a
+/// rule's `center` all use it. Integer division cuts toward zero, as `trunc`
+/// does in centerRect in rules-format.js.
+fn centered(workarea_pos: i64, workarea_size: i64, window_size: i64) -> i64 {
+    workarea_pos + (workarea_size - window_size) / 2
+}
+
+/// A `center` axis: `h` or `horizontal`, `v` or `vertical`, `both` or empty.
+pub fn parse_center_axis(token: &str) -> Result<&'static str> {
+    match token {
+        "h" | "horizontal" => Ok("horizontal"),
+        "v" | "vertical" => Ok("vertical"),
+        "both" | "" => Ok("both"),
+        other => Err(Fail::error(format!(
+            "Invalid axis: {other}. Must be 'horizontal', 'vertical', or 'both'"
+        ))),
+    }
+}
+
+/// Centre `frame` in `workarea` on `axis`, a value `parse_center_axis`
+/// returns, keeping the frame's size and its coordinate on the other axis.
+pub fn center_rect(axis: &str, frame: Rect, workarea: Rect) -> Rect {
+    let horizontal = axis == "horizontal" || axis == "both";
+    let vertical = axis == "vertical" || axis == "both";
+    Rect {
+        x: if horizontal {
+            centered(workarea.x, workarea.width, frame.width)
+        } else {
+            frame.x
+        },
+        y: if vertical {
+            centered(workarea.y, workarea.height, frame.height)
+        } else {
+            frame.y
+        },
+        width: frame.width,
+        height: frame.height,
+    }
 }
 
 /// Check the syntax of the four `place` tokens without a workarea, so a
@@ -277,6 +317,51 @@ mod tests {
                 "expected {token} to be refused"
             );
         }
+    }
+
+    #[test]
+    fn center_axis_aliases() {
+        assert_eq!(parse_center_axis("h").unwrap(), "horizontal");
+        assert_eq!(parse_center_axis("horizontal").unwrap(), "horizontal");
+        assert_eq!(parse_center_axis("v").unwrap(), "vertical");
+        assert_eq!(parse_center_axis("vertical").unwrap(), "vertical");
+        assert_eq!(parse_center_axis("both").unwrap(), "both");
+        assert_eq!(parse_center_axis("").unwrap(), "both");
+        assert_eq!(
+            parse_center_axis("diagonal").unwrap_err().to_string(),
+            "Invalid axis: diagonal. Must be 'horizontal', 'vertical', or 'both'"
+        );
+    }
+
+    #[test]
+    fn center_rect_keeps_the_size_and_the_other_axis() {
+        let workarea = Rect {
+            x: 0,
+            y: 27,
+            width: 1920,
+            height: 1053,
+        };
+        let frame = Rect {
+            x: 10,
+            y: 20,
+            width: 801,
+            height: 600,
+        };
+        let rect = |x, y| Rect {
+            x,
+            y,
+            width: 801,
+            height: 600,
+        };
+        assert_eq!(center_rect("both", frame, workarea), rect(559, 253));
+        assert_eq!(center_rect("horizontal", frame, workarea), rect(559, 20));
+        assert_eq!(center_rect("vertical", frame, workarea), rect(10, 253));
+        // One pixel larger than the workarea stays at offset 0, not -1.
+        let wide = Rect {
+            width: 1921,
+            ..frame
+        };
+        assert_eq!(center_rect("horizontal", wide, workarea).x, 0);
     }
 
     #[test]

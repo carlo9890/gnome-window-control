@@ -58,12 +58,7 @@ pub fn wait(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // The extension validates these too, but a bad value reported from here
     // costs no bus call, and an impossible PID would otherwise block for the
     // whole timeout before being reported as "timed out".
-    if kind == selector::Kind::Pid {
-        selector::validate_pid(&value)?;
-    }
-    if kind == selector::Kind::Substring && value.is_empty() {
-        return Err(Fail::error("Substring must not be empty"));
-    }
+    selector::validate_value(kind, &value)?;
 
     let seconds = parse_timeout(&timeout)?;
     let client_bound = Duration::from_secs(seconds as u64 + CLIENT_GRACE_SECONDS);

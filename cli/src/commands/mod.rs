@@ -82,20 +82,39 @@ pub fn monitor_index(token: &str) -> Result<i32> {
     index(token, "Monitor")
 }
 
+/// Every option of any command that takes a value. A helper that takes one
+/// option out of an argument list skips the value of each of these, so a value
+/// is never read as an option name.
+pub const VALUE_OPTIONS: [&str; 13] = [
+    "-c",
+    "-t",
+    "-s",
+    "-p",
+    "--title-prefix",
+    "--title-suffix",
+    "--class-prefix",
+    "--class",
+    "--workspace",
+    "--monitor",
+    "--timeout",
+    "--at",
+    "--file",
+];
+
 /// Split one flag that may appear anywhere out of an argument list.
 ///
 /// The `<WINDOW>` slot shifts every positional after it, so a flag has to be
 /// removed before the selector is parsed, and `info` set the precedent that
-/// it is accepted on either side of the selector. The VALUE of a match option
-/// is skipped: a window whose title is literally `--json` is still
-/// addressable with `-t --json`.
+/// it is accepted on either side of the selector. The VALUE of an option in
+/// `VALUE_OPTIONS` is skipped: a window whose title is literally `--json` is
+/// still addressable with `-t --json`.
 pub fn take_flag(args: &[String], flag: &str) -> (bool, Vec<String>) {
     let mut found = false;
     let mut rest = Vec::with_capacity(args.len());
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
-        if matches!(arg.as_str(), "-c" | "-t" | "-s" | "-p") {
+        if VALUE_OPTIONS.contains(&arg.as_str()) {
             rest.push(arg.clone());
             if let Some(value) = args.get(index + 1) {
                 rest.push(value.clone());

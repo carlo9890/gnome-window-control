@@ -8,7 +8,7 @@
 //! `add` and `remove` open it only after the default file is written, to warn
 //! that the loaded extension does not report the `rules` capability. `test`
 //! opens it to resolve a live window, and refuses an extension without that
-//! capability.
+//! capability or without the capability of a match key the file holds.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -71,20 +71,29 @@ fn warn_if_unsupported(ctx: &Ctx, document: &[Value]) {
     let Some(reported) = ctx.bus.reported_capabilities(CAPABILITY_PROBE) else {
         return;
     };
-    let lacks = |capability: &str| !reported.iter().any(|name| name == capability);
-    if lacks(RULES_CAPABILITY) {
+    if !reported.iter().any(|name| name == RULES_CAPABILITY) {
         eprintln!("Warning: {NO_RULES_SUPPORT}");
     }
-    for (keys, capability, warning) in NEWER_MATCH_KEYS {
-        let uses_key = document.iter().any(|rule| {
-            rule["match"]
-                .as_object()
-                .is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
-        });
-        if uses_key && lacks(capability) {
-            eprintln!("Warning: {warning}");
-        }
+    for warning in refused_keys(&reported, document) {
+        eprintln!("Warning: {warning}");
     }
+}
+
+/// The warning of each `NEWER_MATCH_KEYS` entry that the document uses and the
+/// extension does not report.
+fn refused_keys(reported: &[String], document: &[Value]) -> Vec<&'static str> {
+    NEWER_MATCH_KEYS
+        .iter()
+        .filter(|(keys, capability, _)| {
+            let uses_key = document.iter().any(|rule| {
+                rule["match"]
+                    .as_object()
+                    .is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
+            });
+            uses_key && !reported.iter().any(|name| name == capability)
+        })
+        .map(|(_, _, warning)| *warning)
+        .collect()
 }
 
 const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
@@ -111,7 +120,8 @@ pub fn default_path() -> Result<PathBuf> {
     Ok(base.join("gnome-window-control").join("rules.json"))
 }
 
-/// Take `--file PATH` out of the argument list, leaving the rest.
+/// Take `--file PATH` out of the argument list, leaving the rest. The value of
+/// another option is skipped, so `-t --file` matches the title `--file`.
 fn take_file_option(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>)> {
     let mut path = None;
     let mut rest = Vec::with_capacity(args.len());
@@ -127,6 +137,9 @@ fn take_file_option(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>)> {
                 return Err(Fail::error("Option --file requires a value"));
             };
             path = Some(PathBuf::from(value));
+            index += 2;
+        } else if super::VALUE_OPTIONS.contains(&args[index].as_str()) {
+            rest.extend(args[index..].iter().take(2).cloned());
             index += 2;
         } else {
             rest.push(args[index].clone());
@@ -264,24 +277,64 @@ fn load(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
 /// A rename within a directory is atomic, so a reader never sees a half-written
 /// file -- and the extension watches the directory rather than the file for
 /// exactly this pattern (see docs/specs/RULES-JSON.md), so the reload fires.
+///
+/// A symlinked `path`, say into a dotfiles repository, is written through: the
+/// file it points to is replaced, then the link is replaced by an identical one.
+/// Replacing the link with the file would cut the repository copy off, and
+/// writing only the target would raise no event in the watched directory. A
+/// dangling link names the file to create. The new link is made before the
+/// target is touched, so a link that cannot be made changes nothing.
 fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
     let text = format!(
         "{}\n",
         serde_json::to_string_pretty(document).map_err(|e| Fail::error(e.to_string()))?
     );
+    let Ok(link) = std::fs::read_link(path) else {
+        return replace_file(path, &text);
+    };
+    let link_directory = path.parent().unwrap_or(Path::new("."));
+    let target = match std::fs::canonicalize(path) {
+        Ok(target) => target,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => link_directory.join(&link),
+        Err(e) => {
+            return Err(Fail::error(format!(
+                "Cannot resolve {}: {e}",
+                path.display()
+            )))
+        }
+    };
+
+    let temporary_link = link_directory.join(format!(".rules.json.link.{}", std::process::id()));
+    let _ = std::fs::remove_file(&temporary_link);
+    std::os::unix::fs::symlink(&link, &temporary_link)
+        .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary_link.display())))?;
+    if let Err(failure) = replace_file(&target, &text) {
+        let _ = std::fs::remove_file(&temporary_link);
+        return Err(failure);
+    }
+    rename_over(&temporary_link, path)
+}
+
+/// Replace the regular file at `path` with `text` through a temporary file in
+/// its directory.
+fn replace_file(path: &Path, text: &str) -> Result<()> {
     let directory = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(directory)
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
 
     let temporary = directory.join(format!(".rules.json.{}", std::process::id()));
-    std::fs::write(&temporary, &text)
+    std::fs::write(&temporary, text)
         .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary.display())))?;
     // The new file takes the place of the old one, so it keeps its mode.
     if let Ok(metadata) = std::fs::metadata(path) {
         let _ = std::fs::set_permissions(&temporary, metadata.permissions());
     }
-    std::fs::rename(&temporary, path).map_err(|e| {
-        let _ = std::fs::remove_file(&temporary);
+    rename_over(&temporary, path)
+}
+
+fn rename_over(temporary: &Path, path: &Path) -> Result<()> {
+    std::fs::rename(temporary, path).map_err(|e| {
+        let _ = std::fs::remove_file(temporary);
         Fail::error(format!("Cannot replace {}: {e}", path.display()))
     })
 }
@@ -427,16 +480,7 @@ fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
         "center" => {
             let axis = match rest {
                 [] => "both",
-                [axis] => match axis.as_str() {
-                    "h" | "horizontal" => "horizontal",
-                    "v" | "vertical" => "vertical",
-                    "both" => "both",
-                    other => {
-                        return Err(Fail::error(format!(
-                            "Invalid axis: {other}. Must be 'horizontal', 'vertical', or 'both'"
-                        )))
-                    }
-                },
+                [axis] => crate::geometry::parse_center_axis(axis)?,
                 _ => {
                     return Err(Fail::error(
                         "Usage: wctl rules add <MATCH> center [horizontal|vertical|both]",
@@ -521,11 +565,8 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         match option {
             "--workspace" | "--monitor" | "--at" => {}
             // A selector option's VALUE is never an option name.
-            "-c" | "-t" | "-s" | "-p" | "--title-prefix" | "--title-suffix" | "--class-prefix" => {
-                rest.push(args[index].clone());
-                if let Some(value) = args.get(index + 1) {
-                    rest.push(value.clone());
-                }
+            _ if super::VALUE_OPTIONS.contains(&option) => {
+                rest.extend(args[index..].iter().take(2).cloned());
                 index += 2;
                 continue;
             }
@@ -694,7 +735,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let path = rules_path(file)?;
     // The file is read BEFORE the bus call: a broken rules file is the user's
     // problem to fix either way, and reporting it costs nothing.
-    let (_, compiled) = load(&path)?;
+    let (raw, compiled) = load(&path)?;
 
     // A match reported against an extension that ignores the file would
     // explain a placement that never happens. This command needs the shell
@@ -703,6 +744,10 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let capabilities = ctx.bus.get_capabilities()?;
     if !capabilities.iter().any(|name| name == RULES_CAPABILITY) {
         return Err(Fail::error(NO_RULES_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
+    }
+    // One match key the extension does not know makes it refuse the whole file.
+    if let Some(warning) = refused_keys(&capabilities, &raw).first() {
+        return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
 
     let id = crate::selector::lookup(ctx, &selector)?;
@@ -873,6 +918,30 @@ mod tests {
             ),
             "Window 7  class=kitty?]0;x?  title=a?Matched rule 0: forged?[2J"
         );
+    }
+
+    #[test]
+    fn refused_keys_names_each_key_the_extension_does_not_report() {
+        let document = [
+            json!({"match": {"class_prefix": "chrome-"}, "tile": "left"}),
+            json!({"match": {"title_suffix": " - Mozilla"}, "tile": "right"}),
+        ];
+        let reported = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+
+        assert_eq!(
+            refused_keys(&reported(&["rules"]), &document),
+            vec![NEWER_MATCH_KEYS[0].2, NEWER_MATCH_KEYS[1].2]
+        );
+        assert_eq!(
+            refused_keys(&reported(&["rules", "rules-title-affix"]), &document),
+            vec![NEWER_MATCH_KEYS[1].2]
+        );
+        assert!(refused_keys(
+            &reported(&["rules", "rules-title-affix", "rules-class-prefix"]),
+            &document
+        )
+        .is_empty());
+        assert!(refused_keys(&reported(&["rules"]), &document[..0]).is_empty());
     }
 
     fn rule(key: &str, value: &str) -> rules::Rule {

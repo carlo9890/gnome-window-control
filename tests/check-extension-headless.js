@@ -20,6 +20,25 @@ import Meta from 'gi://Meta';
 
 import { ROOT, check, report } from './check-helper.js';
 
+// Every console line, with its GLib level, so a check can assert the level a
+// line is logged at. A line above debug level still reaches stderr.
+const consoleLines = [];
+GLib.log_set_writer_func((level, fields) => {
+    const message = new TextDecoder().decode(fields.MESSAGE);
+    consoleLines.push({ level, message });
+    if (level !== GLib.LogLevelFlags.LEVEL_DEBUG)
+        printerr(message);
+    return GLib.LogWriterOutput.HANDLED;
+});
+
+// The console.log() lines (journald priority 5, visible by default) logged
+// since `from`, an index into consoleLines.
+function noticesSince(from) {
+    return consoleLines.slice(from)
+        .filter(line => line.level === GLib.LogLevelFlags.LEVEL_MESSAGE)
+        .map(line => line.message);
+}
+
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 
@@ -229,14 +248,8 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         return JSON.stringify(call.reply);
     }
 
-    // unexport() as disable() calls it. The service was never exported, so its
-    // D-Bus skeleton is swapped for one that has nothing to unexport.
-    function unexport(service) {
-        service._dbusImpl = { unexport() {} };
-        service.unexport();
-    }
-
-    const { WindowControlService } = await import(`file://${EXT}/extension.js`);
+    const { WindowControlService, default: WindowControlExtension } =
+        await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
 
@@ -271,7 +284,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             showReply(waitC));
         check('wait B finds the window created during wait A', showReply(waitB) === '{"value":[2]}',
             showReply(waitB));
-        unexport(service);
+        service.unexport();
         windows.length = 0;
     }
 
@@ -295,7 +308,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         m.minimized = false;
         m.map();
         check('wait M replies once M is shown', showReply(waitM) === '{"value":[9]}', showReply(waitM));
-        unexport(service);
+        service.unexport();
         windows.length = 0;
     }
 
@@ -315,7 +328,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         dialog.emit('notify::window-type');
         check('wait D finds a dialog shown before it was retyped to NORMAL',
             showReply(wait) === '{"value":[6]}', showReply(wait));
-        unexport(service);
+        service.unexport();
         windows.length = 0;
     }
 
@@ -325,9 +338,14 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // not on screen without having been mapped. The service records it from
     // creation, so the listing and a later wait both know it is unshown. O
     // predates the service and is hidden and unminimized: the fallback reading.
+    // T predates it too and is hidden only because P, its parent, is minimized.
 
     {
         const old = createWindow({ id: 12, wmClass: 'O' });
+        const parent = createWindow({ id: 14, wmClass: 'P' });
+        parent.minimized = true;
+        const transient = createWindow({ id: 15, wmClass: 'T' });
+        transient.get_transient_for = () => parent;
         const service = new WindowControlService({ version: 0 });
         const shown = () => Object.fromEntries(JSON.parse(service.ListDetailed())
             .map(doc => [doc.id, doc.has_been_shown]));
@@ -337,6 +355,8 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             JSON.stringify(shown()));
         check('a window that predates the service and looks unmapped has not been shown',
             shown()[12] === false, JSON.stringify(shown()));
+        check('a window hidden because its parent is minimized has been shown',
+            shown()[15] === true, JSON.stringify(shown()));
         check('a window created while no wait runs keeps only a first-show watch',
             created.handlerCount() === 2, `${created.handlerCount()} handler(s)`);
         const wait = invocation();
@@ -353,7 +373,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('a shown window keeps no handler', created.handlerCount() === 0,
             `${created.handlerCount()} handler(s)`);
         const unshown = createWindow({ id: 13, wmClass: 'U' });
-        unexport(service);
+        service.unexport();
         check('unexport() drops the record of new windows and its first-show watches',
             display.handlerCount() === 0 && unshown.handlerCount() === 0 && old.handlerCount() === 0,
             `display ${display.handlerCount()}, unshown ${unshown.handlerCount()}, ` +
@@ -433,7 +453,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('the pending waits armed their timers', sources.length === 3 && sources.every(sourceAlive),
             `${sources}`);
         const unshownConnects = unshown._nextId;
-        unexport(service);
+        service.unexport();
         check('unexport() connects no first-show watch', unshown._nextId === unshownConnects,
             `${unshown._nextId - unshownConnects} handler(s) connected`);
         check('unexport() fails the pending WaitForWindow with Disabled',
@@ -479,7 +499,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         global.workspace_manager = manager;
         check('GetWorkarea raises Failed when the lookup throws', showReply(failed) ===
             '{"error":"org.freedesktop.DBus.Error.Failed","message":"no workarea"}', showReply(failed));
-        unexport(service);
+        service.unexport();
     }
 
     // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
@@ -504,6 +524,68 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         windows.length = 0;
     }
 
+    // -- enable() when the D-Bus export fails -------------------------------------
+    //
+    // The shell calls no disable() for an extension whose enable() threw.
+
+    {
+        const extension = new WindowControlExtension();
+        extension.metadata = { name: 'Window Control', version: 1 };
+        const realExport = WindowControlService.prototype.export;
+        WindowControlService.prototype.export = () => {
+            throw new Error('an object is already exported at this path');
+        };
+        let threw = false;
+        try {
+            extension.enable();
+        } catch {
+            threw = true;
+        } finally {
+            WindowControlService.prototype.export = realExport;
+        }
+        check('enable() rethrows a failed export', threw);
+        check('a failed enable() leaves no handler on the display and no service',
+            display.handlerCount() === 0 && extension._service === null,
+            `${display.handlerCount()} handler(s), service ${extension._service}`);
+    }
+
+    // A service that was never registered is not reported as unregistered, and
+    // a cleanup that throws neither replaces the error enable() failed with nor
+    // keeps the service.
+    {
+        const extension = new WindowControlExtension();
+        extension.metadata = { name: 'Window Control', version: 1 };
+        const realExport = WindowControlService.prototype.export;
+        const realEnable = WindowRules.prototype.enable;
+        const realDisable = WindowRules.prototype.disable;
+        WindowControlService.prototype.export = () => {};
+        WindowRules.prototype.enable = () => {
+            throw new Error('rules failed');
+        };
+        WindowRules.prototype.disable = () => {
+            throw new Error('cleanup failed');
+        };
+        const linesBefore = consoleLines.length;
+        let error = null;
+        try {
+            extension.enable();
+        } catch (e) {
+            error = e;
+        } finally {
+            WindowControlService.prototype.export = realExport;
+            WindowRules.prototype.enable = realEnable;
+            WindowRules.prototype.disable = realDisable;
+        }
+        check('enable() rethrows its own error when the cleanup throws too',
+            error?.message === 'rules failed', `${error}`);
+        check('a service that was never exported is not logged as unregistered',
+            !noticesSince(linesBefore).some(line => line.includes('unregistered')),
+            JSON.stringify(noticesSince(linesBefore)));
+        check('a cleanup that throws still tears the service down',
+            display.handlerCount() === 0 && extension._service === null,
+            `${display.handlerCount()} handler(s), service ${extension._service}`);
+    }
+
     // -- WindowRules: a window that is not NORMAL when shown ----------------------
     //
     // It gets the grace period an unmatched NORMAL window gets: a retype to
@@ -512,11 +594,24 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     {
         const configDir = `${SCRATCH}/config/gnome-window-control`;
         GLib.mkdir_with_parents(configDir, 0o755);
-        write(`${configDir}/rules.json`, '[{"match":{"class":"app"},"tile":"left"}]');
+        // The first load finds no file, and the write after it reloads. A load
+        // runs at every enable() and a reload after every save and every
+        // `wctl rules add`, so neither may leave a notice-level journal line
+        // (REVIEWING.md).
         const rules = new WindowRules();
+        const linesBeforeLoad = consoleLines.length;
         rules.enable();
         await sleep(300);
+        write(`${configDir}/rules.json`, '[{"match":{"class":"app"},"tile":"left"}]');
+        await sleep(300);
         check('rules.json is loaded', rules._rules.length === 1, `${rules._rules.length} rule(s)`);
+        const loads = consoleLines.slice(linesBeforeLoad).map(line => line.message)
+            .filter(message => message.includes('window rules off') || message.includes('rule(s) loaded'));
+        check('the load found no file and the reload found the rule', loads.length === 2 &&
+            loads[0].includes('no rules.json') && loads[1].includes('1 rule(s) loaded'),
+            JSON.stringify(loads));
+        check('loading and reloading rules.json log nothing at notice level',
+            noticesSince(linesBeforeLoad).length === 0, JSON.stringify(noticesSince(linesBeforeLoad)));
         const early = createWindow({ id: 4, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
         const late = createWindow({ id: 5, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
         early.map();

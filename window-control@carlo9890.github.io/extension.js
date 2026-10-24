@@ -312,12 +312,17 @@ class WindowControlService {
     // and GNOME disables the extension while the screen is locked) has no such
     // history, so it falls back to the old reading: hidden while unminimized
     // and on the active workspace is the only shape a not-yet-mapped window can
-    // have.
+    // have. Mutter also hides a transient window while a window it is transient
+    // for is minimized, so such a window counts as placed.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
         if (this._createdSinceStart.has(win))
             return true;
+        for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for()) {
+            if (parent.minimized)
+                return false;
+        }
         return !win.minimized &&
             win.located_on_workspace(global.workspace_manager.get_active_workspace());
     }
@@ -1277,13 +1282,22 @@ class WindowControlService {
         this._dbusImpl.export(Gio.DBus.session, DBUS_OBJECT_PATH);
     }
 
+    // Also tears down a service whose export() failed. The D-Bus object is
+    // unexported even when the cleanup before it throws, so the next enable()
+    // can export it again. Returns whether the object was exported.
     unexport() {
-        global.display.disconnect(this._windowCreatedId);
-        this._windowCreatedId = 0;
-        this._cancelWaiters();
-        this._cancelGeometryWatchers();
-        this._dbusImpl.unexport();
-        this._dbusImpl = null;
+        const exported = this._dbusImpl.get_connection() !== null;
+        try {
+            global.display.disconnect(this._windowCreatedId);
+            this._windowCreatedId = 0;
+            this._cancelWaiters();
+            this._cancelGeometryWatchers();
+        } finally {
+            if (exported)
+                this._dbusImpl.unexport();
+            this._dbusImpl = null;
+        }
+        return exported;
     }
 }
 
@@ -1300,26 +1314,42 @@ export default class WindowControlExtension extends Extension {
             this._service.keybindingsServed = this._keybindings.registered;
         } catch (e) {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
+            // The shell does not call disable() for an extension whose
+            // enable() threw, so nothing set up so far may outlive it. A
+            // failing cleanup must not hide why enable() failed.
+            try {
+                this.disable();
+            } catch (cleanupError) {
+                console.error(`[${this.metadata.name}] Cleanup after the failed enable() failed: ${cleanupError.message}`);
+            }
             throw e;
         }
     }
 
+    // The service goes last, and also when an earlier step throws: it holds
+    // the D-Bus object the next enable() exports again.
     disable() {
-        if (this._keybindings) {
-            this._keybindings.disable();
-            this._keybindings = null;
-        }
-        if (this._rules) {
-            this._rules.disable();
-            this._rules = null;
-        }
-        if (this._service) {
-            try {
-                this._service.unexport();
+        try {
+            if (this._keybindings) {
+                const keybindings = this._keybindings;
+                this._keybindings = null;
+                keybindings.disable();
+            }
+            if (this._rules) {
+                const rules = this._rules;
+                this._rules = null;
+                rules.disable();
+            }
+        } finally {
+            if (this._service) {
+                const service = this._service;
                 this._service = null;
-                console.log(`[${this.metadata.name}] D-Bus service unregistered`);
-            } catch (e) {
-                console.error(`[${this.metadata.name}] Failed to unregister D-Bus service: ${e.message}`);
+                try {
+                    if (service.unexport())
+                        console.log(`[${this.metadata.name}] D-Bus service unregistered`);
+                } catch (e) {
+                    console.error(`[${this.metadata.name}] Failed to unregister D-Bus service: ${e.message}`);
+                }
             }
         }
     }

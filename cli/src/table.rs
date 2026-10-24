@@ -10,7 +10,8 @@
 
 use unicode_width::UnicodeWidthStr;
 
-/// Replace control characters with a visible placeholder.
+/// Replace control characters, line and paragraph separators and bidirectional
+/// controls with a visible placeholder.
 ///
 /// Window titles are arbitrary client-supplied strings: X11 WM_NAME and Wayland
 /// xdg_toplevel titles can hold a newline or a tab. Emitted verbatim, a newline
@@ -20,13 +21,32 @@ use unicode_width::UnicodeWidthStr;
 /// @tsv escaped these before `column` saw them. `unicode_width` also scores
 /// control characters as zero, so the padding is wrong even when the row
 /// survives -- replacing them with one printable character fixes both.
+///
+/// A line or paragraph separator breaks the row in some terminals, and a
+/// bidirectional control (U+202E RIGHT-TO-LEFT OVERRIDE, say) makes a
+/// bidi-capable terminal draw the rest of the row reversed, so the columns
+/// after a title can show values the window chose.
 pub(crate) fn sanitize(cell: &str) -> String {
-    if !cell.chars().any(|c| c.is_control()) {
+    if !cell.chars().any(is_unsafe) {
         return cell.to_string();
     }
     cell.chars()
-        .map(|c| if c.is_control() { '?' } else { c })
+        .map(|c| if is_unsafe(c) { '?' } else { c })
         .collect()
+}
+
+fn is_unsafe(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{2028}'
+                | '\u{2029}'
+                | '\u{061C}'
+                | '\u{200E}'
+                | '\u{200F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2066}'..='\u{2069}'
+        )
 }
 
 /// Render rows as an aligned table. Rows may have different lengths; a missing
@@ -104,6 +124,19 @@ mod tests {
         assert_eq!(
             sanitize("evil\nClass:     forged\x1b[31mRED\x1b[0m"),
             "evil?Class:     forged?[31mRED?[0m"
+        );
+    }
+
+    #[test]
+    fn a_title_cannot_reorder_the_columns_after_it() {
+        assert_eq!(
+            sanitize("a\u{202E}b\u{2066}c\u{2069}d\u{200F}e\u{061C}f\u{2028}g\u{2029}h"),
+            "a?b?c?d?e?f?g?h"
+        );
+        // Characters that only look unusual stay.
+        assert_eq!(
+            sanitize("caf\u{e9} \u{05e9}\u{05dc}\u{05d5}\u{05dd}"),
+            "caf\u{e9} \u{05e9}\u{05dc}\u{05d5}\u{05dd}"
         );
     }
 

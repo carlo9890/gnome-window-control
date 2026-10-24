@@ -9,6 +9,7 @@
 //! in tests/test-logic.sh.
 
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use assert_cmd::cargo::cargo_bin;
@@ -419,6 +420,9 @@ fn selector_option_guards() {
     expect_die("Unknown option: -x", &["tile", "-x", "left"]);
     expect_die("Option -c requires an argument", &["tile", "-c"]);
     expect_die("PID must be a number", &["tile", "-p", "abc", "left"]);
+    // An empty substring matches every window, so with one window open it
+    // would close that one.
+    expect_die("Substring must not be empty", &["close", "-s", ""]);
 }
 
 #[test]
@@ -962,17 +966,18 @@ fn rules_test_guards_fire_before_the_bus() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// README states this: add and remove write a new file in place of a symbolic
-/// link, so the file the link named keeps its content.
+/// README states this: add and remove write through a symbolic link, say into
+/// a dotfiles repository. The link stays, unchanged, and its target gets the
+/// change.
 #[test]
-fn rules_add_and_remove_replace_a_symbolic_link() {
+fn rules_add_and_remove_write_through_a_symbolic_link() {
     let dir = std::env::temp_dir().join(format!("wctl-rules-link-{}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).expect("temp dir");
     let target = dir.join("dotfiles.json");
     let link = dir.join("rules.json");
     std::fs::write(&target, "[]\n").expect("write");
-    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+    std::os::unix::fs::symlink("dotfiles.json", &link).expect("symlink");
 
     let (out, code) = wctl(&[
         "rules",
@@ -985,9 +990,11 @@ fn rules_add_and_remove_replace_a_symbolic_link() {
         "left",
     ]);
     assert_eq!(code, 0, "printed: {out}");
-    assert!(!link.symlink_metadata().unwrap().file_type().is_symlink());
-    assert!(std::fs::read_to_string(&link).unwrap().contains("kitty"));
-    assert_eq!(std::fs::read_to_string(&target).unwrap(), "[]\n");
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        Path::new("dotfiles.json")
+    );
+    assert!(std::fs::read_to_string(&target).unwrap().contains("kitty"));
 
     // An index past the end is an ordinary error, like --at past the end.
     for index in ["7", "99999999999999999999999999"] {
@@ -1002,12 +1009,37 @@ fn rules_add_and_remove_replace_a_symbolic_link() {
     // remove does the same.
     std::fs::remove_file(&link).expect("remove");
     std::fs::write(&target, r#"[{"match":{"class":"a"},"tile":"left"}]"#).expect("write");
-    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+    std::os::unix::fs::symlink("dotfiles.json", &link).expect("symlink");
     let (out, code) = wctl(&["rules", "remove", "--file", link.to_str().unwrap(), "0"]);
     assert_eq!(code, 0, "printed: {out}");
-    assert!(!link.symlink_metadata().unwrap().file_type().is_symlink());
-    assert_eq!(std::fs::read_to_string(&link).unwrap(), "[]\n");
-    assert!(std::fs::read_to_string(&target).unwrap().contains("class"));
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        Path::new("dotfiles.json")
+    );
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "[]\n");
+
+    // A link made before its target exists, into a directory that does not
+    // exist yet either: add creates both and keeps the link.
+    std::fs::remove_file(&link).expect("remove");
+    std::os::unix::fs::symlink("dotfiles/rules.json", &link).expect("symlink");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        link.to_str().unwrap(),
+        "-c",
+        "kitty",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        Path::new("dotfiles/rules.json")
+    );
+    assert!(std::fs::read_to_string(dir.join("dotfiles/rules.json"))
+        .unwrap()
+        .contains("kitty"));
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1205,6 +1237,32 @@ fn rules_add_takes_a_class_prefix() {
     assert_eq!(code, 0, "printed: {out}");
     let (out, _) = wctl(&["rules", "list", "--file", path]);
     assert!(out.contains("class_prefix=--at"), "printed: {out}");
+    // Nor is it taken for --dry-run or --file.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--class-prefix",
+        "--dry-run",
+        "tile",
+        "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--title-prefix",
+        "--file",
+        "tile",
+        "left",
+        "--file",
+        path,
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, _) = wctl(&["rules", "list", "--file", path]);
+    assert!(out.contains("class_prefix=--dry-run"), "printed: {out}");
+    assert!(out.contains("title_prefix=--file"), "printed: {out}");
 
     expect_die(
         "--class-prefix requires a value",

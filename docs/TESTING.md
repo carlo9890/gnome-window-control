@@ -120,13 +120,18 @@ It pins:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
   `Disabled` and leaves no handler, subscription or timer, and
   `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
+- a failed `enable()` rethrows its own error, also when the cleanup throws,
+  leaves no handler and logs no unregistered service it never registered;
+- a load of `rules.json` that finds no file, and a reload that finds one, log
+  nothing at notice level;
 - both wait methods drop a call, with no reply, when its caller leaves the bus,
   also when the caller left before the call was handled;
 - `WaitForWindow` for a window created during an earlier wait and mapped after
   it, for one created minimized during an earlier wait and not yet mapped, and
   for a dialog retyped to `NORMAL` after it was shown and hidden;
 - `ListDetailed`'s `has_been_shown` for a window created minimized while no
-  wait runs, before and after its map, and for one that predates the service;
+  wait runs, before and after its map, and for one that predates the service,
+  hidden on its own or because its parent is minimized;
 - `GetWorkarea` answers `(-1, -1, -1, -1)` only for an index that is not a
   monitor, and raises `Failed` when its lookup throws;
 - the rules grace period for a window that is not `NORMAL` when shown.
