@@ -403,7 +403,10 @@ and `"skipped"` is `"no such monitor"`. This is
 the one `rules` subcommand that needs the extension running, because it resolves
 a live window. It never moves anything. Against an extension that does not
 report the `rules` capability it exits 5 instead, because that extension
-ignores the file.
+ignores the file. It also exits 5 when the file uses `title_prefix`,
+`title_suffix` or `class_prefix` and the extension does not report
+`rules-title-affix` or `rules-class-prefix` for it, because that extension
+refuses the whole file.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
