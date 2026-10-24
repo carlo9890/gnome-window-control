@@ -1284,18 +1284,20 @@ class WindowControlService {
 
     // Also tears down a service whose export() failed. The D-Bus object is
     // unexported even when the cleanup before it throws, so the next enable()
-    // can export it again.
+    // can export it again. Returns whether the object was exported.
     unexport() {
+        const exported = this._dbusImpl.get_connection() !== null;
         try {
             global.display.disconnect(this._windowCreatedId);
             this._windowCreatedId = 0;
             this._cancelWaiters();
             this._cancelGeometryWatchers();
         } finally {
-            if (this._dbusImpl.get_connection())
+            if (exported)
                 this._dbusImpl.unexport();
             this._dbusImpl = null;
         }
+        return exported;
     }
 }
 
@@ -1313,29 +1315,41 @@ export default class WindowControlExtension extends Extension {
         } catch (e) {
             console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
             // The shell does not call disable() for an extension whose
-            // enable() threw, so nothing set up so far may outlive it.
-            this.disable();
+            // enable() threw, so nothing set up so far may outlive it. A
+            // failing cleanup must not hide why enable() failed.
+            try {
+                this.disable();
+            } catch (cleanupError) {
+                console.error(`[${this.metadata.name}] Cleanup after the failed enable() failed: ${cleanupError.message}`);
+            }
             throw e;
         }
     }
 
+    // The service goes last, and also when an earlier step throws: it holds
+    // the D-Bus object the next enable() exports again.
     disable() {
-        if (this._keybindings) {
-            this._keybindings.disable();
-            this._keybindings = null;
-        }
-        if (this._rules) {
-            this._rules.disable();
-            this._rules = null;
-        }
-        if (this._service) {
-            const service = this._service;
-            this._service = null;
-            try {
-                service.unexport();
-                console.log(`[${this.metadata.name}] D-Bus service unregistered`);
-            } catch (e) {
-                console.error(`[${this.metadata.name}] Failed to unregister D-Bus service: ${e.message}`);
+        try {
+            if (this._keybindings) {
+                const keybindings = this._keybindings;
+                this._keybindings = null;
+                keybindings.disable();
+            }
+            if (this._rules) {
+                const rules = this._rules;
+                this._rules = null;
+                rules.disable();
+            }
+        } finally {
+            if (this._service) {
+                const service = this._service;
+                this._service = null;
+                try {
+                    if (service.unexport())
+                        console.log(`[${this.metadata.name}] D-Bus service unregistered`);
+                } catch (e) {
+                    console.error(`[${this.metadata.name}] Failed to unregister D-Bus service: ${e.message}`);
+                }
             }
         }
     }

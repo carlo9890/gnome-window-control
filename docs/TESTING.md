@@ -120,7 +120,8 @@ It pins:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
   `Disabled` and leaves no handler, subscription or timer, and
   `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
-- an `enable()` whose D-Bus export fails rethrows and leaves no handler;
+- a failed `enable()` rethrows its own error, also when the cleanup throws,
+  leaves no handler and logs no unregistered service it never registered;
 - a load of `rules.json` that finds no file, and a reload that finds one, log
   nothing at notice level;
 - both wait methods drop a call, with no reply, when its caller leaves the bus,
