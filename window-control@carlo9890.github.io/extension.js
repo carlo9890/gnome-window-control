@@ -25,7 +25,7 @@ import {
 const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML);
 
 // Reported by GetCapabilities. A name here is a promise a caller may rely on,
-// so it is added in the same commit as the feature and never removed while the
+// so it is added together with the feature and never removed while the
 // feature is served. 'rules' means rules.json is read and applied;
 // 'rules-title-affix' means its title_prefix and title_suffix match keys are
 // known -- an extension without it refuses a file that carries one, whole;
@@ -80,7 +80,10 @@ function _arePositiveNumbers(values) {
     return _areFiniteNumbers(values) && values.every(v => v > 0);
 }
 
-// Window type enum to string mapping
+function _workspaceIndex(win) {
+    return win.is_on_all_workspaces() ? -1 : (win.get_workspace()?.index() ?? -1);
+}
+
 const WINDOW_TYPE_NAMES = {
     [Meta.WindowType.NORMAL]: 'normal',
     [Meta.WindowType.DESKTOP]: 'desktop',
@@ -100,24 +103,12 @@ const WINDOW_TYPE_NAMES = {
     [Meta.WindowType.OVERRIDE_OTHER]: 'override_other',
 };
 
-// D-Bus service implementation.
-//
-// Logging invariant: every per-call line below uses console.debug(), never
-// console.log(). GJS maps console.log() to G_LOG_LEVEL_MESSAGE, which journald
-// records at priority 5 (notice) and shows WITHOUT G_MESSAGES_DEBUG set — so a
-// console.log() here writes a line to the user's journal on every D-Bus call,
-// and those lines persist across the session. console.debug() is priority 7 and
-// stays gated behind G_MESSAGES_DEBUG. For the same reason, no log line may
-// contain window content or a caller-supplied match value — not a title, and not
-// a WM class: titles leak document names, URLs and message contents into a log
-// that outlives the process that asked for them, and a class says which
-// applications the user runs. Log the method name and the outcome, not the
-// content. WaitForWindow is the one exception: it logs its `kind` argument, and
-// elides the `value` matched against. `kind` is only safe to log AFTER
-// _matchPredicate() has proved it is one of the four keywords
-// (class|title|substring|pid) -- before that it is an arbitrary caller-supplied
-// string, and logging it would let any process on the session bus write what it
-// likes, newlines included, into the user's journal.
+// Per-call lines use console.debug(), which GLib drops unless
+// G_MESSAGES_DEBUG is set; console.log() would leave a journal line per D-Bus
+// call. No line holds a title, a WM class or a match value: titles leak
+// document names and URLs into a log that outlives the caller. A caller's
+// `kind` is logged only after _matchPredicate() has accepted it, since until
+// then it is arbitrary text, newlines included.
 class WindowControlService {
     constructor(metadata) {
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
@@ -151,23 +142,22 @@ class WindowControlService {
         this._geometryWatchers = [];
     }
 
-    // Helper: Get all windows (NORMAL type only)
+    // NORMAL windows only: every method works on these.
     _getAllWindows() {
         const actors = global.get_window_actors();
         const windows = [];
-        
+
         for (const actor of actors) {
             const metaWindow = actor.get_meta_window();
             if (metaWindow && metaWindow.get_window_type() === Meta.WindowType.NORMAL) {
                 windows.push(metaWindow);
             }
         }
-        
+
         console.debug(`[Window Control] _getAllWindows(): found ${actors.length} actors, ${windows.length} normal windows`);
         return windows;
     }
 
-    // Helper: Find window by ID
     _findWindowById(id) {
         const windows = this._getAllWindows();
         for (const win of windows) {
@@ -178,7 +168,6 @@ class WindowControlService {
         return null;
     }
 
-    // Helper: Find window by predicate function
     _findWindowByPredicate(predicate) {
         const windows = this._getAllWindows();
         for (const win of windows) {
@@ -189,12 +178,11 @@ class WindowControlService {
         return null;
     }
 
-    // Helper: true if value is an integer in [0, count)
     _isValidIndex(value, count) {
         return Number.isInteger(value) && value >= 0 && value < count;
     }
 
-    // Helper: true when mutter will drop a frame geometry request outright.
+    // The state in which mutter drops a frame geometry request outright.
     // move_frame()/move_resize_frame() return without error and the frame does
     // not move, so a handler that reports true would be claiming a move that
     // never happened.
@@ -275,13 +263,13 @@ class WindowControlService {
         }
     }
 
-    // Helper: the (kind, value) selector predicate, shared with rules.json.
+    // The (kind, value) selector predicate, shared with rules.json.
     // See matchPredicate() in rules-format.js for the values it refuses.
     _matchPredicate(kind, value) {
         return SELECTOR_KINDS.includes(kind) ? matchPredicate(kind, value) : null;
     }
 
-    // Helper: has mutter mapped and placed this window at least once?
+    // Has mutter mapped and placed this window at least once?
     // Recorded rather than inferred -- a window seen unhidden has been placed,
     // and that never stops being true, whereas is_hidden() flips with minimize
     // and workspace changes.
@@ -295,7 +283,7 @@ class WindowControlService {
         return false;
     }
 
-    // Helper: true for a window that mutter has created but not yet mapped and
+    // True for a window that mutter has created but not yet mapped and
     // placed. A geometry request on such a window is overridden by mutter's
     // initial placement, so WaitForWindow must not reply before it is shown.
     //
@@ -303,14 +291,12 @@ class WindowControlService {
     // another workspace are hidden too, and both are placed. For a window
     // created while the service runs the answer is known outright -- its
     // first-show watch records the map, so if it has never been seen unhidden
-    // it has never been mapped, whatever the reason it is hidden now. That is
-    // the case the old test got wrong: a window created on a non-active
-    // workspace, or created minimized, failed its minimized/workspace clauses
-    // and was called shown while mutter had not yet placed it.
+    // it has never been mapped, whatever the reason it is hidden now, also
+    // when it was created minimized or on another workspace.
     //
     // A window that predates the service (it is rebuilt at every enable,
     // and GNOME disables the extension while the screen is locked) has no such
-    // history, so it falls back to the old reading: hidden while unminimized
+    // history, so it is judged by its current state: hidden while unminimized
     // and on the active workspace is the only shape a not-yet-mapped window can
     // have. Mutter also hides a transient window while a window it is transient
     // for is minimized, so such a window counts as placed.
@@ -327,12 +313,11 @@ class WindowControlService {
             win.located_on_workspace(global.workspace_manager.get_active_workspace());
     }
 
-    // Helper: Look up a window by ID and run an action on it, with the uniform
-    // find / try-catch / result contract shared by the simple boolean handlers.
-    // Returns false if the window is missing, the action throws, or the action
-    // returns false -- which is how an action that reads its result back
-    // (MoveToWorkspace, SetSticky) reports a change mutter declined. An action
-    // that returns nothing counts as success.
+    // Look up a window by ID and run an action on it, for the simple boolean
+    // handlers. Returns false if the window is missing, the action throws, or
+    // the action returns false -- which is how an action that reads its
+    // result back (MoveToWorkspace, SetSticky) reports a change mutter
+    // declined. An action that returns nothing counts as success.
     _actOnWindow(windowId, label, action) {
         try {
             const win = this._findWindowById(windowId);
@@ -349,7 +334,7 @@ class WindowControlService {
         }
     }
 
-    // Helper: the ActivateBy* contract. Activates the first window matching
+    // The ActivateBy* contract. Activates the first window matching
     // (kind, value) and returns true; false if none does or the value is one
     // _matchPredicate refuses. `kind` is one of this file's own keywords, never
     // caller-supplied, so it is safe to log; the value is not logged.
@@ -372,27 +357,22 @@ class WindowControlService {
         }
     }
 
-    // List: Get all windows as array of tuples
+    // Element order is the List signature a(tssssbiiii) in dbus-interface.js.
     List() {
-        console.debug(`[Window Control] List() called`);
+        console.debug('[Window Control] List() called');
         try {
-            const windows = this._getAllWindows();
-            const result = windows.map(win => {
-                const workspace = win.get_workspace();
-                const workspaceIndex = win.is_on_all_workspaces() ? -1 : (workspace ? workspace.index() : -1);
-                return [
-                    win.get_id(),                              // t - window ID
-                    win.get_title() || '',                     // s - title
-                    win.get_wm_class() || '',                  // s - wm_class
-                    win.get_wm_class_instance() || '',         // s - wm_class_instance
-                    win.get_sandboxed_app_id() || '',          // s - sandboxed_app_id
-                    win.has_focus(),                           // b - is_focused
-                    workspaceIndex,                            // i - workspace index
-                    win.get_monitor(),                         // i - monitor index
-                    win.get_pid(),                             // i - PID
-                    win.get_window_type(),                     // i - window type enum
-                ];
-            });
+            const result = this._getAllWindows().map(win => [
+                win.get_id(),
+                win.get_title() || '',
+                win.get_wm_class() || '',
+                win.get_wm_class_instance() || '',
+                win.get_sandboxed_app_id() || '',
+                win.has_focus(),
+                _workspaceIndex(win),
+                win.get_monitor(),
+                win.get_pid(),
+                win.get_window_type(),
+            ]);
             console.debug(`[Window Control] List() returning ${result.length} windows`);
             return result;
         } catch (e) {
@@ -401,19 +381,15 @@ class WindowControlService {
         }
     }
 
-    // ListDetailed: Get all windows as JSON string with full details
     ListDetailed() {
-        console.debug(`[Window Control] ListDetailed() called`);
+        console.debug('[Window Control] ListDetailed() called');
         try {
-            const windows = this._getAllWindows();
             const result = [];
-            
-            for (const win of windows) {
-                const workspace = win.get_workspace();
-                const workspaceIndex = win.is_on_all_workspaces() ? -1 : (workspace ? workspace.index() : -1);
+
+            for (const win of this._getAllWindows()) {
                 const frameRect = win.get_frame_rect();
                 const windowType = win.get_window_type();
-                
+
                 result.push({
                     id: win.get_id(),
                     title: win.get_title() || '',
@@ -422,11 +398,10 @@ class WindowControlService {
                     sandboxed_app_id: win.get_sandboxed_app_id() || '',
                     gtk_application_id: win.get_gtk_application_id() || '',
                     has_focus: win.has_focus(),
-                    // appears-focused is a distinct Meta.Window property (e.g. true when
-                    // an attached modal dialog holds focus); keep it separate from has_focus.
-                    // It is a GObject property, not a method -- accessed without parens.
-                    // Fall back to has_focus() defensively if the property is ever absent.
-                    appears_focused: win.appears_focused ?? win.has_focus(),
+                    // Differs from has_focus, e.g. true while an attached modal
+                    // dialog holds the focus. A property read: Meta.Window also
+                    // has an appears_focused() method, which this name hides.
+                    appears_focused: win.appears_focused,
                     is_hidden: win.is_hidden(),
                     is_minimized: win.minimized,
                     is_maximized: isFullyMaximized(win),
@@ -434,7 +409,7 @@ class WindowControlService {
                     is_above: win.is_above(),
                     is_on_all_workspaces: win.is_on_all_workspaces(),
                     is_skip_taskbar: win.is_skip_taskbar(),
-                    workspace_index: workspaceIndex,
+                    workspace_index: _workspaceIndex(win),
                     monitor_index: win.get_monitor(),
                     pid: win.get_pid(),
                     window_type: windowType,
@@ -450,7 +425,7 @@ class WindowControlService {
                     has_been_shown: !this._isUnshown(win),
                 });
             }
-            
+
             console.debug(`[Window Control] ListDetailed() returning ${result.length} windows`);
             return JSON.stringify(result);
         } catch (e) {
@@ -459,9 +434,8 @@ class WindowControlService {
         }
     }
 
-    // ListMonitors: Get all monitors with their properties
     ListMonitors() {
-        console.debug(`[Window Control] ListMonitors() called`);
+        console.debug('[Window Control] ListMonitors() called');
         try {
             const numMonitors = global.display.get_n_monitors();
             const primaryMonitor = global.display.get_primary_monitor();
@@ -478,7 +452,7 @@ class WindowControlService {
                     width: geometry.width,
                     height: geometry.height,
                     is_primary: i === primaryMonitor,
-                    connector: "",  // Connector name not available via stable API
+                    connector: '',  // Connector name not available via stable API
                     scale: scale,
                 });
             }
@@ -491,45 +465,42 @@ class WindowControlService {
         }
     }
 
-    // Activate: Activate (focus and raise) a window by ID
+    // Focus and raise.
     Activate(windowId) {
         return this._actOnWindow(windowId, 'Activate',
             win => win.activate(global.get_current_time()));
     }
 
-    // ActivateByTitle: Activate window by exact title match
     ActivateByTitle(title) {
         return this._activateMatching('title', title);
     }
 
-    // ActivateByTitleSubstring: Activate window by title substring
     ActivateByTitleSubstring(substring) {
         return this._activateMatching('substring', substring);
     }
 
-    // ActivateByWmClass: Activate window by WM class (exact match)
     ActivateByWmClass(wmClass) {
         return this._activateMatching('class', wmClass);
     }
 
-    // ActivateByPid: Activate window by PID. The int32 goes through the same
-    // predicate as the string form, so 0 and negatives are refused here too.
+    // The int32 goes through the same predicate as the string form, so 0 and
+    // negatives are refused here too.
     ActivateByPid(pid) {
         return this._activateMatching('pid', String(pid));
     }
 
-    // Focus: Focus a window by ID (without raising)
+    // Focus without raising.
     Focus(windowId) {
         return this._actOnWindow(windowId, 'Focus',
             win => win.focus(global.get_current_time()));
     }
 
-    // GetFocused: Get the currently focused window. Mutter keeps it as a
-    // property, so this is one read rather than a walk over every actor; the
-    // NORMAL filter every other method applies still holds, so a focused
-    // dialog reports "no focused window" as it always has.
+    // Mutter keeps the focused window as a property, so this is one read
+    // rather than a walk over every actor; the NORMAL filter every other
+    // method applies still holds, so a focused dialog reports "no focused
+    // window".
     GetFocused() {
-        console.debug(`[Window Control] GetFocused() called`);
+        console.debug('[Window Control] GetFocused() called');
         try {
             const focused = global.display.focus_window;
             const win = focused && focused.get_window_type() === Meta.WindowType.NORMAL
@@ -541,7 +512,7 @@ class WindowControlService {
                 console.debug(`[Window Control] GetFocused() -> ${id}`);
                 return [id, title, wmClass];
             }
-            console.debug(`[Window Control] GetFocused() -> no focused window`);
+            console.debug('[Window Control] GetFocused() -> no focused window');
             return [0, '', ''];
         } catch (e) {
             console.error(`[Window Control] GetFocused() error: ${e.message}`);
@@ -549,8 +520,8 @@ class WindowControlService {
         }
     }
 
-    // Move: Move window to position. Raises instead of returning a flag; see
-    // the ERRORS block in dbus-interface.js.
+    // Raises instead of returning a flag; see the ERRORS block in
+    // dbus-interface.js.
     MoveAsync([windowId, x, y], invocation) {
         console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         this._geometryCall(invocation, 'Move', () => {
@@ -564,7 +535,7 @@ class WindowControlService {
         });
     }
 
-    // Resize: Resize window (keeps position). Raises on failure.
+    // Keeps the position. Raises on failure.
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._geometryCall(invocation, 'Resize', () => {
@@ -579,7 +550,7 @@ class WindowControlService {
         });
     }
 
-    // MoveResize: Move and resize window atomically. Raises on failure.
+    // One request for both, so mutter applies them together. Raises on failure.
     MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         this._geometryCall(invocation, 'MoveResize', () => {
@@ -593,7 +564,6 @@ class WindowControlService {
         });
     }
 
-    // GetGeometry: Get window geometry
     GetGeometry(windowId) {
         console.debug(`[Window Control] GetGeometry(${windowId}) called`);
         try {
@@ -611,22 +581,12 @@ class WindowControlService {
         }
     }
 
-    // GetVersion: the extension version the RUNNING shell has loaded.
-    //
-    // Deliberately not read from metadata.json: that file is what is on disk,
-    // and on Wayland an install lands there while the shell keeps serving the
-    // old code until the user logs out. Reporting the loaded value is what lets
-    // a caller detect exactly that.
+    // The version the RUNNING shell has loaded; see the constructor.
     GetVersion() {
         console.debug(`[Window Control] GetVersion() -> ${this._version}`);
         return this._version;
     }
 
-    // GetCapabilities: the feature names a caller can rely on.
-    //
-    // A name is added here in the same commit as the feature it names, and
-    // never removed while the feature is served. 'rules' means WindowRules is
-    // enabled, so a rules.json this extension can see is applied.
     GetCapabilities() {
         const capabilities = CAPABILITIES.filter(
             name => name !== 'keybindings' || this.keybindingsServed);
@@ -634,8 +594,6 @@ class WindowControlService {
         return capabilities;
     }
 
-    // GetWorkarea: Get usable workspace area for a monitor.
-    //
     // (-1, -1, -1, -1) means one thing only: the index is not a monitor. A
     // lookup that throws raises instead, so a caller never reports a monitor
     // that exists as missing. Async only to answer with return_dbus_error();
@@ -643,21 +601,14 @@ class WindowControlService {
     GetWorkareaAsync([monitorIndex], invocation) {
         console.debug(`[Window Control] GetWorkarea(${monitorIndex}) called`);
         try {
-            // Validate monitor index
             const numMonitors = global.display.get_n_monitors();
-            if (typeof monitorIndex !== "number" ||
-                !Number.isFinite(monitorIndex) ||
-                monitorIndex < 0 ||
-                monitorIndex >= numMonitors) {
-                console.debug(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors-1})`);
+            if (monitorIndex < 0 || monitorIndex >= numMonitors) {
+                console.debug(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors - 1})`);
                 invocation.return_value(new GLib.Variant('(iiii)', [-1, -1, -1, -1]));
                 return;
             }
 
-            // Get active workspace
             const workspace = global.workspace_manager.get_active_workspace();
-
-            // Get work area for the specified monitor
             const rect = workspace.get_work_area_for_monitor(monitorIndex);
 
             console.debug(`[Window Control] GetWorkarea(${monitorIndex}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
@@ -669,9 +620,8 @@ class WindowControlService {
         }
     }
 
-    // ListWorkspaces: Get all workspaces as JSON string
     ListWorkspaces() {
-        console.debug(`[Window Control] ListWorkspaces() called`);
+        console.debug('[Window Control] ListWorkspaces() called');
         try {
             const manager = global.workspace_manager;
             const numWorkspaces = manager.get_n_workspaces();
@@ -709,7 +659,6 @@ class WindowControlService {
         }
     }
 
-    // ActivateWorkspace: Switch to a workspace by index.
     // While the Activities overview is shown, Meta.Workspace.activate() leaves
     // the active workspace unchanged (verified on GNOME 46), so the overview is
     // hidden first. The result is read back rather than assumed, so a switch
@@ -734,7 +683,6 @@ class WindowControlService {
         }
     }
 
-    // MoveToWorkspace: Move a window to a workspace by index.
     // change_workspace_by_index() returns void and declines silently for a
     // window mutter holds on all workspaces -- and with the GNOME default
     // workspaces-only-on-primary=true that is every window on a secondary
@@ -754,7 +702,6 @@ class WindowControlService {
         });
     }
 
-    // MoveToMonitor: Move a window to a monitor by index
     MoveToMonitor(windowId, monitorIndex) {
         if (!this._isValidIndex(monitorIndex, global.display.get_n_monitors())) {
             console.debug(`[Window Control] MoveToMonitor(${windowId}, ${monitorIndex}) -> false (invalid index)`);
@@ -764,25 +711,21 @@ class WindowControlService {
             win => win.move_to_monitor(monitorIndex));
     }
 
-    // WaitForWindow: Reply with the ID of a shown window matching (kind, value),
-    // either immediately if one exists or when one appears, or 0 after timeoutMs.
+    // Reply with the ID of a shown window matching (kind, value), either
+    // immediately if one exists or when one appears, or 0 after timeoutMs.
     // Async handler (GJS convention: <Method>Async(params, invocation)) so the
     // shell main loop is never blocked; the reply is sent from a signal handler
     // or the timeout source.
     WaitForWindowAsync([kind, value, timeoutMs], invocation) {
-        // `kind` is NOT logged yet: it is caller-supplied and unvalidated here,
-        // so interpolating it would write an arbitrary remote string -- embedded
-        // newlines included -- into the journal, which is exactly what the
-        // logging invariant above forbids. It is logged only once
-        // _matchPredicate() has proved it is one of the four keywords.
-        console.debug(`[Window Control] WaitForWindow() called`);
+        // `kind` is not validated yet, so it is not logged here.
+        console.debug('[Window Control] WaitForWindow() called');
         let waiter = null;
         try {
             const predicate = this._matchPredicate(kind, value);
             if (!predicate || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-                console.debug(`[Window Control] WaitForWindow() -> InvalidArgs`);
+                console.debug('[Window Control] WaitForWindow() -> InvalidArgs');
                 invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
-                    `WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0`);
+                    'WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0');
                 return;
             }
             console.debug(`[Window Control] WaitForWindow(${kind}, ..., ${timeoutMs}) validated`);
@@ -809,9 +752,10 @@ class WindowControlService {
             this._trackExistingWindows();
         } catch (e) {
             console.error(`[Window Control] WaitForWindow() error: ${e.message}`);
-            // Once the waiter is registered it owns the invocation and its
-            // timeout will reply, so answering here too would reply twice on the
-            // same invocation. Retire it instead, which replies exactly once.
+            // Caught here, not left to GJS: once the waiter is registered it
+            // owns the invocation and its timeout will reply, so an answer from
+            // GJS or from here would be a second reply on the same invocation.
+            // Retire it instead, which replies exactly once.
             if (waiter && this._waiters.includes(waiter))
                 this._failWaiter(waiter, e.message);
             else
@@ -819,8 +763,8 @@ class WindowControlService {
         }
     }
 
-    // WaitForGeometry: reply once the window's frame has held still for
-    // quiet_ms, with the rect as it then stands.
+    // Reply once the window's frame has held still for quiet_ms, with the rect
+    // as it then stands.
     //
     // Async (GJS convention: <Method>Async(params, invocation)) for the same
     // reason WaitForWindow is: the reply comes from a signal handler or a timer
@@ -838,7 +782,7 @@ class WindowControlService {
         try {
             if (!Number.isInteger(quietMs) || quietMs <= 0 ||
                 !Number.isInteger(timeoutMs) || timeoutMs < quietMs) {
-                console.debug(`[Window Control] WaitForGeometry() -> InvalidArgs`);
+                console.debug('[Window Control] WaitForGeometry() -> InvalidArgs');
                 invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
                     'WaitForGeometry: quiet_ms > 0 and timeout_ms >= quiet_ms');
                 return;
@@ -891,8 +835,9 @@ class WindowControlService {
             });
         } catch (e) {
             console.error(`[Window Control] WaitForGeometry() error: ${e.message}`);
-            // Once registered the watcher owns the invocation and one of its
-            // timers will reply, so answering here too would reply twice.
+            // Caught here, not left to GJS, for the reason WaitForWindow gives:
+            // a registered watcher owns the invocation and one of its timers
+            // will reply.
             if (watcher && this._geometryWatchers.includes(watcher))
                 this._failGeometryWatcher(watcher, DBUS_ERROR_FAILED, e.message);
             else
@@ -1027,11 +972,10 @@ class WindowControlService {
     // 'window-created' tracks only the windows created while a waiter is
     // pending, so without this two cases never wake a waiter: the window
     // created in the gap just before the call, which has already missed the
-    // signal and is
-    // still unshown; and any window already on screen whose title or class
-    // changes later -- `wait -t 'Report.pdf - LibreOffice Writer'` against an
-    // already-open LibreOffice, or `wait -c` against a Wayland client whose
-    // app_id lands after mapping.
+    // signal and is still unshown; and any window already on screen whose
+    // title or class changes later -- `wait -t 'Report.pdf - LibreOffice
+    // Writer'` against an already-open LibreOffice, or `wait -c` against a
+    // Wayland client whose app_id lands after mapping.
     //
     // The predicate is deliberately not applied: on Wayland wm_class and title
     // arrive after creation, so a window that cannot match yet may match once
@@ -1103,20 +1047,17 @@ class WindowControlService {
         entry.callerWatch = null;
     }
 
-    // Reply to every waiter the window satisfies. Returns true if any did.
-    // An unshown window never satisfies a waiter (see _isUnshown).
+    // Reply to every waiter the window satisfies. An unshown window never
+    // satisfies a waiter (see _isUnshown).
     _evaluateWindow(win) {
         if (win.get_window_type() !== Meta.WindowType.NORMAL || this._isUnshown(win))
-            return false;
-        let matched = false;
+            return;
         for (const waiter of [...this._waiters]) {
             if (waiter.predicate(win)) {
                 console.debug(`[Window Control] WaitForWindow -> ${win.get_id()} (window appeared)`);
                 this._finishWaiter(waiter, win.get_id());
-                matched = true;
             }
         }
-        return matched;
     }
 
     _finishWaiter(waiter, windowId) {
@@ -1164,17 +1105,15 @@ class WindowControlService {
             console.debug(`[Window Control] cancelled ${pending.length} pending WaitForWindow call(s)`);
     }
 
-    // Minimize: Minimize window
     Minimize(windowId) {
         return this._actOnWindow(windowId, 'Minimize', win => this._minimize(win, false));
     }
 
-    // Unminimize: Unminimize (restore) window
     Unminimize(windowId) {
         return this._actOnWindow(windowId, 'Unminimize', win => win.unminimize());
     }
 
-    // Helper: skip the shell's animation for the minimize or unminimize the
+    // Skip the shell's animation for the minimize or unminimize the
     // caller requests next. Main.wm.skipNextEffect() holds until the actor's
     // next effect of ANY kind, so a caller arms it only for a request that
     // changes the window's visibility: one that leaves the window as hidden as
@@ -1185,12 +1124,11 @@ class WindowControlService {
         Main.wm.skipNextEffect(win.get_compositor_private());
     }
 
-    // MinimizeNoAnimation: Minimize window without the minimize animation
     MinimizeNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => this._minimize(win, true));
     }
 
-    // Helper: minimize, and return whether the window is minimized. Mutter
+    // Minimize, and return whether the window is minimized. Mutter
     // does not let every window minimize (a skip-taskbar one, for example):
     // minimize() does nothing there, so a skip armed for it would wait for an
     // unrelated effect. Such a window counts only when it is minimized
@@ -1204,7 +1142,7 @@ class WindowControlService {
         return true;
     }
 
-    // Helper: skip the unminimize animation of a window the caller restores
+    // Skip the unminimize animation of a window the caller restores
     // next, under the visibility rule of _skipNextEffect.
     _skipUnminimizeEffect(win) {
         if (win.minimized &&
@@ -1212,7 +1150,6 @@ class WindowControlService {
             this._skipNextEffect(win);
     }
 
-    // UnminimizeNoAnimation: Unminimize (restore) window without the animation
     UnminimizeNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'UnminimizeNoAnimation', win => {
             this._skipUnminimizeEffect(win);
@@ -1220,9 +1157,9 @@ class WindowControlService {
         });
     }
 
-    // ActivateNoAnimation: Activate a window by ID; a minimized one is
-    // restored without the animation. activate() does the restore itself, and
-    // restores every minimized transient parent with the window.
+    // A minimized window is restored without the animation. activate() does
+    // the restore itself, and restores every minimized transient parent with
+    // the window.
     ActivateNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'ActivateNoAnimation', win => {
             for (let restored = win; restored; restored = restored.get_transient_for())
@@ -1231,33 +1168,27 @@ class WindowControlService {
         });
     }
 
-    // Maximize: Maximize window
     Maximize(windowId) {
         return this._actOnWindow(windowId, 'Maximize', win => maximizeWindow(win));
     }
 
-    // Unmaximize: Unmaximize window
     Unmaximize(windowId) {
         return this._actOnWindow(windowId, 'Unmaximize', win => unmaximizeWindow(win));
     }
 
-    // Fullscreen: Make window fullscreen
     Fullscreen(windowId) {
         return this._actOnWindow(windowId, 'Fullscreen', win => win.make_fullscreen());
     }
 
-    // Unfullscreen: Exit fullscreen mode
     Unfullscreen(windowId) {
         return this._actOnWindow(windowId, 'Unfullscreen', win => win.unmake_fullscreen());
     }
 
-    // SetAbove: Set window always-on-top state
     SetAbove(windowId, above) {
         return this._actOnWindow(windowId, 'SetAbove',
             win => above ? win.make_above() : win.unmake_above());
     }
 
-    // SetSticky: Set window sticky state (on all workspaces).
     // unstick() only withdraws the window's own request; mutter still holds a
     // window on all workspaces while it is on a secondary monitor with
     // workspaces-only-on-primary set (the GNOME default), so the state is read
@@ -1272,7 +1203,7 @@ class WindowControlService {
         });
     }
 
-    // Close: Close window (polite request)
+    // Asks the client to close; it may refuse or prompt.
     Close(windowId) {
         return this._actOnWindow(windowId, 'Close',
             win => win.delete(global.get_current_time()));
@@ -1313,7 +1244,7 @@ export default class WindowControlExtension extends Extension {
             this._keybindings.enable(this);
             this._service.keybindingsServed = this._keybindings.registered;
         } catch (e) {
-            console.error(`[${this.metadata.name}] Failed to register D-Bus service: ${e.message}`);
+            console.error(`[${this.metadata.name}] enable() failed: ${e.message}`);
             // The shell does not call disable() for an extension whose
             // enable() threw, so nothing set up so far may outlive it. A
             // failing cleanup must not hide why enable() failed.

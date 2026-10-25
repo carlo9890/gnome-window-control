@@ -33,7 +33,6 @@ export const DBUS_INTERFACE_XML = `
       <arg type="s" direction="out" name="windows_json"/>
     </method>
 
-
     <!--
       ListMonitors: Get all monitors with their properties
       Returns: s - JSON array of monitor objects
@@ -41,6 +40,7 @@ export const DBUS_INTERFACE_XML = `
     <method name="ListMonitors">
       <arg type="s" direction="out" name="monitors_json"/>
     </method>
+
     <!--
       Activate: Activate (focus and raise) a window by ID
       Args: t - window ID
@@ -198,7 +198,6 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="out" name="height"/>
     </method>
 
-
     <!--
       GetVersion: The extension version, as loaded by the running shell
       Returns: s - the integer 'version' from metadata.json, as a string
@@ -237,6 +236,7 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="out" name="width"/>
       <arg type="i" direction="out" name="height"/>
     </method>
+
     <!-- State Methods -->
 
     <!--
@@ -378,6 +378,7 @@ export const DBUS_INTERFACE_XML = `
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+
     <!-- Workspace and Monitor Methods -->
 
     <!--

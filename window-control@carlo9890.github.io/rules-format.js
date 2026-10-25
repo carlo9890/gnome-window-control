@@ -181,8 +181,7 @@ export function tileRect(position, workarea) {
     // would reach the destructuring below as a function and throw.
     if (!Object.hasOwn(TILE_CELLS, position))
         return null;
-    const cells = TILE_CELLS[position];
-    const [startCol, endCol, startRow, endRow] = cells;
+    const [startCol, endCol, startRow, endRow] = TILE_CELLS[position];
     const cellW = Math.trunc(workarea.width / 4);
     const cellH = Math.trunc(workarea.height / 2);
     return {
@@ -237,7 +236,7 @@ export function compileRule(rule, index) {
         throw new Error(`${label}.match: must be an object`);
     const predicates = [];
     for (const [key, value] of Object.entries(rule.match)) {
-        // hasOwn for the same reason as TILE_CELLS below: MATCH_KINDS["constructor"]
+        // hasOwn for the same reason as TILE_CELLS in tileRect: MATCH_KINDS["constructor"]
         // is a truthy inherited lookup, and the function it returns would reach
         // matchPredicate as a kind and push a null predicate into the rule.
         if (!Object.hasOwn(MATCH_KINDS, key))

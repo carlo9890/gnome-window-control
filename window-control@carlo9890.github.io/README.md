@@ -12,7 +12,7 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
 
 1. Clone or download this repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/carlo9890/gnome-window-control.git
    cd gnome-window-control
    ```
 
@@ -25,7 +25,7 @@ D-Bus interface for listing and controlling windows on GNOME Shell (Wayland).
    ```
 
 3. Restart GNOME Shell:
-   - On X11: Press `Alt+F2`, type `r`, and press Enter
+   - On X11 (GNOME 45-48): Press `Alt+F2`, type `r`, and press Enter
    - On Wayland: Log out and log back in
 
 4. Enable the extension:
@@ -89,4 +89,4 @@ for the reload workflow (restart GNOME Shell, or use a nested session).
 
 ## License
 
-See repository LICENSE file.
+MIT. See the LICENSE file next to this README.

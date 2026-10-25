@@ -374,8 +374,6 @@ export class WindowRules {
             return tileRect(geometry.position, workarea);
         case 'center':
             return centerRect(geometry.axis, win.get_frame_rect(), workarea);
-        default:
-            return null;
         }
     }
 }
