@@ -11,8 +11,9 @@ Before committing or opening a PR:
   [TESTING.md](TESTING.md) is the bar.
 - A change under `window-control@carlo9890.github.io/` passes the
   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review).
-- Code changes to `extension.js` are actually reloaded and exercised in a running
-  shell (see [RUNNING.md](RUNNING.md)) — `node --check` is syntax only.
+- Code changes to the extension's `.js` files are actually reloaded and
+  exercised in a running shell (see [RUNNING.md](RUNNING.md)) — `node --check`
+  is syntax only.
 
 ## Commits
 

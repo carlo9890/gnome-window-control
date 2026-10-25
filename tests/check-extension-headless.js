@@ -2,9 +2,10 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 //
-// Drive the real extension.js, rules.js and keybindings.js against fake
-// windows, without a GNOME Shell and without D-Bus. Run from anywhere, with the
-// mutter typelib directory on GI_TYPELIB_PATH (the newest one installed):
+// Drive the real extension.js, dbus-service.js, rules.js and keybindings.js
+// against fake windows, without a GNOME Shell and without D-Bus. Run from
+// anywhere, with the mutter typelib directory on GI_TYPELIB_PATH (the newest
+// one installed):
 //
 //     dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) &&
 //         GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js
@@ -74,14 +75,13 @@ try {
 
     const EXT = `${SCRATCH}/ext`;
     GLib.mkdir_with_parents(EXT, 0o755);
-    for (const name of ['dbus-interface.js', 'extension.js', 'keybindings.js', 'rules-format.js',
-        'rules.js', 'window-helpers.js']) {
+    for (const name of ['dbus-interface.js', 'dbus-service.js', 'extension.js', 'keybindings.js',
+        'rules-format.js', 'rules.js', 'window-helpers.js']) {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
             .replace("'gi://Shell'", "'./stub-shell.js'");
-        write(`${EXT}/${name}`,
-            name === 'extension.js' ? `${text}\nexport { WindowControlService };\n` : text);
+        write(`${EXT}/${name}`, text);
     }
     write(`${EXT}/stub-main.js`, `export const overview = { visible: false, hide() {} };
 export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybinding() {} };
@@ -248,8 +248,8 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         return JSON.stringify(call.reply);
     }
 
-    const { WindowControlService, default: WindowControlExtension } =
-        await import(`file://${EXT}/extension.js`);
+    const { WindowControlService } = await import(`file://${EXT}/dbus-service.js`);
+    const { default: WindowControlExtension } = await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
 

@@ -106,13 +106,14 @@ dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) 
 With several mutter typelibs installed, this picks the newest one; with none,
 it stops with `no Meta-*.typelib installed`.
 
-Runs the real `extension.js`, `rules.js` and `keybindings.js` against fake
-windows and a fake display that count their signal handlers. No GNOME session,
-no D-Bus: the check copies the extension files into a temporary directory and
-points the shell-only imports (`ui/main.js`, `extensions/extension.js`,
-`gi://Shell`) at stubs written there. It needs the mutter typelib
-(`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package `gir1.2-mutter-14`),
-which the extension job in `.github/workflows/build.yml` installs.
+Runs the real `extension.js`, `dbus-service.js`, `rules.js` and `keybindings.js`
+against fake windows and a fake display that count their signal handlers. No
+GNOME session, no D-Bus: the check copies the extension files into a temporary
+directory and points the shell-only imports (`ui/main.js`,
+`extensions/extension.js`, `gi://Shell`) at stubs written there. It needs the
+mutter typelib (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package
+`gir1.2-mutter-14`), which the extension job in `.github/workflows/build.yml`
+installs.
 
 It pins:
 
@@ -231,8 +232,9 @@ network are needed.
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
 `tests/vectors/`. The fake-windows column applies to any change to
-`extension.js`, `rules.js`, `keybindings.js` or `window-helpers.js`. Both are
-headless and take seconds, so there is no reason to skip them.
+`extension.js`, `dbus-service.js`, `rules.js`, `keybindings.js` or
+`window-helpers.js`. Both are headless and take seconds, so there is no reason
+to skip them.
 
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
 [CODING.md](CODING.md)) and an actual reload-and-run in a shell (see

@@ -16,7 +16,7 @@ finishing:
 If it fails, the code has a syntax error and must not be committed.
 `.github/workflows/build.yml` runs the same check as a hard CI gate.
 
-## JavaScript (extension.js)
+## JavaScript (the extension)
 
 - Use ES module (ESM) syntax.
 - Read the GNOME guidelines that the
@@ -93,7 +93,7 @@ what it ships are described in [RELEASING.md](RELEASING.md).
    </method>
    ```
 
-2. Add the implementation in the `WindowControlService` class in `extension.js`.
+2. Add the implementation in the `WindowControlService` class in `dbus-service.js`.
    For a simple boolean action, reuse `_actOnWindow`:
 
    ```javascript
