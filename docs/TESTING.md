@@ -123,6 +123,8 @@ It pins:
   `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
 - a failed `enable()` rethrows its own error and leaves no handler, and a
   service that was never exported is not logged as unregistered;
+- a keyboard shortcut that cannot be registered removes the ones registered
+  before it, and the extension serves none;
 - a load of `rules.json` that finds no file, and a reload that finds one, log
   nothing at notice level;
 - both wait methods drop a call, with no reply, when its caller leaves the bus,

@@ -17,7 +17,7 @@ export default class WindowControlExtension extends Extension {
             this._rules = new WindowRules();
             this._rules.enable();
             this._keybindings = new WindowKeybindings();
-            this._keybindings.enable(this);
+            this._keybindings.enable(this.getSettings());
             this._service.keybindingsServed = this._keybindings.registered;
         } catch (e) {
             console.error(`[${this.metadata.name}] enable() failed: ${e.message}`);

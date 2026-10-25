@@ -252,6 +252,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     const { default: WindowControlExtension } = await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
+    const Main = await import(`file://${EXT}/stub-main.js`);
 
     // -- WaitForWindow: a window created during an earlier wait ------------------
     //
@@ -569,7 +570,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
 
     {
         const keybindings = new WindowKeybindings();
-        keybindings.enable({ getSettings: () => ({}) });
+        keybindings.enable({});
         const win = createWindow({ id: 8, wmClass: 'K', maximizeFlags: Meta.MaximizeFlags.BOTH });
         win.map();
         keybindings._tile('tile-left', win, 'left');
@@ -585,6 +586,34 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('a cancelled UnmaximizeWait never places the window', win.moves.length === 0,
             JSON.stringify(win.moves));
         windows.length = 0;
+    }
+
+    // -- WindowKeybindings: a shortcut that cannot be registered ---------------
+    //
+    // All or none: the shortcuts registered before it are removed again.
+
+    {
+        const realAdd = Main.wm.addKeybinding;
+        const realRemove = Main.wm.removeKeybinding;
+        const added = [];
+        const removed = [];
+        Main.wm.addKeybinding = name => {
+            if (added.length === 2)
+                return Meta.KeyBindingAction.NONE;
+            added.push(name);
+            return 1;
+        };
+        Main.wm.removeKeybinding = name => removed.push(name);
+        const keybindings = new WindowKeybindings();
+        try {
+            keybindings.enable({});
+        } finally {
+            Main.wm.addKeybinding = realAdd;
+            Main.wm.removeKeybinding = realRemove;
+        }
+        check('a failed registration serves no shortcut', !keybindings.registered);
+        check('a failed registration removes the shortcuts added before it',
+            JSON.stringify(removed) === JSON.stringify(added), `added ${added}, removed ${removed}`);
     }
 
     // -- enable() when the D-Bus export fails -------------------------------------
