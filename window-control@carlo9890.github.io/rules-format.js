@@ -7,7 +7,7 @@
 // second implementation of the same grammar in cli/src/rules.rs; the two are
 // pinned to one another by tests/vectors/rules-spec.json.
 //
-// This module imports NOTHING. No gi://, so plain `gjs` loads it without the
+// This module imports nothing. No gi://, so plain `gjs` loads it without the
 // mutter typelib and CI can run tests/check-rules-format.js on a bare runner.
 // Keep it that way: the window-touching half lives in rules.js, the Meta
 // maximize API in window-helpers.js.
@@ -45,7 +45,7 @@ export const TILE_CELLS = {
 export const CENTER_AXES = ['horizontal', 'vertical', 'both'];
 
 // The position the "cycle wide" shortcut moves a window to next: wide-right,
-// unless the frame already IS wide-right, then wide-left. Decided from the
+// unless the frame already is wide-right, then wide-left. Decided from the
 // frame rather than remembered per window, so a window moved elsewhere in
 // between starts the cycle over, and nothing has to be forgotten on close.
 //
@@ -205,8 +205,8 @@ export function centerRect(axis, frame, workarea) {
 }
 
 // Validation of one parsed rule. Messages name the key, never its value: the
-// file is the user's own, but the journal outlives it and REVIEWING.md forbids
-// window titles and classes in a log line wherever they come from.
+// file is the user's own, but the journal outlives it, and no log line holds a
+// window title or class, wherever it comes from.
 
 function isPlainObject(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);

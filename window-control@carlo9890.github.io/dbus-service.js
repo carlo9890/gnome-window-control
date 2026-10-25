@@ -47,9 +47,9 @@ const DBUS_ERROR_TIMEOUT = 'org.gnome.Shell.Extensions.WindowControl.Timeout';
 const DBUS_ERROR_INVALID_ARGS = 'org.freedesktop.DBus.Error.InvalidArgs';
 const DBUS_ERROR_FAILED = 'org.freedesktop.DBus.Error.Failed';
 
-// A failure that must reach the caller as a specific D-Bus error NAME.
+// A failure that must reach the caller as a specific D-Bus error name.
 //
-// Do NOT reach for Gio.DBusError.new_for_dbus_error() here. That returns a
+// Gio.DBusError.new_for_dbus_error() does not work here: it returns a
 // GLib.Error, and GJS answers a thrown GLib.Error with
 // g_dbus_method_invocation_return_gerror(); an unregistered domain then goes on
 // the wire as org.gtk.GDBus.UnmappedGError.Quark._g_2dio_2derror_2dquark.Code36
@@ -60,7 +60,7 @@ const DBUS_ERROR_FAILED = 'org.freedesktop.DBus.Error.Failed';
 // `e.name` verbatim once it contains a dot. The handlers are async anyway, and
 // answer with return_dbus_error() themselves, for a different reason -- that
 // same synchronous path also calls logError(), which would write a journal
-// WARNING for every ordinary refusal and break this file's logging invariant.
+// warning for every ordinary refusal.
 class NamedError extends Error {
     constructor(name, message) {
         super(message);
@@ -103,7 +103,7 @@ export class WindowControlService {
             DBUS_INTERFACE_INFO,
             this
         );
-        // Reported by GetVersion. Read from the metadata the SHELL loaded, not
+        // Reported by GetVersion. Read from the metadata the shell loaded, not
         // from metadata.json on disk: those two disagreeing is the whole point
         // of the method, because on Wayland an install lands on disk and the
         // shell keeps running the old copy until the user logs out.
@@ -169,21 +169,19 @@ export class WindowControlService {
     //   maximized BOTH      x and y both pinned      nothing moves
     //   tiled side by side  x, y, width, height all overwritten by
     //                       constrain_tiling()       nothing moves
-    //   maximized VERTICAL  x honoured, y pinned     the move HALF happens
+    //   maximized VERTICAL  x honoured, y pinned     the move half happens
     //
     // A tiled window reports MAXIMIZE_VERTICAL and nothing else, and GJS has no
     // tiled predicate, so the vertical case cannot be told from the tiled one.
     // Both are refused. For a genuinely tiled window that is exactly right; for
     // a merely vertically-maximized one it refuses a request that would have
-    // been half-applied -- and half-applied while reporting plain success is
-    // the very thing this guard exists to stop. A refusal the caller can act on
-    // beats a success that moved the window somewhere it did not ask for.
+    // been half-applied while reporting success.
     //
     // Verifying instead of refusing is not available: move_resize_frame() is
     // asynchronous, and get_frame_rect() read in the same handler still returns
-    // the OLD rect even for a move that succeeds (measured), so a post-call
+    // the old rect even for a move that succeeds (measured), so a post-call
     // comparison would report failure for every successful call. (Waiting for
-    // it to settle IS available -- see WaitForGeometry -- but that is a
+    // it to settle is available -- see WaitForGeometry -- but that is a
     // separate call, deliberately: a geometry request must stay cheap.)
     //
     // Returns the reason as a phrase, or null when the frame is free. Naming
@@ -202,7 +200,7 @@ export class WindowControlService {
     }
 
     // Shared preamble for the geometry handlers: find the window and check the
-    // frame, raising a NAMED error for either failure.
+    // frame, raising a named error for either failure.
     _geometryTarget(windowId, label) {
         const win = this._findWindowById(windowId);
         if (!win) {
@@ -416,7 +414,6 @@ export class WindowControlService {
         return JSON.stringify(result);
     }
 
-    // Focus and raise.
     Activate(windowId) {
         return this._actOnWindow(windowId, 'Activate',
             win => win.activate(global.get_current_time()));
@@ -440,7 +437,6 @@ export class WindowControlService {
         return this._activateMatching('pid', String(pid));
     }
 
-    // Focus without raising.
     Focus(windowId) {
         return this._actOnWindow(windowId, 'Focus',
             win => win.focus(global.get_current_time()));
@@ -518,7 +514,7 @@ export class WindowControlService {
         return [-1, -1, -1, -1];
     }
 
-    // The version the RUNNING shell has loaded; see the constructor.
+    // The version the running shell has loaded; see the constructor.
     GetVersion() {
         console.debug(`[Window Control] GetVersion() -> ${this._version}`);
         return this._version;
@@ -697,10 +693,10 @@ export class WindowControlService {
     // and the shell main loop is never blocked.
     //
     // The quiet period is a heuristic and is meant to be. What it removes is
-    // the SAMPLING: a client outside the shell can only poll get_frame_rect()
+    // the sampling: a client outside the shell can only poll get_frame_rect()
     // and compare, which costs a round trip per sample and still races the
     // compositor -- get_frame_rect() read right after a move still returns the
-    // OLD rectangle, so the first sample is reliably wrong. Here every change is
+    // old rectangle, so the first sample is reliably wrong. Here every change is
     // a signal, so the timer only has to outlast the gap between two of them.
     WaitForGeometryAsync([windowId, quietMs, timeoutMs], invocation) {
         console.debug(`[Window Control] WaitForGeometry(${windowId}, ${quietMs}, ${timeoutMs}) called`);
@@ -724,7 +720,7 @@ export class WindowControlService {
             watcher = {
                 win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [], callerWatch: null,
             };
-            // Registered BEFORE anything is connected, and each id is stored
+            // Registered before anything is connected, and each id is stored
             // as it is obtained: a throw part-way through then lands in the
             // catch below, which retires the watcher and disconnects whatever
             // was connected. Registering after would leave those handlers
@@ -742,13 +738,13 @@ export class WindowControlService {
                     console.debug(`[Window Control] WaitForGeometry(${windowId}) dropped (caller left the bus)`);
             });
 
-            // The quiet period is attached BEFORE the overall timeout. A caller
+            // The quiet period is attached before the overall timeout. A caller
             // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
             // sources of equal priority that come ready together in the order
             // they were attached -- so with the timeout first, a frame that was
             // never moving would answer Timeout instead of settling.
             //
-            // Starting it now is also what lets an ALREADY still frame settle,
+            // Starting it now is also what lets an already still frame settle,
             // rather than waiting for a change that never comes.
             this._restartQuietPeriod(watcher);
             watcher.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
@@ -868,7 +864,7 @@ export class WindowControlService {
     _trackWindow(win) {
         const evaluate = () => {
             this._evaluateWindow(win);
-            // Handlers stay connected while ANY waiter is pending: a waiter this
+            // Handlers stay connected while any waiter is pending: a waiter this
             // window did not satisfy may still be waiting for a title or class
             // that changes later. _retireWaiter() untracks everything through
             // _stopWatching() once the last waiter is gone.
@@ -990,7 +986,6 @@ export class WindowControlService {
         waiter.invocation.return_value(new GLib.Variant('(t)', [windowId]));
     }
 
-    // Retire a registered waiter with a D-Bus error instead of a window ID.
     _failWaiter(waiter, message) {
         this._retireWaiter(waiter);
         waiter.invocation.return_dbus_error(DBUS_ERROR_FAILED, message);
@@ -1040,7 +1035,7 @@ export class WindowControlService {
 
     // Skip the shell's animation for the minimize or unminimize the
     // caller requests next. Main.wm.skipNextEffect() holds until the actor's
-    // next effect of ANY kind, so a caller arms it only for a request that
+    // next effect of any kind, so a caller arms it only for a request that
     // changes the window's visibility: one that leaves the window as hidden as
     // it was -- already in that state, or on another workspace -- runs no
     // effect, and the skip would swallow a later, unrelated animation instead.
