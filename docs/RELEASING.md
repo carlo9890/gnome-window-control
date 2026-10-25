@@ -112,9 +112,8 @@ then upload the same zip.
    (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
    compile the XML.
 2. Run the
-   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review),
-   shexli included, over every `.js` file in the zip: the whole extension, not
-   only the diff since the last upload. Fix each violation before the upload.
+   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) and
+   fix each violation before the upload.
 3. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
    <https://extensions.gnome.org/upload/>.
 4. Wait for the review. A human reviewer reads every line of the extension, and
