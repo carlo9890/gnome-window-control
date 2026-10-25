@@ -5,10 +5,12 @@ product see [RUNNING.md](RUNNING.md).
 
 ## Viewing logs
 
-Follow this extension's own log lines (filtered by its `Window Control` tag):
+Follow this extension's own log lines (its `Window Control` tag) and the throws
+GJS logs for it (`JS ERROR`, untagged: a D-Bus handler, a rule placement or a
+shortcut that threw):
 
 ```bash
-journalctl --user -b -g "Window Control" -f
+journalctl --user -b -g "Window Control|JS ERROR" -f
 ```
 
 `journalctl --user` shows only the main session's shell. A nested session's
@@ -52,9 +54,7 @@ may contain.
   `DBUS_SESSION_BUS_ADDRESS` against the address the message names before you
   touch the extension.
 - **`wctl` fails with `org.gnome.gjs.JSError.<name>`** — a handler threw and GJS
-  answered for it. GJS logs it as `JS ERROR: Exception in method call: <Method>`,
-  without the `Window Control` tag, so the filter above misses it:
-  `journalctl --user -b -g "Exception in method call"`.
+  answered for it. GJS logs it as `JS ERROR: Exception in method call: <Method>`.
 - **`wctl` fails with `org.freedesktop.DBus.Error.Failed`** — a geometry, wait or
   `GetWorkarea` call threw; the `[Window Control] <Method>() error:` line names
   the method and message.
