@@ -134,6 +134,8 @@ It pins:
   hidden on its own or because its parent is minimized;
 - `GetWorkarea` answers `(-1, -1, -1, -1)` only for an index that is not a
   monitor, and raises `Failed` when its lookup throws;
+- a synchronous handler (`List`, `ListDetailed`, `Activate`, `ActivateBy*`)
+  lets an unexpected throw through to GJS instead of answering `false` or `[]`;
 - the rules grace period for a window that is not `NORMAL` when shown.
 
 Add a case here for extension logic a fake window can drive. Anything reachable

@@ -51,8 +51,14 @@ may contain.
   reached no bus at all (`map_connect_err` in `cli/src/dbus.rs`); check
   `DBUS_SESSION_BUS_ADDRESS` against the address the message names before you
   touch the extension.
-- **`wctl list`/`info`/`focused` return empty or error** — check the log for a
-  JavaScript exception in `ListDetailed`; the handler returns `'[]'` on any throw.
-- **A method silently no-ops** — the handler caught an exception and returned
-  `false`/a default; the `console.error(...)` line in its catch block names the
-  method and message.
+- **`wctl` fails with `org.gnome.gjs.JSError.<name>`** — a handler threw and GJS
+  answered for it. GJS logs it as `JS ERROR: Exception in method call: <Method>`,
+  without the `Window Control` tag, so the filter above misses it:
+  `journalctl --user -b -g "Exception in method call"`.
+- **`wctl` fails with `org.freedesktop.DBus.Error.Failed`** — a geometry, wait or
+  `GetWorkarea` call threw; the `[Window Control] <Method>() error:` line names
+  the method and message.
+- **A method silently no-ops** — it answers `false` with no line in the default
+  log: no NORMAL window has that ID, an index is out of range, or mutter declined
+  the change. The `console.debug()` trace says which: `-> false (window not found)`,
+  `-> false (invalid index)` or a bare `-> false`.

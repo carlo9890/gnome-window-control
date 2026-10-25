@@ -126,8 +126,10 @@ export const DBUS_INTERFACE_XML = `
       the window and reading its flags -- a guess that cannot see tiling at all.
       WaitForWindow and WaitForGeometry raise too, for the same reason.
       GetWorkarea raises Failed when its lookup throws, so its -1 answer means
-      only "no such monitor". This is the complete list; a handler never
-      invents a name at the throw site.
+      only "no such monitor". These are the names the extension raises on
+      purpose; a handler never invents a name at the throw site. Any other
+      method that throws an Error unexpectedly answers with GJS's own
+      org.gnome.gjs.JSError.<name> (TypeError, for example).
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
             no window has that id (WaitForGeometry: or it closed mid-wait)

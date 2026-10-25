@@ -502,6 +502,42 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         service.unexport();
     }
 
+    // -- A synchronous handler that throws ------------------------------------------
+    //
+    // The throw reaches GJS, which answers org.gnome.gjs.JSError.<name>; a false
+    // or an empty list would read as "no such window".
+
+    {
+        const service = new WindowControlService({ version: 0 });
+        const win = createWindow({ id: 9, wmClass: 'T' });
+        win.get_title = () => {
+            throw new Error('title lookup failed');
+        };
+        win.activate = () => {
+            throw new Error('activate failed');
+        };
+        const calls = {
+            List: [() => service.List(), 'title lookup failed'],
+            ListDetailed: [() => service.ListDetailed(), 'title lookup failed'],
+            Activate: [() => service.Activate(9), 'activate failed'],
+            ActivateByTitle: [() => service.ActivateByTitle('T'), 'title lookup failed'],
+            ActivateByTitleSubstring: [() => service.ActivateByTitleSubstring('T'), 'title lookup failed'],
+            ActivateByWmClass: [() => service.ActivateByWmClass('T'), 'activate failed'],
+            ActivateByPid: [() => service.ActivateByPid(1), 'activate failed'],
+        };
+        for (const [name, [call, expected]] of Object.entries(calls)) {
+            let error = null;
+            try {
+                call();
+            } catch (e) {
+                error = e;
+            }
+            check(`${name} lets an unexpected throw through to GJS`, error?.message === expected, `${error}`);
+        }
+        service.unexport();
+        windows.length = 0;
+    }
+
     // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
 
     {

@@ -60,9 +60,9 @@ pub const DEFAULT_TIMEOUT_SECONDS: u64 = 25;
 /// object instead (see `serves_object`).
 ///
 /// The detail of a named error is never consulted: the extension forwards
-/// arbitrary exception messages under org.freedesktop.DBus.Error.Failed, and a
-/// message that happened to contain "does not exist" must not send the user to
-/// re-enable an extension that just answered.
+/// arbitrary exception messages under org.freedesktop.DBus.Error.Failed or
+/// org.gnome.gjs.JSError.*, and a message that happened to contain "does not
+/// exist" must not send the user to re-enable an extension that just answered.
 fn is_extension_not_running(err: &zbus::Error) -> bool {
     match err {
         zbus::Error::MethodError(name, _, _) => {

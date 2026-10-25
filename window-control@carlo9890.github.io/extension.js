@@ -314,24 +314,19 @@ class WindowControlService {
     }
 
     // Look up a window by ID and run an action on it, for the simple boolean
-    // handlers. Returns false if the window is missing, the action throws, or
-    // the action returns false -- which is how an action that reads its
-    // result back (MoveToWorkspace, SetSticky) reports a change mutter
-    // declined. An action that returns nothing counts as success.
+    // handlers. Returns false if the window is missing or the action returns
+    // false -- which is how an action that reads its result back
+    // (MoveToWorkspace, SetSticky) reports a change mutter declined. An action
+    // that returns nothing counts as success.
     _actOnWindow(windowId, label, action) {
-        try {
-            const win = this._findWindowById(windowId);
-            if (!win) {
-                console.debug(`[Window Control] ${label}(${windowId}) -> false (window not found)`);
-                return false;
-            }
-            const ok = action(win) !== false;
-            console.debug(`[Window Control] ${label}(${windowId}) -> ${ok}`);
-            return ok;
-        } catch (e) {
-            console.error(`[Window Control] ${label}() error: ${e.message}`);
+        const win = this._findWindowById(windowId);
+        if (!win) {
+            console.debug(`[Window Control] ${label}(${windowId}) -> false (window not found)`);
             return false;
         }
+        const ok = action(win) !== false;
+        console.debug(`[Window Control] ${label}(${windowId}) -> ${ok}`);
+        return ok;
     }
 
     // The ActivateBy* contract. Activates the first window matching
@@ -341,128 +336,108 @@ class WindowControlService {
     _activateMatching(kind, value) {
         const label = `ActivateBy(${kind})`;
         console.debug(`[Window Control] ${label} called`);
-        try {
-            const predicate = this._matchPredicate(kind, value);
-            const win = predicate ? this._findWindowByPredicate(predicate) : null;
-            if (win) {
-                win.activate(global.get_current_time());
-                console.debug(`[Window Control] ${label} -> true`);
-                return true;
-            }
-            console.debug(`[Window Control] ${label} -> false (not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] ${label} error: ${e.message}`);
-            return false;
+        const predicate = this._matchPredicate(kind, value);
+        const win = predicate ? this._findWindowByPredicate(predicate) : null;
+        if (win) {
+            win.activate(global.get_current_time());
+            console.debug(`[Window Control] ${label} -> true`);
+            return true;
         }
+        console.debug(`[Window Control] ${label} -> false (not found)`);
+        return false;
     }
 
     // Element order is the List signature a(tssssbiiii) in dbus-interface.js.
     List() {
         console.debug('[Window Control] List() called');
-        try {
-            const result = this._getAllWindows().map(win => [
-                win.get_id(),
-                win.get_title() || '',
-                win.get_wm_class() || '',
-                win.get_wm_class_instance() || '',
-                win.get_sandboxed_app_id() || '',
-                win.has_focus(),
-                _workspaceIndex(win),
-                win.get_monitor(),
-                win.get_pid(),
-                win.get_window_type(),
-            ]);
-            console.debug(`[Window Control] List() returning ${result.length} windows`);
-            return result;
-        } catch (e) {
-            console.error(`[Window Control] List() error: ${e.message}`);
-            return [];
-        }
+        const result = this._getAllWindows().map(win => [
+            win.get_id(),
+            win.get_title() || '',
+            win.get_wm_class() || '',
+            win.get_wm_class_instance() || '',
+            win.get_sandboxed_app_id() || '',
+            win.has_focus(),
+            _workspaceIndex(win),
+            win.get_monitor(),
+            win.get_pid(),
+            win.get_window_type(),
+        ]);
+        console.debug(`[Window Control] List() returning ${result.length} windows`);
+        return result;
     }
 
     ListDetailed() {
         console.debug('[Window Control] ListDetailed() called');
-        try {
-            const result = [];
+        const result = [];
 
-            for (const win of this._getAllWindows()) {
-                const frameRect = win.get_frame_rect();
-                const windowType = win.get_window_type();
+        for (const win of this._getAllWindows()) {
+            const frameRect = win.get_frame_rect();
+            const windowType = win.get_window_type();
 
-                result.push({
-                    id: win.get_id(),
-                    title: win.get_title() || '',
-                    wm_class: win.get_wm_class() || '',
-                    wm_class_instance: win.get_wm_class_instance() || '',
-                    sandboxed_app_id: win.get_sandboxed_app_id() || '',
-                    gtk_application_id: win.get_gtk_application_id() || '',
-                    has_focus: win.has_focus(),
-                    // Differs from has_focus, e.g. true while an attached modal
-                    // dialog holds the focus. A property read: Meta.Window also
-                    // has an appears_focused() method, which this name hides.
-                    appears_focused: win.appears_focused,
-                    is_hidden: win.is_hidden(),
-                    is_minimized: win.minimized,
-                    is_maximized: isFullyMaximized(win),
-                    is_fullscreen: win.is_fullscreen(),
-                    is_above: win.is_above(),
-                    is_on_all_workspaces: win.is_on_all_workspaces(),
-                    is_skip_taskbar: win.is_skip_taskbar(),
-                    workspace_index: _workspaceIndex(win),
-                    monitor_index: win.get_monitor(),
-                    pid: win.get_pid(),
-                    window_type: windowType,
-                    window_type_name: WINDOW_TYPE_NAMES[windowType] || 'unknown',
-                    frame_rect: {
-                        x: frameRect.x,
-                        y: frameRect.y,
-                        width: frameRect.width,
-                        height: frameRect.height,
-                    },
-                    // Has mutter mapped and placed it at least once? Exact for a
-                    // window created since enable; see _isUnshown() for the rest.
-                    has_been_shown: !this._isUnshown(win),
-                });
-            }
-
-            console.debug(`[Window Control] ListDetailed() returning ${result.length} windows`);
-            return JSON.stringify(result);
-        } catch (e) {
-            console.error(`[Window Control] ListDetailed() error: ${e.message}`);
-            return '[]';
+            result.push({
+                id: win.get_id(),
+                title: win.get_title() || '',
+                wm_class: win.get_wm_class() || '',
+                wm_class_instance: win.get_wm_class_instance() || '',
+                sandboxed_app_id: win.get_sandboxed_app_id() || '',
+                gtk_application_id: win.get_gtk_application_id() || '',
+                has_focus: win.has_focus(),
+                // Differs from has_focus, e.g. true while an attached modal
+                // dialog holds the focus. A property read: Meta.Window also
+                // has an appears_focused() method, which this name hides.
+                appears_focused: win.appears_focused,
+                is_hidden: win.is_hidden(),
+                is_minimized: win.minimized,
+                is_maximized: isFullyMaximized(win),
+                is_fullscreen: win.is_fullscreen(),
+                is_above: win.is_above(),
+                is_on_all_workspaces: win.is_on_all_workspaces(),
+                is_skip_taskbar: win.is_skip_taskbar(),
+                workspace_index: _workspaceIndex(win),
+                monitor_index: win.get_monitor(),
+                pid: win.get_pid(),
+                window_type: windowType,
+                window_type_name: WINDOW_TYPE_NAMES[windowType] || 'unknown',
+                frame_rect: {
+                    x: frameRect.x,
+                    y: frameRect.y,
+                    width: frameRect.width,
+                    height: frameRect.height,
+                },
+                // Has mutter mapped and placed it at least once? Exact for a
+                // window created since enable; see _isUnshown() for the rest.
+                has_been_shown: !this._isUnshown(win),
+            });
         }
+
+        console.debug(`[Window Control] ListDetailed() returning ${result.length} windows`);
+        return JSON.stringify(result);
     }
 
     ListMonitors() {
         console.debug('[Window Control] ListMonitors() called');
-        try {
-            const numMonitors = global.display.get_n_monitors();
-            const primaryMonitor = global.display.get_primary_monitor();
-            const result = [];
+        const numMonitors = global.display.get_n_monitors();
+        const primaryMonitor = global.display.get_primary_monitor();
+        const result = [];
 
-            for (let i = 0; i < numMonitors; i++) {
-                const geometry = global.display.get_monitor_geometry(i);
-                const scale = global.display.get_monitor_scale(i);
+        for (let i = 0; i < numMonitors; i++) {
+            const geometry = global.display.get_monitor_geometry(i);
+            const scale = global.display.get_monitor_scale(i);
 
-                result.push({
-                    index: i,
-                    x: geometry.x,
-                    y: geometry.y,
-                    width: geometry.width,
-                    height: geometry.height,
-                    is_primary: i === primaryMonitor,
-                    connector: '',  // Connector name not available via stable API
-                    scale: scale,
-                });
-            }
-
-            console.debug(`[Window Control] ListMonitors() returning ${result.length} monitors`);
-            return JSON.stringify(result);
-        } catch (e) {
-            console.error(`[Window Control] ListMonitors() error: ${e.message}`);
-            return '[]';
+            result.push({
+                index: i,
+                x: geometry.x,
+                y: geometry.y,
+                width: geometry.width,
+                height: geometry.height,
+                is_primary: i === primaryMonitor,
+                connector: '',  // Connector name not available via stable API
+                scale: scale,
+            });
         }
+
+        console.debug(`[Window Control] ListMonitors() returning ${result.length} monitors`);
+        return JSON.stringify(result);
     }
 
     // Focus and raise.
@@ -501,23 +476,18 @@ class WindowControlService {
     // window".
     GetFocused() {
         console.debug('[Window Control] GetFocused() called');
-        try {
-            const focused = global.display.focus_window;
-            const win = focused && focused.get_window_type() === Meta.WindowType.NORMAL
-                ? focused : null;
-            if (win) {
-                const id = win.get_id();
-                const title = win.get_title() || '';
-                const wmClass = win.get_wm_class() || '';
-                console.debug(`[Window Control] GetFocused() -> ${id}`);
-                return [id, title, wmClass];
-            }
-            console.debug('[Window Control] GetFocused() -> no focused window');
-            return [0, '', ''];
-        } catch (e) {
-            console.error(`[Window Control] GetFocused() error: ${e.message}`);
-            return [0, '', ''];
+        const focused = global.display.focus_window;
+        const win = focused && focused.get_window_type() === Meta.WindowType.NORMAL
+            ? focused : null;
+        if (win) {
+            const id = win.get_id();
+            const title = win.get_title() || '';
+            const wmClass = win.get_wm_class() || '';
+            console.debug(`[Window Control] GetFocused() -> ${id}`);
+            return [id, title, wmClass];
         }
+        console.debug('[Window Control] GetFocused() -> no focused window');
+        return [0, '', ''];
     }
 
     // Raises instead of returning a flag; see the ERRORS block in
@@ -566,19 +536,14 @@ class WindowControlService {
 
     GetGeometry(windowId) {
         console.debug(`[Window Control] GetGeometry(${windowId}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                const rect = win.get_frame_rect();
-                console.debug(`[Window Control] GetGeometry(${windowId}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
-                return [rect.x, rect.y, rect.width, rect.height];
-            }
-            console.debug(`[Window Control] GetGeometry(${windowId}) -> not found`);
-            return [-1, -1, -1, -1];
-        } catch (e) {
-            console.error(`[Window Control] GetGeometry() error: ${e.message}`);
-            return [-1, -1, -1, -1];
+        const win = this._findWindowById(windowId);
+        if (win) {
+            const rect = win.get_frame_rect();
+            console.debug(`[Window Control] GetGeometry(${windowId}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
+            return [rect.x, rect.y, rect.width, rect.height];
         }
+        console.debug(`[Window Control] GetGeometry(${windowId}) -> not found`);
+        return [-1, -1, -1, -1];
     }
 
     // The version the RUNNING shell has loaded; see the constructor.
@@ -622,41 +587,36 @@ class WindowControlService {
 
     ListWorkspaces() {
         console.debug('[Window Control] ListWorkspaces() called');
-        try {
-            const manager = global.workspace_manager;
-            const numWorkspaces = manager.get_n_workspaces();
-            const activeIndex = manager.get_active_workspace_index();
-            // One pass over the windows rather than one per workspace: a
-            // sticky window is located on every workspace, any other on the
-            // one it reports (or none, mid-move).
-            const counts = new Array(numWorkspaces).fill(0);
-            let sticky = 0;
-            for (const win of this._getAllWindows()) {
-                if (win.is_on_all_workspaces()) {
-                    sticky++;
-                    continue;
-                }
-                const index = win.get_workspace()?.index();
-                if (this._isValidIndex(index, numWorkspaces))
-                    counts[index]++;
+        const manager = global.workspace_manager;
+        const numWorkspaces = manager.get_n_workspaces();
+        const activeIndex = manager.get_active_workspace_index();
+        // One pass over the windows rather than one per workspace: a
+        // sticky window is located on every workspace, any other on the
+        // one it reports (or none, mid-move).
+        const counts = new Array(numWorkspaces).fill(0);
+        let sticky = 0;
+        for (const win of this._getAllWindows()) {
+            if (win.is_on_all_workspaces()) {
+                sticky++;
+                continue;
             }
-            const result = [];
-
-            for (let i = 0; i < numWorkspaces; i++) {
-                result.push({
-                    index: i,
-                    name: Meta.prefs_get_workspace_name(i) || '',
-                    is_active: i === activeIndex,
-                    window_count: counts[i] + sticky,
-                });
-            }
-
-            console.debug(`[Window Control] ListWorkspaces() returning ${result.length} workspaces`);
-            return JSON.stringify(result);
-        } catch (e) {
-            console.error(`[Window Control] ListWorkspaces() error: ${e.message}`);
-            return '[]';
+            const index = win.get_workspace()?.index();
+            if (this._isValidIndex(index, numWorkspaces))
+                counts[index]++;
         }
+        const result = [];
+
+        for (let i = 0; i < numWorkspaces; i++) {
+            result.push({
+                index: i,
+                name: Meta.prefs_get_workspace_name(i) || '',
+                is_active: i === activeIndex,
+                window_count: counts[i] + sticky,
+            });
+        }
+
+        console.debug(`[Window Control] ListWorkspaces() returning ${result.length} workspaces`);
+        return JSON.stringify(result);
     }
 
     // While the Activities overview is shown, Meta.Workspace.activate() leaves
@@ -665,22 +625,17 @@ class WindowControlService {
     // that did not take effect reports false.
     ActivateWorkspace(workspaceIndex) {
         console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) called`);
-        try {
-            const manager = global.workspace_manager;
-            if (!this._isValidIndex(workspaceIndex, manager.get_n_workspaces())) {
-                console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> false (invalid index)`);
-                return false;
-            }
-            if (Main.overview.visible)
-                Main.overview.hide();
-            manager.get_workspace_by_index(workspaceIndex).activate(global.get_current_time());
-            const switched = manager.get_active_workspace_index() === workspaceIndex;
-            console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> ${switched}`);
-            return switched;
-        } catch (e) {
-            console.error(`[Window Control] ActivateWorkspace() error: ${e.message}`);
+        const manager = global.workspace_manager;
+        if (!this._isValidIndex(workspaceIndex, manager.get_n_workspaces())) {
+            console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> false (invalid index)`);
             return false;
         }
+        if (Main.overview.visible)
+            Main.overview.hide();
+        manager.get_workspace_by_index(workspaceIndex).activate(global.get_current_time());
+        const switched = manager.get_active_workspace_index() === workspaceIndex;
+        console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> ${switched}`);
+        return switched;
     }
 
     // change_workspace_by_index() returns void and declines silently for a

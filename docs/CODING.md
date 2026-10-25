@@ -33,6 +33,11 @@ If it fails, the code has a syntax error and must not be committed.
   The names, and the reason each method raises, are in the ERRORS block in
   `dbus-interface.js`; add to that list rather than inventing a name at the
   throw site.
+- A synchronous handler has no try/catch. GJS answers an unexpected throw with
+  `org.gnome.gjs.JSError.<name>` and logs `Exception in method call: <Method>`.
+  An `...Async` handler answers its invocation itself, and answers an
+  unexpected throw with `Failed`: `_geometryCall`, `GetWorkareaAsync` and the
+  two wait handlers catch for that.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
 
