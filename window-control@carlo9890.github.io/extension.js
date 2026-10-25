@@ -21,8 +21,9 @@ export default class WindowControlExtension extends Extension {
             this._service.keybindingsServed = this._keybindings.registered;
         } catch (e) {
             console.error(`[${this.metadata.name}] enable() failed: ${e.message}`);
-            // The shell does not call disable() for an extension whose
-            // enable() threw, so nothing set up so far may outlive it.
+            // export() throws when the object path is taken. The shell does
+            // not call disable() for an extension whose enable() threw, so
+            // nothing set up so far may outlive it.
             this.disable();
             throw e;
         }
