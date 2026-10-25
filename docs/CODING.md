@@ -16,7 +16,7 @@ finishing:
 If it fails, the code has a syntax error and must not be committed.
 `.github/workflows/build.yml` runs the same check as a hard CI gate.
 
-## JavaScript (extension.js)
+## JavaScript (the extension)
 
 - Use ES module (ESM) syntax.
 - Read the GNOME guidelines that the
@@ -33,6 +33,12 @@ If it fails, the code has a syntax error and must not be committed.
   The names, and the reason each method raises, are in the ERRORS block in
   `dbus-interface.js`; add to that list rather than inventing a name at the
   throw site.
+- A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
+  `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
+  <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
+  An `...Async` handler answers its invocation itself, and answers an
+  unexpected throw with `Failed`: `_geometryCall` and the two wait handlers
+  catch for that.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
 
@@ -88,7 +94,7 @@ what it ships are described in [RELEASING.md](RELEASING.md).
    </method>
    ```
 
-2. Add the implementation in the `WindowControlService` class in `extension.js`.
+2. Add the implementation in the `WindowControlService` class in `dbus-service.js`.
    For a simple boolean action, reuse `_actOnWindow`:
 
    ```javascript

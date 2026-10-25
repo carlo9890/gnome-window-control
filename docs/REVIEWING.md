@@ -98,15 +98,7 @@ the correct form.
     (`window-helpers.js`), so none of them runs on GNOME 49. The
     `Meta.MaximizeFlags` enum itself is still there on 49 and later, as the type
     `get_maximize_flags()` returns; `isFullyMaximized` (`window-helpers.js`) and
-    `_frameRefusal` (`extension.js`) compare against it on every version. Answer
+    `_frameRefusal` (`dbus-service.js`) compare against it on every version. Answer
     the reviewer with the guard and the enum. Narrowing `shell-version` to 45-48
     clears both findings and costs the 49/50 users — `shell-version` cannot be
     widened again without a new review.
-  - `EGO-L-005` (warning): wants `this._dbusImpl = null` lexically inside
-    `disable()`. It lives in `WindowControlService.unexport()`, which `disable()`
-    calls on the service it takes out of `this._service`.
-  - `EGO-L-003` (warning): wants the `window-created` handler that the
-    `WindowControlService` constructor connects disconnected in `disable()`. It
-    is disconnected in `WindowControlService.unexport()`, which `disable()`
-    calls; `tests/check-extension-headless.js` asserts that no handler is left.
-    Answer the reviewer with that call chain.

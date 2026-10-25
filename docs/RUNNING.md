@@ -44,13 +44,12 @@ These exist because of a real incident, recorded at the end of this file.
 ## Reload after a code change (required)
 
 **`gnome-extensions disable`/`enable` does NOT reload JavaScript from disk** — it
-only re-runs `disable()`/`enable()` on the already-loaded code. Any change to
-`extension.js`, `dbus-interface.js`, `metadata.json`, or a new file needs a real
-reload:
+only re-runs `disable()`/`enable()` on the already-loaded code. Any change to a
+`.js` file of the extension, `metadata.json`, or a new file needs a real reload:
 
 | Change | Reload |
 |--------|--------|
-| `extension.js` / `dbus-interface.js` / `metadata.json` / new files | **Required** |
+| the extension's `*.js` / `metadata.json` / new files | **Required** |
 | `cli/` (wctl) | Rebuild: `mise run build` |
 | tests / scripts | None (run fresh each invocation) |
 

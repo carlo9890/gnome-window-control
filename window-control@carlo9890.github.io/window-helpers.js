@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: MIT
 // Helpers shared by the D-Bus service, the window rules and the keyboard
 // shortcuts: the maximize API that changed in GNOME 49, the workarea a window
-// resolves against, and the wait for an unmaximize to land.
-//
-// The selector predicate used to live here too. It moved to rules-format.js,
-// which imports nothing, so that plain `gjs` can load the grammar without the
-// mutter typelib. Everything left in this file needs Meta.
+// resolves against, and the wait for an unmaximize to land. Everything here
+// needs Meta; the Meta-free selector grammar is in rules-format.js.
 
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';

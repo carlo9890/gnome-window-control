@@ -56,7 +56,7 @@ jobs:
       - name: Check the rules.json grammar against the shared vectors
         run: env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
 
-      # extension.js, rules.js and keybindings.js import gi://Meta, so this
+      # dbus-service.js, rules.js and keybindings.js import gi://Meta, so this
       # check needs the mutter typelib. The package name carries the mutter
       # API version (gir1.2-mutter-14 on Ubuntu 24.04), so take the newest
       # one the runner image has. The next step reads the typelib directory

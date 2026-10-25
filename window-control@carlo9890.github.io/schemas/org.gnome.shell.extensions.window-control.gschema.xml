@@ -21,7 +21,7 @@
   gnome-extensions install, by extensions.gnome.org, or by build.sh install
   for the manual-copy path.
 -->
-<schemalist gettext-domain="window-control">
+<schemalist>
   <schema id="org.gnome.shell.extensions.window-control"
           path="/org/gnome/shell/extensions/window-control/">
 

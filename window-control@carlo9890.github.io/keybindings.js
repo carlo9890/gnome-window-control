@@ -123,7 +123,7 @@ export class WindowKeybindings {
             console.debug(`[Window Control] shortcut -> ${id}: tile ${position}`);
         };
         // A maximized frame drops the request outright (see _frameRefusal in
-        // extension.js), and a frame requested while an unmaximize is still
+        // dbus-service.js), and a frame requested while an unmaximize is still
         // in flight is overwritten by the restored size -- the restore an
         // earlier press started included, although the flags already read as
         // unmaximized then. Restore first and place once the restore has

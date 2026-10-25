@@ -2,9 +2,10 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 //
-// Drive the real extension.js, rules.js and keybindings.js against fake
-// windows, without a GNOME Shell and without D-Bus. Run from anywhere, with the
-// mutter typelib directory on GI_TYPELIB_PATH (the newest one installed):
+// Drive the real extension.js, dbus-service.js, rules.js and keybindings.js
+// against fake windows, without a GNOME Shell and without D-Bus. Run from
+// anywhere, with the mutter typelib directory on GI_TYPELIB_PATH (the newest
+// one installed):
 //
 //     dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) &&
 //         GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js
@@ -74,14 +75,13 @@ try {
 
     const EXT = `${SCRATCH}/ext`;
     GLib.mkdir_with_parents(EXT, 0o755);
-    for (const name of ['dbus-interface.js', 'extension.js', 'keybindings.js', 'rules-format.js',
-        'rules.js', 'window-helpers.js']) {
+    for (const name of ['dbus-interface.js', 'dbus-service.js', 'extension.js', 'keybindings.js',
+        'rules-format.js', 'rules.js', 'window-helpers.js']) {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
             .replace("'gi://Shell'", "'./stub-shell.js'");
-        write(`${EXT}/${name}`,
-            name === 'extension.js' ? `${text}\nexport { WindowControlService };\n` : text);
+        write(`${EXT}/${name}`, text);
     }
     write(`${EXT}/stub-main.js`, `export const overview = { visible: false, hide() {} };
 export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybinding() {} };
@@ -248,8 +248,8 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         return JSON.stringify(call.reply);
     }
 
-    const { WindowControlService, default: WindowControlExtension } =
-        await import(`file://${EXT}/extension.js`);
+    const { WindowControlService } = await import(`file://${EXT}/dbus-service.js`);
+    const { default: WindowControlExtension } = await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
 
@@ -474,19 +474,15 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // -- GetWorkarea: a missing monitor and a lookup that throws -----------------
     //
     // (-1, -1, -1, -1) is "no such monitor" and nothing else: a lookup that throws
-    // raises Failed, so a caller never reports monitor 0 as missing.
+    // reaches GJS, so a caller never reports monitor 0 as missing.
 
     {
         const service = new WindowControlService({ version: 0 });
-        const present = invocation();
-        service.GetWorkareaAsync([0], present);
-        check('GetWorkarea answers the workarea of a monitor', showReply(present) ===
-            '{"value":[0,0,1920,1080]}', showReply(present));
+        const present = JSON.stringify(service.GetWorkarea(0));
+        check('GetWorkarea answers the workarea of a monitor', present === '[0,0,1920,1080]', present);
 
-        const missing = invocation();
-        service.GetWorkareaAsync([1], missing);
-        check('GetWorkarea answers -1 for an index that is not a monitor', showReply(missing) ===
-            '{"value":[-1,-1,-1,-1]}', showReply(missing));
+        const missing = JSON.stringify(service.GetWorkarea(1));
+        check('GetWorkarea answers -1 for an index that is not a monitor', missing === '[-1,-1,-1,-1]', missing);
 
         const manager = global.workspace_manager;
         global.workspace_manager = {
@@ -494,12 +490,79 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
                 get_work_area_for_monitor: () => { throw new Error('no workarea'); },
             }),
         };
-        const failed = invocation();
-        service.GetWorkareaAsync([0], failed);
-        global.workspace_manager = manager;
-        check('GetWorkarea raises Failed when the lookup throws', showReply(failed) ===
-            '{"error":"org.freedesktop.DBus.Error.Failed","message":"no workarea"}', showReply(failed));
+        let error = null;
+        try {
+            service.GetWorkarea(0);
+        } catch (e) {
+            error = e;
+        } finally {
+            global.workspace_manager = manager;
+        }
+        check('GetWorkarea lets a lookup that throws through to GJS', error?.message === 'no workarea', `${error}`);
         service.unexport();
+    }
+
+    // -- InvalidArgs for a size or a wait time that is not positive -------------
+    //
+    // The window exists, so only the argument check can refuse the call.
+
+    {
+        const service = new WindowControlService({ version: 0 });
+        createWindow({ id: 9, wmClass: 'T' });
+        const calls = {
+            'Resize with a width of 0': call => service.ResizeAsync([9, 0, 10], call),
+            'Resize with a height of 0': call => service.ResizeAsync([9, 10, 0], call),
+            'MoveResize with a width of 0': call => service.MoveResizeAsync([9, 0, 0, 0, 100], call),
+            'MoveResize with a negative height': call => service.MoveResizeAsync([9, 0, 0, 100, -5], call),
+            'WaitForWindow with a timeout of 0': call => service.WaitForWindowAsync(['class', 'T', 0], call),
+            'WaitForGeometry with a quiet_ms of 0': call => service.WaitForGeometryAsync([9, 0, 10], call),
+            'WaitForGeometry with timeout_ms below quiet_ms': call => service.WaitForGeometryAsync([9, 50, 10], call),
+        };
+        for (const [name, start] of Object.entries(calls)) {
+            const call = invocation();
+            start(call);
+            check(`${name} raises InvalidArgs once`,
+                call.reply?.error === 'org.freedesktop.DBus.Error.InvalidArgs' && call.replies === 1,
+                `${showReply(call)}, ${call.replies} reply(ies)`);
+        }
+        service.unexport();
+        windows.length = 0;
+    }
+
+    // -- A synchronous handler that throws ------------------------------------------
+    //
+    // The throw reaches GJS, which answers org.gnome.gjs.JSError.<name>; a false
+    // or an empty list would read as "no such window".
+
+    {
+        const service = new WindowControlService({ version: 0 });
+        const win = createWindow({ id: 9, wmClass: 'T' });
+        win.get_title = () => {
+            throw new Error('title lookup failed');
+        };
+        win.activate = () => {
+            throw new Error('activate failed');
+        };
+        const calls = {
+            List: [() => service.List(), 'title lookup failed'],
+            ListDetailed: [() => service.ListDetailed(), 'title lookup failed'],
+            Activate: [() => service.Activate(9), 'activate failed'],
+            ActivateByTitle: [() => service.ActivateByTitle('T'), 'title lookup failed'],
+            ActivateByTitleSubstring: [() => service.ActivateByTitleSubstring('T'), 'title lookup failed'],
+            ActivateByWmClass: [() => service.ActivateByWmClass('T'), 'activate failed'],
+            ActivateByPid: [() => service.ActivateByPid(1), 'activate failed'],
+        };
+        for (const [name, [call, expected]] of Object.entries(calls)) {
+            let error = null;
+            try {
+                call();
+            } catch (e) {
+                error = e;
+            }
+            check(`${name} lets an unexpected throw through to GJS`, error?.message === expected, `${error}`);
+        }
+        service.unexport();
+        windows.length = 0;
     }
 
     // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
@@ -549,21 +612,16 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             `${display.handlerCount()} handler(s), service ${extension._service}`);
     }
 
-    // A service that was never registered is not reported as unregistered, and
-    // a cleanup that throws neither replaces the error enable() failed with nor
-    // keeps the service.
+    // A failed enable() rethrows its own error, and a service that was never
+    // registered is not reported as unregistered.
     {
         const extension = new WindowControlExtension();
         extension.metadata = { name: 'Window Control', version: 1 };
         const realExport = WindowControlService.prototype.export;
         const realEnable = WindowRules.prototype.enable;
-        const realDisable = WindowRules.prototype.disable;
         WindowControlService.prototype.export = () => {};
         WindowRules.prototype.enable = () => {
             throw new Error('rules failed');
-        };
-        WindowRules.prototype.disable = () => {
-            throw new Error('cleanup failed');
         };
         const linesBefore = consoleLines.length;
         let error = null;
@@ -574,14 +632,12 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         } finally {
             WindowControlService.prototype.export = realExport;
             WindowRules.prototype.enable = realEnable;
-            WindowRules.prototype.disable = realDisable;
         }
-        check('enable() rethrows its own error when the cleanup throws too',
-            error?.message === 'rules failed', `${error}`);
+        check('enable() rethrows its own error', error?.message === 'rules failed', `${error}`);
         check('a service that was never exported is not logged as unregistered',
             !noticesSince(linesBefore).some(line => line.includes('unregistered')),
             JSON.stringify(noticesSince(linesBefore)));
-        check('a cleanup that throws still tears the service down',
+        check('a failed enable() after the export leaves no handler and no service',
             display.handlerCount() === 0 && extension._service === null,
             `${display.handlerCount()} handler(s), service ${extension._service}`);
     }

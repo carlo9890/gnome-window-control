@@ -5,10 +5,12 @@ product see [RUNNING.md](RUNNING.md).
 
 ## Viewing logs
 
-Follow this extension's own log lines (filtered by its `Window Control` tag):
+Follow this extension's own log lines (its `Window Control` tag) and the throws
+GJS logs for it (`JS ERROR`, untagged: a D-Bus handler, a rule placement or a
+shortcut that threw):
 
 ```bash
-journalctl --user -b -g "Window Control" -f
+journalctl --user -b -g "Window Control|JS ERROR" -f
 ```
 
 `journalctl --user` shows only the main session's shell. A nested session's
@@ -51,8 +53,13 @@ may contain.
   reached no bus at all (`map_connect_err` in `cli/src/dbus.rs`); check
   `DBUS_SESSION_BUS_ADDRESS` against the address the message names before you
   touch the extension.
-- **`wctl list`/`info`/`focused` return empty or error** — check the log for a
-  JavaScript exception in `ListDetailed`; the handler returns `'[]'` on any throw.
-- **A method silently no-ops** — the handler caught an exception and returned
-  `false`/a default; the `console.error(...)` line in its catch block names the
-  method and message.
+- **`wctl` fails with `org.gnome.gjs.JSError.<name>`** — a handler threw and GJS
+  answered for it. GJS logs it as `JS ERROR: Exception in method call: <Method>`.
+- **`wctl` fails with `org.freedesktop.DBus.Error.Failed`** — a geometry or wait
+  call threw; the `[Window Control] <Method>() error:` line names the method and
+  message.
+- **A method silently no-ops** — it answers `false` with no line in the default
+  log: no NORMAL window has that ID or matches the `ActivateBy*` value, an index
+  is out of range, or mutter declined the change. The `console.debug()` trace
+  says which: `-> false (window not found)`, `-> false (not found)` for
+  `ActivateBy*`, `-> false (invalid index)` or a bare `-> false`.

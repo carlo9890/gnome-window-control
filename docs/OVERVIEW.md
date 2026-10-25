@@ -8,8 +8,9 @@ Shell 45-50.
 
 ```
 window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
-├── extension.js           D-Bus service + method handlers (WindowControlService)
-├── dbus-interface.js      D-Bus interface XML (imported by extension.js)
+├── extension.js           enable()/disable(): starts and stops the three parts below
+├── dbus-service.js        D-Bus service + method handlers (WindowControlService)
+├── dbus-interface.js      D-Bus interface XML (imported by dbus-service.js)
 ├── rules.js               WindowRules: rules.json auto-placement (no D-Bus)
 ├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
 ├── keybindings.js         WindowKeybindings: the tile shortcuts (no D-Bus)
@@ -50,9 +51,11 @@ gnome-window-control-extension-requirements.md   original design spec
   connection**, so the destination is `org.gnome.Shell` (not a standalone
   service). Path `/org/gnome/Shell/Extensions/WindowControl`, interface
   `org.gnome.Shell.Extensions.WindowControl`.
-- `extension.js` holds one `WindowControlService` class; the simple boolean
+- `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
-  lives in `dbus-interface.js` and is imported into `extension.js`.
+  lives in `dbus-interface.js` and is imported into `dbus-service.js`.
+  `extension.js` only starts and stops the service, `WindowRules` and
+  `WindowKeybindings`.
 - `wctl` speaks D-Bus directly through **zbus's blocking API** — no gdbus, no
   busctl, no jq, and no async runtime. It has no runtime dependencies at all: the
   release asset is a static musl binary. Failures funnel through `map_err`
@@ -64,18 +67,18 @@ gnome-window-control-extension-requirements.md   original design spec
 - Window documents stay as `serde_json::Value` (with serde_json's
   `preserve_order`), because `list --json` and `info --json` must emit the
   extension's document unchanged, key order included.
-- A single `extension.js` runs across GNOME 45-50 via runtime API detection for
+- One code base runs across GNOME 45-50 via runtime API detection for
   the maximize path (`get_maximized()` vs `get_maximize_flags()`).
 - `WaitForWindow` and `WaitForGeometry` are the **async** handlers (the GJS
   `...Async(params, invocation)` convention), holding the invocation in
   `_waiters` / `_geometryWatchers`. A window satisfies a waiter only once it is
-  shown — `_isUnshown` and `_evaluateWindow` in `extension.js` say why, and
+  shown — `_isUnshown` and `_evaluateWindow` in `dbus-service.js` say why, and
   `disable()` teardown is a release constraint in [RELEASING.md](RELEASING.md).
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
   service: it reads `~/.config/gnome-window-control/rules.json`, watches
   `window-created`, and places a matching window once mutter has shown it. It
   makes no D-Bus call. The GNOME-49 maximize API detection is shared with
-  `extension.js` through `window-helpers.js`. A geometry request only
+  `dbus-service.js` through `window-helpers.js`. A geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   below), so a rule waits for `shown` and then applies from an idle callback; a
   window that maps maximized is unmaximized first. On GNOME 49 and later the
@@ -111,7 +114,7 @@ gnome-window-control-extension-requirements.md   original design spec
 grep -n 'method name=' window-control@carlo9890.github.io/dbus-interface.js
 
 # A method's handler implementation
-grep -n 'MethodName(' window-control@carlo9890.github.io/extension.js
+grep -n 'MethodName(' window-control@carlo9890.github.io/dbus-service.js
 
 # A wctl subcommand's implementation and its dispatch
 grep -rn '"<name>" =>' cli/src/main.rs cli/src/commands/

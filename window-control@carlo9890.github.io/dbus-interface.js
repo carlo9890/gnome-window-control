@@ -2,113 +2,68 @@
 // SPDX-License-Identifier: MIT
 // D-Bus interface XML for the Window Control extension.
 // Kept in its own module so the declarative interface contract can be read and
-// diffed independently of the handler implementations in extension.js.
+// diffed independently of the handler implementations in dbus-service.js.
 
 export const DBUS_INTERFACE_XML = `
 <node>
   <interface name="org.gnome.Shell.Extensions.WindowControl">
     <!--
-      List: Get all windows as array of tuples
-      Returns: a(tssssbiiii)
-        t - window ID (uint64)
-        s - title
-        s - wm_class
-        s - wm_class_instance
-        s - sandboxed_app_id
-        b - is_focused
-        i - workspace index (-1 if on all)
-        i - monitor index
-        i - PID
-        i - window type enum value
+      One tuple per window: id, title, wm_class, wm_class_instance,
+      sandboxed_app_id, is_focused, workspace index (-1 if on all), monitor
+      index, pid, Meta.WindowType value.
     -->
     <method name="List">
       <arg type="a(tssssbiiii)" direction="out" name="windows"/>
     </method>
 
-    <!--
-      ListDetailed: Get all windows as JSON string with full details
-      Returns: s - JSON string
-    -->
     <method name="ListDetailed">
       <arg type="s" direction="out" name="windows_json"/>
     </method>
 
-
-    <!--
-      ListMonitors: Get all monitors with their properties
-      Returns: s - JSON array of monitor objects
-    -->
     <method name="ListMonitors">
       <arg type="s" direction="out" name="monitors_json"/>
     </method>
+
     <!--
-      Activate: Activate (focus and raise) a window by ID
-      Args: t - window ID
-      Returns: b - success
+      Focuses and raises the window. Every method that answers b success
+      answers false when no window has that id.
     -->
     <method name="Activate">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      ActivateByTitle: Activate window by exact title match
-      Args: s - title (exact match)
-      Returns: b - success
-    -->
+    <!-- Exact match. -->
     <method name="ActivateByTitle">
       <arg type="s" direction="in" name="title"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      ActivateByTitleSubstring: Activate window by title substring
-      Args: s - substring to match (empty never matches)
-      Returns: b - success
-    -->
+    <!-- An empty substring never matches. -->
     <method name="ActivateByTitleSubstring">
       <arg type="s" direction="in" name="substring"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      ActivateByWmClass: Activate window by WM class
-      Args: s - wm_class (exact match)
-      Returns: b - success
-    -->
+    <!-- Exact match. -->
     <method name="ActivateByWmClass">
       <arg type="s" direction="in" name="wm_class"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      ActivateByPid: Activate window by PID
-      Args: i - process ID (> 0; a window whose pid is unknown reports 0 and
-            is never matched)
-      Returns: b - success
-    -->
+    <!-- pid > 0: a window with an unknown pid reports 0 and never matches. -->
     <method name="ActivateByPid">
       <arg type="i" direction="in" name="pid"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      Focus: Focus a window by ID (without raising)
-      Args: t - window ID
-      Returns: b - success
-    -->
+    <!-- Focuses the window without raising it. -->
     <method name="Focus">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      GetFocused: Get the currently focused window
-      Returns: (tss)
-        t - window ID (0 if none)
-        s - title
-        s - wm_class
-    -->
+    <!-- window_id is 0 when no window has focus. -->
     <method name="GetFocused">
       <arg type="t" direction="out" name="window_id"/>
       <arg type="s" direction="out" name="title"/>
@@ -122,12 +77,13 @@ export const DBUS_INTERFACE_XML = `
 
       Move, Resize and MoveResize do not return a success flag. They complete,
       or they raise one of the names below, because a bare boolean could not say
-      WHICH failure happened and every caller had to guess it back by refetching
+      which failure happened and every caller had to guess it back by refetching
       the window and reading its flags -- a guess that cannot see tiling at all.
       WaitForWindow and WaitForGeometry raise too, for the same reason.
-      GetWorkarea raises Failed when its lookup throws, so its -1 answer means
-      only "no such monitor". This is the complete list; a handler never
-      invents a name at the throw site.
+      These are the names the extension raises on
+      purpose; a handler never invents a name at the throw site. Any other
+      method that throws an Error unexpectedly answers with GJS's own
+      org.gnome.gjs.JSError.<name> (TypeError, for example).
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
             no window has that id (WaitForGeometry: or it closed mid-wait)
@@ -140,43 +96,30 @@ export const DBUS_INTERFACE_XML = `
             the extension was disabled while a WaitForWindow or
             WaitForGeometry call was pending
         org.freedesktop.DBus.Error.InvalidArgs
-            an argument was not a finite number, a size was not positive, or a
-            wait selector was refused (unknown kind, empty substring, pid that
-            is not a positive decimal integer)
+            a size or a wait time was not positive, timeout_ms was below
+            quiet_ms, or a wait selector was refused (unknown kind, empty
+            substring, pid that is not a positive decimal integer)
         org.freedesktop.DBus.Error.Failed
-            the handler raised something unexpected
+            Move, Resize, MoveResize, WaitForWindow or WaitForGeometry raised
+            something unexpected
 
       BREAKING: before extension version 10 these three returned 'b success'.
       A client written against the old signature fails to parse the reply.
     -->
 
-    <!--
-      Move: Move window to position
-      Args: t - window ID, i - x, i - y
-      Returns: nothing; raises on failure (see ERRORS above)
-    -->
     <method name="Move">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="in" name="x"/>
       <arg type="i" direction="in" name="y"/>
     </method>
 
-    <!--
-      Resize: Resize window
-      Args: t - window ID, i - width, i - height
-      Returns: nothing; raises on failure (see ERRORS above)
-    -->
     <method name="Resize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="in" name="width"/>
       <arg type="i" direction="in" name="height"/>
     </method>
 
-    <!--
-      MoveResize: Move and resize window atomically
-      Args: t - window ID, i - x, i - y, i - width, i - height
-      Returns: nothing; raises on failure (see ERRORS above)
-    -->
+    <!-- Moves and resizes in one request. -->
     <method name="MoveResize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="in" name="x"/>
@@ -185,11 +128,7 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="in" name="height"/>
     </method>
 
-    <!--
-      GetGeometry: Get window geometry
-      Args: t - window ID
-      Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if not found)
-    -->
+    <!-- (-1, -1, -1, -1) when no window has that id. -->
     <method name="GetGeometry">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="out" name="x"/>
@@ -198,37 +137,33 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="out" name="height"/>
     </method>
 
-
     <!--
-      GetVersion: The extension version, as loaded by the running shell
-      Returns: s - the integer 'version' from metadata.json, as a string
-      This is the number the SHELL is running, which is what makes it useful:
-      metadata.json on disk can already be a newer version that the shell has
-      not loaded, and on Wayland it stays that way until the user logs out.
+      The integer 'version' from metadata.json, as a string, as the running
+      shell loaded it. That is what makes it useful: metadata.json on disk can
+      already be a newer version that the shell has not loaded, and on Wayland
+      it stays that way until the user logs out.
     -->
     <method name="GetVersion">
       <arg type="s" direction="out" name="version"/>
     </method>
 
     <!--
-      GetCapabilities: What this extension supports, beyond the methods it serves
-      Returns: as - capability names, e.g. ['rules']
-      A caller asks for a name rather than comparing version numbers, because
-      the version is not a reliable signal: extensions.gnome.org replaces the
-      'version' field in metadata.json with its own upload number, so an install
-      from there reports a number unrelated to this project's releases. A
-      capability the extension does not have is an absent name, and an extension
-      too old to serve this method raises UnknownMethod, which means the same.
+      Capability names, e.g. ['rules']: what this extension supports beyond the
+      methods it serves. A caller asks for a name rather than comparing version
+      numbers, because the version is not a reliable signal:
+      extensions.gnome.org replaces the 'version' field in metadata.json with
+      its own upload number, so an install from there reports a number
+      unrelated to this project's releases. A capability the extension does not
+      have is an absent name, and an extension too old to serve this method
+      raises UnknownMethod, which means the same.
     -->
     <method name="GetCapabilities">
       <arg type="as" direction="out" name="capabilities"/>
     </method>
 
     <!--
-      GetWorkarea: Get usable workspace area for a monitor
-      Args: i - monitor index
-      Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if the index is not
-               a monitor); raises Failed if the lookup throws (see ERRORS above)
+      The usable area of the monitor: (-1, -1, -1, -1) when the index is not a
+      monitor, and only then: a lookup that throws answers with an error.
     -->
     <method name="GetWorkarea">
       <arg type="i" direction="in" name="monitor_index"/>
@@ -237,34 +172,25 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="out" name="width"/>
       <arg type="i" direction="out" name="height"/>
     </method>
+
     <!-- State Methods -->
 
     <!--
-      Minimize: Minimize window
-      Args: t - window ID
-      Returns: b - success; false also for a window the shell does not let
-               minimize, a skip-taskbar one for example, unless it is
-               minimized already
+      false also for a window the shell does not let minimize, a skip-taskbar
+      one for example, unless it is minimized already.
     -->
     <method name="Minimize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      Unminimize: Unminimize (restore) window
-      Args: t - window ID
-      Returns: b - success
-    -->
     <method name="Unminimize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
     <!--
-      MinimizeNoAnimation: Minimize window without the shell's minimize animation
-      Args: t - window ID
-      Returns: b - success, as Minimize reports it
+      Minimize without the shell's animation; success as Minimize reports it.
       For a window a caller hides and shows as one gesture, e.g. a popup: the
       animation shrinks the window towards its taskbar icon, or towards a
       corner of the monitor when it has none. Served by an extension that
@@ -279,76 +205,43 @@ export const DBUS_INTERFACE_XML = `
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      UnminimizeNoAnimation: Unminimize (restore) window without the animation
-      Args: t - window ID
-      Returns: b - success
-    -->
     <method name="UnminimizeNoAnimation">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
     <!--
-      ActivateNoAnimation: Activate (focus and raise) a window by ID, restoring
-      a minimized one without the animation
-      Args: t - window ID
-      Returns: b - success
-      The restore and the activation are one call, so no frame shows the
-      window restored but not focused. A window that is not minimized is
-      activated as Activate does. Served by an extension that reports the
-      'activate-no-animation' capability.
+      Activate, restoring a minimized window without the animation. The restore
+      and the activation are one call, so no frame shows the window restored
+      but not focused. A window that is not minimized is activated as Activate
+      does. Served by an extension that reports the 'activate-no-animation'
+      capability.
     -->
     <method name="ActivateNoAnimation">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      Maximize: Maximize window
-      Args: t - window ID
-      Returns: b - success
-    -->
     <method name="Maximize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      Unmaximize: Unmaximize window
-      Args: t - window ID
-      Returns: b - success
-    -->
     <method name="Unmaximize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      Fullscreen: Make window fullscreen
-      Args: t - window ID
-      Returns: b - success
-    -->
     <method name="Fullscreen">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      Unfullscreen: Exit fullscreen mode
-      Args: t - window ID
-      Returns: b - success
-    -->
     <method name="Unfullscreen">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      SetAbove: Set window always-on-top state
-      Args: t - window ID, b - above (true = always on top)
-      Returns: b - success
-    -->
     <method name="SetAbove">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="in" name="above"/>
@@ -356,12 +249,10 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      SetSticky: Set window sticky state (on all workspaces)
-      Args: t - window ID, b - sticky
-      Returns: b - success (false if the window does not exist or the state
-               did not take: mutter holds a window on all workspaces while it
-               is on a secondary monitor with workspaces-only-on-primary set,
-               and unstick() cannot override that)
+      Sticky means on all workspaces. false also when the state did not take:
+      mutter holds a window on all workspaces while it is on a secondary
+      monitor with workspaces-only-on-primary set, and unstick() cannot
+      override that.
     -->
     <method name="SetSticky">
       <arg type="t" direction="in" name="window_id"/>
@@ -369,31 +260,23 @@ export const DBUS_INTERFACE_XML = `
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      Close: Close window (polite request, allows save dialogs)
-      Args: t - window ID
-      Returns: b - success
-    -->
+    <!-- Asks the client to close; it may refuse or prompt. -->
     <method name="Close">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+
     <!-- Workspace and Monitor Methods -->
 
-    <!--
-      ListWorkspaces: Get all workspaces
-      Returns: s - JSON array of {index, name, is_active, window_count}
-    -->
+    <!-- A JSON array of {index, name, is_active, window_count}. -->
     <method name="ListWorkspaces">
       <arg type="s" direction="out" name="workspaces_json"/>
     </method>
 
     <!--
-      ActivateWorkspace: Switch to a workspace
-      Args: i - workspace index
-      Returns: b - success (false if the index does not exist or the switch
-               did not take effect). Hides the Activities overview first,
-               because the switch is ignored while the overview is shown.
+      false when the index does not exist or the switch did not take effect.
+      Hides the Activities overview first, because the switch is ignored while
+      the overview is shown.
     -->
     <method name="ActivateWorkspace">
       <arg type="i" direction="in" name="workspace_index"/>
@@ -401,9 +284,8 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      MoveToWorkspace: Move a window to a workspace
-      Args: t - window ID, i - workspace index
-      Returns: b - success (false if the window or the index does not exist)
+      false also when the index does not exist, or when mutter holds the window
+      on all workspaces (see SetSticky).
     -->
     <method name="MoveToWorkspace">
       <arg type="t" direction="in" name="window_id"/>
@@ -411,11 +293,7 @@ export const DBUS_INTERFACE_XML = `
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!--
-      MoveToMonitor: Move a window to a monitor
-      Args: t - window ID, i - monitor index
-      Returns: b - success (false if the window or the index does not exist)
-    -->
+    <!-- false also when the index does not exist. -->
     <method name="MoveToMonitor">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="in" name="monitor_index"/>
@@ -425,11 +303,8 @@ export const DBUS_INTERFACE_XML = `
     <!-- Event Methods -->
 
     <!--
-      WaitForWindow: Block until a window matching the selector is shown
-      Args: s - kind: "class" | "title" | "substring" | "pid"
-            s - value to match
-            i - timeout in milliseconds (> 0)
-      Returns: t - window ID (0 on timeout)
+      Replies once a window matching the selector is shown. kind is "class",
+      "title", "substring" or "pid"; timeout_ms > 0; window_id is 0 on timeout.
       The reply is deferred until a matching window has been shown (mapped and
       placed by mutter) or the timeout elapses; the shell main loop is never
       blocked. Replying only once the window is shown matters: a geometry
@@ -448,15 +323,12 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      WaitForGeometry: Block until a window's frame has stopped changing
-      Args: t - window ID
-            i - quiet_ms: how long the frame must hold still (> 0)
-            i - timeout_ms: give up after this (>= quiet_ms)
-      Returns: (iiii) - the settled frame rect
+      Replies with the frame once it has stopped changing: quiet_ms (> 0) is
+      how long it must hold still, timeout_ms (>= quiet_ms) when to give up.
       The reply is deferred until size-changed and position-changed have both
       been silent for quiet_ms, then carries the frame as it then stands. Only
       the compositor can do this: move_resize_frame() is asynchronous and
-      get_frame_rect() read straight after it still returns the OLD rect, so a
+      get_frame_rect() read straight after it still returns the old rect, so a
       client outside the shell can only sample and guess. Watching the signals
       replaces that guess with the compositor's own account -- but "stopped
       changing" is still a quiet period, not a promise: a client is free to

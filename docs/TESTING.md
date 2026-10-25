@@ -106,13 +106,14 @@ dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) 
 With several mutter typelibs installed, this picks the newest one; with none,
 it stops with `no Meta-*.typelib installed`.
 
-Runs the real `extension.js`, `rules.js` and `keybindings.js` against fake
-windows and a fake display that count their signal handlers. No GNOME session,
-no D-Bus: the check copies the extension files into a temporary directory and
-points the shell-only imports (`ui/main.js`, `extensions/extension.js`,
-`gi://Shell`) at stubs written there. It needs the mutter typelib
-(`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package `gir1.2-mutter-14`),
-which the extension job in `.github/workflows/build.yml` installs.
+Runs the real `extension.js`, `dbus-service.js`, `rules.js` and `keybindings.js`
+against fake windows and a fake display that count their signal handlers. No
+GNOME session, no D-Bus: the check copies the extension files into a temporary
+directory and points the shell-only imports (`ui/main.js`,
+`extensions/extension.js`, `gi://Shell`) at stubs written there. It needs the
+mutter typelib (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package
+`gir1.2-mutter-14`), which the extension job in `.github/workflows/build.yml`
+installs.
 
 It pins:
 
@@ -120,8 +121,8 @@ It pins:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
   `Disabled` and leaves no handler, subscription or timer, and
   `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
-- a failed `enable()` rethrows its own error, also when the cleanup throws,
-  leaves no handler and logs no unregistered service it never registered;
+- a failed `enable()` rethrows its own error and leaves no handler, and a
+  service that was never exported is not logged as unregistered;
 - a load of `rules.json` that finds no file, and a reload that finds one, log
   nothing at notice level;
 - both wait methods drop a call, with no reply, when its caller leaves the bus,
@@ -133,7 +134,12 @@ It pins:
   wait runs, before and after its map, and for one that predates the service,
   hidden on its own or because its parent is minimized;
 - `GetWorkarea` answers `(-1, -1, -1, -1)` only for an index that is not a
-  monitor, and raises `Failed` when its lookup throws;
+  monitor, and lets a lookup that throws through to GJS;
+- `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry` raise
+  `InvalidArgs`, with one reply, for a size or a wait time that is not
+  positive, and for a `timeout_ms` below `quiet_ms`;
+- a synchronous handler (`List`, `ListDetailed`, `Activate`, `ActivateBy*`)
+  lets an unexpected throw through to GJS instead of answering `false` or `[]`;
 - the rules grace period for a window that is not `NORMAL` when shown.
 
 Add a case here for extension logic a fake window can drive. Anything reachable
@@ -229,8 +235,9 @@ network are needed.
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
 `tests/vectors/`. The fake-windows column applies to any change to
-`extension.js`, `rules.js`, `keybindings.js` or `window-helpers.js`. Both are
-headless and take seconds, so there is no reason to skip them.
+`extension.js`, `dbus-service.js`, `rules.js`, `keybindings.js` or
+`window-helpers.js`. Both are headless and take seconds, so there is no reason
+to skip them.
 
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
 [CODING.md](CODING.md)) and an actual reload-and-run in a shell (see
