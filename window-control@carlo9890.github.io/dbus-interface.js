@@ -146,7 +146,8 @@ export const DBUS_INTERFACE_XML = `
             quiet_ms, or a wait selector was refused (unknown kind, empty
             substring, pid that is not a positive decimal integer)
         org.freedesktop.DBus.Error.Failed
-            one of the methods above raised something unexpected
+            Move, Resize, MoveResize, WaitForWindow, WaitForGeometry or
+            GetWorkarea raised something unexpected
 
       BREAKING: before extension version 10 these three returned 'b success'.
       A client written against the old signature fails to parse the reply.
