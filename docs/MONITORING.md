@@ -59,6 +59,7 @@ may contain.
   `GetWorkarea` call threw; the `[Window Control] <Method>() error:` line names
   the method and message.
 - **A method silently no-ops** — it answers `false` with no line in the default
-  log: no NORMAL window has that ID, an index is out of range, or mutter declined
-  the change. The `console.debug()` trace says which: `-> false (window not found)`,
-  `-> false (invalid index)` or a bare `-> false`.
+  log: no NORMAL window has that ID or matches the `ActivateBy*` value, an index
+  is out of range, or mutter declined the change. The `console.debug()` trace
+  says which: `-> false (window not found)`, `-> false (not found)` for
+  `ActivateBy*`, `-> false (invalid index)` or a bare `-> false`.

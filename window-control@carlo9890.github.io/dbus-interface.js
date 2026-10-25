@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 // D-Bus interface XML for the Window Control extension.
 // Kept in its own module so the declarative interface contract can be read and
-// diffed independently of the handler implementations in extension.js.
+// diffed independently of the handler implementations in dbus-service.js.
 
 export const DBUS_INTERFACE_XML = `
 <node>
@@ -146,7 +146,7 @@ export const DBUS_INTERFACE_XML = `
             wait selector was refused (unknown kind, empty substring, pid that
             is not a positive decimal integer)
         org.freedesktop.DBus.Error.Failed
-            the handler raised something unexpected
+            one of the methods above raised something unexpected
 
       BREAKING: before extension version 10 these three returned 'b success'.
       A client written against the old signature fails to parse the reply.

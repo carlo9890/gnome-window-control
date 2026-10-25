@@ -333,7 +333,7 @@ export class WindowRules {
             }
             // A client that restores itself maximized, or one mutter
             // auto-maximized for filling the screen, would have the request
-            // dropped outright (see _frameRefusal in extension.js). The rule
+            // dropped outright (see _frameRefusal in dbus-service.js). The rule
             // asked for a rectangle, so the rectangle wins -- once the restore
             // has landed (see UnmaximizeWait). The window is tracked again until
             // then so 'unmanaged' and disable() can still cancel it.
