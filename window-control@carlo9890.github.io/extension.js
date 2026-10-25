@@ -33,31 +33,22 @@ export default class WindowControlExtension extends Extension {
         }
     }
 
-    // The service goes last, and also when an earlier step throws: it holds
-    // the D-Bus object the next enable() exports again.
     disable() {
-        try {
-            if (this._keybindings) {
-                const keybindings = this._keybindings;
-                this._keybindings = null;
-                keybindings.disable();
-            }
-            if (this._rules) {
-                const rules = this._rules;
-                this._rules = null;
-                rules.disable();
-            }
-        } finally {
-            if (this._service) {
-                const service = this._service;
-                this._service = null;
-                try {
-                    if (service.unexport())
-                        console.log(`[${this.metadata.name}] D-Bus service unregistered`);
-                } catch (e) {
-                    console.error(`[${this.metadata.name}] Failed to unregister D-Bus service: ${e.message}`);
-                }
-            }
+        if (this._keybindings) {
+            const keybindings = this._keybindings;
+            this._keybindings = null;
+            keybindings.disable();
+        }
+        if (this._rules) {
+            const rules = this._rules;
+            this._rules = null;
+            rules.disable();
+        }
+        if (this._service) {
+            const service = this._service;
+            this._service = null;
+            if (service.unexport())
+                console.log(`[${this.metadata.name}] D-Bus service unregistered`);
         }
     }
 }

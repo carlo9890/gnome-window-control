@@ -1138,21 +1138,17 @@ export class WindowControlService {
         this._dbusImpl.export(Gio.DBus.session, DBUS_OBJECT_PATH);
     }
 
-    // Also tears down a service whose export() failed. The D-Bus object is
-    // unexported even when the cleanup before it throws, so the next enable()
-    // can export it again. Returns whether the object was exported.
+    // Also tears down a service whose export() failed. Returns whether the
+    // object was exported.
     unexport() {
         const exported = this._dbusImpl.get_connection() !== null;
-        try {
-            global.display.disconnect(this._windowCreatedId);
-            this._windowCreatedId = 0;
-            this._cancelWaiters();
-            this._cancelGeometryWatchers();
-        } finally {
-            if (exported)
-                this._dbusImpl.unexport();
-            this._dbusImpl = null;
-        }
+        global.display.disconnect(this._windowCreatedId);
+        this._windowCreatedId = 0;
+        this._cancelWaiters();
+        this._cancelGeometryWatchers();
+        if (exported)
+            this._dbusImpl.unexport();
+        this._dbusImpl = null;
         return exported;
     }
 }

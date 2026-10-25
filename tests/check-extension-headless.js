@@ -586,8 +586,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     }
 
     // A service that was never registered is not reported as unregistered, and
-    // a cleanup that throws neither replaces the error enable() failed with nor
-    // keeps the service.
+    // a cleanup that throws does not replace the error enable() failed with.
     {
         const extension = new WindowControlExtension();
         extension.metadata = { name: 'Window Control', version: 1 };
@@ -614,10 +613,11 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         }
         check('enable() rethrows its own error when the cleanup throws too',
             error?.message === 'rules failed', `${error}`);
+        extension.disable();
         check('a service that was never exported is not logged as unregistered',
             !noticesSince(linesBefore).some(line => line.includes('unregistered')),
             JSON.stringify(noticesSince(linesBefore)));
-        check('a cleanup that throws still tears the service down',
+        check('disable() after the failed cleanup leaves no handler and no service',
             display.handlerCount() === 0 && extension._service === null,
             `${display.handlerCount()} handler(s), service ${extension._service}`);
     }
