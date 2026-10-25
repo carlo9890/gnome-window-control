@@ -124,8 +124,7 @@ export class WindowControlService {
         // after.
         this._createdSinceStart = new WeakSet();
         this._firstShowWatches = new Map();
-        this._windowCreatedId = global.display.connect('window-created',
-            (display, win) => this._onWindowCreated(win));
+        this._windowCreatedId = 0;
         // WaitForGeometry state, one entry per pending call.
         this._geometryWatchers = [];
     }
@@ -1085,21 +1084,20 @@ export class WindowControlService {
             win => win.delete(global.get_current_time()));
     }
 
+    // The export goes first: it throws when the object path is taken, and the
+    // shell calls no disable() for an extension whose enable() threw.
     export() {
         this._dbusImpl.export(Gio.DBus.session, DBUS_OBJECT_PATH);
+        this._windowCreatedId = global.display.connect('window-created',
+            (display, win) => this._onWindowCreated(win));
     }
 
-    // Also tears down a service whose export() failed. Returns whether the
-    // object was exported.
     unexport() {
-        const exported = this._dbusImpl.get_connection() !== null;
         global.display.disconnect(this._windowCreatedId);
         this._windowCreatedId = 0;
         this._cancelWaiters();
         this._cancelGeometryWatchers();
-        if (exported)
-            this._dbusImpl.unexport();
+        this._dbusImpl.unexport();
         this._dbusImpl = null;
-        return exported;
     }
 }

@@ -121,8 +121,8 @@ It pins:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
   `Disabled` and leaves no handler, subscription or timer, and
   `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
-- a failed `enable()` rethrows its own error and leaves no handler, and a
-  service that was never exported is not logged as unregistered;
+- an `enable()` whose D-Bus export fails throws and leaves no handler on the
+  display;
 - a keyboard shortcut that cannot be registered removes the ones registered
   before it, and the extension serves none;
 - a load of `rules.json` that finds no file, and a reload that finds one, log
