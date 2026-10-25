@@ -612,20 +612,16 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             `${display.handlerCount()} handler(s), service ${extension._service}`);
     }
 
-    // A service that was never registered is not reported as unregistered, and
-    // a cleanup that throws does not replace the error enable() failed with.
+    // A failed enable() rethrows its own error, and a service that was never
+    // registered is not reported as unregistered.
     {
         const extension = new WindowControlExtension();
         extension.metadata = { name: 'Window Control', version: 1 };
         const realExport = WindowControlService.prototype.export;
         const realEnable = WindowRules.prototype.enable;
-        const realDisable = WindowRules.prototype.disable;
         WindowControlService.prototype.export = () => {};
         WindowRules.prototype.enable = () => {
             throw new Error('rules failed');
-        };
-        WindowRules.prototype.disable = () => {
-            throw new Error('cleanup failed');
         };
         const linesBefore = consoleLines.length;
         let error = null;
@@ -636,15 +632,12 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         } finally {
             WindowControlService.prototype.export = realExport;
             WindowRules.prototype.enable = realEnable;
-            WindowRules.prototype.disable = realDisable;
         }
-        check('enable() rethrows its own error when the cleanup throws too',
-            error?.message === 'rules failed', `${error}`);
-        extension.disable();
+        check('enable() rethrows its own error', error?.message === 'rules failed', `${error}`);
         check('a service that was never exported is not logged as unregistered',
             !noticesSince(linesBefore).some(line => line.includes('unregistered')),
             JSON.stringify(noticesSince(linesBefore)));
-        check('disable() after the failed cleanup leaves no handler and no service',
+        check('a failed enable() after the export leaves no handler and no service',
             display.handlerCount() === 0 && extension._service === null,
             `${display.handlerCount()} handler(s), service ${extension._service}`);
     }

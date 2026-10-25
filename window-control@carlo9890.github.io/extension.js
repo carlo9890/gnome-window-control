@@ -22,13 +22,8 @@ export default class WindowControlExtension extends Extension {
         } catch (e) {
             console.error(`[${this.metadata.name}] enable() failed: ${e.message}`);
             // The shell does not call disable() for an extension whose
-            // enable() threw, so nothing set up so far may outlive it. A
-            // failing cleanup must not hide why enable() failed.
-            try {
-                this.disable();
-            } catch (cleanupError) {
-                console.error(`[${this.metadata.name}] Cleanup after the failed enable() failed: ${cleanupError.message}`);
-            }
+            // enable() threw, so nothing set up so far may outlive it.
+            this.disable();
             throw e;
         }
     }
