@@ -155,23 +155,11 @@ export class WindowControlService {
     }
 
     _findWindowById(id) {
-        const windows = this._getAllWindows();
-        for (const win of windows) {
-            if (win.get_id() === id) {
-                return win;
-            }
-        }
-        return null;
+        return this._findWindowByPredicate(win => win.get_id() === id);
     }
 
     _findWindowByPredicate(predicate) {
-        const windows = this._getAllWindows();
-        for (const win of windows) {
-            if (predicate(win)) {
-                return win;
-            }
-        }
-        return null;
+        return this._getAllWindows().find(predicate) ?? null;
     }
 
     _isValidIndex(value, count) {
@@ -563,7 +551,7 @@ export class WindowControlService {
         console.debug(`[Window Control] GetWorkarea(${monitorIndex}) called`);
         try {
             const numMonitors = global.display.get_n_monitors();
-            if (monitorIndex < 0 || monitorIndex >= numMonitors) {
+            if (!this._isValidIndex(monitorIndex, numMonitors)) {
                 console.debug(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors - 1})`);
                 invocation.return_value(new GLib.Variant('(iiii)', [-1, -1, -1, -1]));
                 return;
@@ -648,8 +636,7 @@ export class WindowControlService {
         }
         return this._actOnWindow(windowId, 'MoveToWorkspace', win => {
             win.change_workspace_by_index(workspaceIndex, false);
-            return !win.is_on_all_workspaces() &&
-                win.get_workspace()?.index() === workspaceIndex;
+            return _workspaceIndex(win) === workspaceIndex;
         });
     }
 
