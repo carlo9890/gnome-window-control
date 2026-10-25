@@ -528,29 +528,21 @@ export class WindowControlService {
     }
 
     // (-1, -1, -1, -1) means one thing only: the index is not a monitor. A
-    // lookup that throws raises instead, so a caller never reports a monitor
-    // that exists as missing. Async only to answer with return_dbus_error();
-    // see NamedError for why it does not throw.
-    GetWorkareaAsync([monitorIndex], invocation) {
+    // lookup that throws reaches GJS, which answers with an error, so a caller
+    // never reports a monitor that exists as missing.
+    GetWorkarea(monitorIndex) {
         console.debug(`[Window Control] GetWorkarea(${monitorIndex}) called`);
-        try {
-            const numMonitors = global.display.get_n_monitors();
-            if (!this._isValidIndex(monitorIndex, numMonitors)) {
-                console.debug(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors - 1})`);
-                invocation.return_value(new GLib.Variant('(iiii)', [-1, -1, -1, -1]));
-                return;
-            }
-
-            const workspace = global.workspace_manager.get_active_workspace();
-            const rect = workspace.get_work_area_for_monitor(monitorIndex);
-
-            console.debug(`[Window Control] GetWorkarea(${monitorIndex}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
-            invocation.return_value(
-                new GLib.Variant('(iiii)', [rect.x, rect.y, rect.width, rect.height]));
-        } catch (e) {
-            console.error(`[Window Control] GetWorkarea() error: ${e.message}`);
-            invocation.return_dbus_error(DBUS_ERROR_FAILED, e.message);
+        const numMonitors = global.display.get_n_monitors();
+        if (!this._isValidIndex(monitorIndex, numMonitors)) {
+            console.debug(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors - 1})`);
+            return [-1, -1, -1, -1];
         }
+
+        const workspace = global.workspace_manager.get_active_workspace();
+        const rect = workspace.get_work_area_for_monitor(monitorIndex);
+
+        console.debug(`[Window Control] GetWorkarea(${monitorIndex}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
+        return [rect.x, rect.y, rect.width, rect.height];
     }
 
     ListWorkspaces() {

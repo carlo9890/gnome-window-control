@@ -37,8 +37,8 @@ If it fails, the code has a syntax error and must not be committed.
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
   An `...Async` handler answers its invocation itself, and answers an
-  unexpected throw with `Failed`: `_geometryCall`, `GetWorkareaAsync` and the
-  two wait handlers catch for that.
+  unexpected throw with `Failed`: `_geometryCall` and the two wait handlers
+  catch for that.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
 

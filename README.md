@@ -480,7 +480,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Resize` | `(tii) -> ()` | Resize window to (width, height). Raises on failure |
 | `MoveResize` | `(tiiii) -> ()` | Move and resize window. Raises on failure |
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
-| `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area; `(-1, -1, -1, -1)` for an index that is not a monitor. Raises `Failed` if the lookup throws |
+| `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area; `(-1, -1, -1, -1)` for an index that is not a monitor, and only then |
 | `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |
 | `GetCapabilities` | `() -> as` | The feature names this extension supports, e.g. `['rules']` |
 | `Minimize` | `(t) -> b` | Minimize window; `false` also for a window the shell does not let minimize |
@@ -503,8 +503,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 
 ### Errors
 
-`Move`, `Resize` and `MoveResize` return nothing and raise instead; `WaitForWindow`,
-`WaitForGeometry` and `GetWorkarea` raise too. The ERRORS block in
+`Move`, `Resize` and `MoveResize` return nothing and raise instead;
+`WaitForWindow` and `WaitForGeometry` raise too. The ERRORS block in
 `window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
 errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
 raises without declaring them there, and `org.gnome.gjs.JSError.*` is the name
@@ -517,7 +517,7 @@ GJS raises when any other method throws.
 | `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
 | `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending |
 | `org.freedesktop.DBus.Error.InvalidArgs` | A size or a wait time was not positive, `timeout_ms` was below `quiet_ms`, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
-| `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize`, `WaitForWindow`, `WaitForGeometry` or `GetWorkarea` raised something unexpected |
+| `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize`, `WaitForWindow` or `WaitForGeometry` raised something unexpected |
 | `org.gnome.gjs.JSError.*` | Any other method threw a JavaScript `Error` unexpectedly; GJS names the D-Bus error after it (`org.gnome.gjs.JSError.TypeError`) |
 
 **Breaking change in extension version 10.** Before it, those three methods

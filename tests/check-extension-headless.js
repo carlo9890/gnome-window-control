@@ -474,19 +474,15 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // -- GetWorkarea: a missing monitor and a lookup that throws -----------------
     //
     // (-1, -1, -1, -1) is "no such monitor" and nothing else: a lookup that throws
-    // raises Failed, so a caller never reports monitor 0 as missing.
+    // reaches GJS, so a caller never reports monitor 0 as missing.
 
     {
         const service = new WindowControlService({ version: 0 });
-        const present = invocation();
-        service.GetWorkareaAsync([0], present);
-        check('GetWorkarea answers the workarea of a monitor', showReply(present) ===
-            '{"value":[0,0,1920,1080]}', showReply(present));
+        const present = JSON.stringify(service.GetWorkarea(0));
+        check('GetWorkarea answers the workarea of a monitor', present === '[0,0,1920,1080]', present);
 
-        const missing = invocation();
-        service.GetWorkareaAsync([1], missing);
-        check('GetWorkarea answers -1 for an index that is not a monitor', showReply(missing) ===
-            '{"value":[-1,-1,-1,-1]}', showReply(missing));
+        const missing = JSON.stringify(service.GetWorkarea(1));
+        check('GetWorkarea answers -1 for an index that is not a monitor', missing === '[-1,-1,-1,-1]', missing);
 
         const manager = global.workspace_manager;
         global.workspace_manager = {
@@ -494,11 +490,15 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
                 get_work_area_for_monitor: () => { throw new Error('no workarea'); },
             }),
         };
-        const failed = invocation();
-        service.GetWorkareaAsync([0], failed);
-        global.workspace_manager = manager;
-        check('GetWorkarea raises Failed when the lookup throws', showReply(failed) ===
-            '{"error":"org.freedesktop.DBus.Error.Failed","message":"no workarea"}', showReply(failed));
+        let error = null;
+        try {
+            service.GetWorkarea(0);
+        } catch (e) {
+            error = e;
+        } finally {
+            global.workspace_manager = manager;
+        }
+        check('GetWorkarea lets a lookup that throws through to GJS', error?.message === 'no workarea', `${error}`);
         service.unexport();
     }
 

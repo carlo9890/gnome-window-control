@@ -80,8 +80,7 @@ export const DBUS_INTERFACE_XML = `
       which failure happened and every caller had to guess it back by refetching
       the window and reading its flags -- a guess that cannot see tiling at all.
       WaitForWindow and WaitForGeometry raise too, for the same reason.
-      GetWorkarea raises Failed when its lookup throws, so its -1 answer means
-      only "no such monitor". These are the names the extension raises on
+      These are the names the extension raises on
       purpose; a handler never invents a name at the throw site. Any other
       method that throws an Error unexpectedly answers with GJS's own
       org.gnome.gjs.JSError.<name> (TypeError, for example).
@@ -101,8 +100,8 @@ export const DBUS_INTERFACE_XML = `
             quiet_ms, or a wait selector was refused (unknown kind, empty
             substring, pid that is not a positive decimal integer)
         org.freedesktop.DBus.Error.Failed
-            Move, Resize, MoveResize, WaitForWindow, WaitForGeometry or
-            GetWorkarea raised something unexpected
+            Move, Resize, MoveResize, WaitForWindow or WaitForGeometry raised
+            something unexpected
 
       BREAKING: before extension version 10 these three returned 'b success'.
       A client written against the old signature fails to parse the reply.
@@ -164,7 +163,7 @@ export const DBUS_INTERFACE_XML = `
 
     <!--
       The usable area of the monitor: (-1, -1, -1, -1) when the index is not a
-      monitor; raises Failed when the lookup throws (see ERRORS above).
+      monitor, and only then: a lookup that throws answers with an error.
     -->
     <method name="GetWorkarea">
       <arg type="i" direction="in" name="monitor_index"/>
