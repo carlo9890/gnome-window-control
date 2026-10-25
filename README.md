@@ -515,7 +515,7 @@ raises without declaring them there.
 | `org.gnome.Shell.Extensions.WindowControl.Refused` | The frame is pinned by fullscreen, maximize or tiling — the message names which |
 | `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
 | `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending |
-| `org.freedesktop.DBus.Error.InvalidArgs` | An argument was not a finite number, a size was not positive, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
+| `org.freedesktop.DBus.Error.InvalidArgs` | A size or a wait time was not positive, `timeout_ms` was below `quiet_ms`, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
 | `org.freedesktop.DBus.Error.Failed` | One of the methods above raised something unexpected |
 | `org.gnome.gjs.JSError.*` | Any other method threw a JavaScript `Error` unexpectedly; GJS names the D-Bus error after it (`org.gnome.gjs.JSError.TypeError`) |
 

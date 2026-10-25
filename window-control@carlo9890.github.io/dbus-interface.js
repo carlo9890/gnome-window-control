@@ -142,9 +142,9 @@ export const DBUS_INTERFACE_XML = `
             the extension was disabled while a WaitForWindow or
             WaitForGeometry call was pending
         org.freedesktop.DBus.Error.InvalidArgs
-            an argument was not a finite number, a size was not positive, or a
-            wait selector was refused (unknown kind, empty substring, pid that
-            is not a positive decimal integer)
+            a size or a wait time was not positive, timeout_ms was below
+            quiet_ms, or a wait selector was refused (unknown kind, empty
+            substring, pid that is not a positive decimal integer)
         org.freedesktop.DBus.Error.Failed
             one of the methods above raised something unexpected
 

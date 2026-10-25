@@ -68,14 +68,6 @@ class NamedError extends Error {
     }
 }
 
-function _areFiniteNumbers(values) {
-    return values.every(v => typeof v === 'number' && Number.isFinite(v));
-}
-
-function _arePositiveNumbers(values) {
-    return _areFiniteNumbers(values) && values.every(v => v > 0);
-}
-
 function _workspaceIndex(win) {
     return win.is_on_all_workspaces() ? -1 : (win.get_workspace()?.index() ?? -1);
 }
@@ -479,10 +471,6 @@ export class WindowControlService {
     MoveAsync([windowId, x, y], invocation) {
         console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         this._geometryCall(invocation, 'Move', () => {
-            if (!_areFiniteNumbers([x, y])) {
-                throw new NamedError(DBUS_ERROR_INVALID_ARGS,
-                    'Move: x and y must be finite numbers');
-            }
             const win = this._geometryTarget(windowId, 'Move');
             win.move_frame(true, x, y);
             console.debug(`[Window Control] Move(${windowId}) -> ok`);
@@ -493,9 +481,9 @@ export class WindowControlService {
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._geometryCall(invocation, 'Resize', () => {
-            if (!_arePositiveNumbers([width, height])) {
+            if (width <= 0 || height <= 0) {
                 throw new NamedError(DBUS_ERROR_INVALID_ARGS,
-                    'Resize: width and height must be positive finite numbers');
+                    'Resize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'Resize');
             const rect = win.get_frame_rect();
@@ -508,9 +496,9 @@ export class WindowControlService {
     MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         this._geometryCall(invocation, 'MoveResize', () => {
-            if (!_areFiniteNumbers([x, y]) || !_arePositiveNumbers([width, height])) {
+            if (width <= 0 || height <= 0) {
                 throw new NamedError(DBUS_ERROR_INVALID_ARGS,
-                    'MoveResize: x and y must be finite and width and height positive');
+                    'MoveResize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'MoveResize');
             win.move_resize_frame(true, x, y, width, height);
@@ -660,7 +648,7 @@ export class WindowControlService {
         let waiter = null;
         try {
             const predicate = this._matchPredicate(kind, value);
-            if (!predicate || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+            if (!predicate || timeoutMs <= 0) {
                 console.debug('[Window Control] WaitForWindow() -> InvalidArgs');
                 invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
                     'WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0');
@@ -718,8 +706,7 @@ export class WindowControlService {
         console.debug(`[Window Control] WaitForGeometry(${windowId}, ${quietMs}, ${timeoutMs}) called`);
         let watcher = null;
         try {
-            if (!Number.isInteger(quietMs) || quietMs <= 0 ||
-                !Number.isInteger(timeoutMs) || timeoutMs < quietMs) {
+            if (quietMs <= 0 || timeoutMs < quietMs) {
                 console.debug('[Window Control] WaitForGeometry() -> InvalidArgs');
                 invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
                     'WaitForGeometry: quiet_ms > 0 and timeout_ms >= quiet_ms');
