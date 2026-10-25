@@ -83,7 +83,8 @@ export const DBUS_INTERFACE_XML = `
       These are the names the extension raises on
       purpose; a handler never invents a name at the throw site. Any other
       method that throws an Error unexpectedly answers with GJS's own
-      org.gnome.gjs.JSError.<name> (TypeError, for example).
+      org.gnome.gjs.JSError.<name> (TypeError, for example); before GNOME 50,
+      a wait method that throws sends no reply.
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
             no window has that id (WaitForGeometry: or it closed mid-wait)
@@ -100,8 +101,7 @@ export const DBUS_INTERFACE_XML = `
             quiet_ms, or a wait selector was refused (unknown kind, empty
             substring, pid that is not a positive decimal integer)
         org.freedesktop.DBus.Error.Failed
-            Move, Resize, MoveResize, WaitForWindow or WaitForGeometry raised
-            something unexpected
+            Move, Resize or MoveResize raised something unexpected
 
       BREAKING: before extension version 10 these three returned 'b success'.
       A client written against the old signature fails to parse the reply.

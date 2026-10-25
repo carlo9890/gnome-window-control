@@ -508,7 +508,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 `window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
 errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
 raises without declaring them there, and `org.gnome.gjs.JSError.*` is the name
-GJS raises when any other method throws.
+GJS raises when any other method throws. Before GNOME 50, a wait method that
+throws sends no reply, and the caller's D-Bus timeout ends the call.
 
 | Error name | Meaning |
 |------------|---------|
@@ -517,7 +518,7 @@ GJS raises when any other method throws.
 | `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
 | `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending |
 | `org.freedesktop.DBus.Error.InvalidArgs` | A size or a wait time was not positive, `timeout_ms` was below `quiet_ms`, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
-| `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize`, `WaitForWindow` or `WaitForGeometry` raised something unexpected |
+| `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize` or `MoveResize` raised something unexpected |
 | `org.gnome.gjs.JSError.*` | Any other method threw a JavaScript `Error` unexpectedly; GJS names the D-Bus error after it (`org.gnome.gjs.JSError.TypeError`) |
 
 **Breaking change in extension version 10.** Before it, those three methods
