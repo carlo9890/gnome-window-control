@@ -7,22 +7,25 @@ conflicts with a skill's default, this file wins.
 ## extensions.gnome.org review
 
 Required for every review that touches `window-control@carlo9890.github.io/`.
-A human reviewer on extensions.gnome.org reads every line of each upload and
-rejects it at the first violation; this review runs first, so that one passes.
-Do every step, on every such review:
+A human reviewer on extensions.gnome.org reads every file of each upload and
+rejects it at the first violation; a rejection costs a release and weeks in the
+queue. This review runs first, so that one passes. Do every step, on every such
+review:
 
 1. Fetch the
    [review guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html)
    and the
    [best practices](https://gjs.guide/extensions/review-guidelines/best-practices.html)
-   with WebFetch. Check every line under review against every rule on both
-   pages. Where this file and the pages conflict, the pages win.
-2. Read every comment as that reviewer does: it reads as a human maintainer
+   with WebFetch.
+2. Check every `.js` file under `window-control@carlo9890.github.io/` against
+   every rule on both pages, the files the change leaves untouched included:
+   the reviewer rejects the upload, not the diff.
+3. Read every comment as that reviewer does: it reads as a human maintainer
    wrote it, by the
    [AI-generated](https://gjs.guide/extensions/review-guidelines/review-guidelines.html#extensions-must-not-be-ai-generated)
    and [Comments](https://gjs.guide/extensions/review-guidelines/best-practices.html#comments)
    rules.
-3. Run shexli, GNOME's own analyzer, from the repo root. Pin `tree-sitter`:
+4. Run shexli, GNOME's own analyzer, from the repo root. Pin `tree-sitter`:
    shexli 0.2.1 pins neither dependency, and tree-sitter 0.26.0 segfaults it
    before any output. Pass the absolute path; a relative one fails with a
    `ValueError`.
@@ -32,9 +35,19 @@ Do every step, on every such review:
    shexli "$PWD/window-control@carlo9890.github.io"
    ```
 
-4. Flag each guideline violation, and each shexli finding that
-   [Out of scope](#out-of-scope--non-blocking) does not list — also one that
-   existing code repeats, or that a rule in this file seems to allow.
+5. The pages win over everything in this repository: this file, CODING.md, a
+   code comment, existing code and a test. A test that pins a pattern the
+   pages reject is wrong; change the test with the code.
+6. Each guideline violation, and each shexli finding that
+   [Out of scope](#out-of-scope--non-blocking) does not list, blocks the
+   merge. Its fix is a code change in the same PR. A follow-up, a "not
+   applied" outcome, or a prepared answer for the extensions.gnome.org
+   reviewer leaves it open.
+7. Out of scope is the maintainer's: a change that adds an entry there, for a
+   guideline point or a shexli finding, fails this review.
+
+The review is done when the extensions.gnome.org reviewer could read every file
+and find nothing to reject. "Probably" is not done.
 
 ## Quality rules
 
