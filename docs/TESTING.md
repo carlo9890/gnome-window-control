@@ -136,6 +136,9 @@ It pins:
   hidden on its own or because its parent is minimized;
 - `GetWorkarea` answers `(-1, -1, -1, -1)` only for an index that is not a
   monitor, and raises `Failed` when its lookup throws;
+- `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry` raise
+  `InvalidArgs`, with one reply, for a size or a wait time that is not
+  positive, and for a `timeout_ms` below `quiet_ms`;
 - a synchronous handler (`List`, `ListDetailed`, `Activate`, `ActivateBy*`)
   lets an unexpected throw through to GJS instead of answering `false` or `[]`;
 - the rules grace period for a window that is not `NORMAL` when shown.

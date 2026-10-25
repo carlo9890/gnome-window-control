@@ -502,6 +502,33 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         service.unexport();
     }
 
+    // -- InvalidArgs for a size or a wait time that is not positive -------------
+    //
+    // The window exists, so only the argument check can refuse the call.
+
+    {
+        const service = new WindowControlService({ version: 0 });
+        createWindow({ id: 9, wmClass: 'T' });
+        const calls = {
+            'Resize with a width of 0': call => service.ResizeAsync([9, 0, 10], call),
+            'Resize with a height of 0': call => service.ResizeAsync([9, 10, 0], call),
+            'MoveResize with a width of 0': call => service.MoveResizeAsync([9, 0, 0, 0, 100], call),
+            'MoveResize with a negative height': call => service.MoveResizeAsync([9, 0, 0, 100, -5], call),
+            'WaitForWindow with a timeout of 0': call => service.WaitForWindowAsync(['class', 'T', 0], call),
+            'WaitForGeometry with a quiet_ms of 0': call => service.WaitForGeometryAsync([9, 0, 10], call),
+            'WaitForGeometry with timeout_ms below quiet_ms': call => service.WaitForGeometryAsync([9, 50, 10], call),
+        };
+        for (const [name, start] of Object.entries(calls)) {
+            const call = invocation();
+            start(call);
+            check(`${name} raises InvalidArgs once`,
+                call.reply?.error === 'org.freedesktop.DBus.Error.InvalidArgs' && call.replies === 1,
+                `${showReply(call)}, ${call.replies} reply(ies)`);
+        }
+        service.unexport();
+        windows.length = 0;
+    }
+
     // -- A synchronous handler that throws ------------------------------------------
     //
     // The throw reaches GJS, which answers org.gnome.gjs.JSError.<name>; a false
