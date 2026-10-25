@@ -230,39 +230,35 @@ export class WindowRules {
     // the window does not have yet. So the window stays tracked and the rule
     // is applied in full once it is shown, exactly as on an older shell.
     _preplace(win, config) {
-        try {
-            // Wayland clients only: for an X11 window mutter reads the frame
-            // back as the client's size hints, and one with server-side
-            // decorations then comes out larger by its title bar.
-            if (!config.get_is_initial() ||
-                win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
-                win.get_window_type() !== Meta.WindowType.NORMAL ||
-                win.is_fullscreen() || maximizeFlags(win) !== 0)
-                return;
-            const index = this._matchIndex(win);
-            if (index < 0)
-                return;
-            const rule = this._rules[index];
-            if (!rule.geometry || rule.geometry.kind === 'center')
-                return;
-            // Without a monitor in the rule, the one mutter's own placement
-            // would pick: a window with a parent goes over that parent, any
-            // other window under the pointer. The window has no position to
-            // derive one from yet.
-            const monitor = rule.monitor ?? win.get_transient_for()?.get_monitor() ??
-                global.display.get_current_monitor();
-            if (monitor < 0 || monitor >= global.display.get_n_monitors())
-                return;
-            const target = this._resolve(rule.geometry, win, workareaOf(win, monitor));
-            if (!target)
-                return;
-            config.set_position(target.x, target.y);
-            config.set_size(target.width, target.height);
-            this._tracked.get(win).headStart = { rule, monitor };
-            console.debug(`[Window Control] rules[${index}] -> ${win.get_id()}: ${rule.geometry.kind} set before the first frame`);
-        } catch (e) {
-            console.error(`[Window Control] rules: initial configuration: ${e.message}`);
-        }
+        // Wayland clients only: for an X11 window mutter reads the frame
+        // back as the client's size hints, and one with server-side
+        // decorations then comes out larger by its title bar.
+        if (!config.get_is_initial() ||
+            win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
+            win.get_window_type() !== Meta.WindowType.NORMAL ||
+            win.is_fullscreen() || maximizeFlags(win) !== 0)
+            return;
+        const index = this._matchIndex(win);
+        if (index < 0)
+            return;
+        const rule = this._rules[index];
+        if (!rule.geometry || rule.geometry.kind === 'center')
+            return;
+        // Without a monitor in the rule, the one mutter's own placement
+        // would pick: a window with a parent goes over that parent, any
+        // other window under the pointer. The window has no position to
+        // derive one from yet.
+        const monitor = rule.monitor ?? win.get_transient_for()?.get_monitor() ??
+            global.display.get_current_monitor();
+        if (monitor < 0 || monitor >= global.display.get_n_monitors())
+            return;
+        const target = this._resolve(rule.geometry, win, workareaOf(win, monitor));
+        if (!target)
+            return;
+        config.set_position(target.x, target.y);
+        config.set_size(target.width, target.height);
+        this._tracked.get(win).headStart = { rule, monitor };
+        console.debug(`[Window Control] rules[${index}] -> ${win.get_id()}: ${rule.geometry.kind} set before the first frame`);
     }
 
     _evaluate(win) {
@@ -309,61 +305,53 @@ export class WindowRules {
 
     _apply(win, rule, index, headStartMonitor) {
         const id = win.get_id();
-        try {
-            if (rule.workspace !== null)
-                win.change_workspace_by_index(rule.workspace, true);
-            if (rule.monitor !== null) {
-                if (rule.monitor >= global.display.get_n_monitors()) {
-                    console.debug(`[Window Control] rules[${index}] -> ${id}: no such monitor, skipped`);
-                    return;
-                }
-                win.move_to_monitor(rule.monitor);
-            }
-            if (!rule.geometry) {
-                console.debug(`[Window Control] rules[${index}] -> ${id}: applied`);
+        if (rule.workspace !== null)
+            win.change_workspace_by_index(rule.workspace, true);
+        if (rule.monitor !== null) {
+            if (rule.monitor >= global.display.get_n_monitors()) {
+                console.debug(`[Window Control] rules[${index}] -> ${id}: no such monitor, skipped`);
                 return;
             }
-            if (win.is_fullscreen()) {
-                console.debug(`[Window Control] rules[${index}] -> ${id}: fullscreen, geometry skipped`);
-                return;
-            }
-            if (maximizeFlags(win) === 0) {
-                this._placeFrame(win, rule, index, headStartMonitor);
-                return;
-            }
-            // A client that restores itself maximized, or one mutter
-            // auto-maximized for filling the screen, would have the request
-            // dropped outright (see _frameRefusal in dbus-service.js). The rule
-            // asked for a rectangle, so the rectangle wins -- once the restore
-            // has landed (see UnmaximizeWait). The window is tracked again until
-            // then so 'unmanaged' and disable() can still cancel it.
-            this._untrack(win);
-            const entry = { ids: [], graceId: 0, applyId: 0, shown: true, wait: null };
-            entry.wait = new UnmaximizeWait(win, landed => {
-                this._tracked.delete(win);
-                if (landed)
-                    this._placeFrame(win, rule, index, headStartMonitor);
-            });
-            this._tracked.set(win, entry);
-        } catch (e) {
-            console.error(`[Window Control] rules[${index}] -> ${id}: ${e.message}`);
+            win.move_to_monitor(rule.monitor);
         }
+        if (!rule.geometry) {
+            console.debug(`[Window Control] rules[${index}] -> ${id}: applied`);
+            return;
+        }
+        if (win.is_fullscreen()) {
+            console.debug(`[Window Control] rules[${index}] -> ${id}: fullscreen, geometry skipped`);
+            return;
+        }
+        if (maximizeFlags(win) === 0) {
+            this._placeFrame(win, rule, index, headStartMonitor);
+            return;
+        }
+        // A client that restores itself maximized, or one mutter
+        // auto-maximized for filling the screen, would have the request
+        // dropped outright (see _frameRefusal in dbus-service.js). The rule
+        // asked for a rectangle, so the rectangle wins -- once the restore
+        // has landed (see UnmaximizeWait). The window is tracked again until
+        // then so 'unmanaged' and disable() can still cancel it.
+        this._untrack(win);
+        const entry = { ids: [], graceId: 0, applyId: 0, shown: true, wait: null };
+        entry.wait = new UnmaximizeWait(win, landed => {
+            this._tracked.delete(win);
+            if (landed)
+                this._placeFrame(win, rule, index, headStartMonitor);
+        });
+        this._tracked.set(win, entry);
     }
 
     _placeFrame(win, rule, index, headStartMonitor) {
         const id = win.get_id();
-        try {
-            const workarea = workareaOf(win, rule.monitor ?? headStartMonitor ?? win.get_monitor());
-            const target = this._resolve(rule.geometry, win, workarea);
-            if (!target) {
-                console.debug(`[Window Control] rules[${index}] -> ${id}: resolves to nothing on this workarea, skipped`);
-                return;
-            }
-            win.move_resize_frame(true, target.x, target.y, target.width, target.height);
-            console.debug(`[Window Control] rules[${index}] -> ${id}: ${rule.geometry.kind} applied`);
-        } catch (e) {
-            console.error(`[Window Control] rules[${index}] -> ${id}: ${e.message}`);
+        const workarea = workareaOf(win, rule.monitor ?? headStartMonitor ?? win.get_monitor());
+        const target = this._resolve(rule.geometry, win, workarea);
+        if (!target) {
+            console.debug(`[Window Control] rules[${index}] -> ${id}: resolves to nothing on this workarea, skipped`);
+            return;
         }
+        win.move_resize_frame(true, target.x, target.y, target.width, target.height);
+        console.debug(`[Window Control] rules[${index}] -> ${id}: ${rule.geometry.kind} applied`);
     }
 
     _resolve(geometry, win, workarea) {
