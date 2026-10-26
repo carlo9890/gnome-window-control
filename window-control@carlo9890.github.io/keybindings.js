@@ -17,7 +17,7 @@ import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
 // the schema: GSettings aborts the shell on a key it does not know, which the
-// registration check in _add cannot catch.
+// registration check in _add cannot detect.
 const TILE_BINDINGS = {
     'tile-top-left': 'top-left',
     'tile-top-center': 'top-center',
@@ -37,31 +37,22 @@ export class WindowKeybindings {
         this._pending = new Map();        // Meta.Window -> UnmaximizeWait
     }
 
-    // Never throws: the shortcuts are secondary to the D-Bus service, so a
-    // schema or registration failure logs and leaves the extension running
-    // without them rather than failing enable(). The schema is read here, not
-    // by the caller, so a copy without gschemas.compiled is that case too.
-    enable(extension) {
-        try {
-            const settings = extension.getSettings();
-            for (const [name, position] of Object.entries(TILE_BINDINGS)) {
-                this._add(name, settings,
-                    (display, win) => this._tile(name, win, position));
+    // All or none: when one shortcut cannot be registered, the ones before it
+    // go too, and the extension runs without shortcuts.
+    enable(settings) {
+        const handlers = [
+            ...Object.entries(TILE_BINDINGS).map(([name, position]) =>
+                [name, (display, win) => this._tile(name, win, position)]),
+            [CYCLE_WIDE_BINDING, (display, win) => this._cycleWide(win)],
+        ];
+        for (const [name, handler] of handlers) {
+            if (!this._add(name, settings, handler)) {
+                this.disable();
+                console.warn(`[Window Control] cannot register the ${name} shortcut; keyboard shortcuts disabled`);
+                return;
             }
-            this._add(CYCLE_WIDE_BINDING, settings,
-                (display, win) => this._cycleWide(win));
-            console.log(`[Window Control] ${this._names.length} keyboard shortcut(s) registered`);
-        } catch (e) {
-            // All or none: the shortcuts registered before the failure go too,
-            // so the line below is true.
-            this.disable();
-            console.error(`[Window Control] keyboard shortcuts disabled: ${e.message}`);
         }
-    }
-
-    // Whether the shortcuts are served: all of them, or none (see enable).
-    get registered() {
-        return this._names.length > 0;
+        console.log(`[Window Control] ${this._names.length} keyboard shortcut(s) registered`);
     }
 
     disable() {
@@ -71,6 +62,11 @@ export class WindowKeybindings {
         for (const wait of this._pending.values())
             wait.destroy();
         this._pending.clear();
+    }
+
+    // Whether the shortcuts are served: all of them, or none (see enable).
+    get registered() {
+        return this._names.length > 0;
     }
 
     _add(name, settings, handler) {
@@ -84,8 +80,9 @@ export class WindowKeybindings {
             Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
             Shell.ActionMode.NORMAL, handler);
         if (action === Meta.KeyBindingAction.NONE)
-            throw new Error(`cannot register the ${name} shortcut`);
+            return false;
         this._names.push(name);
+        return true;
     }
 
     _tile(name, win, position) {

@@ -55,9 +55,11 @@ may contain.
   touch the extension.
 - **`wctl` fails with `org.gnome.gjs.JSError.<name>`** — a handler threw and GJS
   answered for it. GJS logs it as `JS ERROR: Exception in method call: <Method>`.
-- **`wctl` fails with `org.freedesktop.DBus.Error.Failed`** — a geometry or wait
-  call threw; the `[Window Control] <Method>() error:` line names the method and
+- **`wctl` fails with `org.freedesktop.DBus.Error.Failed`** — a geometry call
+  threw; the `[Window Control] <Method>() error:` line names the method and
   message.
+- **`wctl wait` fails with a D-Bus timeout** — on GNOME 45-49 the wait handler
+  threw and GJS sent no reply; the `JS ERROR` line names the cause.
 - **A method silently no-ops** — it answers `false` with no line in the default
   log: no NORMAL window has that ID or matches the `ActivateBy*` value, an index
   is out of range, or mutter declined the change. The `console.debug()` trace

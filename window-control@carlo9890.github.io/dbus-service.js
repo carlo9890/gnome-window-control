@@ -124,8 +124,7 @@ export class WindowControlService {
         // after.
         this._createdSinceStart = new WeakSet();
         this._firstShowWatches = new Map();
-        this._windowCreatedId = global.display.connect('window-created',
-            (display, win) => this._onWindowCreated(win));
+        this._windowCreatedId = 0;
         // WaitForGeometry state, one entry per pending call.
         this._geometryWatchers = [];
     }
@@ -633,48 +632,35 @@ export class WindowControlService {
     WaitForWindowAsync([kind, value, timeoutMs], invocation) {
         // `kind` is not validated yet, so it is not logged here.
         console.debug('[Window Control] WaitForWindow() called');
-        let waiter = null;
-        try {
-            const predicate = this._matchPredicate(kind, value);
-            if (!predicate || timeoutMs <= 0) {
-                console.debug('[Window Control] WaitForWindow() -> InvalidArgs');
-                invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
-                    'WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0');
-                return;
-            }
-            console.debug(`[Window Control] WaitForWindow(${kind}, ..., ${timeoutMs}) validated`);
-
-            const existing = this._findWindowByPredicate(w => predicate(w) && !this._isUnshown(w));
-            if (existing) {
-                console.debug(`[Window Control] WaitForWindow(${kind}) -> ${existing.get_id()} (already present)`);
-                invocation.return_value(new GLib.Variant('(t)', [existing.get_id()]));
-                return;
-            }
-
-            waiter = { predicate, invocation, timeoutId: 0, callerWatch: null };
-            waiter.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
-                waiter.timeoutId = 0;
-                console.debug(`[Window Control] WaitForWindow(${kind}) -> 0 (timeout)`);
-                this._finishWaiter(waiter, 0);
-                return GLib.SOURCE_REMOVE;
-            });
-            this._waiters.push(waiter);
-            waiter.callerWatch = this._watchCaller(invocation, () => {
-                console.debug(`[Window Control] WaitForWindow(${kind}) dropped (caller left the bus)`);
-                this._retireWaiter(waiter);
-            });
-            this._trackExistingWindows();
-        } catch (e) {
-            console.error(`[Window Control] WaitForWindow() error: ${e.message}`);
-            // Caught here, not left to GJS: once the waiter is registered it
-            // owns the invocation and its timeout will reply, so an answer from
-            // GJS or from here would be a second reply on the same invocation.
-            // Retire it instead, which replies exactly once.
-            if (waiter && this._waiters.includes(waiter))
-                this._failWaiter(waiter, e.message);
-            else
-                invocation.return_dbus_error(DBUS_ERROR_FAILED, e.message);
+        const predicate = this._matchPredicate(kind, value);
+        if (!predicate || timeoutMs <= 0) {
+            console.debug('[Window Control] WaitForWindow() -> InvalidArgs');
+            invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
+                'WaitForWindow: kind must be class|title|substring|pid (pid numeric) and timeout_ms > 0');
+            return;
         }
+        console.debug(`[Window Control] WaitForWindow(${kind}, ..., ${timeoutMs}) validated`);
+
+        const existing = this._findWindowByPredicate(w => predicate(w) && !this._isUnshown(w));
+        if (existing) {
+            console.debug(`[Window Control] WaitForWindow(${kind}) -> ${existing.get_id()} (already present)`);
+            invocation.return_value(new GLib.Variant('(t)', [existing.get_id()]));
+            return;
+        }
+
+        const waiter = { predicate, invocation, timeoutId: 0, callerWatch: null };
+        waiter.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
+            waiter.timeoutId = 0;
+            console.debug(`[Window Control] WaitForWindow(${kind}) -> 0 (timeout)`);
+            this._finishWaiter(waiter, 0);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._waiters.push(waiter);
+        waiter.callerWatch = this._watchCaller(invocation, () => {
+            console.debug(`[Window Control] WaitForWindow(${kind}) dropped (caller left the bus)`);
+            this._retireWaiter(waiter);
+        });
+        this._trackExistingWindows();
     }
 
     // Reply once the window's frame has held still for quiet_ms, with the rect
@@ -692,70 +678,52 @@ export class WindowControlService {
     // a signal, so the timer only has to outlast the gap between two of them.
     WaitForGeometryAsync([windowId, quietMs, timeoutMs], invocation) {
         console.debug(`[Window Control] WaitForGeometry(${windowId}, ${quietMs}, ${timeoutMs}) called`);
-        let watcher = null;
-        try {
-            if (quietMs <= 0 || timeoutMs < quietMs) {
-                console.debug('[Window Control] WaitForGeometry() -> InvalidArgs');
-                invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
-                    'WaitForGeometry: quiet_ms > 0 and timeout_ms >= quiet_ms');
-                return;
-            }
-
-            const win = this._findWindowById(windowId);
-            if (!win) {
-                console.debug(`[Window Control] WaitForGeometry(${windowId}) -> NotFound`);
-                invocation.return_dbus_error(DBUS_ERROR_NOT_FOUND,
-                    `Window not found: ${windowId}`);
-                return;
-            }
-
-            watcher = {
-                win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [], callerWatch: null,
-            };
-            // Registered before anything is connected, and each id is stored
-            // as it is obtained: a throw part-way through then lands in the
-            // catch below, which retires the watcher and disconnects whatever
-            // was connected. Registering after would leave those handlers
-            // attached for the window's whole life, `bump` arming timers that
-            // settle nothing.
-            this._geometryWatchers.push(watcher);
-            const bump = () => this._restartQuietPeriod(watcher);
-            watcher.signalIds.push(win.connect('size-changed', bump));
-            watcher.signalIds.push(win.connect('position-changed', bump));
-            watcher.signalIds.push(win.connect('unmanaged', () => this._failGeometryWatcher(
-                watcher, DBUS_ERROR_NOT_FOUND,
-                `Window ${windowId} closed while waiting for its frame to settle`)));
-            watcher.callerWatch = this._watchCaller(invocation, () => {
-                if (this._retireGeometryWatcher(watcher))
-                    console.debug(`[Window Control] WaitForGeometry(${windowId}) dropped (caller left the bus)`);
-            });
-
-            // The quiet period is attached before the overall timeout. A caller
-            // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
-            // sources of equal priority that come ready together in the order
-            // they were attached -- so with the timeout first, a frame that was
-            // never moving would answer Timeout instead of settling.
-            //
-            // Starting it now is also what lets an already still frame settle,
-            // rather than waiting for a change that never comes.
-            this._restartQuietPeriod(watcher);
-            watcher.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
-                watcher.timeoutId = 0;
-                console.debug(`[Window Control] WaitForGeometry(${windowId}) -> Timeout`);
-                this._failGeometryWatcher(watcher, DBUS_ERROR_TIMEOUT,
-                    `Window ${windowId} frame did not settle within ${timeoutMs} ms`);
-                return GLib.SOURCE_REMOVE;
-            });
-        } catch (e) {
-            console.error(`[Window Control] WaitForGeometry() error: ${e.message}`);
-            // Caught here, not left to GJS, for the reason WaitForWindow gives:
-            // a registered watcher owns the invocation and one of its timers
-            // will reply.
-            if (watcher && this._geometryWatchers.includes(watcher))
-                this._failGeometryWatcher(watcher, DBUS_ERROR_FAILED, e.message);
-            else
-                invocation.return_dbus_error(DBUS_ERROR_FAILED, e.message);
+        if (quietMs <= 0 || timeoutMs < quietMs) {
+            console.debug('[Window Control] WaitForGeometry() -> InvalidArgs');
+            invocation.return_dbus_error(DBUS_ERROR_INVALID_ARGS,
+                'WaitForGeometry: quiet_ms > 0 and timeout_ms >= quiet_ms');
+            return;
         }
+
+        const win = this._findWindowById(windowId);
+        if (!win) {
+            console.debug(`[Window Control] WaitForGeometry(${windowId}) -> NotFound`);
+            invocation.return_dbus_error(DBUS_ERROR_NOT_FOUND,
+                `Window not found: ${windowId}`);
+            return;
+        }
+
+        const watcher = {
+            win, windowId, invocation, quietMs, quietId: 0, timeoutId: 0, signalIds: [], callerWatch: null,
+        };
+        this._geometryWatchers.push(watcher);
+        const bump = () => this._restartQuietPeriod(watcher);
+        watcher.signalIds.push(win.connect('size-changed', bump));
+        watcher.signalIds.push(win.connect('position-changed', bump));
+        watcher.signalIds.push(win.connect('unmanaged', () => this._failGeometryWatcher(
+            watcher, DBUS_ERROR_NOT_FOUND,
+            `Window ${windowId} closed while waiting for its frame to settle`)));
+        watcher.callerWatch = this._watchCaller(invocation, () => {
+            if (this._retireGeometryWatcher(watcher))
+                console.debug(`[Window Control] WaitForGeometry(${windowId}) dropped (caller left the bus)`);
+        });
+
+        // The quiet period is attached before the overall timeout. A caller
+        // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
+        // sources of equal priority that come ready together in the order
+        // they were attached -- so with the timeout first, a frame that was
+        // never moving would answer Timeout instead of settling.
+        //
+        // Starting it now is also what lets an already still frame settle,
+        // rather than waiting for a change that never comes.
+        this._restartQuietPeriod(watcher);
+        watcher.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
+            watcher.timeoutId = 0;
+            console.debug(`[Window Control] WaitForGeometry(${windowId}) -> Timeout`);
+            this._failGeometryWatcher(watcher, DBUS_ERROR_TIMEOUT,
+                `Window ${windowId} frame did not settle within ${timeoutMs} ms`);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     // Every frame change restarts the quiet timer, so it only fires once the
@@ -978,11 +946,6 @@ export class WindowControlService {
         waiter.invocation.return_value(new GLib.Variant('(t)', [windowId]));
     }
 
-    _failWaiter(waiter, message) {
-        this._retireWaiter(waiter);
-        waiter.invocation.return_dbus_error(DBUS_ERROR_FAILED, message);
-    }
-
     // Drop a waiter's timeout source and caller watch and remove it from the
     // pending list, so exactly one reply can still be sent on its invocation.
     // A waiter whose caller left the bus is only retired: there is no one to
@@ -1121,21 +1084,20 @@ export class WindowControlService {
             win => win.delete(global.get_current_time()));
     }
 
+    // The export goes first: it throws when the object path is taken, and the
+    // shell calls no disable() for an extension whose enable() threw.
     export() {
         this._dbusImpl.export(Gio.DBus.session, DBUS_OBJECT_PATH);
+        this._windowCreatedId = global.display.connect('window-created',
+            (display, win) => this._onWindowCreated(win));
     }
 
-    // Also tears down a service whose export() failed. Returns whether the
-    // object was exported.
     unexport() {
-        const exported = this._dbusImpl.get_connection() !== null;
         global.display.disconnect(this._windowCreatedId);
         this._windowCreatedId = 0;
         this._cancelWaiters();
         this._cancelGeometryWatchers();
-        if (exported)
-            this._dbusImpl.unexport();
+        this._dbusImpl.unexport();
         this._dbusImpl = null;
-        return exported;
     }
 }

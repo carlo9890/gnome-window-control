@@ -69,11 +69,6 @@ export class WindowRules {
         this._loadCancellable = null;
     }
 
-    // Never throws: window rules are secondary to the D-Bus service, so a
-    // config-dir or monitor failure logs and leaves the extension running
-    // rather than failing enable() and leaving the service exported but the
-    // extension marked broken. The file is read either way: without the
-    // directory there is none, and without the monitor it is read once.
     enable() {
         const dir = Gio.File.new_for_path(CONFIG_DIR);
         try {
@@ -82,18 +77,14 @@ export class WindowRules {
             if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
                 console.error(`[Window Control] cannot create ${CONFIG_DIR}: ${e.message}`);
         }
+        // The directory rather than the file: a file monitor misses an editor
+        // that saves by writing a new file and renaming it over the old one.
+        this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
+            if (file.get_basename() === RULES_FILE)
+                this._scheduleReload();
+        });
         this._load();
-        try {
-            // The directory rather than the file: a file monitor misses an editor
-            // that saves by writing a new file and renaming it over the old one.
-            this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-            this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
-                if (file.get_basename() === RULES_FILE)
-                    this._scheduleReload();
-            });
-        } catch (e) {
-            console.error(`[Window Control] ${RULES_FILE} is not watched for changes: ${e.message}`);
-        }
     }
 
     disable() {
@@ -103,11 +94,9 @@ export class WindowRules {
         }
         this._loadCancellable?.cancel();
         this._loadCancellable = null;
-        if (this._fileMonitor) {
-            this._fileMonitor.disconnect(this._fileMonitorId);
-            this._fileMonitor.cancel();
-            this._fileMonitor = null;
-        }
+        this._fileMonitor.disconnect(this._fileMonitorId);
+        this._fileMonitor.cancel();
+        this._fileMonitor = null;
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._rules = [];

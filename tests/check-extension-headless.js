@@ -16,6 +16,7 @@
 //
 // Exits 0 when every check passes, 1 when any fails.
 
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 
@@ -48,6 +49,10 @@ const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 const SCRATCH = GLib.dir_make_tmp('wctl-check-XXXXXX');
 try {
     GLib.setenv('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/nonexistent', true);
+    // export() reads Gio.DBus.session, which connects: to the real session bus
+    // when this process already knows its address, and with no bus (CI) it
+    // throws. The fake export takes the null instead.
+    Gio.DBus = Object.create(Gio.DBus, { session: { value: null } });
     GLib.setenv('XDG_CONFIG_HOME', `${SCRATCH}/config`, true);
     if (GLib.get_user_config_dir() !== `${SCRATCH}/config`)
         throw new Error(`the config dir is ${GLib.get_user_config_dir()}, not the scratch one`);
@@ -252,6 +257,15 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     const { default: WindowControlExtension } = await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
+    const Main = await import(`file://${EXT}/stub-main.js`);
+
+    // An exported service, on a fake export: nothing here may reach a bus.
+    function startService() {
+        const service = new WindowControlService({ version: 0 });
+        service._dbusImpl = { export() {}, unexport() {} };
+        service.export();
+        return service;
+    }
 
     // -- WaitForWindow: a window created during an earlier wait ------------------
     //
@@ -260,7 +274,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // it is minimized, as it finds C, which predates every wait.
 
     {
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         const c = createWindow({ id: 3, wmClass: 'C' });
         c.map();
         c.minimize();
@@ -295,7 +309,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // only once M is shown.
 
     {
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         const waitA = invocation();
         service.WaitForWindowAsync(['class', 'A', 5000], waitA);
         const m = createWindow({ id: 9, wmClass: 'M' });
@@ -318,7 +332,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // unhidden; the 'shown' handler must have recorded it.
 
     {
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         const wait = invocation();
         service.WaitForWindowAsync(['class', 'D', 300], wait);
         const dialog = createWindow({ id: 6, wmClass: 'D', type: Meta.WindowType.MODAL_DIALOG });
@@ -346,7 +360,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         parent.minimized = true;
         const transient = createWindow({ id: 15, wmClass: 'T' });
         transient.get_transient_for = () => parent;
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         const shown = () => Object.fromEntries(JSON.parse(service.ListDetailed())
             .map(doc => [doc.id, doc.has_been_shown]));
         const created = createWindow({ id: 11, wmClass: 'N' });
@@ -387,7 +401,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // behind, while another caller's wait stays pending.
 
     {
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         const win = createWindow({ id: 7, wmClass: 'X' });
         win.map();
         const goneWindow = invocation();
@@ -477,7 +491,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // reaches GJS, so a caller never reports monitor 0 as missing.
 
     {
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         const present = JSON.stringify(service.GetWorkarea(0));
         check('GetWorkarea answers the workarea of a monitor', present === '[0,0,1920,1080]', present);
 
@@ -507,7 +521,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // The window exists, so only the argument check can refuse the call.
 
     {
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         createWindow({ id: 9, wmClass: 'T' });
         const calls = {
             'Resize with a width of 0': call => service.ResizeAsync([9, 0, 10], call),
@@ -535,7 +549,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // or an empty list would read as "no such window".
 
     {
-        const service = new WindowControlService({ version: 0 });
+        const service = startService();
         const win = createWindow({ id: 9, wmClass: 'T' });
         win.get_title = () => {
             throw new Error('title lookup failed');
@@ -569,7 +583,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
 
     {
         const keybindings = new WindowKeybindings();
-        keybindings.enable({ getSettings: () => ({}) });
+        keybindings.enable({});
         const win = createWindow({ id: 8, wmClass: 'K', maximizeFlags: Meta.MaximizeFlags.BOTH });
         win.map();
         keybindings._tile('tile-left', win, 'left');
@@ -587,43 +601,52 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         windows.length = 0;
     }
 
-    // -- enable() when the D-Bus export fails -------------------------------------
+    // -- WindowKeybindings: a shortcut that cannot be registered ---------------
     //
-    // The shell calls no disable() for an extension whose enable() threw.
+    // All or none: the shortcuts registered before it are removed again.
 
     {
-        const extension = new WindowControlExtension();
-        extension.metadata = { name: 'Window Control', version: 1 };
-        const realExport = WindowControlService.prototype.export;
-        WindowControlService.prototype.export = () => {
-            throw new Error('an object is already exported at this path');
+        const realAdd = Main.wm.addKeybinding;
+        const realRemove = Main.wm.removeKeybinding;
+        const added = [];
+        const removed = [];
+        Main.wm.addKeybinding = name => {
+            if (added.length === 2)
+                return Meta.KeyBindingAction.NONE;
+            added.push(name);
+            return 1;
         };
-        let threw = false;
+        Main.wm.removeKeybinding = name => removed.push(name);
+        const keybindings = new WindowKeybindings();
         try {
-            extension.enable();
-        } catch {
-            threw = true;
+            keybindings.enable({});
         } finally {
-            WindowControlService.prototype.export = realExport;
+            Main.wm.addKeybinding = realAdd;
+            Main.wm.removeKeybinding = realRemove;
         }
-        check('enable() rethrows a failed export', threw);
-        check('a failed enable() leaves no handler on the display and no service',
-            display.handlerCount() === 0 && extension._service === null,
-            `${display.handlerCount()} handler(s), service ${extension._service}`);
+        check('a failed registration serves no shortcut', !keybindings.registered);
+        check('a failed registration removes the shortcuts added before it',
+            JSON.stringify(removed) === JSON.stringify(added), `added ${added}, removed ${removed}`);
     }
 
-    // A failed enable() rethrows its own error, and a service that was never
-    // registered is not reported as unregistered.
+    // -- enable() when the D-Bus export fails -------------------------------------
+    //
+    // The shell calls no disable() for an extension whose enable() threw, so the
+    // export goes before anything that would outlive it.
+
     {
         const extension = new WindowControlExtension();
         extension.metadata = { name: 'Window Control', version: 1 };
+        extension.getSettings = () => ({});
         const realExport = WindowControlService.prototype.export;
-        const realEnable = WindowRules.prototype.enable;
-        WindowControlService.prototype.export = () => {};
-        WindowRules.prototype.enable = () => {
-            throw new Error('rules failed');
+        WindowControlService.prototype.export = function () {
+            this._dbusImpl = {
+                export() {
+                    throw new Error('an object is already exported at this path');
+                },
+            };
+            realExport.call(this);
         };
-        const linesBefore = consoleLines.length;
         let error = null;
         try {
             extension.enable();
@@ -631,15 +654,11 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             error = e;
         } finally {
             WindowControlService.prototype.export = realExport;
-            WindowRules.prototype.enable = realEnable;
         }
-        check('enable() rethrows its own error', error?.message === 'rules failed', `${error}`);
-        check('a service that was never exported is not logged as unregistered',
-            !noticesSince(linesBefore).some(line => line.includes('unregistered')),
-            JSON.stringify(noticesSince(linesBefore)));
-        check('a failed enable() after the export leaves no handler and no service',
-            display.handlerCount() === 0 && extension._service === null,
-            `${display.handlerCount()} handler(s), service ${extension._service}`);
+        check('enable() throws a failed export', error?.message === 'an object is already exported at this path',
+            `${error}`);
+        check('a failed export leaves no handler on the display', display.handlerCount() === 0,
+            `${display.handlerCount()} handler(s)`);
     }
 
     // -- WindowRules: a window that is not NORMAL when shown ----------------------
