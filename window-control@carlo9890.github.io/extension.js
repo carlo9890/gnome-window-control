@@ -22,21 +22,12 @@ export default class WindowControlExtension extends Extension {
     }
 
     disable() {
-        if (this._keybindings) {
-            const keybindings = this._keybindings;
-            this._keybindings = null;
-            keybindings.disable();
-        }
-        if (this._rules) {
-            const rules = this._rules;
-            this._rules = null;
-            rules.disable();
-        }
-        if (this._service) {
-            const service = this._service;
-            this._service = null;
-            service.unexport();
-            console.log(`[${this.metadata.name}] D-Bus service unregistered`);
-        }
+        this._keybindings.disable();
+        this._keybindings = null;
+        this._rules.disable();
+        this._rules = null;
+        this._service.unexport();
+        this._service = null;
+        console.log(`[${this.metadata.name}] D-Bus service unregistered`);
     }
 }

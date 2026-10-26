@@ -94,11 +94,9 @@ export class WindowRules {
         }
         this._loadCancellable?.cancel();
         this._loadCancellable = null;
-        if (this._fileMonitor) {
-            this._fileMonitor.disconnect(this._fileMonitorId);
-            this._fileMonitor.cancel();
-            this._fileMonitor = null;
-        }
+        this._fileMonitor.disconnect(this._fileMonitorId);
+        this._fileMonitor.cancel();
+        this._fileMonitor = null;
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._rules = [];
