@@ -53,11 +53,6 @@ export class WindowKeybindings {
         console.log(`[Window Control] ${this._names.length} keyboard shortcut(s) registered`);
     }
 
-    // Whether the shortcuts are served: all of them, or none (see enable).
-    get registered() {
-        return this._names.length > 0;
-    }
-
     disable() {
         for (const name of this._names)
             Main.wm.removeKeybinding(name);
@@ -65,6 +60,11 @@ export class WindowKeybindings {
         for (const wait of this._pending.values())
             wait.destroy();
         this._pending.clear();
+    }
+
+    // Whether the shortcuts are served: all of them, or none (see enable).
+    get registered() {
+        return this._names.length > 0;
     }
 
     _add(name, settings, handler) {
