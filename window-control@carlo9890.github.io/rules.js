@@ -77,7 +77,6 @@ export class WindowRules {
             if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
                 console.error(`[Window Control] cannot create ${CONFIG_DIR}: ${e.message}`);
         }
-        this._load();
         // The directory rather than the file: a file monitor misses an editor
         // that saves by writing a new file and renaming it over the old one.
         this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
@@ -85,6 +84,7 @@ export class WindowRules {
             if (file.get_basename() === RULES_FILE)
                 this._scheduleReload();
         });
+        this._load();
     }
 
     disable() {
