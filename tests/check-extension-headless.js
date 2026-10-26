@@ -16,6 +16,7 @@
 //
 // Exits 0 when every check passes, 1 when any fails.
 
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 
@@ -48,6 +49,10 @@ const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 const SCRATCH = GLib.dir_make_tmp('wctl-check-XXXXXX');
 try {
     GLib.setenv('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/nonexistent', true);
+    // export() reads Gio.DBus.session, which connects: to the real session bus
+    // when this process already knows its address, and with no bus (CI) it
+    // throws. The fake export takes the null instead.
+    Gio.DBus = Object.create(Gio.DBus, { session: { value: null } });
     GLib.setenv('XDG_CONFIG_HOME', `${SCRATCH}/config`, true);
     if (GLib.get_user_config_dir() !== `${SCRATCH}/config`)
         throw new Error(`the config dir is ${GLib.get_user_config_dir()}, not the scratch one`);
