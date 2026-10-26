@@ -509,7 +509,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
 raises without declaring them there, and `org.gnome.gjs.JSError.*` is the name
 GJS raises when any other method throws. Before GNOME 50, a wait method that
-throws sends no reply, and the caller's D-Bus timeout ends the call.
+throws before it starts waiting sends no reply, and the caller's D-Bus timeout
+ends the call.
 
 | Error name | Meaning |
 |------------|---------|

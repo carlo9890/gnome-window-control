@@ -36,9 +36,10 @@ If it fails, the code has a syntax error and must not be committed.
 - A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
-  An `...Async` handler has no try/catch either: `_geometryCall` catches only
-  to answer a `NamedError` by its name, and anything else with `Failed`.
-  Before GNOME 50, GJS sends no reply for a throw from an `...Async` handler.
+  The two wait handlers have no try/catch either. The three geometry handlers
+  run their body through `_geometryCall`, which answers a `NamedError` by its
+  name and any other throw with `Failed`. Before GNOME 50, GJS sends no reply
+  for a throw from an `...Async` handler.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
 

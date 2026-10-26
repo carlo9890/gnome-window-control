@@ -84,7 +84,7 @@ export const DBUS_INTERFACE_XML = `
       purpose; a handler never invents a name at the throw site. Any other
       method that throws an Error unexpectedly answers with GJS's own
       org.gnome.gjs.JSError.<name> (TypeError, for example); before GNOME 50,
-      a wait method that throws sends no reply.
+      a wait method that throws before it starts waiting sends no reply.
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
             no window has that id (WaitForGeometry: or it closed mid-wait)
