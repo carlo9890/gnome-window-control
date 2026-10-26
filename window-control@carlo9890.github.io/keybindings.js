@@ -45,10 +45,12 @@ export class WindowKeybindings {
                 [name, (display, win) => this._tile(name, win, position)]),
             [CYCLE_WIDE_BINDING, (display, win) => this._cycleWide(win)],
         ];
-        if (!handlers.every(([name, handler]) => this._add(name, settings, handler))) {
-            this.disable();
-            console.warn('[Window Control] keyboard shortcuts disabled');
-            return;
+        for (const [name, handler] of handlers) {
+            if (!this._add(name, settings, handler)) {
+                this.disable();
+                console.warn(`[Window Control] cannot register the ${name} shortcut; keyboard shortcuts disabled`);
+                return;
+            }
         }
         console.log(`[Window Control] ${this._names.length} keyboard shortcut(s) registered`);
     }
@@ -77,10 +79,8 @@ export class WindowKeybindings {
         const action = Main.wm.addKeybinding(name, settings,
             Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
             Shell.ActionMode.NORMAL, handler);
-        if (action === Meta.KeyBindingAction.NONE) {
-            console.warn(`[Window Control] cannot register the ${name} shortcut`);
+        if (action === Meta.KeyBindingAction.NONE)
             return false;
-        }
         this._names.push(name);
         return true;
     }
