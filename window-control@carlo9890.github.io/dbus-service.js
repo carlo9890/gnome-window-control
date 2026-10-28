@@ -127,6 +127,24 @@ export class WindowControlService {
         this._windowCreatedId = 0;
         // WaitForGeometry state, one entry per pending call.
         this._geometryWatchers = [];
+        // Every pending timeout source of both wait methods; unexport()
+        // removes them.
+        this._sourceIds = new Set();
+    }
+
+    _addTimeout(ms, callback) {
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+            this._sourceIds.delete(id);
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._sourceIds.add(id);
+        return id;
+    }
+
+    _removeSource(id) {
+        if (this._sourceIds.delete(id))
+            GLib.source_remove(id);
     }
 
     // NORMAL windows only: every method works on these.
@@ -649,11 +667,10 @@ export class WindowControlService {
         }
 
         const waiter = { predicate, invocation, timeoutId: 0, callerWatch: null };
-        waiter.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
+        waiter.timeoutId = this._addTimeout(timeoutMs, () => {
             waiter.timeoutId = 0;
             console.debug(`[Window Control] WaitForWindow(${kind}) -> 0 (timeout)`);
             this._finishWaiter(waiter, 0);
-            return GLib.SOURCE_REMOVE;
         });
         this._waiters.push(waiter);
         waiter.callerWatch = this._watchCaller(invocation, () => {
@@ -717,24 +734,21 @@ export class WindowControlService {
         // Starting it now is also what lets an already still frame settle,
         // rather than waiting for a change that never comes.
         this._restartQuietPeriod(watcher);
-        watcher.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
+        watcher.timeoutId = this._addTimeout(timeoutMs, () => {
             watcher.timeoutId = 0;
             console.debug(`[Window Control] WaitForGeometry(${windowId}) -> Timeout`);
             this._failGeometryWatcher(watcher, DBUS_ERROR_TIMEOUT,
                 `Window ${windowId} frame did not settle within ${timeoutMs} ms`);
-            return GLib.SOURCE_REMOVE;
         });
     }
 
     // Every frame change restarts the quiet timer, so it only fires once the
     // frame has been still for the whole period.
     _restartQuietPeriod(watcher) {
-        if (watcher.quietId)
-            GLib.source_remove(watcher.quietId);
-        watcher.quietId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, watcher.quietMs, () => {
+        this._removeSource(watcher.quietId);
+        watcher.quietId = this._addTimeout(watcher.quietMs, () => {
             watcher.quietId = 0;
             this._settleGeometryWatcher(watcher);
-            return GLib.SOURCE_REMOVE;
         });
     }
 
@@ -746,14 +760,10 @@ export class WindowControlService {
         if (index === -1)
             return false;
         this._geometryWatchers.splice(index, 1);
-        if (watcher.quietId) {
-            GLib.source_remove(watcher.quietId);
-            watcher.quietId = 0;
-        }
-        if (watcher.timeoutId) {
-            GLib.source_remove(watcher.timeoutId);
-            watcher.timeoutId = 0;
-        }
+        this._removeSource(watcher.quietId);
+        watcher.quietId = 0;
+        this._removeSource(watcher.timeoutId);
+        watcher.timeoutId = 0;
         for (const id of watcher.signalIds)
             watcher.win.disconnect(id);
         watcher.signalIds = [];
@@ -951,25 +961,21 @@ export class WindowControlService {
     // A waiter whose caller left the bus is only retired: there is no one to
     // reply to. The last waiter gone ends the watch.
     _retireWaiter(waiter) {
-        if (waiter.timeoutId) {
-            GLib.source_remove(waiter.timeoutId);
-            waiter.timeoutId = 0;
-        }
+        this._removeSource(waiter.timeoutId);
+        waiter.timeoutId = 0;
         this._unwatchCaller(waiter);
         this._waiters = this._waiters.filter(w => w !== waiter);
         if (this._waiters.length === 0)
             this._stopWatching();
     }
 
-    // Fail every pending WaitForWindow call and drop all signal handlers,
-    // caller watches and timeout sources. Called from disable(); leaves nothing
-    // behind.
+    // Fail every pending WaitForWindow call and drop all signal handlers and
+    // caller watches. Called from unexport(), after it has removed the timeout
+    // sources; leaves nothing behind.
     _cancelWaiters() {
         const pending = this._waiters;
         this._waiters = [];
         for (const waiter of pending) {
-            if (waiter.timeoutId)
-                GLib.source_remove(waiter.timeoutId);
             this._unwatchCaller(waiter);
             waiter.invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'Window Control extension disabled');
         }
@@ -1095,6 +1101,9 @@ export class WindowControlService {
     unexport() {
         global.display.disconnect(this._windowCreatedId);
         this._windowCreatedId = 0;
+        for (const id of this._sourceIds)
+            GLib.source_remove(id);
+        this._sourceIds.clear();
         this._cancelWaiters();
         this._cancelGeometryWatchers();
         this._dbusImpl.unexport();
