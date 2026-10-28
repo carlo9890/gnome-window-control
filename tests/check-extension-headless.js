@@ -466,6 +466,9 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         ];
         check('the pending waits armed their timers', sources.length === 3 && sources.every(sourceAlive),
             `${sources}`);
+        check('the pending waits tracked their timers for unexport()',
+            sources.every(id => service._sourceIds.has(id)) && service._sourceIds.size === sources.length,
+            `tracked ${[...service._sourceIds]}, armed ${sources}`);
         const unshownConnects = unshown._nextId;
         service.unexport();
         check('unexport() connects no first-show watch', unshown._nextId === unshownConnects,
@@ -482,6 +485,8 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             `display ${display.handlerCount()}, window ${win.handlerCount()}, ` +
             `unshown ${unshown.handlerCount()}, watches ${bus.watches.size}`);
         check('unexport() leaves no timer', !sources.some(sourceAlive), `${sources.filter(sourceAlive)}`);
+        check('unexport() leaves no tracked timer', service._sourceIds.size === 0,
+            `${[...service._sourceIds]}`);
         windows.length = 0;
     }
 
