@@ -41,6 +41,13 @@ function noticesSince(from) {
         .map(line => line.message);
 }
 
+// GLib's critical for a source removed twice, or never added, since `from`.
+function unknownSourceRemovals(from) {
+    return consoleLines.slice(from)
+        .filter(line => /^Source ID \d+ was not found when attempting to remove it/.test(line.message))
+        .length;
+}
+
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
 
@@ -470,7 +477,10 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             sources.every(id => service._sourceIds.has(id)) && service._sourceIds.size === sources.length,
             `tracked ${[...service._sourceIds]}, armed ${sources}`);
         const unshownConnects = unshown._nextId;
+        const linesBeforeUnexport = consoleLines.length;
         service.unexport();
+        check('unexport() removes no source twice', unknownSourceRemovals(linesBeforeUnexport) === 0,
+            `${unknownSourceRemovals(linesBeforeUnexport)} removal(s)`);
         check('unexport() connects no first-show watch', unshown._nextId === unshownConnects,
             `${unshown._nextId - unshownConnects} handler(s) connected`);
         check('unexport() fails the pending WaitForWindow with Disabled',
@@ -711,13 +721,18 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             JSON.stringify(late.moves));
         const pending = createWindow({ id: 6, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
         pending.map();
-        await sleep(50);
         const graceId = rules._tracked.get(pending)?.graceId ?? 0;
         check('a shown dialog arms the grace timer', sourceAlive(graceId), `source ${graceId}`);
+        check('the grace timer is tracked for disable()',
+            rules._sourceIds.has(graceId) && rules._sourceIds.size === 1, `tracked ${[...rules._sourceIds]}`);
+        const linesBeforeDisable = consoleLines.length;
         rules.disable();
         check('WindowRules.disable() leaves no handler on the display', display.handlerCount() === 0,
             `${display.handlerCount()} handler(s)`);
-        check('WindowRules.disable() leaves no grace timer', !sourceAlive(graceId), `source ${graceId}`);
+        check('WindowRules.disable() leaves no grace timer',
+            !sourceAlive(graceId) && rules._sourceIds.size === 0, `source ${graceId}`);
+        check('WindowRules.disable() removes no source twice', unknownSourceRemovals(linesBeforeDisable) === 0,
+            `${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
     }
 } finally {
     GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);
