@@ -707,8 +707,11 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         early.map();
         late.map();
         await sleep(500);
+        const earlyGraceId = rules._tracked.get(early)?.graceId ?? 0;
         early.type = Meta.WindowType.NORMAL;
         early.emit('notify::window-type');
+        check('a match within the grace period ends the grace timer', earlyGraceId !== 0 &&
+            !sourceAlive(earlyGraceId) && !rules._sourceIds.has(earlyGraceId), `source ${earlyGraceId}`);
         await sleep(2000);   // 2.5 s after shown, past LATE_IDENTITY_GRACE_MS
         check('a retype to NORMAL within the grace period gets the rule',
             JSON.stringify(early.moves) === '[[0,0,480,1080]]', JSON.stringify(early.moves));

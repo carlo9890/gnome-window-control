@@ -304,6 +304,12 @@ export class WindowRules {
             // position stuck, the size did not). One trip through the main
             // loop is enough. The 'unmanaged' handler stays connected until
             // then, so a window that closes first is never touched.
+            //
+            // The match ends the grace period: a grace timer due in the same
+            // main loop iteration would untrack the window before the apply
+            // runs, and the rule would be lost.
+            this._removeSource(entry.graceId);
+            entry.graceId = 0;
             entry.applyId = this._addIdle(() => {
                 entry.applyId = 0;
                 this._untrack(win);

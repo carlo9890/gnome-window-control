@@ -144,7 +144,8 @@ It pins:
   positive, and for a `timeout_ms` below `quiet_ms`;
 - a synchronous handler (`List`, `ListDetailed`, `Activate`, `ActivateBy*`)
   lets an unexpected throw through to GJS instead of answering `false` or `[]`;
-- the rules grace period for a window that is not `NORMAL` when shown.
+- the rules grace period for a window that is not `NORMAL` when shown, and
+  that a match within it ends the grace timer.
 
 Add a case here for extension logic a fake window can drive. Anything reachable
 this way must be verified this way before a shell is even considered; see the
