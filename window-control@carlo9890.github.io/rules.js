@@ -67,6 +67,9 @@ export class WindowRules {
         this._fileMonitorId = 0;
         this._reloadId = 0;
         this._loadCancellable = null;
+        // The pending grace and apply sources of every tracked window;
+        // disable() removes them.
+        this._sourceIds = new Set();
     }
 
     enable() {
@@ -97,6 +100,9 @@ export class WindowRules {
         this._fileMonitor.disconnect(this._fileMonitorId);
         this._fileMonitor.cancel();
         this._fileMonitor = null;
+        for (const id of this._sourceIds)
+            GLib.source_remove(id);
+        this._sourceIds.clear();
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._rules = [];
@@ -198,12 +204,15 @@ export class WindowRules {
             return;
         for (const id of entry.ids)
             win.disconnect(id);
-        if (entry.graceId)
-            GLib.source_remove(entry.graceId);
-        if (entry.applyId)
-            GLib.source_remove(entry.applyId);
+        this._removeSource(entry.graceId);
+        this._removeSource(entry.applyId);
         entry.wait?.destroy();
         this._tracked.delete(win);
+    }
+
+    _removeSource(id) {
+        if (this._sourceIds.delete(id))
+            GLib.source_remove(id);
     }
 
     _matchIndex(win) {
@@ -276,19 +285,23 @@ export class WindowRules {
             // loop is enough. The 'unmanaged' handler stays connected until
             // then, so a window that closes first is never touched.
             entry.applyId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this._sourceIds.delete(entry.applyId);
                 entry.applyId = 0;
                 this._untrack(win);
                 this._apply(win, rule, index, headStartMonitor);
                 return GLib.SOURCE_REMOVE;
             });
+            this._sourceIds.add(entry.applyId);
             return;
         }
         if (!entry.graceId) {
             entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, LATE_IDENTITY_GRACE_MS, () => {
+                this._sourceIds.delete(entry.graceId);
                 entry.graceId = 0;
                 this._untrack(win);
                 return GLib.SOURCE_REMOVE;
             });
+            this._sourceIds.add(entry.graceId);
         }
     }
 

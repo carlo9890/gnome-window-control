@@ -704,9 +704,15 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         await sleep(200);
         check('a retype to NORMAL after the grace period moves nothing', late.moves.length === 0,
             JSON.stringify(late.moves));
+        const pending = createWindow({ id: 6, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
+        pending.map();
+        await sleep(50);
+        const graceId = rules._tracked.get(pending)?.graceId ?? 0;
+        check('a shown dialog arms the grace timer', sourceAlive(graceId), `source ${graceId}`);
         rules.disable();
         check('WindowRules.disable() leaves no handler on the display', display.handlerCount() === 0,
             `${display.handlerCount()} handler(s)`);
+        check('WindowRules.disable() leaves no grace timer', !sourceAlive(graceId), `source ${graceId}`);
     }
 } finally {
     GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);
