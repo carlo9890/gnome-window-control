@@ -150,7 +150,8 @@ The code must keep satisfying:
   extension runs keeps until its first map, and the per-call timeouts and
   caller name watches that `WaitForWindow` and `WaitForGeometry` arm;
   `WindowRules.disable()` cancels its file monitor, its debounce timeout, a
-  `rules.json` read in flight and its per-window handlers;
+  `rules.json` read in flight, its per-window handlers and its per-window
+  grace and apply sources;
   `WindowKeybindings.disable()` removes every keybinding it added and cancels a
   pending unmaximize-then-place. Tear down any new signal or timer on the same
   path.

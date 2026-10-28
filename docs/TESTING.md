@@ -119,8 +119,10 @@ It pins:
 
 - the `disable()` teardown that [RELEASING.md](RELEASING.md) requires:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
-  `Disabled` and leaves no handler, subscription or timer, and
-  `WindowKeybindings.disable()` destroys a pending `UnmaximizeWait`;
+  `Disabled` and leaves no handler, subscription or timer,
+  `WindowRules.disable()` leaves no handler or grace timer, neither of the two
+  removes a source twice, and `WindowKeybindings.disable()` destroys a pending
+  `UnmaximizeWait`;
 - an `enable()` whose D-Bus export fails throws and leaves no handler on the
   display;
 - a keyboard shortcut that cannot be registered removes the ones registered
