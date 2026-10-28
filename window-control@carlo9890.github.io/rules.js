@@ -210,6 +210,26 @@ export class WindowRules {
         this._tracked.delete(win);
     }
 
+    _addTimeout(ms, callback) {
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+            this._sourceIds.delete(id);
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._sourceIds.add(id);
+        return id;
+    }
+
+    _addIdle(callback) {
+        const id = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._sourceIds.delete(id);
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._sourceIds.add(id);
+        return id;
+    }
+
     _removeSource(id) {
         if (this._sourceIds.delete(id))
             GLib.source_remove(id);
@@ -284,24 +304,18 @@ export class WindowRules {
             // position stuck, the size did not). One trip through the main
             // loop is enough. The 'unmanaged' handler stays connected until
             // then, so a window that closes first is never touched.
-            entry.applyId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                this._sourceIds.delete(entry.applyId);
+            entry.applyId = this._addIdle(() => {
                 entry.applyId = 0;
                 this._untrack(win);
                 this._apply(win, rule, index, headStartMonitor);
-                return GLib.SOURCE_REMOVE;
             });
-            this._sourceIds.add(entry.applyId);
             return;
         }
         if (!entry.graceId) {
-            entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, LATE_IDENTITY_GRACE_MS, () => {
-                this._sourceIds.delete(entry.graceId);
+            entry.graceId = this._addTimeout(LATE_IDENTITY_GRACE_MS, () => {
                 entry.graceId = 0;
                 this._untrack(win);
-                return GLib.SOURCE_REMOVE;
             });
-            this._sourceIds.add(entry.graceId);
         }
     }
 
