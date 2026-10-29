@@ -707,8 +707,11 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         early.map();
         late.map();
         await sleep(500);
+        const earlyGraceId = rules._tracked.get(early)?.graceId ?? 0;
         early.type = Meta.WindowType.NORMAL;
         early.emit('notify::window-type');
+        check('a match within the grace period ends the grace timer', earlyGraceId !== 0 &&
+            !sourceAlive(earlyGraceId) && !rules._sourceIds.has(earlyGraceId), `source ${earlyGraceId}`);
         await sleep(2000);   // 2.5 s after shown, past LATE_IDENTITY_GRACE_MS
         check('a retype to NORMAL within the grace period gets the rule',
             JSON.stringify(early.moves) === '[[0,0,480,1080]]', JSON.stringify(early.moves));
@@ -719,6 +722,17 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         await sleep(200);
         check('a retype to NORMAL after the grace period moves nothing', late.moves.length === 0,
             JSON.stringify(late.moves));
+        // The main loop is blocked past the grace period, so the grace timer
+        // and the apply idle come ready together. GLib dispatches the one
+        // attached first, the grace timer, first.
+        const edge = createWindow({ id: 7, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
+        edge.map();
+        GLib.usleep(2100 * 1000);   // past LATE_IDENTITY_GRACE_MS
+        edge.type = Meta.WindowType.NORMAL;
+        edge.emit('notify::window-type');
+        await sleep(200);
+        check('a retype in the iteration the grace timer is due gets the rule',
+            JSON.stringify(edge.moves) === '[[0,0,480,1080]]', JSON.stringify(edge.moves));
         const pending = createWindow({ id: 6, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
         pending.map();
         const graceId = rules._tracked.get(pending)?.graceId ?? 0;
