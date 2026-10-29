@@ -67,8 +67,8 @@ export class WindowRules {
         this._fileMonitorId = 0;
         this._reloadId = 0;
         this._loadCancellable = null;
-        // The pending grace and apply sources of every tracked window;
-        // disable() removes them.
+        // The pending reload debounce, and the grace and apply sources of
+        // every tracked window; disable() removes them.
         this._sourceIds = new Set();
     }
 
@@ -91,18 +91,15 @@ export class WindowRules {
     }
 
     disable() {
-        if (this._reloadId) {
-            GLib.source_remove(this._reloadId);
-            this._reloadId = 0;
-        }
+        for (const id of this._sourceIds)
+            GLib.source_remove(id);
+        this._sourceIds.clear();
+        this._reloadId = 0;
         this._loadCancellable?.cancel();
         this._loadCancellable = null;
         this._fileMonitor.disconnect(this._fileMonitorId);
         this._fileMonitor.cancel();
         this._fileMonitor = null;
-        for (const id of this._sourceIds)
-            GLib.source_remove(id);
-        this._sourceIds.clear();
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._rules = [];
@@ -110,12 +107,10 @@ export class WindowRules {
     }
 
     _scheduleReload() {
-        if (this._reloadId)
-            GLib.source_remove(this._reloadId);
-        this._reloadId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, RELOAD_DEBOUNCE_MS, () => {
+        this._removeSource(this._reloadId);
+        this._reloadId = this._addTimeout(RELOAD_DEBOUNCE_MS, () => {
             this._reloadId = 0;
             this._load();
-            return GLib.SOURCE_REMOVE;
         });
     }
 
@@ -298,18 +293,17 @@ export class WindowRules {
             // monitor again: literal coordinates can have put the frame on
             // another one, and its workarea would resize the window.
             const headStartMonitor = entry.headStart?.rule === rule ? entry.headStart.monitor : null;
+            // The match ends the grace period: a grace timer due in the same
+            // main loop iteration would untrack the window before the apply
+            // runs, and the rule would be lost.
+            this._removeSource(entry.graceId);
+            entry.graceId = 0;
             // Not from inside the 'shown' emission: mutter is still applying
             // the client's first committed size there, and a frame requested
             // that early is overwritten by it (measured on GNOME 46: the
             // position stuck, the size did not). One trip through the main
             // loop is enough. The 'unmanaged' handler stays connected until
             // then, so a window that closes first is never touched.
-            //
-            // The match ends the grace period: a grace timer due in the same
-            // main loop iteration would untrack the window before the apply
-            // runs, and the rule would be lost.
-            this._removeSource(entry.graceId);
-            entry.graceId = 0;
             entry.applyId = this._addIdle(() => {
                 entry.applyId = 0;
                 this._untrack(win);

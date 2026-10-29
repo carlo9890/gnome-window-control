@@ -722,6 +722,17 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         await sleep(200);
         check('a retype to NORMAL after the grace period moves nothing', late.moves.length === 0,
             JSON.stringify(late.moves));
+        // The main loop is blocked past the grace period, so the grace timer
+        // and the apply idle come ready together. GLib dispatches the one
+        // attached first, the grace timer, first.
+        const edge = createWindow({ id: 7, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
+        edge.map();
+        GLib.usleep(2100 * 1000);   // past LATE_IDENTITY_GRACE_MS
+        edge.type = Meta.WindowType.NORMAL;
+        edge.emit('notify::window-type');
+        await sleep(200);
+        check('a retype in the iteration the grace timer is due gets the rule',
+            JSON.stringify(edge.moves) === '[[0,0,480,1080]]', JSON.stringify(edge.moves));
         const pending = createWindow({ id: 6, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
         pending.map();
         const graceId = rules._tracked.get(pending)?.graceId ?? 0;
