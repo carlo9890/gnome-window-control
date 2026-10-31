@@ -26,10 +26,10 @@ If it fails, the code has a syntax error and must not be committed.
   release.
 - `Move`, `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry` raise
   named D-Bus errors instead of reporting a boolean.
-  The two wait methods return the value asked for (`window_id`, and the settled
-  rectangle) and raise when there is none; the three geometry methods return
-  nothing at all. `GetWorkarea` returns `(-1, -1, -1, -1)` for an index that is
-  not a monitor.
+  `WaitForWindow` returns the `window_id`, or 0 on timeout; `WaitForGeometry`
+  returns the settled rectangle, or raises `Timeout`; the three geometry methods
+  return nothing at all. `GetWorkarea` returns `(-1, -1, -1, -1)` for an index
+  that is not a monitor.
   The names, and the reason each method raises, are in the ERRORS block in
   `dbus-interface.js`; add to that list rather than inventing a name at the
   throw site.
@@ -42,6 +42,17 @@ If it fails, the code has a syntax error and must not be committed.
   for a throw from an `...Async` handler.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
+- `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
+  an upload that does not ([RELEASING.md](RELEASING.md#constraints-the-review-enforces)).
+  Add a timeout or idle source through `_addTimeout` (and `_addIdle` in
+  `rules.js`) and cancel it with `_removeSource`: they keep its ID in
+  `_sourceIds`, which `WindowRules.disable()` and `unexport()` empty. Connect a
+  per-window handler through `_track`/`_untrack` in `rules.js` or
+  `_trackWindow`/`_untrackWindow` in `dbus-service.js`. Do not hold a source ID
+  or a handler ID that the teardown cannot reach.
+  `tests/check-extension-headless.js` fails a teardown that leaves a handler or
+  a timer, or removes a source twice; add a case there for each new signal or
+  timer.
 
 ## Rust (cli/)
 
@@ -108,8 +119,9 @@ what it ships are described in [RELEASING.md](RELEASING.md).
    > precision above 2^53. Mutter window IDs are well within that range, but if a
    > method ever handles larger uint64 values, use `BigInt`/`GLib.Variant`.
 
-   > Add a capability name for the method to `GetCapabilities` in the same
-   > commit, so that `wctl` can gate its call on it (see the Rust section above).
+   > Add a capability name for the method to `CAPABILITIES` in `dbus-service.js`,
+   > which `GetCapabilities` reports, in the same commit, so that `wctl` can gate
+   > its call on it (see the Rust section above).
 
    > A method that can fail for more than one reason should raise a named error
    > (see the JavaScript section above) and declare no `success` out-arg. Add the
@@ -136,4 +148,9 @@ what it ships are described in [RELEASING.md](RELEASING.md).
    The inventory unit tests cross-check all four, so a command that is missing
    from any of them fails `cargo test`.
 
-5. Run `mise run ci` and `./scripts/build.sh validate` before committing.
+5. Add the method's row to the method table in `README.md`; the review flags a
+   method the table does not list ([REVIEWING.md](REVIEWING.md#project-specific-rules)).
+
+6. Before committing, run `./scripts/build.sh validate` and every check that the
+   [minimum-checks table](TESTING.md#minimum-checks-before-a-pr) requires. The
+   change to `dbus-service.js` brings in the fake-windows check.

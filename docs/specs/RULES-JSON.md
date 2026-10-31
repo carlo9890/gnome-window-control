@@ -8,8 +8,8 @@ Two implementations follow it, and they are pinned to each other:
 
 | Implementation | Where | Pinned by |
 |---|---|---|
-| The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`) | `tests/check-rules-format.js` |
-| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors` test in that file |
+| The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`, `resolvePlaceRect`, `tileRect`, `centerRect`) | `tests/check-rules-format.js` |
+| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors` and `match_vectors` tests in that file |
 
 Both read the same cases from `tests/vectors/rules-spec.json`. Change this file,
 both implementations and the vectors in **one commit**: a message or a formula
@@ -331,10 +331,20 @@ Defined at the top of the file named; change them there, not here.
 
 ## Extending the format
 
-Adding a key means editing, in one commit, on BOTH sides: `RULE_KEYS` and
-`compileRule` in `rules-format.js`, the validator in `cli/src/rules.rs`, a case
-in `tests/vectors/rules-spec.json`, this spec's rule-object and validation
-tables, and the README section.
+Adding a key means editing, in one commit, on BOTH sides:
+
+- `rules-format.js`: `RULE_KEYS` and `compileRule` for a rule key, or
+  `MATCH_KINDS` and `matchPredicate` for a match key.
+- `cli/src/rules.rs`: `RULE_KEYS` and `compile_rule`, or `MATCH_KEYS` and
+  `Rule::matches_window`.
+- A case in `tests/vectors/rules-spec.json`.
+- For a match key, its capability name (see below): in `CAPABILITIES` in
+  `dbus-service.js`, and in `NEWER_MATCH_KEYS` in `cli/src/commands/rules.rs`,
+  which makes `wctl rules` warn when the loaded extension refuses the file.
+- For a key that `wctl rules add` takes as a flag: the flag in
+  `cli/src/commands/rules.rs`, `cli/src/help.rs` and both files in
+  `cli/completions/`.
+- This spec's rule-object and validation tables, and the README section.
 
 Re-verify with the two checks that read the vectors:
 

@@ -3,7 +3,7 @@
 How an agent installs, reloads, and drives the extension and `wctl` by hand to
 reproduce a bug or verify a change. For the automated suites and CI gates see
 [TESTING.md](TESTING.md); for logs see [MONITORING.md](MONITORING.md). The generic
-launch-and-drive flow is the built-in `run`/`verify` skills — this file records
+launch-and-drive flow is the built-in `run` skill — this file records
 only what is specific to this project.
 
 ## Hard rules for an agent (read before anything else in this file)
@@ -35,11 +35,12 @@ These exist because of a real incident, recorded at the end of this file.
    started a shell; treat the first run as an experiment the user has agreed
    to. GNOME Shell 50.1 has no `--nested`: the script refuses to start there.
    Use the headless session on such a shell.
-5. **Prefer not to run a shell at all.** Pure logic (geometry, config parsing)
-   is checked headlessly with `gjs -m` and `GI_TYPELIB_PATH` pointed at the
-   mutter typelib directory; see the `check-rules.js` pattern in
-   [TESTING.md](TESTING.md). Only behaviour that needs a compositor needs a
-   shell.
+5. **Prefer not to run a shell at all.** Pure logic is checked headlessly with
+   `gjs -m`: the rules grammar (`tests/check-rules-format.js`, without the
+   mutter typelib) and the extension against fake windows
+   (`tests/check-extension-headless.js`, with `GI_TYPELIB_PATH` pointed at the
+   mutter typelib directory). [TESTING.md](TESTING.md) has the commands. Only
+   behaviour that needs a compositor needs a shell.
 
 ## Reload after a code change (required)
 
@@ -54,7 +55,8 @@ only re-runs `disable()`/`enable()` on the already-loaded code. Any change to a
 | tests / scripts | None (run fresh each invocation) |
 
 Reload without logging out via a **nested GNOME Shell session** (runs in a window,
-isolated from your main session; all logs go to the launching terminal), or,
+isolated from your main session; its logs go to the launching terminal and a
+per-run log file), or,
 on a shell without `--nested`, via the [headless session](#headless-session-no-window-on-the-real-screen):
 
 ```bash
@@ -69,7 +71,8 @@ gdbus call --session --dest org.gnome.Shell \
 
 `start-nested.sh` implements hard rules 2-4: it strips the six inherited session
 variables, passes `--sm-disable` where it exists, sets `GSETTINGS_BACKEND=memory`,
-writes one `nested-<timestamp>.log` per run, and prints the PID to `kill`.
+writes one `nested-<timestamp>.log` per run in the current directory, and
+prints the PID to `kill`.
 Starting it still needs the user's consent under hard rule 1.
 
 Enable through the D-Bus call above rather than `gnome-extensions enable`: that
@@ -81,8 +84,10 @@ The memory-backed shell boots with no extensions enabled, which is why the
 enable step is separate. `dbus-run-session` gives it its own session bus, so its
 `org.gnome.Shell` does not collide with the outer one.
 
-Without a nested session, restart GNOME Shell directly: log out/in on Wayland,
-or `Alt+F2` → `r` → Enter on X11.
+Without a nested or headless session, the real shell loads new code only after
+a restart: log out/in on Wayland, `Alt+F2` → `r` → Enter on X11. Ask the user
+to do it. An agent never restarts the real shell, and a logout also ends the
+agent's session.
 
 ### Reach the nested session
 
@@ -211,7 +216,7 @@ WCTL_TEST_SETTLE=1.0 ./tests/run-all-modification-tests.sh   # includes the keyb
 
 ```bash
 gnome-extensions info window-control@carlo9890.github.io    # installed / enabled?
-gnome-extensions list | grep window-control     # if absent, a restart is needed
+gnome-extensions list | grep window-control     # if absent, ask the user to log out and in
 ```
 
 ## Drive it

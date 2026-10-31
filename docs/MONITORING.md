@@ -13,12 +13,16 @@ shortcut that threw):
 journalctl --user -b -g "Window Control|JS ERROR" -f
 ```
 
-`journalctl --user` shows only the main session's shell. A nested session's
-output goes to the terminal that ran `./scripts/start-nested.sh`.
+`journalctl --user` shows only the main session's shell. A nested or headless
+session writes to a new log file per run, and its start script prints the path:
+`nested-<timestamp>.log` in the directory `./scripts/start-nested.sh` ran from
+(also shown in that terminal), or `nested-headless-<timestamp>.log` in the
+repository root for `./scripts/start-headless.sh`.
 
 Errors and warnings appear by default; the per-call `console.debug()` trace
-needs `G_MESSAGES_DEBUG=all` in the shell's environment. In a nested session:
-`G_MESSAGES_DEBUG=all GSETTINGS_BACKEND=memory ./scripts/start-nested.sh`. The
+needs `G_MESSAGES_DEBUG=all` in the shell's environment. In a nested or
+headless session, put it in front of the start script:
+`G_MESSAGES_DEBUG=all ./scripts/start-nested.sh`. The
 main Wayland session cannot be restarted, so it needs the variable in the
 session environment before login — use the nested session instead.
 

@@ -46,11 +46,6 @@ changing what the rules file accepts or how a rule is applied.** It is the
 normative format: the key set, the token grammar, the tile grid, every
 validation message, and the show/unmaximize timing a placement depends on.
 
-Two implementations follow it — the extension's `rules-format.js` and the CLI's
-`cli/src/rules.rs` — pinned to each other by
-`tests/vectors/rules-spec.json`. Change the spec, both sides and the vectors in
-**one commit**, or the other side's CI gate fails.
-
 ### Testing and verification
 
 **MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test, and before
@@ -61,11 +56,11 @@ action.
 ### Run the extension to reproduce a bug or verify a change
 
 **MUST read [docs/RUNNING.md](docs/RUNNING.md) before reloading or driving the
-extension by hand.** It owns the reload path, the nested-session setup, and the
-pitfalls that cost hours when met blind. **Starting, killing, or restarting any
-GNOME Shell, nested included, needs the user's explicit consent for that
-specific run.** A nested start once logged the user out of the real session;
-the hard rules at the top of RUNNING.md are not negotiable.
+extension by hand, and before starting, killing, or restarting any GNOME Shell,
+nested and headless included.** It owns the reload path, the nested-session
+setup, and the pitfalls that cost hours when met blind. **Each shell start,
+kill, or restart needs the user's explicit consent for that specific run**
+(hard rule 1 there).
 
 ### Analyze logs
 

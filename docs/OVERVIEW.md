@@ -30,19 +30,20 @@ cli/                       wctl, the CLI (Rust, zbus)
 ├── src/commands/          one module per command group
 ├── completions/           hand-written bash and zsh completions (embedded)
 └── tests/cli.rs           argument-guard tests, run against the real binary
-scripts/                   build.sh, release.sh, start-nested.sh, debug-dbus.sh
+scripts/                   build.sh, release.sh, check-version.sh, check-static.sh,
+                           start-nested.sh, start-headless.sh, debug-dbus.sh
 tests/                     test suites (see docs/TESTING.md)
 ├── check-rules-format.js  headless gjs check of the rules.json grammar
 ├── check-extension-headless.js  the extension against fake windows (needs the mutter typelib)
 ├── check-helper.js        the root, check() and report() both checks share (imports only gi://GLib)
 └── vectors/               shared test vectors read by GJS and Rust alike
 docs/                      developer topic docs (this directory)
+├── specs/                 normative format specs (RULES-JSON.md)
 └── images/                the README image and the listing icon, written by generate.py
 .github/workflows/         CI (build.yml)
 dist/                      build output (generated zips)
 install-wctl.sh            wctl installer
 README.md                  user docs; the D-Bus method table
-gnome-window-control-extension-requirements.md   original design spec
 ```
 
 ## Architecture & key concepts
@@ -50,7 +51,14 @@ gnome-window-control-extension-requirements.md   original design spec
 - The extension registers its D-Bus object on **GNOME Shell's own bus
   connection**, so the destination is `org.gnome.Shell` (not a standalone
   service). Path `/org/gnome/Shell/Extensions/WindowControl`, interface
-  `org.gnome.Shell.Extensions.WindowControl`.
+  `org.gnome.Shell.Extensions.WindowControl`. Who can call it is in
+  README.md's "Security model".
+- **The D-Bus surface is fixed in scope.** It exposes geometry primitives
+  (`Move`, `MoveResize`, `GetWorkarea`, ...) and no layout: `wctl tile` and
+  `wctl center` compose a layout from those primitives, and rules and shortcuts
+  use the `rules-format.js` grid without D-Bus. It exposes window metadata only,
+  never window content (no screenshot, no input injection). `Close` asks the
+  client to close (`Meta.Window.delete`); nothing calls `kill()`.
 - `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
   lives in `dbus-interface.js` and is imported into `dbus-service.js`.
@@ -73,14 +81,14 @@ gnome-window-control-extension-requirements.md   original design spec
   `...Async(params, invocation)` convention), holding the invocation in
   `_waiters` / `_geometryWatchers`. A window satisfies a waiter only once it is
   shown — `_isUnshown` and `_evaluateWindow` in `dbus-service.js` say why, and
-  `disable()` teardown is a release constraint in [RELEASING.md](RELEASING.md).
+  the `disable()` teardown rule is in [CODING.md](CODING.md#javascript-the-extension).
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
   service: it reads `~/.config/gnome-window-control/rules.json`, watches
   `window-created`, and places a matching window once mutter has shown it. It
   makes no D-Bus call. The GNOME-49 maximize API detection is shared with
   `dbus-service.js` through `window-helpers.js`. A geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
-  below), so a rule waits for `shown` and then applies from an idle callback; a
+  above), so a rule waits for `shown` and then applies from an idle callback; a
   window that maps maximized is unmaximized first. On GNOME 49 and later the
   frame also goes into the window's initial configuration (`_preplace`, the
   `configure` signal), so the first frame is drawn in place.
@@ -134,9 +142,6 @@ sed -n '/## Methods/,/## /p' README.md
 - The D-Bus surface is the interface XML in
   `window-control@carlo9890.github.io/dbus-interface.js`. The README method table
   mirrors it and is updated by hand, so trust the XML when they disagree.
-- `gnome-window-control-extension-requirements.md` is the original design spec,
-  kept as a record of intent. It is not tracked against the code and does not
-  describe the current surface.
 
 ## External resources
 
