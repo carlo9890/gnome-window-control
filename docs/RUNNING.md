@@ -2,9 +2,9 @@
 
 How an agent installs, reloads, and drives the extension and `wctl` by hand to
 reproduce a bug or verify a change. For the automated suites and CI gates see
-[TESTING.md](TESTING.md); for logs see [MONITORING.md](MONITORING.md). The generic
-launch-and-drive flow is the built-in `run` skill — this file records
-only what is specific to this project.
+[TESTING.md](TESTING.md); for logs see [MONITORING.md](MONITORING.md). Call the
+Skill tool with `run` for the generic launch-and-drive flow. This file is the
+local delta over it.
 
 ## Hard rules for an agent (read before anything else in this file)
 

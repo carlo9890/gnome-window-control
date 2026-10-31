@@ -250,5 +250,4 @@ change, that extension holds the old code until the reload below.
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
 [CODING.md](CODING.md)) and a reload-and-run in a nested or headless shell (see
 [RUNNING.md](RUNNING.md)). Starting that shell needs the user's consent under
-RUNNING.md hard rule 1. Ask for it. Without consent, state in the PR body that
-the run is not done.
+RUNNING.md hard rule 1.
