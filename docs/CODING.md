@@ -44,15 +44,13 @@ If it fails, the code has a syntax error and must not be committed.
   the shared `_actOnWindow(windowId, label, action)` helper.
 - `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
   an upload that does not ([RELEASING.md](RELEASING.md#constraints-the-review-enforces)).
-  Add a timeout or idle source through `_addTimeout` (and `_addIdle` in
-  `rules.js`) and cancel it with `_removeSource`: they keep its ID in
-  `_sourceIds`, which `WindowRules.disable()` and `unexport()` empty. Connect a
-  per-window handler through `_track`/`_untrack` in `rules.js` or
-  `_trackWindow`/`_untrackWindow` in `dbus-service.js`. Do not hold a source ID
-  or a handler ID that the teardown cannot reach.
-  `tests/check-extension-headless.js` fails a teardown that leaves a handler or
-  a timer, or removes a source twice; add a case there for each new signal or
-  timer.
+  That covers every signal handler, GLib source, bus-name watch, file monitor,
+  cancellable, keybinding and pending `...Async` invocation. Keep each ID where
+  the teardown reaches it; in `rules.js` and `dbus-service.js`, add a timeout
+  through `_addTimeout` and cancel it with `_removeSource`, which keep its ID in
+  the `_sourceIds` set that `disable()` and `unexport()` empty.
+  `tests/check-extension-headless.js` checks only the handlers and sources it is
+  told about: add a case there for each new one.
 
 ## Rust (cli/)
 

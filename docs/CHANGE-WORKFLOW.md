@@ -9,7 +9,8 @@ delta over them.
 Before committing or opening a PR:
 
 - The suites required for this kind of change pass — the minimum-checks table in
-  [TESTING.md](TESTING.md) is the bar.
+  [TESTING.md](TESTING.md#minimum-checks-before-a-pr), and the reload-and-run
+  below it, are the bar.
 - A change under `window-control@carlo9890.github.io/` passes the
   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review).
 

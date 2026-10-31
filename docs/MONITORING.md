@@ -24,7 +24,7 @@ needs `G_MESSAGES_DEBUG=all` in the shell's environment. In a nested or
 headless session, put it in front of the start script:
 `G_MESSAGES_DEBUG=all ./scripts/start-nested.sh`. The
 main Wayland session cannot be restarted, so it needs the variable in the
-session environment before login — use the nested session instead.
+session environment before login — use a nested or headless session instead.
 
 ## Log levels
 

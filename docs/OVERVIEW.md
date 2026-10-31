@@ -56,8 +56,8 @@ README.md                  user docs; the D-Bus method table
 - **The D-Bus surface is fixed in scope.** It exposes geometry primitives
   (`Move`, `MoveResize`, `GetWorkarea`, ...) and no layout: `wctl tile` and
   `wctl center` compose a layout from those primitives, and rules and shortcuts
-  use the `rules-format.js` grid without D-Bus. It exposes window metadata only,
-  never window content (no screenshot, no input injection). `Close` asks the
+  use the `rules-format.js` grid without D-Bus. It reads window properties (id,
+  title, class, geometry, state), never pixels, and injects no input. `Close` asks the
   client to close (`Meta.Window.delete`); nothing calls `kill()`.
 - `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML

@@ -245,9 +245,10 @@ The rules-grammar column applies to any change under
 to skip them. The query column applies to any change under
 `window-control@carlo9890.github.io/`, `cli/` or `tests/`. It reads the
 extension loaded in the real session and starts no shell. For a JavaScript
-change, that extension holds the old code until the reload below.
+change, that extension holds the old code until the user logs out and in; only
+the reload-and-run below tests the new code.
 
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
-[CODING.md](CODING.md)) and a reload-and-run in a nested or headless shell (see
-[RUNNING.md](RUNNING.md)). Starting that shell needs the user's consent under
+[CODING.md](CODING.md)) and a reload-and-run in a nested or headless shell or a
+VM guest (see [RUNNING.md](RUNNING.md)). Starting that shell needs the user's consent under
 RUNNING.md hard rule 1.

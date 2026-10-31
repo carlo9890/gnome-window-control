@@ -337,6 +337,9 @@ Adding a key means editing, in one commit, on BOTH sides:
   `MATCH_KINDS` and `matchPredicate` for a match key.
 - `cli/src/rules.rs`: `RULE_KEYS` and `compile_rule`, or `MATCH_KEYS` and
   `Rule::matches_window`.
+- For a rule key, how it is applied: `_apply` in `rules.js`, and `Rule`,
+  `Action` and `Rule::resolve` in `cli/src/rules.rs`.
+- For a match key, `shadows` in `cli/src/commands/rules.rs`.
 - A case in `tests/vectors/rules-spec.json`.
 - For a match key, its capability name (see below): in `CAPABILITIES` in
   `dbus-service.js`, and in `NEWER_MATCH_KEYS` in `cli/src/commands/rules.rs`,
@@ -352,6 +355,9 @@ Re-verify with the two checks that read the vectors:
 env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
 mise run test
 ```
+
+A change to `rules.js` or `dbus-service.js` also runs the fake-windows check
+([TESTING.md](../TESTING.md#minimum-checks-before-a-pr)).
 
 Both are CI gates — see [../TESTING.md](../TESTING.md).
 

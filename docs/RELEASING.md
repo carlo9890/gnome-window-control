@@ -44,7 +44,11 @@ commit.
    merge.
 5. On the merged `main` commit, run every suite the "Before release" row of
    [TESTING.md](TESTING.md#minimum-checks-before-a-pr) requires, the
-   modification suite included. Do not tag until all of them pass.
+   modification suite included, against that commit's extension in a headless
+   shell or a VM guest ([RUNNING.md](RUNNING.md); starting a shell needs the
+   user's consent). Never run them on the real session: it holds older code,
+   and the keyboard-shortcut suite presses keys into it. Do not tag until all
+   of them pass.
 6. On the same commit: `git tag vN && git push --tags`.
 7. Write the release notes (see below) to a file outside the repository.
 8. Run: `./scripts/release.sh --notes-file <path>`.
@@ -146,9 +150,8 @@ The code must keep satisfying:
   fails on a dynamically linked binary (`scripts/check-static.sh`). aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
-- `disable()` must undo everything `enable()` did: every signal, timer,
-  keybinding and the D-Bus export. The helpers that keep this true are in
-  [CODING.md](CODING.md#javascript-the-extension).
+- `disable()` must undo everything `enable()` did, as
+  [CODING.md](CODING.md#javascript-the-extension) lists.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.
