@@ -1,19 +1,18 @@
 # Change Workflow
 
-Use the `/commit` and `/commit-push-pr` commands from the `commit-commands`
-plugin for the standard flow. This file is the local delta over them.
+Call the Skill tool with `commit-commands:commit` or
+`commit-commands:commit-push-pr` for the standard flow. This file is the local
+delta over them.
 
 ## Pre-handoff gates
 
 Before committing or opening a PR:
 
 - The suites required for this kind of change pass — the minimum-checks table in
-  [TESTING.md](TESTING.md) is the bar.
+  [TESTING.md](TESTING.md#minimum-checks-before-a-pr), and the reload-and-run
+  below it, are the bar.
 - A change under `window-control@carlo9890.github.io/` passes the
   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review).
-- Code changes to the extension's `.js` files are actually reloaded and
-  exercised in a running shell (see [RUNNING.md](RUNNING.md)) — `node --check`
-  is syntax only.
 
 ## Commits
 
@@ -42,11 +41,13 @@ The regex accepted 0 despite the "must be a positive number" message.
 ## Pull requests
 
 1. Open the PR against `main`.
-2. Describe what changed and the test plan (which suites you ran).
+2. Describe what changed and the test plan (which suites you ran). Without the
+   user's consent for the reload-and-run of a JavaScript change, state that it
+   is not done.
 3. Update `README.md` for user-facing changes and the relevant `docs/` topic for
    procedures.
-4. Review the PR against [REVIEWING.md](REVIEWING.md) with
-   `/worktree-flow:worktree-review <pr>`.
+4. Review the PR against [REVIEWING.md](REVIEWING.md): call the Skill tool with
+   `worktree-flow:worktree-review` and the PR number.
 
 The maintainer merges. An agent stops once the PR is open and its checks are
 green.

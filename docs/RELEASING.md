@@ -42,9 +42,16 @@ commit.
    ships a lock pinning the old version and the release build dirties the tree.
 4. Commit on a branch (`chore: bump version to vN`), open the PR, wait for the
    merge.
-5. On the merged `main` commit: `git tag vN && git push --tags`.
-6. Write the release notes (see below) to a file outside the repository.
-7. Run: `./scripts/release.sh --notes-file <path>`.
+5. On the merged `main` commit, run every suite the "Before release" row of
+   [TESTING.md](TESTING.md#minimum-checks-before-a-pr) requires, the
+   modification suite included, against that commit's extension in a headless
+   shell or a VM guest ([RUNNING.md](RUNNING.md); starting a shell needs the
+   user's consent). Never run them on the real session: it holds older code,
+   and the keyboard-shortcut suite presses keys into it. Do not tag until all
+   of them pass.
+6. On the same commit: `git tag vN && git push --tags`.
+7. Write the release notes (see below) to a file outside the repository.
+8. Run: `./scripts/release.sh --notes-file <path>`.
 
 ## Release notes
 
@@ -143,18 +150,8 @@ The code must keep satisfying:
   fails on a dynamically linked binary (`scripts/check-static.sh`). aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
-- `disable()` must undo everything `enable()` did. `unexport()` fails every
-  pending call and drops the `window-created` handler, the per-window
-  `notify::wm-class` / `notify::title` / `notify::window-type` / `shown` /
-  `unmanaged` handlers, the first-show handlers a window created while the
-  extension runs keeps until its first map, and the per-call timeouts and
-  caller name watches that `WaitForWindow` and `WaitForGeometry` arm;
-  `WindowRules.disable()` cancels its file monitor, its debounce timeout, a
-  `rules.json` read in flight, its per-window handlers and its per-window
-  grace and apply sources;
-  `WindowKeybindings.disable()` removes every keybinding it added and cancels a
-  pending unmaximize-then-place. Tear down any new signal or timer on the same
-  path.
+- `disable()` must undo everything `enable()` did, as
+  [CODING.md](CODING.md#javascript-the-extension) lists.
 - No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.

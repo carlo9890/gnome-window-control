@@ -58,8 +58,12 @@ the correct form.
   `// SPDX-FileCopyrightText: 2026 hko9890` and `// SPDX-License-Identifier: MIT`.
   Flag a new file without them; no gate catches a missing header.
 - **Log levels**: per-call handler logging uses `console.debug()`; `console.log()`
-  appears only in the enable/disable lifecycle; `console.error()` appears ONLY in
-  a catch block. Flag each other use. `console.log()` is visible by default
+  appears only in the enable/disable lifecycle; `console.warn()` appears only
+  where the extension turns a feature off and keeps running: a `rules.json` that
+  fails validation (`WindowRules._compile`, see
+  [RULES-JSON.md](specs/RULES-JSON.md)) and a shortcut that cannot be registered
+  (`WindowKeybindings.enable`); `console.error()` appears ONLY in a catch block.
+  Flag each other use. `console.log()` is visible by default
   (journald priority 5, see [MONITORING.md](MONITORING.md)), so a per-call
   `console.log()` leaves a journal line per `wctl` invocation that outlives the
   session.

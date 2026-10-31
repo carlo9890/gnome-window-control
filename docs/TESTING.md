@@ -117,7 +117,7 @@ installs.
 
 It pins:
 
-- the `disable()` teardown that [RELEASING.md](RELEASING.md) requires:
+- the `disable()` teardown that [CODING.md](CODING.md#javascript-the-extension) requires:
   `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
   `Disabled` and leaves no handler, subscription or timer,
   `WindowRules.disable()` leaves no handler or grace timer, neither of the two
@@ -242,8 +242,13 @@ The rules-grammar column applies to any change under
 `tests/vectors/`. The fake-windows column applies to any change to
 `extension.js`, `dbus-service.js`, `rules.js`, `keybindings.js` or
 `window-helpers.js`. Both are headless and take seconds, so there is no reason
-to skip them.
+to skip them. The query column applies to any change under
+`window-control@carlo9890.github.io/`, `cli/` or `tests/`. It reads the
+extension loaded in the real session and starts no shell. For a JavaScript
+change, that extension holds the old code until the user logs out and in; only
+the reload-and-run below tests the new code.
 
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
-[CODING.md](CODING.md)) and an actual reload-and-run in a shell (see
-[RUNNING.md](RUNNING.md)).
+[CODING.md](CODING.md)) and a reload-and-run in a nested or headless shell or a
+VM guest (see [RUNNING.md](RUNNING.md)). Starting that shell needs the user's consent under
+RUNNING.md hard rule 1.
