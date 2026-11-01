@@ -148,8 +148,9 @@ It pins:
   that a match within it ends the grace timer;
 - overlay windows: a load takes the open windows and a new window takes the
   rule once shown; the hide after the focus grace period and at the overview's
-  `showing`; no hide for the overlay's own dialog, a focus that comes back in
-  time, or no focused window; and the release by a load without the rule, by
+  `shown`, not at `showing`; no hide for the overlay's own dialog, a focus that
+  comes back in time, no focused window, or an overlay on another workspace;
+  no `notify::skip-taskbar`; and the release by a load without the rule, by
   `unmanaged` and by `disable()`, which leaves no handler, timer, `skip_taskbar`
   override or "above" the overlay set; `ListDetailed`'s `is_overlay`; and that
   a title change does not extend the rules grace period.

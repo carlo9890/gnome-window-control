@@ -185,9 +185,6 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             this.emit('notify::above');
         }
 
-        notify(name) {
-            this.emit(`notify::${name}`);
-        }
         get_compositor_private() { return this; }
         is_on_all_workspaces() { return false; }
         is_skip_taskbar() { return false; }
@@ -895,6 +892,16 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('an overlay on another workspace arms no grace timer', grace(open) === 0,
             `source ${grace(open)}`);
         open.onActiveWorkspace = true;
+        focus(open);
+        focus(other);
+        open.onActiveWorkspace = false;
+        focus(clipboard);
+        check('a pending hide ends when the overlay goes to another workspace', grace(open) === 0,
+            `source ${grace(open)}`);
+        await sleep(400);
+        check('an overlay moved to another workspace is not hidden by an earlier focus change',
+            !open.minimized);
+        open.onActiveWorkspace = true;
 
         restore(open);
         open.minimizable = false;
@@ -916,13 +923,16 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('a load between the match and the apply makes no overlay from the rule it dropped',
             !overlays._windows.has(late) && !late.above);
         rules._compile(OVERLAY_RULES);
-        check('becoming an overlay notifies skip-taskbar', JSON.stringify(notifies) === '[true]',
+        check('both JS names of skip-taskbar read true on an overlay',
+            late.skip_taskbar === true && late.skipTaskbar === true);
+        check('becoming an overlay emits no notify::skip-taskbar', notifies.length === 0,
             JSON.stringify(notifies));
         late.make_above();
         late.unmake_above();
         late.make_above();
         rules._compile('[{"match":{"class":"app"},"tile":"left"}]');
-        check('a release notifies skip-taskbar', JSON.stringify(notifies) === '[true,false]',
+        check('a release emits no notify::skip-taskbar and removes both overrides', notifies.length === 0 &&
+            !Object.hasOwn(late, 'skip_taskbar') && !Object.hasOwn(late, 'skipTaskbar'),
             JSON.stringify(notifies));
         check('a release keeps an above the user set again after the overlay set its own', late.above);
         rules._compile(OVERLAY_RULES);

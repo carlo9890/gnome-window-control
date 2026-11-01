@@ -318,7 +318,9 @@ to a new window, membership is decided:
    overlay, every other window stops being one. This is what keeps an overlay
    one after a screen unlock, which disables and enables the extension.
 
-A title change between loads does not change membership. A window stops being
+A load matches each open window by its class and title at that moment. A
+title change between loads does not change membership, but the next load can:
+match an overlay by class to keep it stable. A window stops being
 an overlay when it is unmanaged, when a load no longer makes it one, and at
 `disable()`.
 
@@ -327,7 +329,7 @@ an overlay when it is unmanaged, when a load no longer makes it one, and at
 | Effect | How |
 |---|---|
 | Above the other windows | `make_above()`, only when the window is not above already |
-| Out of Alt+Tab, the overview and the workspace thumbnails | the window object's `skip_taskbar` property reads `true`, and `notify::skip-taskbar` is emitted so an open overview drops the window. Mutter's own skip-taskbar state is left unset, because a window with it set cannot minimize. The dash and the app grid list apps, so they still show the window's app. |
+| Out of Alt+Tab, the overview and the workspace thumbnails | the window object's `skip_taskbar` property, under both JS names (`skip_taskbar`, `skipTaskbar`), reads `true`. Mutter's own skip-taskbar state is left unset, because a window with it set cannot minimize, and no `notify::skip-taskbar` is emitted, because the shell's app tracking counts an app's windows on that signal from mutter's state. A window that becomes an overlay while the overview is open stays in it until the overview opens again. The dash and the app grid list apps, so they still show the window's app. |
 | Hidden when another window takes the focus | below |
 | Hidden when the overview has opened | on the overview's `shown`. `showing` is too early: a touchpad gesture emits it as it starts, and the user can still cancel the gesture. |
 
@@ -337,22 +339,22 @@ it, for example with `ActivateNoAnimation`. A window that mutter does not let
 minimize (`can_minimize()` false, as for a client that sets skip-taskbar
 itself) stays shown, with a debug line.
 
-**Focus loss.** On each change of the display's focus window, for each
-overlay that is not minimized and is on the active workspace (one on another
-workspace is out of sight, and a move there takes its focus):
+**Focus loss.** On each change of the display's focus window, a pending hide
+of an overlay that is minimized or not on the active workspace is cancelled
+(one on another workspace is out of sight, and a move there takes its focus).
+For every other overlay:
 
 | New focus window | Result |
 |---|---|
 | The overlay, or a window whose transient chain leads to it | a pending hide is cancelled |
-| None | nothing: the shell's menus, its dialogs and a click on the empty desktop take no window focus |
+| None | nothing: the shell's menus, its dialogs and a click on the empty desktop take no window focus. With a desktop-icons extension the desktop is a window, and a click on it is a turn to another window. |
 | Any other window | a hide is armed for `FOCUS_LOSS_GRACE_MS`, replacing a pending one, so each turn to another window starts the period again. When it fires, the overlay is hidden only when a window outside the overlay and its dialogs holds the focus then. |
 
 `ListDetailed` reports `is_overlay: true` for an overlay. Its
 `is_skip_taskbar` stays mutter's own state, `false`.
 
 **Release** (`WindowOverlays.remove`) cancels a pending hide, removes the
-`skip_taskbar` override and emits `notify::skip-taskbar` (not for an unmanaged
-window), and calls `unmake_above()` only when the overlay set "above" and
+`skip_taskbar` overrides, and calls `unmake_above()` only when the overlay set "above" and
 nothing changed "above" since. A window the user or the client set above,
 before or during the overlay, stays above. Release moves, shows and hides nothing. The focus and
 overview handlers are connected only while there is an overlay.

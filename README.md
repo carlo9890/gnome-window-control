@@ -315,8 +315,9 @@ drop-down terminal or a launcher popup:
 - It is left out of Alt+Tab and the overview. The dash still shows its app.
 - It is minimized, with no animation, once another window has held the focus
   for a quarter of a second, and when the overview has opened. A dialog of
-  the overlay itself, a shell menu and a click on the empty desktop leave it
-  where it is.
+  the overlay itself and a shell menu leave it where it is. A click on the
+  empty desktop leaves it too, unless a desktop-icons extension (Ubuntu's
+  default) draws the desktop: then the click hides it.
 
 Show it again from a keyboard shortcut. An overlay rule needs no placement, and
 can carry one:
@@ -330,7 +331,9 @@ sh -c 'wctl unminimize -c quake --no-animation; case $? in 0) wctl activate -c q
 Give the overlay a class of its own: every window the rule matches becomes an
 overlay. Unlike a placement, the overlay part of a rule also holds for the
 windows already open when the file loads, so an overlay stays one after a
-screen unlock, and a window stops being one when you remove the rule.
+screen unlock, and a window stops being one when you remove the rule. Match an
+overlay by class: each load checks a title rule against the title a window has
+then.
 `wctl info` lists `overlay` among a window's states, and `wctl list --json`
 reports `is_overlay`.
 
