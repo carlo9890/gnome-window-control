@@ -216,18 +216,42 @@ assert_within() {
         return 0
     fi
 
-    local diff=$((actual - expected))
-    (( diff < 0 )) && diff=$((-diff))
-
-    if (( diff <= tol )); then
+    if within_tolerance "$actual" "$expected" "$tol"; then
         pass "$msg"
         return 0
     else
+        local diff=$((actual - expected))
+        (( diff < 0 )) && diff=$((-diff))
         fail "$msg"
         echo "  Expected: $expected (+/-$tol)"
         echo "  Actual:   $actual (off by $diff)"
         return 0
     fi
+}
+
+# within_tolerance ACTUAL EXPECTED TOLERANCE
+# True when ACTUAL is an integer and |actual - expected| <= tolerance.
+within_tolerance() {
+    [[ "$1" =~ ^-?[0-9]+$ ]] || return 1
+    local diff=$(($1 - $2))
+    (( diff < 0 )) && diff=$((-diff))
+    (( diff <= $3 ))
+}
+
+# assert_window_field_within JQ_FIELD EXPECTED TOLERANCE MESSAGE
+# assert_within on a field of the test window, read up to 50 times, 0.1 s
+# apart, until it is within tolerance. For a test that checks which window a
+# command reached, not how fast its frame lands: in a headless GNOME Shell 50.1
+# a frame request has stayed pending for seconds while nothing else woke the
+# shell, and these reads are such a wake-up.
+assert_window_field_within() {
+    local field="$1" expected="$2" tol="$3" msg="$4" actual=""
+    for _ in $(seq 1 50); do
+        actual=$(get_window_field "$field") || true
+        within_tolerance "$actual" "$expected" "$tol" && break
+        sleep 0.1
+    done
+    assert_within "$actual" "$expected" "$tol" "$msg"
 }
 
 # ============================================================================
