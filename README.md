@@ -289,7 +289,7 @@ as the `wctl` commands:
 - **monitor** — a monitor index; the workarea that `place`/`tile`/`center`
   resolve against, and where the window is placed. When that monitor does not
   exist, for example on an undocked laptop, the window is not moved or placed;
-  only `workspace` applies.
+  only `workspace` and `overlay` apply.
 - **overlay** — `true` makes the window an overlay: see
   [Overlay windows](#overlay-windows).
 
@@ -314,7 +314,7 @@ drop-down terminal or a launcher popup:
 - It stays above the other windows.
 - It is left out of Alt+Tab and the overview. The dash still shows its app.
 - It is minimized, with no animation, once another window has held the focus
-  for a quarter of a second, and at once when the overview opens. A dialog of
+  for a quarter of a second, and when the overview has opened. A dialog of
   the overlay itself, a shell menu and a click on the empty desktop leave it
   where it is.
 
@@ -324,7 +324,7 @@ can carry one:
 ```bash
 wctl rules add -c quake place center top 100% 40% --overlay
 # Bind this command to a key in Settings > Keyboard > Custom Shortcuts:
-sh -c 'wctl unminimize -c quake --no-animation && wctl activate -c quake || exec kitty --class quake'
+sh -c 'wctl unminimize -c quake --no-animation; case $? in 0) wctl activate -c quake ;; 2) exec kitty --class quake ;; esac'
 ```
 
 Give the overlay a class of its own: every window the rule matches becomes an

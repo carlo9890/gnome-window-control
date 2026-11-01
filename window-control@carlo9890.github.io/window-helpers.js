@@ -49,8 +49,7 @@ export function unmaximizeWindow(win) {
 // changes the window's visibility: one that leaves the window as hidden as
 // it was -- already in that state, or on another workspace -- runs no
 // effect, and the skip would swallow a later, unrelated animation instead.
-// The callers take the window from global.get_window_actors() or from a
-// signal of a managed window, so it has an actor.
+// The callers pass a window that mutter has shown, so it has an actor.
 export function skipNextEffect(win) {
     Main.wm.skipNextEffect(win.get_compositor_private());
 }

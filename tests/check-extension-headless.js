@@ -162,7 +162,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             super();
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
-                above: false, transientFor: null,
+                above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
             });
         }
 
@@ -173,9 +173,21 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         get_gtk_application_id() { return ''; }
         has_focus() { return false; }
         is_above() { return this.above; }
-        make_above() { this.above = true; }
-        unmake_above() { this.above = false; }
-        can_minimize() { return true; }
+        can_minimize() { return this.minimizable; }
+
+        make_above() {
+            this.above = true;
+            this.emit('notify::above');
+        }
+
+        unmake_above() {
+            this.above = false;
+            this.emit('notify::above');
+        }
+
+        notify(name) {
+            this.emit(`notify::${name}`);
+        }
         get_compositor_private() { return this; }
         is_on_all_workspaces() { return false; }
         is_skip_taskbar() { return false; }
@@ -183,7 +195,7 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         get_pid() { return 1; }
         get_window_type() { return this.type; }
         is_hidden() { return this.hidden; }
-        located_on_workspace() { return true; }
+        located_on_workspace() { return this.onActiveWorkspace; }
         get_client_type() { return Meta.WindowClientType.WAYLAND; }
         is_fullscreen() { return false; }
         unmaximize() { this.maximizeFlags = 0; }
@@ -872,8 +884,48 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
 
         focus(open);
         Main.overview.emit('showing');
-        check('opening the overview hides an overlay at once', open.minimized);
-        check('opening the overview hides an overlay that was not focused', pinned.minimized);
+        check('an overview gesture that may still be cancelled hides no overlay', !open.minimized);
+        Main.overview.emit('shown');
+        check('an open overview hides an overlay at once', open.minimized);
+        check('an open overview hides an overlay that was not focused', pinned.minimized);
+
+        restore(open);
+        open.onActiveWorkspace = false;
+        focus(other);
+        check('an overlay on another workspace arms no grace timer', grace(open) === 0,
+            `source ${grace(open)}`);
+        open.onActiveWorkspace = true;
+
+        restore(open);
+        open.minimizable = false;
+        focus(open);
+        focus(other);
+        const linesBeforeRefusal = consoleLines.length;
+        await sleep(400);
+        check('an overlay mutter cannot minimize is not logged as hidden', !open.minimized &&
+            consoleLines.slice(linesBeforeRefusal).some(line => line.message.endsWith('cannot be minimized, left shown')) &&
+            !consoleLines.slice(linesBeforeRefusal).some(line => line.message.includes('hidden,')));
+        open.minimizable = true;
+
+        const notifies = [];
+        const late = createWindow({ id: 26, wmClass: 'term' });
+        late.connect('notify::skip-taskbar', () => notifies.push(late.skip_taskbar === true));
+        late.map();
+        rules._compile('[{"match":{"class":"app"},"tile":"left"}]');
+        await sleep(100);
+        check('a load between the match and the apply makes no overlay from the rule it dropped',
+            !overlays._windows.has(late) && !late.above);
+        rules._compile(OVERLAY_RULES);
+        check('becoming an overlay notifies skip-taskbar', JSON.stringify(notifies) === '[true]',
+            JSON.stringify(notifies));
+        late.make_above();
+        late.unmake_above();
+        late.make_above();
+        rules._compile('[{"match":{"class":"app"},"tile":"left"}]');
+        check('a release notifies skip-taskbar', JSON.stringify(notifies) === '[true,false]',
+            JSON.stringify(notifies));
+        check('a release keeps an above the user set again after the overlay set its own', late.above);
+        rules._compile(OVERLAY_RULES);
 
         const fresh = createWindow({ id: 25, wmClass: 'term' });
         fresh.map();

@@ -241,15 +241,18 @@ Gating, in order:
 
 Action order within `_apply`:
 
-1. `workspace` — `change_workspace_by_index(index, true)`. For an index beyond
+1. `overlay` — the window becomes an overlay, unless a load since the match
+   dropped the rule ([Overlay windows](#overlay-windows)). It runs before the
+   `monitor` check, so a missing monitor does not stop it.
+2. `workspace` — `change_workspace_by_index(index, true)`. For an index beyond
    the last workspace mutter appends one workspace and moves the window there;
    it does not create the workspaces in between, so the window does not end on
    the rule's index (observed on GNOME Shell 50.1: rule index 7, window on
    index 2).
-2. `monitor` — when the index is not below `get_n_monitors()`, the rest of
+3. `monitor` — when the index is not below `get_n_monitors()`, the rest of
    the rule (the monitor move and the geometry) is skipped with a debug line.
    The workspace step has already run.
-3. Geometry — skipped when the window is fullscreen. A maximized window is
+4. Geometry — skipped when the window is fullscreen. A maximized window is
    unmaximized first, and the frame is requested after the next `size-changed`
    or `UNMAXIMIZE_SETTLE_MS`, whichever comes first, because a frame requested
    while the unmaximize is in flight is overwritten by the restored size.
@@ -324,16 +327,19 @@ an overlay when it is unmanaged, when a load no longer makes it one, and at
 | Effect | How |
 |---|---|
 | Above the other windows | `make_above()`, only when the window is not above already |
-| Out of Alt+Tab, the overview and the workspace thumbnails | the window object's `skip_taskbar` property reads `true`. Mutter's own skip-taskbar state is left unset, because a window with it set cannot minimize. The dash and the app grid list apps, so they still show the window's app. |
+| Out of Alt+Tab, the overview and the workspace thumbnails | the window object's `skip_taskbar` property reads `true`, and `notify::skip-taskbar` is emitted so an open overview drops the window. Mutter's own skip-taskbar state is left unset, because a window with it set cannot minimize. The dash and the app grid list apps, so they still show the window's app. |
 | Hidden when another window takes the focus | below |
-| Hidden when the overview opens | on the overview's `showing` |
+| Hidden when the overview has opened | on the overview's `shown`. `showing` is too early: a touchpad gesture emits it as it starts, and the user can still cancel the gesture. |
 
 A hide is a minimize without the animation (`minimizeWindow` in
 `window-helpers.js`). A minimized overlay stays minimized until a caller shows
-it, for example with `ActivateNoAnimation`.
+it, for example with `ActivateNoAnimation`. A window that mutter does not let
+minimize (`can_minimize()` false, as for a client that sets skip-taskbar
+itself) stays shown, with a debug line.
 
 **Focus loss.** On each change of the display's focus window, for each
-overlay that is not minimized:
+overlay that is not minimized and is on the active workspace (one on another
+workspace is out of sight, and a move there takes its focus):
 
 | New focus window | Result |
 |---|---|
@@ -342,9 +348,10 @@ overlay that is not minimized:
 | Any other window | a hide is armed for `FOCUS_LOSS_GRACE_MS`. When it fires, the overlay is hidden only when a window outside the overlay and its dialogs holds the focus then. |
 
 **Release** (`WindowOverlays.remove`) cancels a pending hide, removes the
-`skip_taskbar` override, and calls `unmake_above()` only when the overlay set
-"above" and the window is still above. A window the user or the client had
-set above stays above. Release moves, shows and hides nothing. The focus and
+`skip_taskbar` override and emits `notify::skip-taskbar` (not for an unmanaged
+window), and calls `unmake_above()` only when the overlay set "above" and
+nothing changed "above" since. A window the user or the client set above,
+before or during the overlay, stays above. Release moves, shows and hides nothing. The focus and
 overview handlers are connected only while there is an overlay.
 
 ## Reload

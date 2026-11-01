@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 // Overlay windows: a window that a rules.json rule marks "overlay": true stays
 // above the other windows and out of Alt+Tab and the overview, and is
-// minimized when the user turns to another window or opens the overview. Its
-// caller brings it back with an ordinary activate.
+// minimized when the user turns to another window or the overview has opened.
+// Its caller brings it back with an ordinary activate.
 //
 // rules.js decides which windows are overlays; this file holds what being one
 // means, and undoes it when a window stops being one.
@@ -27,19 +27,27 @@ export class WindowOverlays {
     add(win) {
         if (this._windows.has(win))
             return;
-        const entry = { unmanagedId: 0, graceId: 0, madeAbove: false };
-        entry.unmanagedId = win.connect('unmanaged', () => this._forget(win));
+        const entry = { ids: [], graceId: 0, madeAbove: false };
         // Only an "above" the overlay set is taken back when it ends, so one
-        // the user or the client set stays.
+        // the user or the client set stays -- also one set again after the
+        // overlay set its own.
         if (!win.is_above()) {
             win.make_above();
             entry.madeAbove = true;
         }
+        entry.ids = [
+            win.connect('unmanaged', () => this._forget(win, true)),
+            win.connect('notify::above', () => {
+                entry.madeAbove = false;
+            }),
+        ];
         // Alt+Tab, the overview and the workspace thumbnails read this
         // property of the window object. Mutter's own skip-taskbar state stays
         // unset: a window that has it set cannot be minimized, and minimize
-        // is how an overlay hides.
+        // is how an overlay hides. The notify makes an open overview drop
+        // the window it already shows.
         Object.defineProperty(win, 'skip_taskbar', { get: () => true, configurable: true });
+        win.notify('skip-taskbar');
         this._windows.set(win, entry);
         this._syncWatch();
         console.debug(`[Window Control] overlay -> ${win.get_id()}: on`);
@@ -51,7 +59,7 @@ export class WindowOverlays {
             return;
         if (entry.madeAbove && win.is_above())
             win.unmake_above();
-        this._forget(win);
+        this._forget(win, false);
         console.debug(`[Window Control] overlay -> ${win.get_id()}: off`);
     }
 
@@ -60,11 +68,19 @@ export class WindowOverlays {
             this.remove(win);
     }
 
-    _forget(win) {
+    get size() {
+        return this._windows.size;
+    }
+
+    // An unmanaged window gets no notify: the overview would take it back.
+    _forget(win, unmanaged) {
         const entry = this._windows.get(win);
-        win.disconnect(entry.unmanagedId);
+        for (const id of entry.ids)
+            win.disconnect(id);
         this._removeGrace(entry);
         delete win.skip_taskbar;
+        if (!unmanaged)
+            win.notify('skip-taskbar');
         this._windows.delete(win);
         this._syncWatch();
     }
@@ -73,7 +89,9 @@ export class WindowOverlays {
     _syncWatch() {
         if (this._windows.size > 0 && !this._focusId) {
             this._focusId = global.display.connect('notify::focus-window', () => this._focusChanged());
-            this._overviewId = Main.overview.connect('showing', () => this._hideAll());
+            // 'shown', not 'showing': a touchpad gesture emits 'showing' as it
+            // starts, and the user can still cancel it.
+            this._overviewId = Main.overview.connect('shown', () => this._hideAll());
         } else if (this._windows.size === 0 && this._focusId) {
             global.display.disconnect(this._focusId);
             this._focusId = 0;
@@ -84,6 +102,7 @@ export class WindowOverlays {
 
     _focusChanged() {
         const focus = global.display.focus_window;
+        const workspace = global.workspace_manager.get_active_workspace();
         for (const [win, entry] of this._windows) {
             if (this._holdsFocus(win, focus)) {
                 this._removeGrace(entry);
@@ -91,7 +110,9 @@ export class WindowOverlays {
             }
             // No focused window at all is not a turn to another window: the
             // shell's own menus and dialogs take the keyboard that way.
-            if (!focus || win.minimized || entry.graceId)
+            // An overlay on another workspace is out of sight already, and
+            // moving it there takes its focus.
+            if (!focus || win.minimized || entry.graceId || !win.located_on_workspace(workspace))
                 continue;
             entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FOCUS_LOSS_GRACE_MS, () => {
                 entry.graceId = 0;
@@ -116,8 +137,10 @@ export class WindowOverlays {
     _hide(win, reason) {
         if (win.minimized)
             return;
-        minimizeWindow(win, true);
-        console.debug(`[Window Control] overlay -> ${win.get_id()}: hidden, ${reason}`);
+        if (minimizeWindow(win, true))
+            console.debug(`[Window Control] overlay -> ${win.get_id()}: hidden, ${reason}`);
+        else
+            console.debug(`[Window Control] overlay -> ${win.get_id()}: cannot be minimized, left shown`);
     }
 
     _removeGrace(entry) {

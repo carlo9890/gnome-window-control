@@ -71,13 +71,14 @@ export class WindowRules {
         this._fileMonitorId = 0;
         this._reloadId = 0;
         this._loadCancellable = null;
-        this._overlays = new WindowOverlays();
+        this._overlays = null;
         // The pending reload debounce, and the grace and apply sources of
         // every tracked window; disable() removes them.
         this._sourceIds = new Set();
     }
 
     enable() {
+        this._overlays = new WindowOverlays();
         const dir = Gio.File.new_for_path(CONFIG_DIR);
         try {
             dir.make_directory_with_parents(null);
@@ -108,6 +109,7 @@ export class WindowRules {
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._overlays.destroy();
+        this._overlays = null;
         this._rules = [];
         this._syncWatch();
     }
@@ -168,8 +170,10 @@ export class WindowRules {
     // and an open overlay must still be one after the unlock, and after an
     // edit of the file. Placement stays a once-per-new-window affair.
     _syncOverlays() {
+        if (this._overlays.size === 0 && !this._rules.some(rule => rule.overlay))
+            return;
         for (const win of global.display.list_all_windows()) {
-            const index = win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
+            const index = this._winningIndex(win);
             if (index >= 0 && this._rules[index].overlay)
                 this._overlays.add(win);
             else
@@ -256,6 +260,11 @@ export class WindowRules {
         return this._rules.findIndex(rule => rule.predicates.every(p => p(win)));
     }
 
+    // A window that is not NORMAL matches no rule.
+    _winningIndex(win) {
+        return win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
+    }
+
     // Put the rule's frame into the window's initial configuration: mutter
     // then skips its own placement and asks the client for that size, so the
     // first frame is drawn in place instead of jumping there afterwards.
@@ -308,7 +317,7 @@ export class WindowRules {
         // A shown window that is not NORMAL matches nothing, so it gets the
         // same grace period as an unmatched one: a retype to NORMAL within it
         // still gets the rule, and one after it cannot move the window.
-        const index = win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
+        const index = this._winningIndex(win);
         if (index >= 0) {
             const rule = this._rules[index];
             // A rule that took the head start resolves against the same
@@ -343,7 +352,9 @@ export class WindowRules {
 
     _apply(win, rule, index, headStartMonitor) {
         const id = win.get_id();
-        if (rule.overlay)
+        // A load between the match and this call has decided the open
+        // windows already; a rule it dropped makes no overlay.
+        if (rule.overlay && this._rules.includes(rule))
             this._overlays.add(win);
         if (rule.workspace !== null)
             win.change_workspace_by_index(rule.workspace, true);
