@@ -809,6 +809,10 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     // has no monitor to undo (RULES-JSON.md).
 
     {
+        const configDir = `${SCRATCH}/config/gnome-window-control`;
+        GLib.mkdir_with_parents(configDir, 0o755);
+        const rulesPath = `${configDir}/rules.json`;
+        write(rulesPath, '[{"match":{"class":"app"},"tile":"left"}]');
         const realMonitor = Gio.File.prototype.monitor_directory;
         Gio.File.prototype.monitor_directory = () => {
             throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_SUPPORTED, 'no watch here');
@@ -831,6 +835,12 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             .filter(line => line.message.includes('cannot watch'));
         check('the watch failure is logged at error level', failures.length === 1 &&
             failures[0].level === GLib.LogLevelFlags.LEVEL_CRITICAL, JSON.stringify(failures));
+        check('a failed watch keeps no monitor', rules._fileMonitor === null, `${rules._fileMonitor}`);
+        write(rulesPath, '[{"match":{"class":"app"},"tile":"left"},{"match":{"class":"b"},"tile":"right"}]');
+        await sleep(300);
+        check('an unwatched rules.json is not read again after a write', rules._rules.length === 1,
+            `${rules._rules.length} rule(s)`);
+        const linesBeforeDisable = consoleLines.length;
         error = null;
         try {
             rules.disable();
@@ -840,6 +850,9 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         check('disable() after a failed watch throws nothing', error === null, `${error}`);
         check('disable() after a failed watch leaves no handler on the display',
             display.handlerCount() === 0, `${display.handlerCount()} handler(s)`);
+        check('disable() after a failed watch leaves no source and removes none twice',
+            rules._sourceIds.size === 0 && unknownSourceRemovals(linesBeforeDisable) === 0,
+            `tracked ${[...rules._sourceIds]}, ${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
     }
 
     // -- WindowRules: overlay windows -------------------------------------------
