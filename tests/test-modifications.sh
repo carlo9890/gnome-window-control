@@ -141,6 +141,13 @@ else
         "place --settled: observed.width is the live frame"
     assert_equals "$(echo "$settled_json" | jq -r '.observed.height')" "$(get_window_field '.frame_rect.height')" \
         "place --settled: observed.height is the live frame"
+    # A frame that never moved would pass the four checks above, so --settled
+    # must also report the frame that was asked for.
+    for edge in x y width height; do
+        assert_within "$(echo "$settled_json" | jq -r ".observed.$edge")" \
+            "$(echo "$settled_json" | jq -r ".target.$edge")" "$GEOM_TOLERANCE" \
+            "place --settled: observed.$edge is the target"
+    done
 
     # Without --settled there is no settle verdict at all, so a caller can tell
     # "did not settle" from "nobody waited".
