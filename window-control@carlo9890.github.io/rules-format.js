@@ -64,7 +64,7 @@ export function nextWidePosition(frame, workarea) {
     return isWideRight ? 'wide-left' : 'wide-right';
 }
 
-export const RULE_KEYS = ['match', 'place', 'tile', 'center', 'workspace', 'monitor'];
+export const RULE_KEYS = ['match', 'place', 'tile', 'center', 'workspace', 'monitor', 'overlay'];
 
 // `place` tokens are resolved against this at load time, so a grammar error is
 // reported when the file is read rather than when a window first appears.
@@ -284,10 +284,13 @@ export function compileRule(rule, index) {
 
     const workspace = compileIndex(rule, 'workspace', label);
     const monitor = compileIndex(rule, 'monitor', label);
-    if (!geometry && workspace === null && monitor === null)
-        throw new Error(`${label}: has nothing to do (add place, tile, center, workspace or monitor)`);
+    if ('overlay' in rule && typeof rule.overlay !== 'boolean')
+        throw new Error(`${label}.overlay: must be a boolean`);
+    const overlay = rule.overlay === true;
+    if (!geometry && workspace === null && monitor === null && !overlay)
+        throw new Error(`${label}: has nothing to do (add place, tile, center, workspace, monitor or overlay)`);
 
-    return { predicates, geometry, workspace, monitor };
+    return { predicates, geometry, workspace, monitor, overlay };
 }
 
 // Parse and validate the whole file. Throws on the first problem: a file with

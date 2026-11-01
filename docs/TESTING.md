@@ -106,8 +106,8 @@ dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) 
 With several mutter typelibs installed, this picks the newest one; with none,
 it stops with `no Meta-*.typelib installed`.
 
-Runs the real `extension.js`, `dbus-service.js`, `rules.js` and `keybindings.js`
-against fake windows and a fake display that count their signal handlers. No
+Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `overlay.js` and
+`keybindings.js` against fake windows and a fake display that count their signal handlers. No
 GNOME session, no D-Bus: the check copies the extension files into a temporary
 directory and points the shell-only imports (`ui/main.js`,
 `extensions/extension.js`, `gi://Shell`) at stubs written there. It needs the
@@ -145,7 +145,15 @@ It pins:
 - a synchronous handler (`List`, `ListDetailed`, `Activate`, `ActivateBy*`)
   lets an unexpected throw through to GJS instead of answering `false` or `[]`;
 - the rules grace period for a window that is not `NORMAL` when shown, and
-  that a match within it ends the grace timer.
+  that a match within it ends the grace timer;
+- overlay windows: a load takes the open windows and a new window takes the
+  rule once shown; the hide after the focus grace period and at the overview's
+  `shown`, not at `showing`; no hide for the overlay's own dialog, a focus that
+  comes back in time, no focused window, or an overlay on another workspace;
+  no `notify::skip-taskbar`; and the release by a load without the rule, by
+  `unmanaged` and by `disable()`, which leaves no handler, timer, `skip_taskbar`
+  override or "above" the overlay set; `ListDetailed`'s `is_overlay`; and that
+  a title change does not extend the rules grace period.
 
 Add a case here for extension logic a fake window can drive. Anything reachable
 this way must be verified this way before a shell is even considered; see the
@@ -240,8 +248,8 @@ network are needed.
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
 `tests/vectors/`. The fake-windows column applies to any change to
-`extension.js`, `dbus-service.js`, `rules.js`, `keybindings.js` or
-`window-helpers.js`. Both are headless and take seconds, so there is no reason
+`extension.js`, `dbus-service.js`, `rules.js`, `overlay.js`, `keybindings.js`
+or `window-helpers.js`. Both are headless and take seconds, so there is no reason
 to skip them. The query column applies to any change under
 `window-control@carlo9890.github.io/`, `cli/` or `tests/`. It reads the
 extension loaded in the real session and starts no shell. For a JavaScript

@@ -12,10 +12,11 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── dbus-service.js        D-Bus service + method handlers (WindowControlService)
 ├── dbus-interface.js      D-Bus interface XML (imported by dbus-service.js)
 ├── rules.js               WindowRules: rules.json auto-placement (no D-Bus)
+├── overlay.js             WindowOverlays: what an overlay rule does while a window is one (owned by WindowRules)
 ├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
 ├── keybindings.js         WindowKeybindings: the tile shortcuts (no D-Bus)
 ├── schemas/               the GSettings schema the shortcuts are read from
-├── window-helpers.js      the GNOME 49 maximize API, the workarea lookup and the unmaximize wait, shared by all three
+├── window-helpers.js      the GNOME 49 maximize API, the quiet minimize, the workarea lookup and the unmaximize wait, shared by the modules above
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
@@ -92,6 +93,11 @@ README.md                  user docs; the D-Bus method table
   window that maps maximized is unmaximized first. On GNOME 49 and later the
   frame also goes into the window's initial configuration (`_preplace`, the
   `configure` signal), so the first frame is drawn in place.
+- **Overlay windows** are the one rules.json effect that outlives a window's
+  first placement: `WindowRules` decides membership at each apply and at each
+  load, for the open windows too (`_syncOverlays`), and `WindowOverlays` in
+  `overlay.js` keeps a member above, out of Alt+Tab, and minimizes it on focus
+  loss and when the overview opens.
 - **Keyboard shortcuts** live in `keybindings.js` (`WindowKeybindings`): one
   `Main.wm.addKeybinding` per key of the schema in `schemas/`, registered
   `PER_WINDOW` so mutter hands the handler the focused window and skips it when

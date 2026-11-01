@@ -126,7 +126,7 @@
       "name": "unknown rule key",
       "document": [{ "match": { "class": "a" }, "tile": "left", "size": "big" }],
       "valid": false,
-      "message": "rules[0].size: unknown key (use match, place, tile, center, workspace, monitor)"
+      "message": "rules[0].size: unknown key (use match, place, tile, center, workspace, monitor, overlay)"
     },
     {
       "name": "the index in the message is the rule's own",
@@ -367,7 +367,7 @@
       "name": "an integer rule key is checked before an earlier unknown key",
       "document": [{ "match": { "class": "a" }, "tile": "left", "size": "big", "1": "x" }],
       "valid": false,
-      "message": "rules[0].1: unknown key (use match, place, tile, center, workspace, monitor)"
+      "message": "rules[0].1: unknown key (use match, place, tile, center, workspace, monitor, overlay)"
     },
     {
       "name": "a key with a leading zero is not an array index and keeps its file position",
@@ -506,7 +506,63 @@
       "name": "rule has nothing to do",
       "document": [{ "match": { "class": "a" } }],
       "valid": false,
-      "message": "rules[0]: has nothing to do (add place, tile, center, workspace or monitor)"
+      "message": "rules[0]: has nothing to do (add place, tile, center, workspace, monitor or overlay)"
+    },
+    {
+      "name": "overlay alone is an action",
+      "document": [{ "match": { "class": "a" }, "overlay": true }],
+      "valid": true
+    },
+    {
+      "name": "overlay with place",
+      "document": [{ "match": { "class": "a" }, "place": ["center", "top", "1800", "100%"], "overlay": true }],
+      "valid": true
+    },
+    {
+      "name": "overlay with tile, workspace and monitor",
+      "document": [{ "match": { "class": "a" }, "tile": "top-center", "workspace": 1, "monitor": 0, "overlay": true }],
+      "valid": true
+    },
+    {
+      "name": "overlay false with an action",
+      "document": [{ "match": { "class": "a" }, "tile": "left", "overlay": false }],
+      "valid": true
+    },
+    {
+      "name": "overlay false alone has nothing to do",
+      "document": [{ "match": { "class": "a" }, "overlay": false }],
+      "valid": false,
+      "message": "rules[0]: has nothing to do (add place, tile, center, workspace, monitor or overlay)"
+    },
+    {
+      "name": "overlay is a string",
+      "document": [{ "match": { "class": "a" }, "overlay": "yes" }],
+      "valid": false,
+      "message": "rules[0].overlay: must be a boolean"
+    },
+    {
+      "name": "overlay is a number",
+      "document": [{ "match": { "class": "a" }, "overlay": 1 }],
+      "valid": false,
+      "message": "rules[0].overlay: must be a boolean"
+    },
+    {
+      "name": "overlay is null",
+      "document": [{ "match": { "class": "a" }, "overlay": null }],
+      "valid": false,
+      "message": "rules[0].overlay: must be a boolean"
+    },
+    {
+      "name": "a bad monitor is reported before a bad overlay",
+      "document": [{ "match": { "class": "a" }, "overlay": "yes", "monitor": -1 }],
+      "valid": false,
+      "message": "rules[0].monitor: must be a non-negative integer"
+    },
+    {
+      "name": "a bad tile is reported before a bad overlay",
+      "document": [{ "match": { "class": "a" }, "overlay": 1, "tile": "nowhere" }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     }
   ],
 

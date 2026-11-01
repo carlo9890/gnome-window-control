@@ -48,7 +48,8 @@ If it fails, the code has a syntax error and must not be committed.
   cancellable, keybinding and pending `...Async` invocation. Keep each ID where
   the teardown reaches it; in `rules.js` and `dbus-service.js`, add a timeout
   through `_addTimeout` and cancel it with `_removeSource`, which keep its ID in
-  the `_sourceIds` set that `disable()` and `unexport()` empty.
+  the `_sourceIds` set that `disable()` and `unexport()` empty. In `overlay.js`
+  a grace timer's ID lives in its window's entry, which every release clears.
   `tests/check-extension-headless.js` checks only the handlers and sources it is
   told about: add a case there for each new one.
 

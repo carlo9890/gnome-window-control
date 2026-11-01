@@ -34,7 +34,15 @@ pub const PROBE_WORKAREA: Rect = Rect {
 };
 
 /// Every key a rule object may carry, in the order the message lists them.
-pub const RULE_KEYS: [&str; 6] = ["match", "place", "tile", "center", "workspace", "monitor"];
+pub const RULE_KEYS: [&str; 7] = [
+    "match",
+    "place",
+    "tile",
+    "center",
+    "workspace",
+    "monitor",
+    "overlay",
+];
 
 /// Every `match` key, mapped to the selector kind it means.
 pub const MATCH_KEYS: [(&str, &str); 6] = [
@@ -78,6 +86,7 @@ pub struct Rule {
     pub action: Option<Action>,
     pub workspace: Option<i64>,
     pub monitor: Option<i64>,
+    pub overlay: bool,
 }
 
 impl Rule {
@@ -297,9 +306,14 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
 
     let workspace = compile_index(rule, "workspace", &label)?;
     let monitor = compile_index(rule, "monitor", &label)?;
-    if action.is_none() && workspace.is_none() && monitor.is_none() {
+    let overlay = match rule.get("overlay") {
+        None => false,
+        Some(Value::Bool(overlay)) => *overlay,
+        Some(_) => return Err(format!("{label}.overlay: must be a boolean")),
+    };
+    if action.is_none() && workspace.is_none() && monitor.is_none() && !overlay {
         return Err(format!(
-            "{label}: has nothing to do (add place, tile, center, workspace or monitor)"
+            "{label}: has nothing to do (add place, tile, center, workspace, monitor or overlay)"
         ));
     }
 
@@ -308,6 +322,7 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
         action,
         workspace,
         monitor,
+        overlay,
     })
 }
 
@@ -365,6 +380,7 @@ mod tests {
             ])),
             workspace: None,
             monitor: None,
+            overlay: false,
         }
     }
 
@@ -403,6 +419,7 @@ mod tests {
                     action: Some(Action::Tile(position.clone())),
                     workspace: None,
                     monitor: None,
+                    overlay: false,
                 };
                 assert_eq!(
                     rule.resolve(workarea, PROBE_WORKAREA),
@@ -419,6 +436,7 @@ mod tests {
                 action: Some(Action::Center(case["axis"].as_str().unwrap().to_string())),
                 workspace: None,
                 monitor: None,
+                overlay: false,
             };
             assert_eq!(
                 rule.resolve(rect(&case["workarea"]), rect(&case["frame"])),
@@ -448,6 +466,7 @@ mod tests {
                 action: Some(Action::Tile("left".to_string())),
                 workspace: None,
                 monitor: None,
+                overlay: false,
             };
             // A null class or title is the empty string on the wire: the
             // extension's document carries "" for a window with neither.

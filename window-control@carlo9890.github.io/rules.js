@@ -23,10 +23,13 @@
 // center:    horizontal | vertical | both, keeps the window's own size.
 // workspace: index; one beyond the last appends a single workspace.
 // monitor:   index; the workarea place/tile/center resolve against.
+// overlay:   true keeps the window above the others and out of Alt+Tab, and
+//            hides it when another window takes the focus (see overlay.js).
 //
 // The first matching rule wins, in file order, and is applied exactly once per
 // window. A window that resizes itself later is left alone. The file is
-// re-read on every change.
+// re-read on every change. Which windows are overlays is decided again on
+// every load, for the open windows too.
 //
 // The grammar itself -- the token vocabulary, the tile grid and every
 // validation message -- lives in rules-format.js, which imports nothing so the
@@ -35,6 +38,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, resolvePlaceRect, tileRect } from './rules-format.js';
 import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
 
@@ -62,17 +66,19 @@ export class WindowRules {
     constructor() {
         this._rules = [];
         this._windowCreatedId = 0;
-        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, headStart, wait}
+        this._tracked = new Map();
         this._fileMonitor = null;
         this._fileMonitorId = 0;
         this._reloadId = 0;
         this._loadCancellable = null;
+        this._overlays = null;
         // The pending reload debounce, and the grace and apply sources of
         // every tracked window; disable() removes them.
         this._sourceIds = new Set();
     }
 
     enable() {
+        this._overlays = new WindowOverlays();
         const dir = Gio.File.new_for_path(CONFIG_DIR);
         try {
             dir.make_directory_with_parents(null);
@@ -102,6 +108,8 @@ export class WindowRules {
         this._fileMonitor = null;
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
+        this._overlays.destroy();
+        this._overlays = null;
         this._rules = [];
         this._syncWatch();
     }
@@ -134,6 +142,7 @@ export class WindowRules {
                 // the reason it cannot be read.
                 this._rules = [];
                 this._syncWatch();
+                this._syncOverlays();
                 if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
                     console.debug(`[Window Control] no ${RULES_FILE}; window rules off`);
                 else
@@ -153,6 +162,23 @@ export class WindowRules {
             console.warn(`[Window Control] ${RULES_FILE}: ${e.message}; window rules off`);
         }
         this._syncWatch();
+        this._syncOverlays();
+    }
+
+    // An overlay rule holds for the windows already open too, not only for
+    // new ones: the shell disables the extension while the screen is locked,
+    // and an open overlay must still be one after the unlock, and after an
+    // edit of the file. Placement stays a once-per-new-window affair.
+    _syncOverlays() {
+        if (this._overlays.size === 0 && !this._rules.some(rule => rule.overlay))
+            return;
+        for (const win of global.display.list_all_windows()) {
+            const index = this._winningIndex(win);
+            if (index >= 0 && this._rules[index].overlay)
+                this._overlays.add(win);
+            else
+                this._overlays.remove(win);
+        }
     }
 
     // 'window-created' is connected only while there is a rule to apply, so an
@@ -175,7 +201,7 @@ export class WindowRules {
     // mutter's initial placement overrides it. The one earlier way in is the
     // initial configuration (see _preplace).
     _track(win) {
-        const entry = { ids: [], graceId: 0, applyId: 0, shown: false, headStart: null };
+        const entry = { ids: [], graceId: 0, graceEnd: 0, applyId: 0, shown: false, headStart: null };
         const evaluate = () => this._evaluate(win);
         entry.ids = [
             win.connect('notify::wm-class', evaluate),
@@ -234,6 +260,15 @@ export class WindowRules {
         return this._rules.findIndex(rule => rule.predicates.every(p => p(win)));
     }
 
+    isOverlay(win) {
+        return this._overlays?.has(win) ?? false;
+    }
+
+    // A window that is not NORMAL matches no rule.
+    _winningIndex(win) {
+        return win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
+    }
+
     // Put the rule's frame into the window's initial configuration: mutter
     // then skips its own placement and asks the client for that size, so the
     // first frame is drawn in place instead of jumping there afterwards.
@@ -286,7 +321,7 @@ export class WindowRules {
         // A shown window that is not NORMAL matches nothing, so it gets the
         // same grace period as an unmatched one: a retype to NORMAL within it
         // still gets the rule, and one after it cannot move the window.
-        const index = win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
+        const index = this._winningIndex(win);
         if (index >= 0) {
             const rule = this._rules[index];
             // A rule that took the head start resolves against the same
@@ -311,16 +346,24 @@ export class WindowRules {
             });
             return;
         }
-        if (!entry.graceId) {
-            entry.graceId = this._addTimeout(LATE_IDENTITY_GRACE_MS, () => {
-                entry.graceId = 0;
-                this._untrack(win);
-            });
-        }
+        // The period runs from the first evaluation that matched nothing; a
+        // later one re-arms the timer for what is left of it, so a window that
+        // keeps changing its title is still given up on in time.
+        const now = GLib.get_monotonic_time() / 1000;
+        entry.graceEnd ||= now + LATE_IDENTITY_GRACE_MS;
+        this._removeSource(entry.graceId);
+        entry.graceId = this._addTimeout(Math.max(0, Math.ceil(entry.graceEnd - now)), () => {
+            entry.graceId = 0;
+            this._untrack(win);
+        });
     }
 
     _apply(win, rule, index, headStartMonitor) {
         const id = win.get_id();
+        // A load between the match and this call has decided the open
+        // windows already; a rule it dropped makes no overlay.
+        if (rule.overlay && this._rules.includes(rule))
+            this._overlays.add(win);
         if (rule.workspace !== null)
             win.change_workspace_by_index(rule.workspace, true);
         if (rule.monitor !== null) {

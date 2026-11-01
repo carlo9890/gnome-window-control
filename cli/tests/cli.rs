@@ -779,10 +779,10 @@ fn rules_file_surface_needs_no_bus() {
         ],
     );
 
-    // No action is a usage error, unless --workspace or --monitor gives the
-    // rule something to do.
+    // No action is a usage error, unless --workspace, --monitor or --overlay
+    // gives the rule something to do.
     expect_die(
-        "A rule needs an action, --workspace or --monitor. Usage: wctl rules add",
+        "A rule needs an action, --workspace, --monitor or --overlay. Usage: wctl rules add",
         &["rules", "add", "--file", &path, "-c", "a"],
     );
     // --at is a position in the file, so a huge one is past the end, not a
@@ -1090,6 +1090,77 @@ fn rules_check_file_option_guards() {
     assert_eq!(code, 1);
     assert!(out.contains(r#""error":"Cannot read"#), "printed: {out}");
     assert!(out.contains(r#""valid":false"#), "printed: {out}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn rules_add_overlay_writes_the_key_with_or_without_an_action() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-overlay-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    let path = file.to_str().unwrap();
+
+    // Alone, --overlay is the rule's action; the flag may come before the match.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--overlay",
+        "-c",
+        "quake",
+        "--dry-run",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let document: serde_json::Value = serde_json::from_str(&out).expect("JSON");
+    assert_eq!(
+        document,
+        serde_json::json!([{"match": {"class": "quake"}, "overlay": true}])
+    );
+    assert!(!file.exists(), "--dry-run must not write");
+
+    // With an action, the key follows it in the order the spec lists them.
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "-c",
+        "quake",
+        "place",
+        "center",
+        "top",
+        "1800",
+        "100%",
+        "--monitor",
+        "0",
+        "--overlay",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let text = std::fs::read_to_string(&file).expect("written");
+    let keys: Vec<&str> = ["\"match\"", "\"place\"", "\"monitor\"", "\"overlay\": true"]
+        .into_iter()
+        .filter(|key| text.contains(key))
+        .collect();
+    assert_eq!(keys.len(), 4, "written: {text}");
+    assert!(
+        text.find("\"place\"") < text.find("\"monitor\"")
+            && text.find("\"monitor\"") < text.find("\"overlay\""),
+        "written: {text}"
+    );
+
+    let (out, code) = wctl(&["rules", "list", "--file", path]);
+    assert_eq!(code, 0, "printed: {out}");
+    let mut lines = out.lines();
+    assert!(
+        lines.next().unwrap_or("").trim_end().ends_with("OVERLAY"),
+        "printed: {out}"
+    );
+    assert!(
+        lines.next().unwrap_or("").trim_end().ends_with("yes"),
+        "printed: {out}"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
