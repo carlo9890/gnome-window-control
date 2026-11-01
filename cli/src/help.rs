@@ -110,7 +110,7 @@ PLACEMENT RULES:
                             the extension would log, so a file this accepts
                             is a file the shell will load.
     rules add <MATCH> [ACTION] [--workspace <N>] [--monitor <N>]
-              [--at <N>] [--dry-run]
+              [--overlay] [--at <N>] [--dry-run]
                             Append a rule (or insert it at --at). MATCH is
                             -c <CLASS>, -t <TITLE>, -s <SUBSTR>,
                             --title-prefix <TEXT> or --title-suffix <TEXT>
@@ -121,7 +121,11 @@ PLACEMENT RULES:
                             so a rule cannot use them. ACTION is
                             tile <POSITION>, place <X> <Y> <W> <H>, or
                             center [horizontal|vertical|both], and may be
-                            left out when --workspace or --monitor is given.
+                            left out when --workspace, --monitor or
+                            --overlay is given. --overlay keeps the window
+                            on top and out of Alt+Tab, and minimizes it
+                            when another window takes the focus or the
+                            overview opens.
     rules remove <INDEX> [--dry-run]
                             Remove the rule at INDEX
     rules test <WINDOW> [--json]
@@ -188,6 +192,7 @@ EXAMPLES:
     wctl rules check                  # Is my rules.json valid?
     wctl rules add -c kitty tile left      # Always tile kitty to the left column
     wctl rules add -s Report place right top 50% 100%   # Right half by title
+    wctl rules add -c quake --overlay # Hide the quake window when it loses focus
     wctl rules list                   # What rules do I have?
     wctl rules remove 0               # Drop the first rule
     wctl rules test -c kitty          # Why did my kitty rule not fire?

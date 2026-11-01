@@ -9,7 +9,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
-    isFullyMaximized, maximizeFlags, maximizeWindow, unmaximizeWindow,
+    isFullyMaximized, maximizeFlags, maximizeWindow, minimizeWindow, skipNextEffect, unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once and kept for the life of the shell, never per enable(). GJS
@@ -26,13 +26,14 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // 'rules-title-affix' means its title_prefix and title_suffix match keys are
 // known -- an extension without it refuses a file that carries one, whole;
 // 'rules-class-prefix' means the same for its class_prefix match key;
+// 'rules-overlay' means the same for its overlay rule key;
 // 'keybindings' means the tile shortcuts in the settings schema are served,
 // and is left out when their registration failed;
 // 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
 // 'activate-no-animation' means ActivateNoAnimation is.
 const CAPABILITIES = [
-    'rules', 'rules-title-affix', 'rules-class-prefix', 'keybindings', 'no-animation',
-    'activate-no-animation',
+    'rules', 'rules-title-affix', 'rules-class-prefix', 'rules-overlay', 'keybindings',
+    'no-animation', 'activate-no-animation',
 ];
 
 // The match kinds the D-Bus methods take. rules.json has more (see
@@ -987,48 +988,23 @@ export class WindowControlService {
     }
 
     Minimize(windowId) {
-        return this._actOnWindow(windowId, 'Minimize', win => this._minimize(win, false));
+        return this._actOnWindow(windowId, 'Minimize', win => minimizeWindow(win, false));
     }
 
     Unminimize(windowId) {
         return this._actOnWindow(windowId, 'Unminimize', win => win.unminimize());
     }
 
-    // Skip the shell's animation for the minimize or unminimize the
-    // caller requests next. Main.wm.skipNextEffect() holds until the actor's
-    // next effect of any kind, so a caller arms it only for a request that
-    // changes the window's visibility: one that leaves the window as hidden as
-    // it was -- already in that state, or on another workspace -- runs no
-    // effect, and the skip would swallow a later, unrelated animation instead.
-    // The window came out of global.get_window_actors(), so it has an actor.
-    _skipNextEffect(win) {
-        Main.wm.skipNextEffect(win.get_compositor_private());
-    }
-
     MinimizeNoAnimation(windowId) {
-        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => this._minimize(win, true));
-    }
-
-    // Minimize, and return whether the window is minimized. Mutter
-    // does not let every window minimize (a skip-taskbar one, for example):
-    // minimize() does nothing there, so a skip armed for it would wait for an
-    // unrelated effect. Such a window counts only when it is minimized
-    // already -- a client can set skip-taskbar on a window it has iconified.
-    _minimize(win, skipEffect) {
-        if (!win.can_minimize())
-            return win.minimized;
-        if (skipEffect && !win.is_hidden())
-            this._skipNextEffect(win);
-        win.minimize();
-        return true;
+        return this._actOnWindow(windowId, 'MinimizeNoAnimation', win => minimizeWindow(win, true));
     }
 
     // Skip the unminimize animation of a window the caller restores
-    // next, under the visibility rule of _skipNextEffect.
+    // next, under the visibility rule of skipNextEffect (window-helpers.js).
     _skipUnminimizeEffect(win) {
         if (win.minimized &&
             win.located_on_workspace(global.workspace_manager.get_active_workspace()))
-            this._skipNextEffect(win);
+            skipNextEffect(win);
     }
 
     UnminimizeNoAnimation(windowId) {

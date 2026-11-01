@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 //
-// Drive the real extension.js, dbus-service.js, rules.js and keybindings.js
-// against fake windows, without a GNOME Shell and without D-Bus. Run from
+// Drive the real extension.js, dbus-service.js, rules.js, overlay.js and
+// keybindings.js against fake windows, without a GNOME Shell and without D-Bus. Run from
 // anywhere, with the mutter typelib directory on GI_TYPELIB_PATH (the newest
 // one installed):
 //
@@ -88,14 +88,34 @@ try {
     const EXT = `${SCRATCH}/ext`;
     GLib.mkdir_with_parents(EXT, 0o755);
     for (const name of ['dbus-interface.js', 'dbus-service.js', 'extension.js', 'keybindings.js',
-        'rules-format.js', 'rules.js', 'window-helpers.js']) {
+        'overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js']) {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
             .replace("'gi://Shell'", "'./stub-shell.js'");
         write(`${EXT}/${name}`, text);
     }
-    write(`${EXT}/stub-main.js`, `export const overview = { visible: false, hide() {} };
+    write(`${EXT}/stub-main.js`, `const handlers = new Map();
+let nextId = 1;
+export const overview = {
+    visible: false,
+    hide() {},
+    connect(name, callback) {
+        handlers.set(nextId, [name, callback]);
+        return nextId++;
+    },
+    disconnect(id) {
+        if (!handlers.delete(id))
+            throw new Error(\`bad overview handler id \${id}\`);
+    },
+    emit(name) {
+        for (const [handlerName, callback] of [...handlers.values()]) {
+            if (handlerName === name)
+                callback(this);
+        }
+    },
+    handlerCount: () => handlers.size,
+};
 export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybinding() {} };
 `);
     write(`${EXT}/stub-extension.js`, 'export class Extension {}\n');
@@ -140,8 +160,10 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
     class FakeWindow extends Emitter {
         constructor({ id, wmClass, type = Meta.WindowType.NORMAL, maximizeFlags = 0 }) {
             super();
-            Object.assign(this,
-                { id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [] });
+            Object.assign(this, {
+                id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
+                above: false, transientFor: null,
+            });
         }
 
         get_id() { return this.id; }
@@ -150,7 +172,11 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         get_sandboxed_app_id() { return ''; }
         get_gtk_application_id() { return ''; }
         has_focus() { return false; }
-        is_above() { return false; }
+        is_above() { return this.above; }
+        make_above() { this.above = true; }
+        unmake_above() { this.above = false; }
+        can_minimize() { return true; }
+        get_compositor_private() { return this; }
         is_on_all_workspaces() { return false; }
         is_skip_taskbar() { return false; }
         get_title() { return ''; }
@@ -163,7 +189,15 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         unmaximize() { this.maximizeFlags = 0; }
         get_monitor() { return 0; }
         get_workspace() { return workspace; }
-        get_transient_for() { return null; }
+        get_transient_for() { return this.transientFor; }
+
+        is_ancestor_of_transient(other) {
+            for (let parent = other.transientFor; parent; parent = parent.transientFor) {
+                if (parent === this)
+                    return true;
+            }
+            return false;
+        }
         get_frame_rect() { return { x: 10, y: 10, width: 400, height: 300 }; }
         move_resize_frame(userOp, x, y, width, height) { this.moves.push([x, y, width, height]); }
         change_workspace_by_index() {}
@@ -191,7 +225,17 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
 
     const windows = [];
     const display = new Emitter();
-    Object.assign(display, { get_n_monitors: () => 1, get_current_monitor: () => 0 });
+    Object.assign(display, {
+        get_n_monitors: () => 1,
+        get_current_monitor: () => 0,
+        list_all_windows: () => [...windows],
+        focus_window: null,
+    });
+
+    function focus(win) {
+        display.focus_window = win;
+        display.emit('notify::focus-window');
+    }
 
     function createWindow(options) {
         const win = new FakeWindow(options);
@@ -747,6 +791,142 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             !sourceAlive(graceId) && rules._sourceIds.size === 0, `source ${graceId}`);
         check('WindowRules.disable() removes no source twice', unknownSourceRemovals(linesBeforeDisable) === 0,
             `${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
+    }
+
+    // -- WindowRules: overlay windows -------------------------------------------
+    //
+    // An overlay rule takes the windows already open when the file loads, and
+    // new ones as they are shown. An overlay is minimized once the focus has
+    // stayed on another window for the grace period, and at once when the
+    // overview opens; its own dialog, a focus that comes back in time, and no
+    // focused window at all leave it. A load without the rule, 'unmanaged' and
+    // disable() each undo all of it.
+
+    {
+        windows.length = 0;
+        const configDir = `${SCRATCH}/config/gnome-window-control`;
+        const rulesPath = `${configDir}/rules.json`;
+        const OVERLAY_RULES = '[{"match":{"class":"term"},"overlay":true},{"match":{"class":"app"},"tile":"left"}]';
+        write(rulesPath, OVERLAY_RULES);
+        const open = createWindow({ id: 20, wmClass: 'term' });
+        open.map();
+        const pinned = createWindow({ id: 21, wmClass: 'term' });
+        pinned.above = true;
+        pinned.map();
+        const other = createWindow({ id: 22, wmClass: 'app' });
+        other.map();
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        const overlays = rules._overlays;
+        const grace = win => overlays._windows.get(win)?.graceId ?? 0;
+        const isOverlay = win => overlays._windows.has(win) && win.skip_taskbar === true;
+        const restore = win => {
+            win.minimized = false;
+            win.hidden = false;
+        };
+
+        check('an overlay rule takes a window open before the load', isOverlay(open) && open.above,
+            `above ${open.above}, skip_taskbar ${open.skip_taskbar}`);
+        check('a window another rule matches is no overlay',
+            !overlays._windows.has(other) && !Object.hasOwn(other, 'skip_taskbar') && !other.above);
+        check('the focus and the overview are watched while there is an overlay',
+            overlays._focusId !== 0 && Main.overview.handlerCount() === 1,
+            `focus ${overlays._focusId}, overview ${Main.overview.handlerCount()} handler(s)`);
+
+        focus(open);
+        focus(other);
+        check('a focus change does not hide the overlay at once', !open.minimized);
+        check('a focus change to another window arms the grace timer', sourceAlive(grace(open)),
+            `source ${grace(open)}`);
+        await sleep(400);
+        check('an overlay is hidden once the focus stayed on another window', open.minimized);
+
+        restore(open);
+        focus(open);
+        const clipboard = createWindow({ id: 23, wmClass: 'wl-clipboard' });
+        focus(clipboard);
+        await sleep(100);
+        focus(open);
+        check('a focus that comes back within the grace period ends the grace timer',
+            grace(open) === 0, `source ${grace(open)}`);
+        await sleep(300);
+        check('a focus that comes back within the grace period keeps the overlay', !open.minimized);
+
+        const dialog = createWindow({ id: 24, wmClass: 'term', type: Meta.WindowType.MODAL_DIALOG });
+        dialog.transientFor = open;
+        focus(dialog);
+        await sleep(400);
+        check("the overlay's own dialog keeps the overlay", !open.minimized && grace(open) === 0,
+            `minimized ${open.minimized}, source ${grace(open)}`);
+
+        focus(null);
+        await sleep(400);
+        check('no focused window keeps the overlay', !open.minimized && grace(open) === 0,
+            `minimized ${open.minimized}, source ${grace(open)}`);
+
+        focus(other);
+        focus(null);
+        await sleep(400);
+        check('a focus gone to no window when the grace period ends keeps the overlay', !open.minimized);
+
+        focus(open);
+        Main.overview.emit('showing');
+        check('opening the overview hides an overlay at once', open.minimized);
+        check('opening the overview hides an overlay that was not focused', pinned.minimized);
+
+        const fresh = createWindow({ id: 25, wmClass: 'term' });
+        fresh.map();
+        await sleep(100);
+        check('an overlay rule takes a new window once it is shown', isOverlay(fresh) && fresh.above);
+
+        fresh.emit('unmanaged');
+        check("'unmanaged' releases the overlay", !overlays._windows.has(fresh) &&
+            !Object.hasOwn(fresh, 'skip_taskbar') && fresh.handlerCount() === 0,
+            `${fresh.handlerCount()} handler(s)`);
+
+        restore(open);
+        focus(open);
+        focus(other);
+        const pendingGrace = grace(open);
+        const linesBeforeReload = consoleLines.length;
+        write(rulesPath, '[{"match":{"class":"app"},"tile":"left"}]');
+        await sleep(300);
+        check('a load without the overlay rule releases the open overlay',
+            !overlays._windows.has(open) && !Object.hasOwn(open, 'skip_taskbar') && !open.above &&
+            open.handlerCount() === 0, `above ${open.above}, ${open.handlerCount()} handler(s)`);
+        check('a release keeps an above the overlay did not set', pinned.above);
+        check('a release ends the grace timer', pendingGrace !== 0 && !sourceAlive(pendingGrace),
+            `source ${pendingGrace}`);
+        check('the focus and the overview are not watched without an overlay',
+            overlays._focusId === 0 && Main.overview.handlerCount() === 0,
+            `focus ${overlays._focusId}, overview ${Main.overview.handlerCount()} handler(s)`);
+        check('a release removes no source twice', unknownSourceRemovals(linesBeforeReload) === 0);
+        await sleep(400);
+        check('a released window is not hidden by a focus change before the release', !open.minimized);
+
+        write(rulesPath, OVERLAY_RULES);
+        await sleep(300);
+        check('a load with the overlay rule takes the open windows again',
+            isOverlay(open) && isOverlay(pinned));
+        focus(open);
+        focus(other);
+        const disableGrace = grace(open);
+        const linesBeforeDisable = consoleLines.length;
+        rules.disable();
+        check('WindowRules.disable() releases every overlay',
+            overlays._windows.size === 0 && !Object.hasOwn(open, 'skip_taskbar') &&
+            !Object.hasOwn(pinned, 'skip_taskbar') && !open.above && pinned.above);
+        check('WindowRules.disable() leaves no overlay grace timer',
+            disableGrace !== 0 && !sourceAlive(disableGrace), `source ${disableGrace}`);
+        check('WindowRules.disable() leaves no overlay handler',
+            display.handlerCount() === 0 && Main.overview.handlerCount() === 0 &&
+            open.handlerCount() === 0 && pinned.handlerCount() === 0,
+            `display ${display.handlerCount()}, overview ${Main.overview.handlerCount()}`);
+        check('WindowRules.disable() removes no overlay source twice',
+            unknownSourceRemovals(linesBeforeDisable) === 0);
+        check('overlay lines log nothing at notice level',
+            noticesSince(linesBeforeReload).length === 0, JSON.stringify(noticesSince(linesBeforeReload)));
     }
 } finally {
     GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);

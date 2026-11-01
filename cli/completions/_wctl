@@ -209,6 +209,7 @@ _wctl() {
                                 '2:action:(tile place center)' \
                                 '--workspace[Also move the window to this workspace]:index:' \
                                 '--monitor[Resolve the geometry on this monitor]:index:' \
+                                '--overlay[Keep on top, out of Alt+Tab, hidden on focus loss]' \
                                 '--at[Insert at this index instead of appending]:index:' \
                                 '--dry-run[Print the resulting document, write nothing]'
                             ;;

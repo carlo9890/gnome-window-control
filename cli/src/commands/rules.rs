@@ -8,7 +8,8 @@
 //! `add` and `remove` open it only after the default file is written, to warn
 //! that the loaded extension does not report the `rules` capability. `test`
 //! opens it to resolve a live window, and refuses an extension without that
-//! capability or without the capability of a match key the file holds.
+//! capability or without the capability of a match key or a rule key the file
+//! holds.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -59,9 +60,22 @@ const NEWER_MATCH_KEYS: [(&[&str], &str, &str); 2] = [
     ),
 ];
 
+/// The rule keys added after `rules`, in the shape of `NEWER_MATCH_KEYS`. A key
+/// counts when it is present, whatever its value: the extension refuses a key
+/// it does not know before it reads the value.
+const NEWER_RULE_KEYS: [(&[&str], &str, &str); 1] = [(
+    &["overlay"],
+    "rules-overlay",
+    "The extension GNOME Shell has loaded does not know the overlay key. It \
+     refuses a rules file that has it, so no rule is applied until a newer \
+     extension is loaded: install it, then restart the shell (log out and back \
+     in on Wayland).",
+)];
+
 /// Warn, without failing, that the written file will not be applied yet: the
-/// loaded extension does not apply rules, or it refuses a match key the file
-/// holds. One unknown key turns every rule off, so this looks at the whole file.
+/// loaded extension does not apply rules, or it refuses a match key or a rule
+/// key the file holds. One unknown key turns every rule off, so this looks at
+/// the whole file.
 ///
 /// The file is valid either way and takes effect once the extension is updated,
 /// so writing it is not refused. Only a shell that answers warns: no shell at
@@ -79,20 +93,25 @@ fn warn_if_unsupported(ctx: &Ctx, document: &[Value]) {
     }
 }
 
-/// The warning of each `NEWER_MATCH_KEYS` entry that the document uses and the
-/// extension does not report.
+/// The warning of each `NEWER_MATCH_KEYS` and `NEWER_RULE_KEYS` entry that the
+/// document uses and the extension does not report.
 fn refused_keys(reported: &[String], document: &[Value]) -> Vec<&'static str> {
-    NEWER_MATCH_KEYS
-        .iter()
-        .filter(|(keys, capability, _)| {
+    let in_match = NEWER_MATCH_KEYS.iter().map(|entry| (entry, true));
+    let in_rule = NEWER_RULE_KEYS.iter().map(|entry| (entry, false));
+    in_match
+        .chain(in_rule)
+        .filter(|((keys, capability, _), is_match_key)| {
             let uses_key = document.iter().any(|rule| {
-                rule["match"]
-                    .as_object()
-                    .is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
+                let block = if *is_match_key {
+                    rule["match"].as_object()
+                } else {
+                    rule.as_object()
+                };
+                block.is_some_and(|block| keys.iter().any(|key| block.contains_key(*key)))
             });
             uses_key && !reported.iter().any(|name| name == capability)
         })
-        .map(|(_, _, warning)| *warning)
+        .map(|((_, _, warning), _)| *warning)
         .collect()
 }
 
@@ -100,7 +119,7 @@ const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTION
 
 const ADD_USAGE: &str =
     "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR|--title-prefix TEXT|--title-suffix TEXT|--class-prefix TEXT> [tile POSITION|place X Y W H|center [AXIS]] \
-[--workspace N] [--monitor N] [--at N] [--dry-run]";
+[--workspace N] [--monitor N] [--overlay] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
 ///
@@ -397,6 +416,7 @@ fn list(args: &[String]) -> Result<()> {
         "ACTION".to_string(),
         "WORKSPACE".to_string(),
         "MONITOR".to_string(),
+        "OVERLAY".to_string(),
     ]];
     for (index, rule) in compiled.iter().enumerate() {
         rows.push(vec![
@@ -405,6 +425,7 @@ fn list(args: &[String]) -> Result<()> {
             describe_action(rule),
             rule.workspace.map(|n| n.to_string()).unwrap_or_default(),
             rule.monitor.map(|n| n.to_string()).unwrap_or_default(),
+            if rule.overlay { "yes" } else { "" }.to_string(),
         ]);
     }
     super::print_table(&rows);
@@ -545,13 +566,15 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
     })
 }
 
-/// `wctl rules add <MATCH> [ACTION] [--workspace N] [--monitor N] [--at N] [--dry-run]`
+/// `wctl rules add <MATCH> [ACTION] [--workspace N] [--monitor N] [--overlay] [--at N] [--dry-run]`
 ///
-/// The action may be left out when `--workspace` or `--monitor` is given: the
-/// grammar accepts a rule that only moves the window there.
+/// The action may be left out when `--workspace`, `--monitor` or `--overlay` is
+/// given: the grammar accepts a rule that only moves the window there, or only
+/// makes it an overlay.
 fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (file, args) = take_file_option(args)?;
     let (dry_run, args) = super::take_flag(&args, "--dry-run");
+    let (overlay, args) = super::take_flag(&args, "--overlay");
 
     // The value options come out first: they may appear anywhere, and the
     // action is positional.
@@ -602,10 +625,10 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let (match_block, shift) = parse_rule_match(&rest)?;
     let action = match rest[shift..].split_first() {
         Some((kind, action_args)) => Some(parse_rule_action(kind, action_args)?),
-        None if workspace.is_some() || monitor.is_some() => None,
+        None if workspace.is_some() || monitor.is_some() || overlay => None,
         None => {
             return Err(Fail::error(format!(
-                "A rule needs an action, --workspace or --monitor. {ADD_USAGE}"
+                "A rule needs an action, --workspace, --monitor or --overlay. {ADD_USAGE}"
             )))
         }
     };
@@ -621,6 +644,9 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
     if let Some(monitor) = monitor {
         rule.insert("monitor".to_string(), Value::from(monitor));
+    }
+    if overlay {
+        rule.insert("overlay".to_string(), Value::Bool(true));
     }
     let rule = Value::Object(rule);
 
@@ -745,7 +771,8 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if !capabilities.iter().any(|name| name == RULES_CAPABILITY) {
         return Err(Fail::error(NO_RULES_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
-    // One match key the extension does not know makes it refuse the whole file.
+    // One match key or rule key the extension does not know makes it refuse
+    // the whole file.
     if let Some(warning) = refused_keys(&capabilities, &raw).first() {
         return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
@@ -796,6 +823,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             "rules_file": path.display().to_string(),
             "rules": compiled.len(),
             "matched": winner,
+            "overlay": winner.map(|index| compiled[index].overlay),
             "shadowed": matching.iter().skip(1).collect::<Vec<_>>(),
             "monitor_index": monitor,
             "workarea": workarea.map(|rect| serde_json::json!({
@@ -846,6 +874,9 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
     if let Some(workspace) = rule.workspace {
         println!("  workspace: {workspace}");
+    }
+    if rule.overlay {
+        println!("  overlay: yes");
     }
     let Some(workarea) = workarea else {
         println!("{}", no_such_monitor_line(monitor));
@@ -942,6 +973,32 @@ mod tests {
         )
         .is_empty());
         assert!(refused_keys(&reported(&["rules"]), &document[..0]).is_empty());
+    }
+
+    /// `overlay` is a rule key, so it counts at the top of a rule and not in
+    /// `match`. A `false` value counts too: the extension refuses the key.
+    #[test]
+    fn refused_keys_names_the_overlay_rule_key() {
+        let reported = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        let overlay_warning = NEWER_RULE_KEYS[0].2;
+
+        for value in [json!(true), json!(false)] {
+            let document = [json!({"match": {"class": "a"}, "tile": "left", "overlay": value})];
+            assert_eq!(
+                refused_keys(&reported(&["rules"]), &document),
+                vec![overlay_warning]
+            );
+            assert!(refused_keys(&reported(&["rules", "rules-overlay"]), &document).is_empty());
+        }
+
+        let in_match = [json!({"match": {"overlay": "a"}, "tile": "left"})];
+        assert!(refused_keys(&reported(&["rules"]), &in_match).is_empty());
+
+        let both = [json!({"match": {"class_prefix": "a"}, "overlay": true})];
+        assert_eq!(
+            refused_keys(&reported(&["rules"]), &both),
+            vec![NEWER_MATCH_KEYS[1].2, overlay_warning]
+        );
     }
 
     fn rule(key: &str, value: &str) -> rules::Rule {

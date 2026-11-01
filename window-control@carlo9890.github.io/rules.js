@@ -23,10 +23,13 @@
 // center:    horizontal | vertical | both, keeps the window's own size.
 // workspace: index; one beyond the last appends a single workspace.
 // monitor:   index; the workarea place/tile/center resolve against.
+// overlay:   true keeps the window above the others and out of Alt+Tab, and
+//            hides it when another window takes the focus (see overlay.js).
 //
 // The first matching rule wins, in file order, and is applied exactly once per
 // window. A window that resizes itself later is left alone. The file is
-// re-read on every change.
+// re-read on every change. Which windows are overlays is decided again on
+// every load, for the open windows too.
 //
 // The grammar itself -- the token vocabulary, the tile grid and every
 // validation message -- lives in rules-format.js, which imports nothing so the
@@ -35,6 +38,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, resolvePlaceRect, tileRect } from './rules-format.js';
 import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
 
@@ -67,6 +71,7 @@ export class WindowRules {
         this._fileMonitorId = 0;
         this._reloadId = 0;
         this._loadCancellable = null;
+        this._overlays = new WindowOverlays();
         // The pending reload debounce, and the grace and apply sources of
         // every tracked window; disable() removes them.
         this._sourceIds = new Set();
@@ -102,6 +107,7 @@ export class WindowRules {
         this._fileMonitor = null;
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
+        this._overlays.destroy();
         this._rules = [];
         this._syncWatch();
     }
@@ -134,6 +140,7 @@ export class WindowRules {
                 // the reason it cannot be read.
                 this._rules = [];
                 this._syncWatch();
+                this._syncOverlays();
                 if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
                     console.debug(`[Window Control] no ${RULES_FILE}; window rules off`);
                 else
@@ -153,6 +160,21 @@ export class WindowRules {
             console.warn(`[Window Control] ${RULES_FILE}: ${e.message}; window rules off`);
         }
         this._syncWatch();
+        this._syncOverlays();
+    }
+
+    // An overlay rule holds for the windows already open too, not only for
+    // new ones: the shell disables the extension while the screen is locked,
+    // and an open overlay must still be one after the unlock, and after an
+    // edit of the file. Placement stays a once-per-new-window affair.
+    _syncOverlays() {
+        for (const win of global.display.list_all_windows()) {
+            const index = win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
+            if (index >= 0 && this._rules[index].overlay)
+                this._overlays.add(win);
+            else
+                this._overlays.remove(win);
+        }
     }
 
     // 'window-created' is connected only while there is a rule to apply, so an
@@ -321,6 +343,8 @@ export class WindowRules {
 
     _apply(win, rule, index, headStartMonitor) {
         const id = win.get_id();
+        if (rule.overlay)
+            this._overlays.add(win);
         if (rule.workspace !== null)
             win.change_workspace_by_index(rule.workspace, true);
         if (rule.monitor !== null) {

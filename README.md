@@ -290,10 +290,12 @@ as the `wctl` commands:
   resolve against, and where the window is placed. When that monitor does not
   exist, for example on an undocked laptop, the window is not moved or placed;
   only `workspace` applies.
+- **overlay** — `true` makes the window an overlay: see
+  [Overlay windows](#overlay-windows).
 
 `place`, `tile` and `center` are mutually exclusive in one rule; combine any of
-them with `workspace` and `monitor`. The first matching rule wins, in file order,
-and applies once per window.
+them with `workspace`, `monitor` and `overlay`. The first matching rule wins, in
+file order, and applies once per window.
 
 On GNOME 49 and later a `place` or `tile` rule takes effect before the window
 is drawn, so it opens in place. On GNOME 45 to 48, and for `center`,
@@ -304,6 +306,32 @@ This sets the *initial* position only: an app that resizes itself afterwards is
 left alone. A rule with a bad value is reported to the journal and the whole file
 is ignored until you fix it, so one typo never places a window half-right.
 
+### Overlay windows
+
+A rule with `"overlay": true` makes each window it matches behave like a
+drop-down terminal or a launcher popup:
+
+- It stays above the other windows.
+- It is left out of Alt+Tab and the overview. The dash still shows its app.
+- It is minimized, with no animation, once another window has held the focus
+  for a quarter of a second, and at once when the overview opens. A dialog of
+  the overlay itself, a shell menu and a click on the empty desktop leave it
+  where it is.
+
+Show it again from a keyboard shortcut. An overlay rule needs no placement, and
+can carry one:
+
+```bash
+wctl rules add -c quake place center top 100% 40% --overlay
+# Bind this command to a key in Settings > Keyboard > Custom Shortcuts:
+sh -c 'wctl unminimize -c quake --no-animation && wctl activate -c quake || exec kitty --class quake'
+```
+
+Give the overlay a class of its own: every window the rule matches becomes an
+overlay. Unlike a placement, the overlay part of a rule also holds for the
+windows already open when the file loads, so an overlay stays one after a
+screen unlock, and a window stops being one when you remove the rule.
+
 ### Managing rules from the command line
 
 `wctl` writes and reads the file, so you need not edit JSON by hand:
@@ -313,6 +341,7 @@ wctl rules add -c kitty tile left               # Tile every kitty window left
 wctl rules add -s Report place right top 50% 100%
 wctl rules add -t Calculator center both --monitor 1 --workspace 2
 wctl rules add -c Slack --workspace 2            # Only move it to a workspace
+wctl rules add -c quake --overlay                # Make it an overlay window
 wctl rules list                                 # What is in the file
 wctl rules remove 0                             # Drop a rule by index
 wctl rules path                                 # Where the file lives
@@ -320,10 +349,11 @@ wctl rules path                                 # Where the file lives
 
 ```console
 $ wctl rules list
-INDEX  MATCH             ACTION                    WORKSPACE  MONITOR
+INDEX  MATCH             ACTION                     WORKSPACE  MONITOR  OVERLAY
 0      class=kitty       tile left
 1      substr=Report     place right top 50% 100%
-2      title=Calculator  center both               2          1
+2      title=Calculator  center both                2          1
+3      class=quake       place center top 100% 40%                      yes
 ```
 
 A rule matches with `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`,
@@ -355,7 +385,7 @@ shell running, and with `--file`, they say nothing.
 `title_prefix` and `title_suffix` need an extension that also reports
 `rules-title-affix`. An older one refuses a file that has either key and then
 applies no rule at all; `add` and `remove` warn about that too. `class_prefix`
-needs `rules-class-prefix` in the same way.
+needs `rules-class-prefix` in the same way, and `overlay` needs `rules-overlay`.
 
 ### Checking the file
 
@@ -404,9 +434,9 @@ the one `rules` subcommand that needs the extension running, because it resolves
 a live window. It never moves anything. Against an extension that does not
 report the `rules` capability it exits 5 instead, because that extension
 ignores the file. It also exits 5 when the file uses `title_prefix`,
-`title_suffix` or `class_prefix` and the extension does not report
-`rules-title-affix` or `rules-class-prefix` for it, because that extension
-refuses the whole file.
+`title_suffix`, `class_prefix` or `overlay` and the extension does not report
+`rules-title-affix`, `rules-class-prefix` or `rules-overlay` for it, because
+that extension refuses the whole file.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).

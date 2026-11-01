@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Helpers shared by the D-Bus service, the window rules and the keyboard
-// shortcuts: the maximize API that changed in GNOME 49, the workarea a window
-// resolves against, and the wait for an unmaximize to land. Everything here
-// needs Meta; the Meta-free selector grammar is in rules-format.js.
+// Helpers shared by the D-Bus service, the window rules, the overlay windows
+// and the keyboard shortcuts: the maximize API that changed in GNOME 49, a
+// minimize without the animation, the workarea a window resolves against, and
+// the wait for an unmaximize to land. Everything here needs Meta; the
+// Meta-free selector grammar is in rules-format.js.
 
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
 // longer take a Meta.MaximizeFlags argument, and get_maximized() was removed in
@@ -39,6 +41,32 @@ export function unmaximizeWindow(win) {
     } else {
         win.unmaximize();                                            // GNOME 49+
     }
+}
+
+// Skip the shell's animation for the minimize or unminimize the
+// caller requests next. Main.wm.skipNextEffect() holds until the actor's
+// next effect of any kind, so a caller arms it only for a request that
+// changes the window's visibility: one that leaves the window as hidden as
+// it was -- already in that state, or on another workspace -- runs no
+// effect, and the skip would swallow a later, unrelated animation instead.
+// The callers take the window from global.get_window_actors() or from a
+// signal of a managed window, so it has an actor.
+export function skipNextEffect(win) {
+    Main.wm.skipNextEffect(win.get_compositor_private());
+}
+
+// Minimize, and return whether the window is minimized. Mutter
+// does not let every window minimize (a skip-taskbar one, for example):
+// minimize() does nothing there, so a skip armed for it would wait for an
+// unrelated effect. Such a window counts only when it is minimized
+// already -- a client can set skip-taskbar on a window it has iconified.
+export function minimizeWindow(win, skipEffect) {
+    if (!win.can_minimize())
+        return win.minimized;
+    if (skipEffect && !win.is_hidden())
+        skipNextEffect(win);
+    win.minimize();
+    return true;
 }
 
 // The workarea a window's geometry resolves against: the workspace the window

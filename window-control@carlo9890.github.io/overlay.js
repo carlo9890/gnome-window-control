@@ -1,0 +1,129 @@
+// SPDX-FileCopyrightText: 2026 hko9890
+// SPDX-License-Identifier: MIT
+// Overlay windows: a window that a rules.json rule marks "overlay": true stays
+// above the other windows and out of Alt+Tab and the overview, and is
+// minimized when the user turns to another window or opens the overview. Its
+// caller brings it back with an ordinary activate.
+//
+// rules.js decides which windows are overlays; this file holds what being one
+// means, and undoes it when a window stops being one.
+
+import GLib from 'gi://GLib';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import { minimizeWindow } from './window-helpers.js';
+
+// A focus change away from an overlay hides it only when the change still
+// holds this long after: wl-copy and wl-paste map a surface that takes the
+// focus for a moment and hands it back.
+const FOCUS_LOSS_GRACE_MS = 250;
+
+export class WindowOverlays {
+    constructor() {
+        this._windows = new Map();        // Meta.Window -> {unmanagedId, graceId, madeAbove}
+        this._focusId = 0;
+        this._overviewId = 0;
+    }
+
+    add(win) {
+        if (this._windows.has(win))
+            return;
+        const entry = { unmanagedId: 0, graceId: 0, madeAbove: false };
+        entry.unmanagedId = win.connect('unmanaged', () => this._forget(win));
+        // Only an "above" the overlay set is taken back when it ends, so one
+        // the user or the client set stays.
+        if (!win.is_above()) {
+            win.make_above();
+            entry.madeAbove = true;
+        }
+        // Alt+Tab, the overview and the workspace thumbnails read this
+        // property of the window object. Mutter's own skip-taskbar state stays
+        // unset: a window that has it set cannot be minimized, and minimize
+        // is how an overlay hides.
+        Object.defineProperty(win, 'skip_taskbar', { get: () => true, configurable: true });
+        this._windows.set(win, entry);
+        this._syncWatch();
+        console.debug(`[Window Control] overlay -> ${win.get_id()}: on`);
+    }
+
+    remove(win) {
+        const entry = this._windows.get(win);
+        if (!entry)
+            return;
+        if (entry.madeAbove && win.is_above())
+            win.unmake_above();
+        this._forget(win);
+        console.debug(`[Window Control] overlay -> ${win.get_id()}: off`);
+    }
+
+    destroy() {
+        for (const win of [...this._windows.keys()])
+            this.remove(win);
+    }
+
+    _forget(win) {
+        const entry = this._windows.get(win);
+        win.disconnect(entry.unmanagedId);
+        this._removeGrace(entry);
+        delete win.skip_taskbar;
+        this._windows.delete(win);
+        this._syncWatch();
+    }
+
+    // The focus and the overview are watched only while there is an overlay.
+    _syncWatch() {
+        if (this._windows.size > 0 && !this._focusId) {
+            this._focusId = global.display.connect('notify::focus-window', () => this._focusChanged());
+            this._overviewId = Main.overview.connect('showing', () => this._hideAll());
+        } else if (this._windows.size === 0 && this._focusId) {
+            global.display.disconnect(this._focusId);
+            this._focusId = 0;
+            Main.overview.disconnect(this._overviewId);
+            this._overviewId = 0;
+        }
+    }
+
+    _focusChanged() {
+        const focus = global.display.focus_window;
+        for (const [win, entry] of this._windows) {
+            if (this._holdsFocus(win, focus)) {
+                this._removeGrace(entry);
+                continue;
+            }
+            // No focused window at all is not a turn to another window: the
+            // shell's own menus and dialogs take the keyboard that way.
+            if (!focus || win.minimized || entry.graceId)
+                continue;
+            entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FOCUS_LOSS_GRACE_MS, () => {
+                entry.graceId = 0;
+                const now = global.display.focus_window;
+                if (now && !this._holdsFocus(win, now))
+                    this._hide(win, 'focus moved to another window');
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+    }
+
+    // The overlay's own dialogs count as the overlay.
+    _holdsFocus(win, focus) {
+        return focus === win || (focus !== null && win.is_ancestor_of_transient(focus));
+    }
+
+    _hideAll() {
+        for (const win of this._windows.keys())
+            this._hide(win, 'overview opened');
+    }
+
+    _hide(win, reason) {
+        if (win.minimized)
+            return;
+        minimizeWindow(win, true);
+        console.debug(`[Window Control] overlay -> ${win.get_id()}: hidden, ${reason}`);
+    }
+
+    _removeGrace(entry) {
+        if (entry.graceId) {
+            GLib.source_remove(entry.graceId);
+            entry.graceId = 0;
+        }
+    }
+}

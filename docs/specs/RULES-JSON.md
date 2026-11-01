@@ -16,7 +16,8 @@ both implementations and the vectors in **one commit**: a message or a formula
 changed on one side alone fails the other side's check.
 
 The window-touching half — when a rule is applied and what it does to a window
-— is `rules.js`, and the GNOME 49 maximize API is `window-helpers.js`.
+— is `rules.js`, what an overlay is while it is one is `overlay.js`, and the
+GNOME 49 maximize API is `window-helpers.js`.
 
 ## File
 
@@ -50,9 +51,11 @@ error:
 | `center` | string | Geometry action. |
 | `workspace` | integer 0 to 2147483647 | Move the window to this workspace index. |
 | `monitor` | integer 0 to 2147483647 | Monitor whose workarea the geometry resolves against, and the monitor the window is moved to. |
+| `overlay` | boolean | `true` makes the window an overlay ([Overlay windows](#overlay-windows)). `false` is the same as no key. |
 
 A rule MUST carry at least one of `place`, `tile`, `center`, `workspace`,
-`monitor`. A rule with only `match` is an error.
+`monitor`, or `overlay` set to `true`. A rule with only `match`, or with only
+`match` and `"overlay": false`, is an error.
 
 Every index and every pixel value is bounded to a signed 32-bit integer, the
 type mutter takes them as. A JSON number with a zero fraction is an integer:
@@ -200,6 +203,7 @@ which a file written by `wctl rules add` can contain:
 | `tile` not a string naming a grid position | `rules[N].tile: must be one of ...` |
 | `center` not an axis | `rules[N].center: must be one of ...` |
 | `workspace`/`monitor` not an integer from 0 to 2147483647 | `rules[N].<key>: must be a non-negative integer` |
+| `overlay` not a boolean | `rules[N].overlay: must be a boolean` |
 | Rule has no action | `rules[N]: has nothing to do (...)` |
 
 `place` tokens are validated at load against `PROBE_WORKAREA`
@@ -219,7 +223,9 @@ A rule applies **once per window**, at the point mutter has shown it; on
 GNOME 49 and later its frame is also handed to mutter before the first frame
 (see the initial configuration below). The
 window is untracked before the action runs, so a later title change or resize
-never re-triggers it. This sets the initial placement only.
+never re-triggers it. This sets the initial placement only. The one part
+decided again later is which windows are overlays
+([Overlay windows](#overlay-windows)).
 
 Gating, in order:
 
@@ -295,12 +301,59 @@ Mutter 48 has the signal but applies the handler's values through a different
 code path, unverified here, so `PLACES_BEFORE_FIRST_FRAME` in `rules.js` is
 false below 49.
 
+## Overlay windows
+
+A window whose winning rule has `"overlay": true` is an overlay. The rule's
+other keys apply as for any rule; `overlay` adds the behaviour below.
+
+**Which windows are overlays.** Unlike the rest of a rule, which applies once
+to a new window, membership is decided:
+
+1. when a rule is applied to a new window (`_apply`), before its other keys;
+2. at every load of the file, for every open `NORMAL` window
+   (`_syncOverlays`): a window whose winning rule has `overlay` becomes an
+   overlay, every other window stops being one. This is what keeps an overlay
+   one after a screen unlock, which disables and enables the extension.
+
+A title change between loads does not change membership. A window stops being
+an overlay when it is unmanaged, when a load no longer makes it one, and at
+`disable()`.
+
+**While a window is an overlay** (`WindowOverlays.add`):
+
+| Effect | How |
+|---|---|
+| Above the other windows | `make_above()`, only when the window is not above already |
+| Out of Alt+Tab, the overview and the workspace thumbnails | the window object's `skip_taskbar` property reads `true`. Mutter's own skip-taskbar state is left unset, because a window with it set cannot minimize. The dash and the app grid list apps, so they still show the window's app. |
+| Hidden when another window takes the focus | below |
+| Hidden when the overview opens | on the overview's `showing` |
+
+A hide is a minimize without the animation (`minimizeWindow` in
+`window-helpers.js`). A minimized overlay stays minimized until a caller shows
+it, for example with `ActivateNoAnimation`.
+
+**Focus loss.** On each change of the display's focus window, for each
+overlay that is not minimized:
+
+| New focus window | Result |
+|---|---|
+| The overlay, or a window whose transient chain leads to it | a pending hide is cancelled |
+| None | nothing: the shell's menus, its dialogs and a click on the empty desktop take no window focus |
+| Any other window | a hide is armed for `FOCUS_LOSS_GRACE_MS`. When it fires, the overlay is hidden only when a window outside the overlay and its dialogs holds the focus then. |
+
+**Release** (`WindowOverlays.remove`) cancels a pending hide, removes the
+`skip_taskbar` override, and calls `unmake_above()` only when the overlay set
+"above" and the window is still above. A window the user or the client had
+set above stays above. Release moves, shows and hides nothing. The focus and
+overview handlers are connected only while there is an overlay.
+
 ## Reload
 
 A `Gio.FileMonitor` on the directory, not the file, so an editor that saves by
 rename is still seen. Events are debounced by `RELOAD_DEBOUNCE_MS` into one
 reload. A reload replaces the whole rule set and affects windows created
-afterwards. No restart is needed.
+afterwards; which open windows are overlays is decided again at each load
+([Overlay windows](#overlay-windows)). No restart is needed.
 
 When `rules.json` is a symlink, an edit to its target is not seen: it raises no
 event on the config directory. `touch -h ~/.config/gnome-window-control/rules.json`
@@ -327,6 +380,7 @@ Defined at the top of the file named; change them there, not here.
 |---|---|---|---|
 | `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title | `rules.js` |
 | `RELOAD_DEBOUNCE_MS` | 100 | one reload per save | `rules.js` |
+| `FOCUS_LOSS_GRACE_MS` | 250 | a focus that comes straight back, as wl-copy and wl-paste hand it | `overlay.js` |
 | `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`, shared with the keyboard shortcuts) |
 
 ## Extending the format
@@ -341,9 +395,10 @@ Adding a key means editing, in one commit, on BOTH sides:
   `Action` and `Rule::resolve` in `cli/src/rules.rs`.
 - For a match key, `shadows` in `cli/src/commands/rules.rs`.
 - A case in `tests/vectors/rules-spec.json`.
-- For a match key, its capability name (see below): in `CAPABILITIES` in
-  `dbus-service.js`, and in `NEWER_MATCH_KEYS` in `cli/src/commands/rules.rs`,
-  which makes `wctl rules` warn when the loaded extension refuses the file.
+- Its capability name (see below): in `CAPABILITIES` in `dbus-service.js`,
+  and in `NEWER_MATCH_KEYS` (a match key) or `NEWER_RULE_KEYS` (a rule key) in
+  `cli/src/commands/rules.rs`, which makes `wctl rules` warn when the loaded
+  extension refuses the file.
 - For a key that `wctl rules add` takes as a flag: the flag in
   `cli/src/commands/rules.rs`, `cli/src/help.rs` and both files in
   `cli/completions/`.
@@ -367,4 +422,5 @@ report the `rules` capability from `GetCapabilities`; that name, not the
 version number, is how a caller learns the file is read. An extension that
 knows `title_prefix` and `title_suffix` MUST also report `rules-title-affix`:
 one without it refuses a file that carries either key. An extension that knows
-`class_prefix` MUST report `rules-class-prefix`, for the same reason.
+`class_prefix` MUST report `rules-class-prefix`, and one that knows `overlay`
+MUST report `rules-overlay`, for the same reason.
