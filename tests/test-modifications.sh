@@ -141,6 +141,13 @@ else
         "place --settled: observed.width is the live frame"
     assert_equals "$(echo "$settled_json" | jq -r '.observed.height')" "$(get_window_field '.frame_rect.height')" \
         "place --settled: observed.height is the live frame"
+    # A frame that never moved would pass the four checks above, so --settled
+    # must also report the frame that was asked for.
+    for edge in x y width height; do
+        assert_within "$(echo "$settled_json" | jq -r ".observed.$edge")" \
+            "$(echo "$settled_json" | jq -r ".target.$edge")" "$GEOM_TOLERANCE" \
+            "place --settled: observed.$edge is the target"
+    done
 
     # Without --settled there is no settle verdict at all, so a caller can tell
     # "did not settle" from "nobody waited".
@@ -443,19 +450,17 @@ echo "--- Selector Tests ---"
 info "Testing: tile -t <title> (title selector)"
 run_wctl tile -t "$TEST_WINDOW_TITLE" top-left
 assert_exit_code 0 "$WCTL_EXIT_CODE" "tile -t: exits 0 with a unique title"
-wait_for_change
 if [[ -n "$tc_wa" ]]; then
     read -r exp_x exp_y exp_w exp_h <<< "$(resolve_tile_geometry top-left "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h")"
-    assert_within "$(get_window_field '.frame_rect.x')" "$exp_x" "$GEOM_TOLERANCE" "tile -t: resolved the test window (x)"
-    assert_within "$(get_window_field '.frame_rect.width')" "$exp_w" "$GEOM_TOLERANCE" "tile -t: resolved the test window (width)"
+    assert_window_field_within '.frame_rect.x' "$exp_x" "$GEOM_TOLERANCE" "tile -t: resolved the test window (x)"
+    assert_window_field_within '.frame_rect.width' "$exp_w" "$GEOM_TOLERANCE" "tile -t: resolved the test window (width)"
 fi
 
 info "Testing: move -s <substring> (substring selector)"
 run_wctl move -s "auto-test:stop" 120 140
 assert_exit_code 0 "$WCTL_EXIT_CODE" "move -s: exits 0 with a unique substring"
-wait_for_change
-assert_within "$(get_window_field '.frame_rect.x')" 120 "$GEOM_TOLERANCE" "move -s: window x is at 120"
-assert_within "$(get_window_field '.frame_rect.y')" 140 "$GEOM_TOLERANCE" "move -s: window y is at 140"
+assert_window_field_within '.frame_rect.x' 120 "$GEOM_TOLERANCE" "move -s: window x is at 120"
+assert_window_field_within '.frame_rect.y' 140 "$GEOM_TOLERANCE" "move -s: window y is at 140"
 
 info "Testing: above focused on (focused selector)"
 "$WCTL" activate "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
