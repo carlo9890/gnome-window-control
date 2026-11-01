@@ -16,6 +16,7 @@ export default class WindowControlExtension extends Extension {
         console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
         this._rules = new WindowRules();
         this._rules.enable();
+        this._service.isOverlay = win => this._rules.isOverlay(win);
         this._keybindings = new WindowKeybindings();
         this._keybindings.enable(settings);
         this._service.keybindingsServed = this._keybindings.registered;

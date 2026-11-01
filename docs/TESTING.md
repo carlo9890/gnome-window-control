@@ -151,7 +151,8 @@ It pins:
   `showing`; no hide for the overlay's own dialog, a focus that comes back in
   time, or no focused window; and the release by a load without the rule, by
   `unmanaged` and by `disable()`, which leaves no handler, timer, `skip_taskbar`
-  override or "above" the overlay set.
+  override or "above" the overlay set; `ListDetailed`'s `is_overlay`; and that
+  a title change does not extend the rules grace period.
 
 Add a case here for extension logic a fake window can drive. Anything reachable
 this way must be verified this way before a shell is even considered; see the

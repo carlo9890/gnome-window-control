@@ -331,6 +331,8 @@ Give the overlay a class of its own: every window the rule matches becomes an
 overlay. Unlike a placement, the overlay part of a rule also holds for the
 windows already open when the file loads, so an overlay stays one after a
 screen unlock, and a window stops being one when you remove the rule.
+`wctl info` lists `overlay` among a window's states, and `wctl list --json`
+reports `is_overlay`.
 
 ### Managing rules from the command line
 

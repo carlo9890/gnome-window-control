@@ -26,7 +26,8 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // 'rules-title-affix' means its title_prefix and title_suffix match keys are
 // known -- an extension without it refuses a file that carries one, whole;
 // 'rules-class-prefix' means the same for its class_prefix match key;
-// 'rules-overlay' means the same for its overlay rule key;
+// 'rules-overlay' means the same for its overlay rule key, and that
+// ListDetailed reports is_overlay;
 // 'keybindings' means the tile shortcuts in the settings schema are served,
 // and is left out when their registration failed;
 // 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
@@ -111,6 +112,9 @@ export class WindowControlService {
         this._version = String(metadata.version);
         // Set by the extension once WindowKeybindings has registered them.
         this.keybindingsServed = false;
+        // Set by the extension to ask WindowRules whether a window is an
+        // overlay.
+        this.isOverlay = () => false;
         // WaitForWindow state. A window is tracked only while at least one
         // waiter is pending.
         this._waiters = [];
@@ -384,7 +388,10 @@ export class WindowControlService {
                 is_fullscreen: win.is_fullscreen(),
                 is_above: win.is_above(),
                 is_on_all_workspaces: win.is_on_all_workspaces(),
+                // Mutter's own state: an overlay is out of Alt+Tab and the
+                // overview with this still false (see overlay.js).
                 is_skip_taskbar: win.is_skip_taskbar(),
+                is_overlay: this.isOverlay(win),
                 workspace_index: _workspaceIndex(win),
                 monitor_index: win.get_monitor(),
                 pid: win.get_pid(),

@@ -151,6 +151,7 @@ fn window_text(window: &Window, json_output: bool) -> String {
         ("is_fullscreen", "fullscreen"),
         ("is_above", "above"),
         ("is_on_all_workspaces", "sticky"),
+        ("is_overlay", "overlay"),
     ] {
         if model::flag(window, key) {
             states.push(name);
@@ -456,5 +457,16 @@ mod tests {
              Size:      800 x 600\n\
              States:    maximized\n"
         );
+    }
+
+    #[test]
+    fn window_text_names_an_overlay_among_the_states() {
+        let window = json!({
+            "id": 7,
+            "is_above": true,
+            "is_overlay": true,
+            "frame_rect": {"x": 0, "y": 0, "width": 1, "height": 1},
+        });
+        assert!(window_text(&window, false).ends_with("States:    above, overlay\n"));
     }
 }

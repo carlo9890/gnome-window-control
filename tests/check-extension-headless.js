@@ -961,6 +961,34 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
         await sleep(300);
         check('a load with the overlay rule takes the open windows again',
             isOverlay(open) && isOverlay(pinned));
+
+        const service = startService();
+        service.isOverlay = win => rules.isOverlay(win);
+        const documents = JSON.parse(service.ListDetailed());
+        const overlayFlag = id => documents.find(document => document.id === id)?.is_overlay;
+        check('ListDetailed reports is_overlay', overlayFlag(open.id) === true &&
+            overlayFlag(other.id) === false, `${overlayFlag(open.id)}, ${overlayFlag(other.id)}`);
+        service.unexport();
+
+        restore(open);
+        focus(open);
+        focus(other);
+        await sleep(150);
+        focus(clipboard);
+        await sleep(150);
+        check('a second turn to another window starts the grace period again', !open.minimized);
+        await sleep(200);
+        check('the restarted grace period still hides the overlay', open.minimized);
+
+        const retitled = createWindow({ id: 27, wmClass: 'nomatch' });
+        retitled.map();
+        await sleep(1000);
+        retitled.emit('notify::title');
+        await sleep(1300);
+        check('a title change does not extend the late-identity grace period',
+            !rules._tracked.has(retitled), `${retitled.handlerCount()} handler(s)`);
+
+        restore(open);
         focus(open);
         focus(other);
         const disableGrace = grace(open);

@@ -66,7 +66,7 @@ export class WindowRules {
     constructor() {
         this._rules = [];
         this._windowCreatedId = 0;
-        this._tracked = new Map();        // Meta.Window -> {ids, graceId, applyId, shown, headStart, wait}
+        this._tracked = new Map();
         this._fileMonitor = null;
         this._fileMonitorId = 0;
         this._reloadId = 0;
@@ -201,7 +201,7 @@ export class WindowRules {
     // mutter's initial placement overrides it. The one earlier way in is the
     // initial configuration (see _preplace).
     _track(win) {
-        const entry = { ids: [], graceId: 0, applyId: 0, shown: false, headStart: null };
+        const entry = { ids: [], graceId: 0, graceEnd: 0, applyId: 0, shown: false, headStart: null };
         const evaluate = () => this._evaluate(win);
         entry.ids = [
             win.connect('notify::wm-class', evaluate),
@@ -258,6 +258,10 @@ export class WindowRules {
 
     _matchIndex(win) {
         return this._rules.findIndex(rule => rule.predicates.every(p => p(win)));
+    }
+
+    isOverlay(win) {
+        return this._overlays?.has(win) ?? false;
     }
 
     // A window that is not NORMAL matches no rule.
@@ -342,12 +346,16 @@ export class WindowRules {
             });
             return;
         }
-        if (!entry.graceId) {
-            entry.graceId = this._addTimeout(LATE_IDENTITY_GRACE_MS, () => {
-                entry.graceId = 0;
-                this._untrack(win);
-            });
-        }
+        // The period runs from the first evaluation that matched nothing; a
+        // later one re-arms the timer for what is left of it, so a window that
+        // keeps changing its title is still given up on in time.
+        const now = GLib.get_monotonic_time() / 1000;
+        entry.graceEnd ||= now + LATE_IDENTITY_GRACE_MS;
+        this._removeSource(entry.graceId);
+        entry.graceId = this._addTimeout(Math.max(0, Math.ceil(entry.graceEnd - now)), () => {
+            entry.graceId = 0;
+            this._untrack(win);
+        });
     }
 
     _apply(win, rule, index, headStartMonitor) {

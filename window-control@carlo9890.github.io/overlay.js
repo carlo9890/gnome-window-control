@@ -19,7 +19,7 @@ const FOCUS_LOSS_GRACE_MS = 250;
 
 export class WindowOverlays {
     constructor() {
-        this._windows = new Map();        // Meta.Window -> {unmanagedId, graceId, madeAbove}
+        this._windows = new Map();
         this._focusId = 0;
         this._overviewId = 0;
     }
@@ -72,6 +72,10 @@ export class WindowOverlays {
         return this._windows.size;
     }
 
+    has(win) {
+        return this._windows.has(win);
+    }
+
     // An unmanaged window gets no notify: the overview would take it back.
     _forget(win, unmanaged) {
         const entry = this._windows.get(win);
@@ -85,7 +89,6 @@ export class WindowOverlays {
         this._syncWatch();
     }
 
-    // The focus and the overview are watched only while there is an overlay.
     _syncWatch() {
         if (this._windows.size > 0 && !this._focusId) {
             this._focusId = global.display.connect('notify::focus-window', () => this._focusChanged());
@@ -112,8 +115,10 @@ export class WindowOverlays {
             // shell's own menus and dialogs take the keyboard that way.
             // An overlay on another workspace is out of sight already, and
             // moving it there takes its focus.
-            if (!focus || win.minimized || entry.graceId || !win.located_on_workspace(workspace))
+            if (!focus || win.minimized || !win.located_on_workspace(workspace))
                 continue;
+            // Each turn to another window starts the grace period again.
+            this._removeGrace(entry);
             entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FOCUS_LOSS_GRACE_MS, () => {
                 entry.graceId = 0;
                 const now = global.display.focus_window;

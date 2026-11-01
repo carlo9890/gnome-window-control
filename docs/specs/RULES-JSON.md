@@ -345,7 +345,10 @@ workspace is out of sight, and a move there takes its focus):
 |---|---|
 | The overlay, or a window whose transient chain leads to it | a pending hide is cancelled |
 | None | nothing: the shell's menus, its dialogs and a click on the empty desktop take no window focus |
-| Any other window | a hide is armed for `FOCUS_LOSS_GRACE_MS`. When it fires, the overlay is hidden only when a window outside the overlay and its dialogs holds the focus then. |
+| Any other window | a hide is armed for `FOCUS_LOSS_GRACE_MS`, replacing a pending one, so each turn to another window starts the period again. When it fires, the overlay is hidden only when a window outside the overlay and its dialogs holds the focus then. |
+
+`ListDetailed` reports `is_overlay: true` for an overlay. Its
+`is_skip_taskbar` stays mutter's own state, `false`.
 
 **Release** (`WindowOverlays.remove`) cancels a pending hide, removes the
 `skip_taskbar` override and emits `notify::skip-taskbar` (not for an unmanaged

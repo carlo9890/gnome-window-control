@@ -128,7 +128,7 @@ export class UnmaximizeWait {
 
     _settleFromIdle() {
         if (this._idleId)
-            return;
+            GLib.source_remove(this._idleId);
         this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             this._idleId = 0;
             this.destroy();
