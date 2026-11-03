@@ -35,8 +35,7 @@ content and how a doc is written.
 
 **Local delta:** `docs/specs/` holds normative format specifications, one file
 per format, outside the canonical topic set. A spec states what an
-implementation MUST do and is changed in the same commit as the code and the
-tests that pin it.
+implementation MUST do.
 
 ### The rules.json auto-placement format
 
