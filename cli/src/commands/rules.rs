@@ -342,8 +342,12 @@ fn replace_file(path: &Path, text: &str) -> Result<()> {
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
 
     let temporary = directory.join(format!(".rules.json.{}", std::process::id()));
-    std::fs::write(&temporary, text)
-        .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary.display())))?;
+    std::fs::write(&temporary, text).map_err(|e| {
+        // A write that fails after creating the file (a full disk) must not
+        // leave it next to rules.json.
+        let _ = std::fs::remove_file(&temporary);
+        Fail::error(format!("Cannot write {}: {e}", temporary.display()))
+    })?;
     // The new file takes the place of the old one, so it keeps its mode.
     if let Ok(metadata) = std::fs::metadata(path) {
         let _ = std::fs::set_permissions(&temporary, metadata.permissions());

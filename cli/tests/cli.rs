@@ -1398,3 +1398,30 @@ fn an_argument_that_is_not_utf8_is_an_error_not_a_crash() {
         "stderr: {stderr}"
     );
 }
+
+#[test]
+fn rules_add_leaves_no_temporary_file_when_the_write_fails() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-write-fail-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    // A file size limit of 0 makes the write of the temporary file fail after
+    // it has been created, the way a full disk does.
+    let script = format!(
+        "trap '' XFSZ; ulimit -f 0; exec \"$0\" rules add --file '{}' -c kitty tile left",
+        file.display()
+    );
+    let output = Command::new("bash")
+        .args(["-c", &script])
+        .arg(cargo_bin("wctl"))
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output()
+        .expect("bash runs");
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .expect("read dir")
+        .map(|entry| entry.expect("entry").file_name())
+        .collect();
+    assert!(left.is_empty(), "left behind: {left:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
