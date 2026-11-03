@@ -311,9 +311,16 @@ mod tests {
     fn help_documents_every_command() {
         let help = help::text();
         for command in COMMANDS {
-            // help and completion are the meta commands; they appear in the
-            // OTHER section and need no synopsis of their own.
-            assert!(help.contains(command), "help text is missing {command}");
+            // A synopsis line: four spaces, then the command as a whole word.
+            // A bare substring would let "focus" pass on "focused" and
+            // "resize" on "move-resize".
+            let synopsis = help.lines().any(|line| {
+                line.strip_prefix("    ").is_some_and(|rest| {
+                    rest.strip_prefix(command)
+                        .is_some_and(|after| after.is_empty() || after.starts_with(' '))
+                })
+            });
+            assert!(synopsis, "help text has no synopsis line for {command}");
         }
     }
 

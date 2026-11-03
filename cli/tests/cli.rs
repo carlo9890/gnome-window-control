@@ -437,13 +437,17 @@ fn an_unreachable_bus_names_the_session_bus() {
 /// from the argument list, but never out of a selector's value slot.
 #[test]
 fn output_flags_are_not_taken_from_a_selector_value() {
-    expect_not("Usage", &["tile", "-t", "--json", "left"]);
-    expect_not(
-        "Usage",
+    // Each parses in full and goes on to the bus. A flag taken out of the
+    // value slot would leave a usage error or "Option -t requires an
+    // argument" instead, before any connection.
+    let reaches_the_bus = "Cannot connect to the session bus";
+    expect_die(reaches_the_bus, &["tile", "-t", "--json", "left"]);
+    expect_die(
+        reaches_the_bus,
         &["place", "-s", "--settled", "0", "0", "100", "100"],
     );
-    expect_not("Usage", &["info", "-t", "--json"]);
-    expect_not("Usage", &["center", "--json", "-c", "--settled"]);
+    expect_die(reaches_the_bus, &["info", "-t", "--json"]);
+    expect_die(reaches_the_bus, &["center", "--json", "-c", "--settled"]);
 }
 
 #[test]
