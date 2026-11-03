@@ -259,6 +259,7 @@ export const sessionMode = {
         get_current_monitor: () => 0,
         list_all_windows: () => [...windows],
         focus_window: null,
+        get_current_time_roundtrip: () => 1234,
     });
 
     function focus(win) {
@@ -277,7 +278,6 @@ export const sessionMode = {
         display,
         get_window_actors: () => windows.map(win => ({ get_meta_window: () => win })),
         workspace_manager: { get_active_workspace: () => workspace },
-        get_current_time: () => 0,
     };
 
     // The session bus as the extension sees it: name watches, and a way to make a
@@ -663,6 +663,34 @@ export const sessionMode = {
             }
             check(`${name} lets an unexpected throw through to GJS`, error?.message === expected, `${error}`);
         }
+        service.unexport();
+        windows.length = 0;
+    }
+
+    // -- The timestamp a window call hands mutter ---------------------------------
+    //
+    // global.get_current_time() is 0 outside an input event: mutter only flags a
+    // window on another workspace for an activate at 0, and pings no client for a
+    // delete at 0.
+
+    {
+        const service = startService();
+        const win = createWindow({ id: 9, wmClass: 'T' });
+        win.map();
+        const times = [];
+        win.activate = time => times.push(['activate', time]);
+        win.focus = time => times.push(['focus', time]);
+        win.delete = time => times.push(['delete', time]);
+        service.Activate(9);
+        service.ActivateByWmClass('T');
+        service.ActivateNoAnimation(9);
+        service.Focus(9);
+        service.Close(9);
+        check('every window call hands mutter a real timestamp',
+            times.length === 5 && times.every(([, time]) => time === 1234), JSON.stringify(times));
+        win.minimize();
+        check('Focus answers false for a hidden window, and does not ask mutter',
+            service.Focus(9) === false && times.length === 5, JSON.stringify(times));
         service.unexport();
         windows.length = 0;
     }

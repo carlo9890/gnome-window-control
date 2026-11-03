@@ -71,6 +71,15 @@ class NamedError extends Error {
     }
 }
 
+// A D-Bus call arrives outside any input event, where
+// _timestamp() is 0, and mutter reads 0 as "no timestamp":
+// activate() then only flags a window on another workspace as demanding
+// attention, and delete() skips the ping that shows the "not responding"
+// dialog for a hung client.
+function _timestamp() {
+    return global.display.get_current_time_roundtrip();
+}
+
 function _workspaceIndex(win) {
     return win.is_on_all_workspaces() ? -1 : (win.get_workspace()?.index() ?? -1);
 }
@@ -337,7 +346,7 @@ export class WindowControlService {
         const predicate = this._matchPredicate(kind, value);
         const win = predicate ? this._findWindowByPredicate(predicate) : null;
         if (win) {
-            win.activate(global.get_current_time());
+            win.activate(_timestamp());
             console.debug(`[Window Control] ${label} -> true`);
             return true;
         }
@@ -443,7 +452,7 @@ export class WindowControlService {
 
     Activate(windowId) {
         return this._actOnWindow(windowId, 'Activate',
-            win => win.activate(global.get_current_time()));
+            win => win.activate(_timestamp()));
     }
 
     ActivateByTitle(title) {
@@ -464,9 +473,15 @@ export class WindowControlService {
         return this._activateMatching('pid', String(pid));
     }
 
+    // Mutter does not focus a hidden window (minimized, or on another
+    // workspace), so that is reported as false rather than as a focus.
     Focus(windowId) {
-        return this._actOnWindow(windowId, 'Focus',
-            win => win.focus(global.get_current_time()));
+        return this._actOnWindow(windowId, 'Focus', win => {
+            if (win.is_hidden())
+                return false;
+            win.focus(_timestamp());
+            return true;
+        });
     }
 
     // Mutter keeps the focused window as a property, so this is one read
@@ -619,7 +634,7 @@ export class WindowControlService {
         }
         if (Main.overview.visible)
             Main.overview.hide();
-        manager.get_workspace_by_index(workspaceIndex).activate(global.get_current_time());
+        manager.get_workspace_by_index(workspaceIndex).activate(_timestamp());
         const switched = manager.get_active_workspace_index() === workspaceIndex;
         console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> ${switched}`);
         return switched;
@@ -1030,7 +1045,7 @@ export class WindowControlService {
         return this._actOnWindow(windowId, 'ActivateNoAnimation', win => {
             for (let restored = win; restored; restored = restored.get_transient_for())
                 this._skipUnminimizeEffect(restored);
-            win.activate(global.get_current_time());
+            win.activate(_timestamp());
         });
     }
 
@@ -1072,7 +1087,7 @@ export class WindowControlService {
     // Asks the client to close; it may refuse or prompt.
     Close(windowId) {
         return this._actOnWindow(windowId, 'Close',
-            win => win.delete(global.get_current_time()));
+            win => win.delete(_timestamp()));
     }
 
     // The export goes first: it throws when the object path is taken, and the
