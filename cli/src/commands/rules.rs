@@ -824,8 +824,12 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         width,
         height,
     };
+    // rules.js skips the geometry of a fullscreen window.
+    let fullscreen = model::flag(&window, "is_fullscreen")
+        && winner.is_some_and(|index| compiled[index].action.is_some());
     let target = winner
         .zip(workarea)
+        .filter(|_| !fullscreen)
         .and_then(|(index, workarea)| compiled[index].resolve(workarea, frame));
 
     if json {
@@ -848,6 +852,8 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         });
         if workarea.is_none() {
             report["skipped"] = serde_json::json!(SKIPPED_NO_SUCH_MONITOR);
+        } else if fullscreen {
+            report["skipped"] = serde_json::json!(SKIPPED_FULLSCREEN);
         }
         println!("{report}");
         return Ok(());
@@ -897,6 +903,10 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         "  monitor {monitor}, workarea {},{} {}x{}",
         workarea.x, workarea.y, workarea.width, workarea.height
     );
+    if fullscreen {
+        println!("  the window is fullscreen; the geometry would be skipped");
+        return Ok(());
+    }
     match target {
         Some(rect) => println!(
             "  would place at {},{} {}x{}",
@@ -909,6 +919,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 }
 
 const SKIPPED_NO_SUCH_MONITOR: &str = "no such monitor";
+const SKIPPED_FULLSCREEN: &str = "fullscreen";
 
 fn window_line(id: u64, wm_class: &str, title: &str) -> String {
     format!(
