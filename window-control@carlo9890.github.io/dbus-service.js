@@ -838,7 +838,7 @@ export class WindowControlService {
     // the app id arrives with a later commit), and it is not shown (mapped and
     // placed) until the client commits its first buffer, so evaluate now and
     // again when either property is set and when the window is shown. Handlers
-    // are dropped once the window matched, was unmanaged, or no waiter is left.
+    // are dropped once the window is unmanaged or no waiter is left.
     _onWindowCreated(win) {
         this._createdSinceStart.add(win);
         if (this._waiters.length === 0) {

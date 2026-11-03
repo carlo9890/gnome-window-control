@@ -13,8 +13,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 // GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
 // longer take a Meta.MaximizeFlags argument, and get_maximized() was removed in
 // favor of get_maximize_flags()/is_maximized() (verified against mutter 49.0
-// window.h). global.get_window_actors() and the rest of the Meta.Window API used
-// here are unchanged across GNOME 45-50. Detect the pre-49 API via the removed
+// window.h). The rest of the Meta.Window API used here is unchanged across
+// GNOME 45-50. Detect the pre-49 API via the removed
 // get_maximized() method so a single extension works on all supported shells.
 export function maximizeFlags(win) {
     if (typeof win.get_maximized === 'function') {
