@@ -319,7 +319,8 @@ export const sessionMode = {
         call.get_sender = () => call.sender;
         call.get_connection = () => bus;
         call.return_value = variant => {
-            call.reply = { value: variant.deepUnpack() };
+            // GDBus takes null for an empty reply, which the geometry methods send.
+            call.reply = { value: variant === null ? null : variant.deepUnpack() };
             call.replies += 1;
         };
         call.return_dbus_error = (error, message) => {
@@ -1126,9 +1127,13 @@ export const sessionMode = {
         await sleep(400);
         check('a focus gone to no window when the grace period ends keeps the overlay', !open.minimized);
 
+        // `pinned` was hidden by an earlier focus loss; shown again, it is the
+        // overlay without the focus that the overview must hide.
+        restore(pinned);
         focus(open);
         Main.overview.emit('showing');
-        check('an overview gesture that may still be cancelled hides no overlay', !open.minimized);
+        check('an overview gesture that may still be cancelled hides no overlay',
+            !open.minimized && !pinned.minimized);
         Main.overview.emit('shown');
         check('an open overview hides an overlay at once', open.minimized);
         check('an open overview hides an overlay that was not focused', pinned.minimized);
