@@ -164,10 +164,12 @@ fn global_options(args: &[String]) -> Result<(Option<Duration>, &[String])> {
     Ok((None, args))
 }
 
-/// The reply timeout for a command that will open a bus connection.
+/// The reply timeout for a command that opens a bus connection.
 ///
-/// `WCTL_TIMEOUT` is read HERE and not in `global_options`, so a stale or
-/// mistyped value cannot break a command that never opens a connection. That
+/// `Bus` calls this when it opens a connection, not before dispatch, so a
+/// stale or mistyped value cannot break a command that never opens one: the
+/// `rules` subcommands that only read or write the file, and every usage
+/// error, are reported as if the variable were unset. That
 /// matters most for `wctl completion bash`: it is run from a shell rc file,
 /// usually as `eval "$(wctl completion bash)"`, where an error would reach
 /// every new shell and install no completion at all.
@@ -205,7 +207,7 @@ fn run(args: &[String]) -> Result<()> {
         _ => {}
     }
 
-    let mut ctx = Ctx::new(reply_timeout(timeout_flag)?);
+    let mut ctx = Ctx::new(timeout_flag);
     match command {
         "list" => query::list(&mut ctx, rest),
         "focused" => query::focused(&mut ctx, rest),

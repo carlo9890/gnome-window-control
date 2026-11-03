@@ -205,16 +205,17 @@ where
 
 pub struct Bus {
     conn: OnceCell<Connection>,
-    /// How long a method call waits for the shell to reply. Stored rather than
-    /// applied at construction, because the connection is opened lazily.
-    timeout: Duration,
+    /// The `--timeout` flag, if given. The reply timeout is resolved from it,
+    /// or from `WCTL_TIMEOUT`, only when the connection is opened, so a bad
+    /// `WCTL_TIMEOUT` cannot break a command that never opens one.
+    timeout_flag: Option<Duration>,
 }
 
 impl Bus {
-    pub fn new(timeout: Duration) -> Self {
+    pub fn new(timeout_flag: Option<Duration>) -> Self {
         Bus {
             conn: OnceCell::new(),
-            timeout,
+            timeout_flag,
         }
     }
 
@@ -222,7 +223,7 @@ impl Bus {
         if let Some(conn) = self.conn.get() {
             return Ok(conn);
         }
-        let conn = session_connection(self.timeout)?;
+        let conn = session_connection(crate::reply_timeout(self.timeout_flag)?)?;
         // set() cannot fail: get() above returned None and we are single threaded.
         let _ = self.conn.set(conn);
         Ok(self.conn.get().expect("connection was just stored"))
@@ -275,6 +276,9 @@ impl Bus {
         B: serde::ser::Serialize + DynamicType,
         R: serde::de::DeserializeOwned + zbus::zvariant::Type,
     {
+        // The variable does not set this bound, but a bad one is still an
+        // error for every command that opens a connection.
+        crate::reply_timeout(self.timeout_flag)?;
         call_on(&session_connection(client_bound)?, method, body)
     }
 

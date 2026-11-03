@@ -99,6 +99,27 @@ fn wctl_timeout_is_only_read_when_a_connection_is_needed() {
         );
     }
 
+    // The rules file commands open no connection either, and a usage error is
+    // reported before one would be.
+    let dir = std::env::temp_dir().join(format!("wctl-timeout-rules-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    std::fs::write(&file, "[]").expect("rules file");
+    let path = file.to_str().unwrap();
+    for args in [
+        vec!["rules", "check", "--file", path],
+        vec!["rules", "list", "--file", path],
+        vec!["rules", "path", "--file", path],
+    ] {
+        let (out, code) = wctl_env(&args, Some("abc"));
+        assert_eq!(code, 0, "wctl {args:?} with a bad WCTL_TIMEOUT: {out}");
+        assert!(!out.contains("WCTL_TIMEOUT must be"), "printed: {out}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    let (out, _) = wctl_env(&["move", "abc", "1", "2"], Some("abc"));
+    assert!(out.contains("Window ID must be a number"), "printed: {out}");
+
     // An explicit flag is a usage error whatever the command, because the user
     // typed it for this invocation.
     expect_die(
@@ -109,8 +130,18 @@ fn wctl_timeout_is_only_read_when_a_connection_is_needed() {
 
 #[test]
 fn wctl_timeout_environment_guards() {
-    for value in ["abc", "0", "2.5"] {
-        let (out, code) = wctl_env(&["list"], Some(value));
+    for (value, command) in [
+        ("abc", "list"),
+        ("0", "list"),
+        ("2.5", "list"),
+        ("abc", "wait"),
+    ] {
+        let args: &[&str] = if command == "wait" {
+            &["wait", "-c", "x"]
+        } else {
+            &["list"]
+        };
+        let (out, code) = wctl_env(args, Some(value));
         assert_ne!(code, 0, "WCTL_TIMEOUT={value} should fail, printed: {out}");
         assert!(
             out.contains("WCTL_TIMEOUT must be a positive number of seconds"),
