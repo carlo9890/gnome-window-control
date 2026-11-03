@@ -82,13 +82,21 @@ the correct form.
 
 ## Project-specific rules
 
-- The D-Bus surface is fixed in scope: geometry primitives, the window
-  properties `ListDetailed` reports, and a close request. Flag a change that
-  makes a D-Bus handler, or any code it reaches (`window-helpers.js`, a new
-  module), lay out windows, read pixels, inject input or call `kill()`; it
-  blocks the merge unless the maintainer approves it on the PR. The correct
-  forms: `wctl tile` and `wctl center` compose a layout from `Move`,
-  `MoveResize` and `GetWorkarea`; `Close` goes through `Meta.Window.delete`.
+- **Scope.** Flag each of these; it blocks the merge until the maintainer
+  approves it on the PR:
+  - extension code, in any module, that reads pixels, injects input or ends
+    a window's client by any means (`kill()`, a signal to its PID);
+  - a D-Bus method, new or changed, that lays out windows;
+  - a new property in the `ListDetailed` window document, or window data
+    that any other method returns and `ListDetailed` does not hold;
+  - any other D-Bus addition that does not act on a window's geometry,
+    state, workspace, focus or close, such as one that starts a process or
+    reads the clipboard.
+
+  The correct forms: `wctl tile` and `wctl center` compose a layout from
+  `Move`, `MoveResize` and `GetWorkarea`; rules and shortcuts take their
+  rectangles from `rules-format.js` without D-Bus; `Close` goes through
+  `Meta.Window.delete`.
 - A new D-Bus method comes with its row in the method table in `README.md` — flag
   a method in `dbus-interface.js` that the table does not list.
 - A script under `scripts/` that sends a state-changing call to `org.gnome.Shell`
