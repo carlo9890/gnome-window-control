@@ -1381,3 +1381,20 @@ fn rules_add_takes_a_class_prefix() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn an_argument_that_is_not_utf8_is_an_error_not_a_crash() {
+    use std::os::unix::ffi::OsStrExt;
+    let output = Command::new(cargo_bin("wctl"))
+        .args(["list", "-t"])
+        .arg(std::ffi::OsStr::from_bytes(b"caf\xe9"))
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output()
+        .expect("wctl runs");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
+    assert!(
+        stderr.contains("Arguments must be valid UTF-8"),
+        "stderr: {stderr}"
+    );
+}

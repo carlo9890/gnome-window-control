@@ -104,8 +104,16 @@ fn restore_sigpipe() {
 
 fn main() {
     restore_sigpipe();
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Err(failure) = run(&args) {
+    // Not env::args(): it panics on an argument that is not UTF-8, and with
+    // `panic = "abort"` that is a SIGABRT and a panic dump, not an error.
+    let args: Result<Vec<String>> = std::env::args_os()
+        .skip(1)
+        .map(|arg| {
+            arg.into_string()
+                .map_err(|_| Fail::error("Arguments must be valid UTF-8"))
+        })
+        .collect();
+    if let Err(failure) = args.and_then(|args| run(&args)) {
         std::process::exit(failure.report());
     }
 }
