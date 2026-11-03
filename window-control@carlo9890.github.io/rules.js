@@ -199,8 +199,13 @@ export class WindowRules {
         } else if (this._rules.length === 0 && this._windowCreatedId) {
             global.display.disconnect(this._windowCreatedId);
             this._windowCreatedId = 0;
-            for (const win of [...this._tracked.keys()])
-                this._untrack(win);
+            // A window waiting for its unmaximize has had the rest of its rule
+            // applied already, and a load affects new windows only, so its wait
+            // runs on and places it.
+            for (const [win, entry] of [...this._tracked]) {
+                if (!entry.wait)
+                    this._untrack(win);
+            }
         }
     }
 

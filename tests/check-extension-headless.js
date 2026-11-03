@@ -715,6 +715,31 @@ export const sessionMode = {
         windows.length = 0;
     }
 
+    // -- A load that empties the rules while a rule waits for an unmaximize ------
+    //
+    // The rule has done its other steps and unmaximized the window; the load
+    // affects new windows only, so the frame still follows once the restore
+    // lands, rather than leaving the rule half applied.
+
+    {
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        rules._compile('[{"match":{"class":"max"},"tile":"left"}]');
+        const win = createWindow({ id: 31, wmClass: 'max', maximizeFlags: Meta.MaximizeFlags.BOTH });
+        win.map();
+        await sleep(100);
+        check('a maximized window under a rule waits for its unmaximize',
+            rules._tracked.get(win)?.wait !== undefined && win.moves.length === 0, JSON.stringify(win.moves));
+        rules._compile('[]');
+        await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
+        check('a load to no rules lets the pending unmaximize wait place the window',
+            JSON.stringify(win.moves) === '[[0,0,480,1080]]' && !rules._tracked.has(win),
+            JSON.stringify(win.moves));
+        rules.disable();
+        windows.length = 0;
+    }
+
     // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
 
     {
