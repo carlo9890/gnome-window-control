@@ -740,6 +740,33 @@ export const sessionMode = {
         windows.length = 0;
     }
 
+    // -- An unmaximize that throws ------------------------------------------------
+    //
+    // The UnmaximizeWait never reaches its owner, so it must leave nothing behind
+    // that would place the window later.
+
+    {
+        const keybindings = new WindowKeybindings();
+        keybindings.enable({});
+        const win = createWindow({ id: 32, wmClass: 'K', maximizeFlags: Meta.MaximizeFlags.BOTH });
+        win.map();
+        win.unmaximize = () => {
+            throw new Error('unmaximize failed');
+        };
+        let error = null;
+        try {
+            keybindings._tile('tile-left', win, 'left');
+        } catch (e) {
+            error = e;
+        }
+        await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
+        check('an unmaximize that throws leaves no handler and places nothing',
+            error?.message === 'unmaximize failed' && win.handlerCount() === 0 && win.moves.length === 0,
+            `${error}, ${win.handlerCount()} handler(s), ${JSON.stringify(win.moves)}`);
+        keybindings.disable();
+        windows.length = 0;
+    }
+
     // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
 
     {
