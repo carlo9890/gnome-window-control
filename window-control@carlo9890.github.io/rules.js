@@ -28,8 +28,8 @@
 //
 // The first matching rule wins, in file order, and is applied exactly once per
 // window. A window that resizes itself later is left alone. The file is
-// re-read on every change. Which windows are overlays is decided again on
-// every load, for the open windows too.
+// re-read on every change while its directory can be watched. Which windows
+// are overlays is decided again on every load, for the open windows too.
 //
 // The grammar itself -- the token vocabulary, the tile grid and every
 // validation message -- lives in rules-format.js, which imports nothing so the
@@ -88,11 +88,17 @@ export class WindowRules {
         }
         // The directory rather than the file: a file monitor misses an editor
         // that saves by writing a new file and renaming it over the old one.
-        this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
-            if (file.get_basename() === RULES_FILE)
-                this._scheduleReload();
-        });
+        try {
+            this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch (e) {
+            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; ${RULES_FILE} is read only at enable()`);
+        }
+        if (this._fileMonitor) {
+            this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
+                if (file.get_basename() === RULES_FILE)
+                    this._scheduleReload();
+            });
+        }
         this._load();
     }
 
@@ -103,9 +109,12 @@ export class WindowRules {
         this._reloadId = 0;
         this._loadCancellable?.cancel();
         this._loadCancellable = null;
-        this._fileMonitor.disconnect(this._fileMonitorId);
-        this._fileMonitor.cancel();
-        this._fileMonitor = null;
+        if (this._fileMonitor) {
+            this._fileMonitor.disconnect(this._fileMonitorId);
+            this._fileMonitor.cancel();
+            this._fileMonitor = null;
+            this._fileMonitorId = 0;
+        }
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._overlays.destroy();

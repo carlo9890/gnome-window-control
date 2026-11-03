@@ -802,6 +802,59 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             `${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
     }
 
+    // -- WindowRules: a config directory that cannot be watched -------------------
+    //
+    // No path on a local disk makes monitor_directory() throw, so the stub
+    // does. The failure is logged, the file is still read once, and disable()
+    // has no monitor to undo (RULES-JSON.md).
+
+    {
+        const configDir = `${SCRATCH}/config/gnome-window-control`;
+        GLib.mkdir_with_parents(configDir, 0o755);
+        const rulesPath = `${configDir}/rules.json`;
+        write(rulesPath, '[{"match":{"class":"app"},"tile":"left"}]');
+        const realMonitor = Gio.File.prototype.monitor_directory;
+        Gio.File.prototype.monitor_directory = () => {
+            throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_SUPPORTED, 'no watch here');
+        };
+        const rules = new WindowRules();
+        const linesBeforeEnable = consoleLines.length;
+        let error = null;
+        try {
+            rules.enable();
+        } catch (e) {
+            error = e;
+        } finally {
+            Gio.File.prototype.monitor_directory = realMonitor;
+        }
+        check('enable() survives a directory it cannot watch', error === null, `${error}`);
+        await sleep(300);
+        check('an unwatched rules.json is still read once', rules._rules.length === 1,
+            `${rules._rules.length} rule(s)`);
+        const failures = consoleLines.slice(linesBeforeEnable)
+            .filter(line => line.message.includes('cannot watch'));
+        check('the watch failure is logged at error level', failures.length === 1 &&
+            failures[0].level === GLib.LogLevelFlags.LEVEL_CRITICAL, JSON.stringify(failures));
+        check('a failed watch keeps no monitor', rules._fileMonitor === null, `${rules._fileMonitor}`);
+        write(rulesPath, '[{"match":{"class":"app"},"tile":"left"},{"match":{"class":"b"},"tile":"right"}]');
+        await sleep(300);
+        check('an unwatched rules.json is not read again after a write', rules._rules.length === 1,
+            `${rules._rules.length} rule(s)`);
+        const linesBeforeDisable = consoleLines.length;
+        error = null;
+        try {
+            rules.disable();
+        } catch (e) {
+            error = e;
+        }
+        check('disable() after a failed watch throws nothing', error === null, `${error}`);
+        check('disable() after a failed watch leaves no handler on the display',
+            display.handlerCount() === 0, `${display.handlerCount()} handler(s)`);
+        check('disable() after a failed watch leaves no source and removes none twice',
+            rules._sourceIds.size === 0 && unknownSourceRemovals(linesBeforeDisable) === 0,
+            `tracked ${[...rules._sourceIds]}, ${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
+    }
+
     // -- WindowRules: overlay windows -------------------------------------------
     //
     // An overlay rule takes the windows already open when the file loads, and

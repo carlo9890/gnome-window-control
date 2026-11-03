@@ -125,6 +125,9 @@ It pins:
   `UnmaximizeWait`;
 - an `enable()` whose D-Bus export fails throws and leaves no handler on the
   display;
+- a config directory that `WindowRules` cannot watch is logged at error level,
+  `rules.json` is read at `enable()` and not after a write, and `disable()`
+  then throws nothing and leaves no handler or source;
 - a keyboard shortcut that cannot be registered removes the ones registered
   before it, and the extension serves none;
 - a load of `rules.json` that finds no file, and a reload that finds one, log

@@ -82,6 +82,13 @@ the correct form.
 
 ## Project-specific rules
 
+- The D-Bus surface is fixed in scope: geometry primitives, the window
+  properties `ListDetailed` reports, and a close request. Flag a change that
+  makes a D-Bus handler, or any code it reaches (`window-helpers.js`, a new
+  module), lay out windows, read pixels, inject input or call `kill()`; it
+  blocks the merge unless the maintainer approves it on the PR. The correct
+  forms: `wctl tile` and `wctl center` compose a layout from `Move`,
+  `MoveResize` and `GetWorkarea`; `Close` goes through `Meta.Window.delete`.
 - A new D-Bus method comes with its row in the method table in `README.md` — flag
   a method in `dbus-interface.js` that the table does not list.
 - A script under `scripts/` that sends a state-changing call to `org.gnome.Shell`

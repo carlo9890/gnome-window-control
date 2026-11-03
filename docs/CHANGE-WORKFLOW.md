@@ -19,6 +19,9 @@ Before committing or opening a PR:
 - One logical change per commit.
 - In a PR with several fixes, each fix commit carries its own test. When the
   fixes share a new test harness, land the harness in an earlier commit.
+- A change to what a spec in `docs/specs/` requires lands in the same commit as
+  the code and the tests that pin it. A spec edit that changes no requirement
+  can land alone.
 - Message format: `<type>: <short description>`, where `<type>` is `feat`, `fix`,
   `docs`, `test`, `build`, `refactor`, or `chore`. Append `!` to the type for a
   breaking change (`feat!: ...`).
