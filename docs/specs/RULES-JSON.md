@@ -167,11 +167,20 @@ the message at warning level and runs with zero rules until the file changes.
 Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
 
-The keys of a rule object and of `match` are checked in JavaScript property
-order: array indices first, ascending, then the other keys in file order. An
-array index is the decimal form of an integer from 0 to 4294967294, with no
-sign and no leading zero: `"1"` is one, `"01"` and `"4294967295"` are not. The
-message names the first key in that order that fails a check.
+The checks of one rule run in this order, and the message names the first that
+fails:
+
+1. Unknown keys of the rule object, in JavaScript property order.
+2. `match`: that it is an object, then its keys in JavaScript property order,
+   then that it names at least one.
+3. `place`, `tile` and `center`: that at most one is present, then its value.
+4. `workspace`, `monitor`, `overlay`, in that order, whatever their file order.
+5. That the rule has something to do.
+
+JavaScript property order is array indices first, ascending, then the other
+keys in file order. An array index is the decimal form of an integer from 0 to
+4294967294, with no sign and no leading zero: `"1"` is one, `"01"` and
+`"4294967295"` are not.
 
 One verdict has two texts. A number too large for a double, such as `1e400`,
 is refused by both: the extension reports it as the key's own message below,

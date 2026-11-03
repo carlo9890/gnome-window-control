@@ -49,10 +49,11 @@ may contain.
 - **`wctl` prints "extension is not running"** — the D-Bus destination isn't
   answering; enable it
   (`gnome-extensions enable window-control@carlo9890.github.io`).
-  `is_extension_not_running` in `cli/src/dbus.rs` lists the error names (and,
-  for the one case GDBus conflates, the detail text) that produce this message,
-  including the `WindowControl.Disabled` error the extension returns when it is
-  disabled while a `WaitForWindow` or `WaitForGeometry` call is pending.
+  `is_extension_not_running` in `cli/src/dbus.rs` lists the error names that
+  produce this message, including the `WindowControl.Disabled` error the
+  extension returns when it is disabled while a `WaitForWindow` or
+  `WaitForGeometry` call is pending. For `UnknownMethod`, `map_err` asks
+  whether the object is served at all.
 - **The message starts with "Cannot connect to the session bus"** — wctl
   reached no bus at all (`map_connect_err` in `cli/src/dbus.rs`); check
   `DBUS_SESSION_BUS_ADDRESS` against the address the message names before you
