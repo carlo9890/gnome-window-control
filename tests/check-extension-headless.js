@@ -426,6 +426,26 @@ export const sessionMode = {
         windows.length = 0;
     }
 
+    // -- WaitForWindow: a dialog that exists before the wait, retyped later ------
+    //
+    // E is created as a dialog while no wait runs. The wait must still watch it,
+    // so a retype to NORMAL and its map during the wait reply with it.
+
+    {
+        const service = startService();
+        const dialog = createWindow({ id: 7, wmClass: 'E', type: Meta.WindowType.MODAL_DIALOG });
+        const wait = invocation();
+        service.WaitForWindowAsync(['class', 'E', 300], wait);
+        dialog.type = Meta.WindowType.NORMAL;
+        dialog.emit('notify::window-type');
+        dialog.map();
+        check('wait E finds a dialog that predates the wait once it is NORMAL and shown',
+            showReply(wait) === '{"value":[7]}', showReply(wait));
+        await sleep(400);
+        service.unexport();
+        windows.length = 0;
+    }
+
     // -- ListDetailed: has_been_shown -------------------------------------------
     //
     // N is created while no wait runs, and created minimized, so it is hidden and

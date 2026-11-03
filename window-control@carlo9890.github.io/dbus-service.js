@@ -897,11 +897,14 @@ export class WindowControlService {
     // arrive after creation, so a window that cannot match yet may match once
     // 'notify::wm-class' fires. Nothing is evaluated here either -- the caller
     // has just scanned every shown window, so a second pass cannot match.
+    // Every type, not only NORMAL: a dialog retyped to NORMAL during the wait
+    // must wake it (see _trackWindow), and _evaluateWindow checks the type.
     // Handlers cost five connections per window and only exist while a wait
     // is pending.
     _trackExistingWindows() {
-        for (const win of this._getAllWindows()) {
-            if (!this._trackedWindows.has(win))
+        for (const actor of global.get_window_actors()) {
+            const win = actor.get_meta_window();
+            if (win && !this._trackedWindows.has(win))
                 this._trackWindow(win);
         }
     }
