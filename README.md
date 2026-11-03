@@ -199,7 +199,9 @@ read -r w h < <(wctl resolve-place center top 50% 100% --json |
 ```
 
 `place`, `tile` and `center` take `--json` too, reporting the workarea used and
-the rectangle computed. All of them report the rectangle wctl **requested**;
+the rectangle computed. Once the window is known, every outcome is a document:
+a window or monitor that is gone gives `"placed":false` and a `message`. All of
+them report the rectangle wctl **requested**;
 mutter still clamps to size hints, and a client that quantises its own size (a
 terminal, to whole cells) settles a few pixels off, so comparing against it needs
 a tolerance.
