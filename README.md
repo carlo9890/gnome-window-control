@@ -30,7 +30,7 @@ wctl minimize focused                      # minimize the focused window
 
 - **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
 - **Window info** - Get detailed information about any window
-- **Window selectors** - Address a window by ID, `focused`, WM class, title, title substring, or PID in every `wctl` command
+- **Window selectors** - Address a window by ID, `focused`, WM class, title, title substring, or PID in every `wctl` command (`activate` takes all but `focused`)
 - **Activate windows** - Focus/raise windows by ID, title, WM class, or PID
 - **Move/resize windows** - Position and size windows programmatically
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
@@ -143,7 +143,8 @@ wctl info 12345 --json             # one window's details
 # Every command that takes a window accepts a selector instead of an ID:
 #   <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
 # A selector must match exactly one window. With several matches wctl lists
-# the candidates and exits 1; with none it exits 2. An empty -s "" is refused.
+# the candidates and exits 1; with none it exits 2. An empty value is refused.
+# activate takes no `focused`, and its -c/-t/-s/-p take the first match.
 wctl tile -c kitty left
 wctl close -s "Untitled"
 
