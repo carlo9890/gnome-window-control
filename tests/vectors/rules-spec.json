@@ -440,6 +440,22 @@
       "valid": true
     },
     {
+      "name": "a decimal one ulp below 2 is not an integer (both parsers must round correctly)",
+      "document": [{ "match": { "class": "a" }, "workspace": 1.9999999999999998 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
+      "name": "a decimal that rounds to exactly 75 is the integer 75",
+      "document": [{ "match": { "class": "a" }, "workspace": 74.999999999999994443 }],
+      "valid": true
+    },
+    {
+      "name": "a place size that rounds to exactly 75 is the size 75",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, 74.999999999999994443, 100] }],
+      "valid": true
+    },
+    {
       "name": "workspace at the int32 bound",
       "document": [{ "match": { "class": "a" }, "workspace": 2147483647 }],
       "valid": true

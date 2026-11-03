@@ -15,7 +15,7 @@ path = "src/main.rs"
 # tree as a transitive dependency of zbus.
 libc = "0.2"
 serde = "1"
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 unicode-width = "0.2"
 zbus = "5"
 
