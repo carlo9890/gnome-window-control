@@ -229,6 +229,9 @@ is still 9. `compatible` is true for every extension version from
 rather than comparing version numbers: an install from extensions.gnome.org
 carries that site's own upload number in `extension`, which no release of this
 project ever had. An empty list means the extension is too old to answer.
+When the call fails for another reason (a timeout, an extension disabled
+in between), `capabilities` is `null` and the command exits with that
+failure's code.
 
 ### Using gdbus Directly
 

@@ -296,6 +296,20 @@ impl Bus {
         self.call("GetCapabilities", &())
     }
 
+    /// The feature names of an extension that has just answered another call.
+    ///
+    /// One too old to serve GetCapabilities reports none; any other failure --
+    /// a timeout, or an extension disabled since that answer -- is a failure,
+    /// not an empty list a caller would read as "no capabilities".
+    pub fn capabilities_of_answering(&self) -> Result<Vec<String>> {
+        let conn = self.conn()?;
+        match proxy(conn)?.call::<_, _, Vec<String>>("GetCapabilities", &()) {
+            Ok(names) => Ok(names),
+            Err(err) if is_unknown_method(&err) && serves_object(conn) => Ok(Vec::new()),
+            Err(err) => Err(map_err(err, || serves_object(conn))),
+        }
+    }
+
     /// The feature names the loaded extension reports, or `None` when nobody
     /// answered.
     ///
