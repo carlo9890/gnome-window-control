@@ -32,7 +32,8 @@ _wctl_window_ids() {
         windows+=("$id:$title")
     done < <(wctl --timeout 1 list --json 2>/dev/null | sed 's/},{/}\n{/g')
 
-    windows+=("focused:Focused window")
+    # activate takes a window ID only, so it asks for the IDs alone.
+    [[ "$1" == --ids-only ]] || windows+=("focused:Focused window")
     _describe -t windows 'window' windows
 }
 
@@ -137,7 +138,7 @@ _wctl() {
                     ;;
                 activate)
                     _arguments \
-                        '(-t -s -c -p)1:window id:_wctl_window_ids' \
+                        '(-t -s -c -p)1:window id:_wctl_window_ids --ids-only' \
                         '(-t -s -c -p)--no-animation[Restore a minimized window without the animation]' \
                         '(-s -c -p --no-animation)-t[Activate by exact title]:title:' \
                         '(-t -c -p --no-animation)-s[Activate by title substring]:substring:' \
