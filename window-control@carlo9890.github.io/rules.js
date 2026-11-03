@@ -182,6 +182,11 @@ export class WindowRules {
         if (this._overlays.size === 0 && !this._rules.some(rule => rule.overlay))
             return;
         for (const win of global.display.list_all_windows()) {
+            // A window mutter has not shown yet gets the overlay when its rule
+            // is applied; hiding it before then would keep it from ever
+            // showing.
+            if (this._tracked.get(win)?.shown === false)
+                continue;
             const index = this._winningIndex(win);
             if (index >= 0 && this._rules[index].overlay)
                 this._overlays.add(win);

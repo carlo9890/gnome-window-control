@@ -1189,6 +1189,20 @@ export const sessionMode = {
         check('a release keeps an above the user set again after the overlay set its own', late.above);
         rules._compile(OVERLAY_RULES);
 
+        // A load while a matching window is not shown yet: it becomes an
+        // overlay when its rule is applied, not before, so no focus change can
+        // minimize a window that was never on screen.
+        const launching = createWindow({ id: 27, wmClass: 'term' });
+        rules._compile(OVERLAY_RULES);
+        focus(other);
+        await sleep(400);
+        check('a load makes no overlay of a window mutter has not shown',
+            !overlays._windows.has(launching) && !launching.minimized);
+        launching.map();
+        await sleep(100);
+        check('that window becomes an overlay once shown', isOverlay(launching));
+        launching.emit('unmanaged');
+
         const fresh = createWindow({ id: 25, wmClass: 'term' });
         fresh.map();
         await sleep(100);
