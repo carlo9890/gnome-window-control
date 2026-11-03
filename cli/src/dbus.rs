@@ -97,15 +97,43 @@ fn is_timeout(err: &zbus::Error) -> bool {
     }
 }
 
+/// What a timed-out call says happened. The bus daemon's NoReply also stands
+/// for a shell that left the bus with the call pending -- a crash or a
+/// restart -- so it is not called slow.
+fn no_reply(err: &zbus::Error) -> &'static str {
+    match err {
+        zbus::Error::MethodError(name, _, _)
+            if name.as_str() == "org.freedesktop.DBus.Error.NoReply" =>
+        {
+            "GNOME Shell did not reply: it stopped responding or left the bus."
+        }
+        _ => "GNOME Shell did not reply in time.",
+    }
+}
+
+/// `map_err` for a call on its own connection (`call_bounded`): the global
+/// `--timeout` does not set its bound, so the hint does not name it.
+fn map_bounded_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
+    if is_timeout(&err) {
+        return Fail::error(format!(
+            "{} Check that the shell is responding.",
+            no_reply(&err)
+        ))
+        .with_code(EXIT_TIMEOUT);
+    }
+    map_err(err, serves_object)
+}
+
 /// Map a failed call to the message and exit code wctl reports.
 ///
 /// `serves_object` is asked only for an UnknownMethod, to tell an extension
 /// that is not running from one too old to serve the method.
 fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
     if is_timeout(&err) {
-        return Fail::error(
-            "GNOME Shell did not reply in time. Raise --timeout, or check that the shell is responding.",
-        )
+        return Fail::error(format!(
+            "{} Raise --timeout, or check that the shell is responding.",
+            no_reply(&err)
+        ))
         .with_code(EXIT_TIMEOUT);
     }
 
@@ -193,14 +221,19 @@ fn serves_object(conn: &Connection) -> bool {
     .is_ok()
 }
 
-fn call_on<B, R>(conn: &Connection, method: &str, body: &B) -> Result<R>
+fn call_on<B, R>(
+    conn: &Connection,
+    method: &str,
+    body: &B,
+    mapper: fn(zbus::Error, Box<dyn FnOnce() -> bool + '_>) -> Fail,
+) -> Result<R>
 where
     B: serde::ser::Serialize + DynamicType,
     R: serde::de::DeserializeOwned + zbus::zvariant::Type,
 {
     proxy(conn)?
         .call(method, body)
-        .map_err(|err| map_err(err, || serves_object(conn)))
+        .map_err(|err| mapper(err, Box::new(|| serves_object(conn))))
 }
 
 pub struct Bus {
@@ -235,7 +268,7 @@ impl Bus {
         B: serde::ser::Serialize + DynamicType,
         R: serde::de::DeserializeOwned + zbus::zvariant::Type,
     {
-        call_on(self.conn()?, method, body)
+        call_on(self.conn()?, method, body, |err, asks| map_err(err, asks))
     }
 
     /// Call a method that returns a JSON document as a string.
@@ -279,7 +312,12 @@ impl Bus {
         // The variable does not set this bound, but a bad one is still an
         // error for every command that opens a connection.
         crate::reply_timeout(self.timeout_flag)?;
-        call_on(&session_connection(client_bound)?, method, body)
+        call_on(
+            &session_connection(client_bound)?,
+            method,
+            body,
+            |err, asks| map_bounded_err(err, asks),
+        )
     }
 
     /// The extension version the running shell has loaded.
@@ -441,6 +479,28 @@ mod tests {
             let (code, plain, _) = mapped_unasked(err);
             assert_eq!((code, plain), (4, false));
         }
+    }
+
+    #[test]
+    fn a_timeout_names_the_right_cause_and_the_right_remedy() {
+        let message = |fail: Fail| fail.to_string();
+        assert_eq!(
+            message(map_err(timed_out(), || false)),
+            "GNOME Shell did not reply in time. Raise --timeout, or check that the shell is responding."
+        );
+        // --timeout does not set the bound of a call on its own connection.
+        assert_eq!(
+            message(map_bounded_err(timed_out(), || false)),
+            "GNOME Shell did not reply in time. Check that the shell is responding."
+        );
+        // The bus daemon sends NoReply for a shell that left with the call
+        // pending, too.
+        let no_reply = method_error(
+            "org.freedesktop.DBus.Error.NoReply",
+            "Message recipient disconnected from message bus without replying",
+        );
+        assert!(message(map_bounded_err(no_reply, || false))
+            .starts_with("GNOME Shell did not reply: it stopped responding or left the bus."));
     }
 
     #[test]
