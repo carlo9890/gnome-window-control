@@ -712,6 +712,16 @@ export const sessionMode = {
         win.minimize();
         check('Focus answers false for a hidden window, and does not ask mutter',
             service.Focus(9) === false && times.length === 5, JSON.stringify(times));
+        // With a real timestamp activate() switches to the window's workspace
+        // and shows it there, so the skip is armed for it too.
+        const skipped = [];
+        const realSkip = Main.wm.skipNextEffect;
+        Main.wm.skipNextEffect = actor => skipped.push(actor);
+        win.onActiveWorkspace = false;
+        service.ActivateNoAnimation(9);
+        Main.wm.skipNextEffect = realSkip;
+        check('ActivateNoAnimation skips the animation of a minimized window on another workspace',
+            skipped.length === 1 && skipped[0] === win, `${skipped.length} skip(s)`);
         service.unexport();
         windows.length = 0;
     }
