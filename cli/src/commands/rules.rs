@@ -479,8 +479,15 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
         return Err(Fail::error(format!("Option {first} requires an argument")));
     };
     if value.is_empty() {
+        // An empty class or title matches only a window that has none, any
+        // other empty value every window: either way not a rule anyone means.
+        let matches = if matches!(first, "-c" | "-t") {
+            "only a window without one"
+        } else {
+            "every window"
+        };
         return Err(Fail::error(format!(
-            "{first} requires a value; an empty one would match every window"
+            "{first} requires a value; an empty one would match {matches}"
         )));
     }
 

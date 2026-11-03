@@ -491,6 +491,17 @@ fn wait_guards() {
     expect_die("PID must be a number", &["wait", "-p", "0"]);
     expect_die("PID must be a number", &["wait", "-p", "99999999999"]);
     expect_die("Substring must not be empty", &["wait", "-s", ""]);
+    expect_die("Class must not be empty", &["wait", "-c", ""]);
+    expect_die("Title must not be empty", &["wait", "-t", ""]);
+    expect_die("Class must not be empty", &["info", "-c", ""]);
+    expect_die(
+        "-c requires a value; an empty one would match only a window without one",
+        &["rules", "add", "-c", "", "tile", "left"],
+    );
+    expect_die(
+        "-s requires a value; an empty one would match every window",
+        &["rules", "add", "-s", "", "tile", "left"],
+    );
     expect_die("Usage: wctl wait", &["wait"]);
     expect_die("Usage: wctl wait", &["wait", "-c", "a", "-t", "b"]);
     expect_die("Usage: wctl wait", &["wait", "123"]);
