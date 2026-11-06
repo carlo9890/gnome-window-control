@@ -710,13 +710,23 @@ export const sessionMode = {
         check('every window call hands mutter a real timestamp',
             times.length === 5 && times.every(([, time]) => time === 1234), JSON.stringify(times));
         win.minimize();
-        check('Focus answers false for a hidden window, and does not ask mutter',
+        check('Focus answers false for a minimized window, and does not ask mutter',
             service.Focus(9) === false && times.length === 5, JSON.stringify(times));
+        win.minimized = false;
+        win.onActiveWorkspace = false;
+        check('Focus answers false for a window on another workspace, and does not ask mutter',
+            service.Focus(9) === false && times.length === 5, JSON.stringify(times));
+        // Mutter updates is_hidden() later than the minimized state and the
+        // workspace, so it can still be true right after an unminimize.
+        win.onActiveWorkspace = true;
+        check('Focus asks mutter for an unminimized window that still reads as hidden',
+            win.is_hidden() && service.Focus(9) === true && times.length === 6, JSON.stringify(times));
         // With a real timestamp activate() switches to the window's workspace
         // and shows it there, so the skip is armed for it too.
         const skipped = [];
         const realSkip = Main.wm.skipNextEffect;
         Main.wm.skipNextEffect = actor => skipped.push(actor);
+        win.minimize();
         win.onActiveWorkspace = false;
         service.ActivateNoAnimation(9);
         Main.wm.skipNextEffect = realSkip;

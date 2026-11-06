@@ -473,11 +473,14 @@ export class WindowControlService {
         return this._activateMatching('pid', String(pid));
     }
 
-    // Mutter does not focus a hidden window (minimized, or on another
-    // workspace), so that is reported as false rather than as a focus.
+    // Mutter does not focus a minimized window or one on another workspace,
+    // so that is reported as false rather than as a focus. is_hidden() is
+    // not asked: mutter updates it later, so it is still true right after an
+    // unminimize or a workspace switch.
     Focus(windowId) {
         return this._actOnWindow(windowId, 'Focus', win => {
-            if (win.is_hidden())
+            if (win.minimized ||
+                !win.located_on_workspace(global.workspace_manager.get_active_workspace()))
                 return false;
             win.focus(_timestamp());
             return true;
