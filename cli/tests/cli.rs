@@ -499,8 +499,12 @@ fn wait_guards() {
     expect_die("Title must not be empty", &["wait", "-t", ""]);
     expect_die("Class must not be empty", &["info", "-c", ""]);
     expect_die(
-        "-c requires a value; an empty one would match only a window without one",
+        "-c requires a value; an empty one would match only a window whose class is the empty string",
         &["rules", "add", "-c", "", "tile", "left"],
+    );
+    expect_die(
+        "-t requires a value; an empty one would match only a window whose title is the empty string",
+        &["rules", "add", "-t", "", "tile", "left"],
     );
     expect_die(
         "-s requires a value; an empty one would match every window",
