@@ -19,6 +19,7 @@ export default class WindowControlExtension extends Extension {
         this._rules.enable();
         this._service.isOverlay = win => this._rules.isOverlay(win);
         this._keybindings = new WindowKeybindings();
+        this._keybindingsFailed = false;
         // The shell keeps the extension enabled when the screen locks and
         // calls enable() during a lock too, so the shortcuts follow the mode.
         this._sessionModeId = Main.sessionMode.connect('updated', () => this._syncKeybindings());
@@ -36,6 +37,7 @@ export default class WindowControlExtension extends Extension {
         this._sessionModeId = 0;
         this._keybindings.disable();
         this._keybindings = null;
+        this._keybindingsFailed = false;
         this._rules.disable();
         this._rules = null;
         this._service.unexport();
@@ -44,12 +46,15 @@ export default class WindowControlExtension extends Extension {
         console.log(`[${this.metadata.name}] D-Bus service unregistered`);
     }
 
+    // A registration that failed is not tried again before the next enable(),
+    // and the capability reports that failure, not the lock.
     _syncKeybindings() {
-        const locked = Main.sessionMode.isLocked;
-        if (locked && this._keybindings.registered)
+        if (Main.sessionMode.isLocked) {
             this._keybindings.disable();
-        else if (!locked && !this._keybindings.registered)
+        } else if (!this._keybindings.registered && !this._keybindingsFailed) {
             this._keybindings.enable(this._settings);
-        this._service.keybindingsServed = this._keybindings.registered;
+            this._keybindingsFailed = !this._keybindings.registered;
+        }
+        this._service.keybindingsServed = !this._keybindingsFailed;
     }
 }

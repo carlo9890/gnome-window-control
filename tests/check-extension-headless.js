@@ -130,8 +130,8 @@ export const sessionMode = {
     },
     setLocked(locked) {
         this.isLocked = locked;
-        for (const [name, callback] of [...modeHandlers.values()]) {
-            if (name === 'updated')
+        for (const [id, [name, callback]] of [...modeHandlers]) {
+            if (name === 'updated' && modeHandlers.has(id))
                 callback(this);
         }
     },
@@ -753,7 +753,8 @@ export const sessionMode = {
     //
     // The shell keeps the extension enabled while the screen is locked and can
     // call enable() during a lock. The service stays exported throughout; only
-    // the shortcuts go while locked.
+    // the shortcuts go while locked, and the capability reports a failed
+    // registration, not the lock.
 
     {
         const extension = new WindowControlExtension();
@@ -766,34 +767,55 @@ export const sessionMode = {
         };
         const realAdd = Main.wm.addKeybinding;
         const realRemove = Main.wm.removeKeybinding;
-        const bound = new Set();
+        let bound = [];
+        let refuse = false;
         Main.wm.addKeybinding = name => {
-            bound.add(name);
+            if (refuse)
+                return Meta.KeyBindingAction.NONE;
+            bound.push(name);
             return 1;
         };
-        Main.wm.removeKeybinding = name => bound.delete(name);
+        Main.wm.removeKeybinding = name => {
+            bound = bound.filter(other => other !== name);
+        };
+        const adds = () => bound.length;
         try {
             extension.enable();
-            check('enable() while unlocked serves the shortcuts',
-                bound.size === 10 && extension._service.keybindingsServed, `${bound.size} bound`);
             const service = extension._service;
+            check('enable() while unlocked serves the shortcuts',
+                adds() === 10 && service.keybindingsServed, `${adds()} bound`);
             Main.sessionMode.setLocked(true);
-            check('the lock removes every shortcut',
-                bound.size === 0 && !service.keybindingsServed, `${bound.size} bound`);
+            check('the lock removes every shortcut', adds() === 0, `${adds()} bound`);
+            check('the lock keeps the keybindings capability', service.keybindingsServed);
             check('the lock keeps the service', extension._service === service && service._dbusImpl !== null);
             Main.sessionMode.setLocked(false);
-            check('the unlock serves the shortcuts again',
-                bound.size === 10 && service.keybindingsServed, `${bound.size} bound`);
+            check('the unlock registers each shortcut once',
+                adds() === 10 && new Set(bound).size === 10, `${adds()} bound`);
             Main.sessionMode.setLocked(true);
             extension.disable();
             extension.enable();
-            check('enable() while locked serves no shortcut',
-                bound.size === 0 && !extension._service.keybindingsServed, `${bound.size} bound`);
+            check('enable() while locked registers no shortcut', adds() === 0, `${adds()} bound`);
+            Main.sessionMode.setLocked(false);
+            check('the unlock after enable() while locked serves the shortcuts',
+                adds() === 10 && extension._service.keybindingsServed, `${adds()} bound`);
             extension.disable();
             check('disable() leaves no sessionMode handler', Main.sessionMode.handlerCount() === 0,
                 `${Main.sessionMode.handlerCount()} handler(s)`);
-            check('disable() leaves no shortcut', bound.size === 0, `${bound.size} bound`);
+            check('disable() leaves no shortcut', adds() === 0, `${adds()} bound`);
+
+            refuse = true;
+            extension.enable();
+            check('a failed registration drops the keybindings capability',
+                adds() === 0 && !extension._service.keybindingsServed, `${adds()} bound`);
+            refuse = false;
+            Main.sessionMode.setLocked(true);
+            Main.sessionMode.setLocked(false);
+            check('the unlock does not retry a failed registration',
+                adds() === 0 && !extension._service.keybindingsServed, `${adds()} bound`);
+            extension.disable();
         } finally {
+            if (extension._service)
+                extension.disable();
             Main.sessionMode.isLocked = false;
             WindowControlService.prototype.export = realExport;
             Main.wm.addKeybinding = realAdd;
