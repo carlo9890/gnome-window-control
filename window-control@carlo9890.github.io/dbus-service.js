@@ -72,7 +72,7 @@ class NamedError extends Error {
 }
 
 // A D-Bus call arrives outside any input event, where
-// _timestamp() is 0, and mutter reads 0 as "no timestamp":
+// global.get_current_time() is 0, and mutter reads 0 as "no timestamp":
 // activate() then only flags a window on another workspace as demanding
 // attention, and delete() skips the ping that shows the "not responding"
 // dialog for a hung client.
