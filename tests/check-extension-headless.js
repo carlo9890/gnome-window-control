@@ -1205,6 +1205,20 @@ export const sessionMode = {
         check('that window becomes an overlay once shown', isOverlay(launching));
         launching.emit('unmanaged');
 
+        // The same for a window created while no rule watched for new ones,
+        // so nothing recorded its map: its state shows it is not shown yet.
+        rules._compile('[]');
+        const untracked = createWindow({ id: 35, wmClass: 'term' });
+        rules._compile(OVERLAY_RULES);
+        focus(other);
+        await sleep(400);
+        check('a load makes no overlay of an untracked window mutter has not shown',
+            !rules._tracked.has(untracked) && !overlays._windows.has(untracked) && !untracked.minimized);
+        untracked.map();
+        rules._compile(OVERLAY_RULES);
+        check('that window becomes an overlay at the next load once shown', isOverlay(untracked));
+        untracked.emit('unmanaged');
+
         const fresh = createWindow({ id: 25, wmClass: 'term' });
         fresh.map();
         await sleep(100);

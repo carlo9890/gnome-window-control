@@ -40,7 +40,7 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, resolvePlaceRect, tileRect } from './rules-format.js';
-import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
+import { UnmaximizeWait, looksUnmapped, maximizeFlags, workareaOf } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
@@ -184,8 +184,9 @@ export class WindowRules {
         for (const win of global.display.list_all_windows()) {
             // A window mutter has not shown yet gets the overlay when its rule
             // is applied; hiding it before then would keep it from ever
-            // showing.
-            if (this._tracked.get(win)?.shown === false)
+            // showing. One that is not tracked has no record of its map.
+            const entry = this._tracked.get(win);
+            if (entry ? !entry.shown : looksUnmapped(win))
                 continue;
             const index = this._winningIndex(win);
             if (index >= 0 && this._rules[index].overlay)

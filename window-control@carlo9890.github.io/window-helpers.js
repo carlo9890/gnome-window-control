@@ -68,6 +68,20 @@ export function minimizeWindow(win, skipEffect) {
     return true;
 }
 
+// For a window whose map was not watched: is it in the one state a window
+// mutter has not mapped yet can be in? That is hidden while unminimized and on
+// the active workspace. Mutter also hides a transient window while a window it
+// is transient for is minimized, so such a window counts as mapped.
+export function looksUnmapped(win) {
+    if (!win.is_hidden() || win.minimized)
+        return false;
+    for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for()) {
+        if (parent.minimized)
+            return false;
+    }
+    return win.located_on_workspace(global.workspace_manager.get_active_workspace());
+}
+
 // The workarea a window's geometry resolves against: the workspace the window
 // is on (a window on all workspaces has none, so the active one then) and the
 // given monitor, the window's own by default.

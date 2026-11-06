@@ -9,7 +9,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
-    isFullyMaximized, maximizeFlags, maximizeWindow, minimizeWindow, skipNextEffect, unmaximizeWindow,
+    isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, skipNextEffect,
+    unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once and kept for the life of the shell, never per enable(). GJS
@@ -302,22 +303,13 @@ export class WindowControlService {
     // when it was created minimized or on another workspace.
     //
     // A window that predates the service (it is rebuilt at every enable) has
-    // no such history, so it is judged by its current state: hidden while
-    // unminimized and on the active workspace is the only shape a
-    // not-yet-mapped window can have. Mutter also hides a transient window
-    // while a window it is transient for is minimized, so such a window
-    // counts as placed.
+    // no such history, so it is judged by its current state (looksUnmapped).
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
         if (this._createdSinceStart.has(win))
             return true;
-        for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for()) {
-            if (parent.minimized)
-                return false;
-        }
-        return !win.minimized &&
-            win.located_on_workspace(global.workspace_manager.get_active_workspace());
+        return looksUnmapped(win);
     }
 
     // Look up a window by ID and run an action on it, for the simple boolean
