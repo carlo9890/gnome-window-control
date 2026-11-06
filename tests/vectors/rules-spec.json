@@ -418,6 +418,24 @@
       "message": "rules[0].workspace: must be a non-negative integer"
     },
     {
+      "name": "match is checked before the geometry key, whatever their file order",
+      "document": [{ "tile": "nowhere", "match": { "class": 1 } }],
+      "valid": false,
+      "message": "rules[0].match.class: must be a string"
+    },
+    {
+      "name": "the geometry key is checked before workspace, whatever their file order",
+      "document": [{ "match": { "class": "a" }, "workspace": -1, "tile": "nowhere" }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
+    },
+    {
+      "name": "workspace is checked before monitor, whatever their file order",
+      "document": [{ "match": { "class": "a" }, "monitor": -1, "workspace": -1 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
       "name": "monitor is negative",
       "document": [{ "match": { "class": "a" }, "monitor": -1 }],
       "valid": false,
