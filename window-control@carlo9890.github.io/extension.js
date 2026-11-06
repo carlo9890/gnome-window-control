@@ -25,12 +25,13 @@ export default class WindowControlExtension extends Extension {
         this._syncKeybindings();
     }
 
-    // The unlock-dialog session mode keeps the D-Bus service and the rules up
-    // while the screen is locked: a window that opens then still gets its
-    // rules.json placement, and scripts that drive windows keep working. The
-    // keyboard shortcuts act on the desktop, so they are removed in that mode
-    // (_syncKeybindings) and the lock screen takes no input from this extension.
     disable() {
+        // The unlock-dialog session mode keeps the D-Bus service and the rules
+        // up while the screen is locked: a window that opens then still gets
+        // its rules.json placement, and scripts that drive windows keep
+        // working. The keyboard shortcuts act on the desktop, so they are
+        // removed in that mode (_syncKeybindings) and the lock screen takes no
+        // input from this extension.
         Main.sessionMode.disconnect(this._sessionModeId);
         this._sessionModeId = 0;
         this._keybindings.disable();
