@@ -181,7 +181,7 @@ matching the message text:
 | 0 | Success |
 | 1 | Usage error, or a failure with no more specific code below |
 | 2 | The window, workspace or monitor does not exist |
-| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, or it cannot be minimized |
+| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, it cannot be minimized, or it is hidden and cannot take the focus |
 | 4 | Timed out waiting for a window, or for the shell to reply |
 | 5 | The extension is not usable: not running, or a version this `wctl` cannot rely on |
 
@@ -441,7 +441,9 @@ It names the rule that wins, any later rule the first-match-wins order makes
 dead, the workarea used, and the exact rectangle the action resolves to. When
 the rule names a monitor that does not exist, it says the extension skips the
 rest of the rule and exits 0; with `--json`, `workarea` and `target` are `null`
-and `"skipped"` is `"no such monitor"`. This is
+and `"skipped"` is `"no such monitor"`. For a fullscreen window it says the
+extension skips the geometry; with `--json`, `target` is `null` and `"skipped"`
+is `"fullscreen"`. This is
 the one `rules` subcommand that needs the extension running, because it resolves
 a live window. It never moves anything. Against an extension that does not
 report the `rules` capability it exits 5 instead, because that extension
