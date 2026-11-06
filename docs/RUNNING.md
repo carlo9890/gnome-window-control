@@ -175,8 +175,10 @@ Prepare the guest once:
   `[daemon]` in `/etc/gdm3/custom.conf`, so a session exists after every boot.
 - `gsettings set org.gnome.desktop.session idle-delay 0` and
   `gsettings set org.gnome.desktop.screensaver lock-enabled false`: the lock
-  screen disables the extension, and an idle guest then reports
-  "extension is not running".
+  screen removes the keyboard shortcuts, and an idle guest then fails the
+  keybinding suite. An installed extension whose `metadata.json` does not
+  declare the `unlock-dialog` session mode stops entirely there, and the guest
+  reports "extension is not running".
 
 Per run, from this checkout (`<guest>` is the SSH host):
 

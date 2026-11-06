@@ -175,9 +175,9 @@ export class WindowRules {
     }
 
     // An overlay rule holds for the windows already open too, not only for
-    // new ones: the shell disables the extension while the screen is locked,
-    // and an open overlay must still be one after the unlock, and after an
-    // edit of the file. Placement stays a once-per-new-window affair.
+    // new ones: an open overlay must still be one after the extension is
+    // enabled again, and after an edit of the file. Placement stays a
+    // once-per-new-window affair.
     _syncOverlays() {
         if (this._overlays.size === 0 && !this._rules.some(rule => rule.overlay))
             return;

@@ -117,6 +117,26 @@ export const overview = {
     handlerCount: () => handlers.size,
 };
 export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybinding() {} };
+const modeHandlers = new Map();
+export const sessionMode = {
+    isLocked: false,
+    connect(name, callback) {
+        modeHandlers.set(nextId, [name, callback]);
+        return nextId++;
+    },
+    disconnect(id) {
+        if (!modeHandlers.delete(id))
+            throw new Error(\`bad sessionMode handler id \${id}\`);
+    },
+    setLocked(locked) {
+        this.isLocked = locked;
+        for (const [name, callback] of [...modeHandlers.values()]) {
+            if (name === 'updated')
+                callback(this);
+        }
+    },
+    handlerCount: () => modeHandlers.size,
+};
 `);
     write(`${EXT}/stub-extension.js`, 'export class Extension {}\n');
     write(`${EXT}/stub-shell.js`, 'export default { ActionMode: { NORMAL: 1 } };\n');
@@ -727,6 +747,58 @@ export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybindin
             `${error}`);
         check('a failed export leaves no handler on the display', display.handlerCount() === 0,
             `${display.handlerCount()} handler(s)`);
+    }
+
+    // -- the keyboard shortcuts follow the lock screen ---------------------------
+    //
+    // The shell keeps the extension enabled while the screen is locked and can
+    // call enable() during a lock. The service stays exported throughout; only
+    // the shortcuts go while locked.
+
+    {
+        const extension = new WindowControlExtension();
+        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.getSettings = () => ({});
+        const realExport = WindowControlService.prototype.export;
+        WindowControlService.prototype.export = function () {
+            this._dbusImpl = { export() {}, unexport() {} };
+            realExport.call(this);
+        };
+        const realAdd = Main.wm.addKeybinding;
+        const realRemove = Main.wm.removeKeybinding;
+        const bound = new Set();
+        Main.wm.addKeybinding = name => {
+            bound.add(name);
+            return 1;
+        };
+        Main.wm.removeKeybinding = name => bound.delete(name);
+        try {
+            extension.enable();
+            check('enable() while unlocked serves the shortcuts',
+                bound.size === 10 && extension._service.keybindingsServed, `${bound.size} bound`);
+            const service = extension._service;
+            Main.sessionMode.setLocked(true);
+            check('the lock removes every shortcut',
+                bound.size === 0 && !service.keybindingsServed, `${bound.size} bound`);
+            check('the lock keeps the service', extension._service === service && service._dbusImpl !== null);
+            Main.sessionMode.setLocked(false);
+            check('the unlock serves the shortcuts again',
+                bound.size === 10 && service.keybindingsServed, `${bound.size} bound`);
+            Main.sessionMode.setLocked(true);
+            extension.disable();
+            extension.enable();
+            check('enable() while locked serves no shortcut',
+                bound.size === 0 && !extension._service.keybindingsServed, `${bound.size} bound`);
+            extension.disable();
+            check('disable() leaves no sessionMode handler', Main.sessionMode.handlerCount() === 0,
+                `${Main.sessionMode.handlerCount()} handler(s)`);
+            check('disable() leaves no shortcut', bound.size === 0, `${bound.size} bound`);
+        } finally {
+            Main.sessionMode.isLocked = false;
+            WindowControlService.prototype.export = realExport;
+            Main.wm.addKeybinding = realAdd;
+            Main.wm.removeKeybinding = realRemove;
+        }
     }
 
     // -- WindowRules: a window that is not NORMAL when shown ----------------------

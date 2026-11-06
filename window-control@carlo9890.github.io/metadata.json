@@ -10,6 +10,10 @@
     "49",
     "50"
   ],
+  "session-modes": [
+    "user",
+    "unlock-dialog"
+  ],
   "settings-schema": "org.gnome.shell.extensions.window-control",
   "url": "https://github.com/carlo9890/gnome-window-control",
   "version": 20,

@@ -290,11 +290,10 @@ export class WindowControlService {
     // it has never been mapped, whatever the reason it is hidden now, also
     // when it was created minimized or on another workspace.
     //
-    // A window that predates the service (it is rebuilt at every enable,
-    // and GNOME disables the extension while the screen is locked) has no such
-    // history, so it is judged by its current state: hidden while unminimized
-    // and on the active workspace is the only shape a not-yet-mapped window can
-    // have. Mutter also hides a transient window while a window it is transient
+    // A window that predates the service (it is rebuilt at every enable) has
+    // no such history, so it is judged by its current state: hidden while
+    // unminimized and on the active workspace is the only shape a
+    // not-yet-mapped window can have. Mutter also hides a transient window while a window it is transient
     // for is minimized, so such a window counts as placed.
     _isUnshown(win) {
         if (this._hasBeenShown(win))

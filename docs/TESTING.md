@@ -130,6 +130,9 @@ It pins:
   then throws nothing and leaves no handler or source;
 - a keyboard shortcut that cannot be registered removes the ones registered
   before it, and the extension serves none;
+- the lock screen removes the shortcuts and the unlock serves them again, an
+  `enable()` while locked serves none, the service stays exported throughout,
+  and `disable()` leaves no session-mode handler;
 - a load of `rules.json` that finds no file, and a reload that finds one, log
   nothing at notice level;
 - both wait methods drop a call, with no reply, when its caller leaves the bus,
