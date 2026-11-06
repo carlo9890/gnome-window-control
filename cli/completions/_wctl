@@ -32,8 +32,10 @@ _wctl_window_ids() {
         windows+=("$id:$title")
     done < <(wctl --timeout 1 list --json 2>/dev/null | sed 's/},{/}\n{/g')
 
-    # activate takes a window ID only, so it asks for the IDs alone.
-    [[ "$1" == --ids-only ]] || windows+=("focused:Focused window")
+    # activate takes a window ID only, so it asks for the IDs alone. _arguments
+    # puts its own compadd options before the action's words, so the flag is
+    # looked for among all the arguments.
+    (( ${@[(I)--ids-only]} )) || windows+=("focused:Focused window")
     _describe -t windows 'window' windows
 }
 
