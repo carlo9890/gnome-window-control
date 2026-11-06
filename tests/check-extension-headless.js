@@ -766,6 +766,16 @@ export const sessionMode = {
         check('a load to no rules lets the pending unmaximize wait place the window',
             JSON.stringify(win.moves) === '[[0,0,480,1080]]' && !rules._tracked.has(win),
             JSON.stringify(win.moves));
+
+        // The same for a window whose apply is queued for the next idle.
+        rules._compile('[{"match":{"class":"max"},"tile":"left"}]');
+        const queued = createWindow({ id: 36, wmClass: 'max' });
+        queued.map();
+        rules._compile('[]');
+        await sleep(100);
+        check('a load to no rules lets a queued apply place the window',
+            JSON.stringify(queued.moves) === '[[0,0,480,1080]]' && !rules._tracked.has(queued),
+            JSON.stringify(queued.moves));
         rules.disable();
         windows.length = 0;
     }
