@@ -1463,3 +1463,61 @@ fn rules_add_leaves_no_temporary_file_when_the_write_fails() {
     assert!(left.is_empty(), "left behind: {left:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The words the bash completion offers for `line`, the last word being the
+/// one completed. A stub `_init_completion` fills the four variables the
+/// bash-completion package would, so the package need not be installed. The
+/// window IDs come from this binary, which finds no bus.
+fn bash_completions(line: &[&str]) -> Vec<String> {
+    let binary = cargo_bin("wctl");
+    let script = format!(
+        r#"_init_completion() {{
+    words=("${{COMP_WORDS[@]}}"); cword=$COMP_CWORD
+    cur=${{words[cword]}}; prev=${{words[cword-1]}}
+}}
+source <(wctl completion bash)
+COMP_WORDS=({words}); COMP_CWORD={cword}
+_wctl
+printf '%s\n' "${{COMPREPLY[@]}}""#,
+        words = line
+            .iter()
+            .map(|word| format!("'{word}'"))
+            .collect::<Vec<_>>()
+            .join(" "),
+        cword = line.len() - 1,
+    );
+    let path = format!(
+        "{}:{}",
+        binary.parent().expect("binary directory").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .args(["-c", &script])
+        .env("PATH", path)
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output()
+        .expect("bash runs");
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+#[test]
+fn bash_completion_offers_what_each_position_accepts() {
+    let offered = bash_completions(&["wctl", ""]);
+    assert!(
+        offered.iter().any(|word| word == "--timeout"),
+        "{offered:?}"
+    );
+    // The global option is taken once.
+    let offered = bash_completions(&["wctl", "--timeout", "2", ""]);
+    assert!(offered.iter().any(|word| word == "list"), "{offered:?}");
+    assert!(
+        !offered.iter().any(|word| word == "--timeout"),
+        "{offered:?}"
+    );
+    // --no-animation may come before the window.
+    let offered = bash_completions(&["wctl", "minimize", "--no-animation", ""]);
+    assert!(offered.iter().any(|word| word == "focused"), "{offered:?}");
+}
