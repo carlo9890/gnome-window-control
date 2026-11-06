@@ -316,7 +316,7 @@ to a new window, membership is decided:
 2. at every load of the file, for every open `NORMAL` window
    (`_syncOverlays`): a window whose winning rule has `overlay` becomes an
    overlay, every other window stops being one. This is what keeps an overlay
-   one after a screen unlock, which disables and enables the extension.
+   one after the extension is enabled again.
 
 A load matches each open window by its class and title at that moment. A
 title change between loads does not change membership, but the next load can:

@@ -331,7 +331,8 @@ sh -c 'wctl unminimize -c quake --no-animation; case $? in 0) wctl activate -c q
 Give the overlay a class of its own: every window the rule matches becomes an
 overlay. Unlike a placement, the overlay part of a rule also holds for the
 windows already open when the file loads, so an overlay stays one after the
-extension is enabled again, and a window stops being one when you remove the rule. Match an
+extension is enabled again, and a window stops being one when you remove the
+rule. Match an
 overlay by class: each load checks a title rule against the title a window has
 then.
 `wctl info` lists `overlay` among a window's states, and `wctl list --json`
@@ -485,7 +486,7 @@ state. `--schemadir` is needed because the schema ships with the extension,
 not with the system.
 
 `wctl version --json` lists `keybindings` under `capabilities` when the loaded
-extension serves the shortcuts. It serves none while the screen is locked.
+extension serves the shortcuts.
 
 ## D-Bus Interface
 
@@ -595,7 +596,10 @@ What this means in practice:
   rule. An application in your session can therefore list window titles and
   move or close windows while you are away, as it can while you are at the
   desk. The lock screen shows nothing from the extension, and the keyboard
-  shortcuts are removed until you unlock.
+  shortcuts are off while the screen is locked or blanked. When an extension
+  loaded before this one does not run on the lock screen, the shell restarts
+  this one once, at the first lock after login: a `wctl wait` pending then
+  ends with exit 5.
 - **Disabling the extension removes the interface.** `disable()` unexports the
   object; there are no signal handlers or timers left behind.
 - **Well-sandboxed Flatpak applications generally cannot reach it,** because the
