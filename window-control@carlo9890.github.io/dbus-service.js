@@ -1045,15 +1045,15 @@ export class WindowControlService {
     }
 
     // A minimized window is restored without the animation. activate() does
-    // the restore itself, and restores every minimized transient parent with
-    // the window. With a real timestamp it also switches to the window's
-    // workspace, so a minimized window is shown wherever it is.
+    // the restore itself, and shows the window wherever it is. It restores
+    // every minimized transient parent too, but leaves each on its workspace,
+    // so only a parent on the active one shows an effect.
     ActivateNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'ActivateNoAnimation', win => {
-            for (let restored = win; restored; restored = restored.get_transient_for()) {
-                if (restored.minimized)
-                    skipNextEffect(restored);
-            }
+            if (win.minimized)
+                skipNextEffect(win);
+            for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for())
+                this._skipUnminimizeEffect(parent);
             win.activate(_timestamp());
         });
     }

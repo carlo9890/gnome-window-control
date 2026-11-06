@@ -721,17 +721,26 @@ export const sessionMode = {
         win.onActiveWorkspace = true;
         check('Focus asks mutter for an unminimized window that still reads as hidden',
             win.is_hidden() && service.Focus(9) === true && times.length === 6, JSON.stringify(times));
-        // With a real timestamp activate() switches to the window's workspace
-        // and shows it there, so the skip is armed for it too.
+        // activate() shows the window wherever it is, so its skip is armed on
+        // any workspace; it leaves a transient parent on its own workspace, so
+        // a parent's skip is armed only where the parent will be seen.
         const skipped = [];
         const realSkip = Main.wm.skipNextEffect;
         Main.wm.skipNextEffect = actor => skipped.push(actor);
         win.minimize();
         win.onActiveWorkspace = false;
+        const seen = createWindow({ id: 33, wmClass: 'T' });
+        seen.minimize();
+        const unseen = createWindow({ id: 34, wmClass: 'T' });
+        unseen.minimize();
+        unseen.onActiveWorkspace = false;
+        win.transientFor = seen;
+        seen.transientFor = unseen;
         service.ActivateNoAnimation(9);
         Main.wm.skipNextEffect = realSkip;
-        check('ActivateNoAnimation skips the animation of a minimized window on another workspace',
-            skipped.length === 1 && skipped[0] === win, `${skipped.length} skip(s)`);
+        check('ActivateNoAnimation skips the animation of the window on another workspace and of a parent on the active one only',
+            skipped.length === 2 && skipped[0] === win && skipped[1] === seen,
+            skipped.map(actor => actor.id).join(','));
         service.unexport();
         windows.length = 0;
     }
