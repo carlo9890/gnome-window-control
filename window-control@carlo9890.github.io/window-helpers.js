@@ -109,14 +109,7 @@ export class UnmaximizeWait {
             this._settleFromIdle();
             return GLib.SOURCE_REMOVE;
         });
-        // Connected first, because the restore can emit 'size-changed' at
-        // once; a throw must then not leave a wait that no owner holds.
-        try {
-            unmaximizeWindow(win);
-        } catch (e) {
-            this.destroy();
-            throw e;
-        }
+        unmaximizeWindow(win);
     }
 
     destroy() {
