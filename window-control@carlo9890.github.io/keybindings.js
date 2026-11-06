@@ -52,7 +52,7 @@ export class WindowKeybindings {
                 return;
             }
         }
-        console.log(`[Window Control] ${this._names.length} keyboard shortcut(s) registered`);
+        console.debug(`[Window Control] ${this._names.length} keyboard shortcut(s) registered`);
     }
 
     disable() {

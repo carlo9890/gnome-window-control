@@ -28,8 +28,9 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // 'rules-class-prefix' means the same for its class_prefix match key;
 // 'rules-overlay' means the same for its overlay rule key, and that
 // ListDetailed reports is_overlay;
-// 'keybindings' means the tile shortcuts in the settings schema are served,
-// and is left out when their registration failed;
+// 'keybindings' means the tile shortcuts in the settings schema are served
+// while the screen is unlocked, and is left out when their registration
+// failed;
 // 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
 // 'activate-no-animation' means ActivateNoAnimation is.
 const CAPABILITIES = [
@@ -110,7 +111,8 @@ export class WindowControlService {
         // of the method, because on Wayland an install lands on disk and the
         // shell keeps running the old copy until the user logs out.
         this._version = String(metadata.version);
-        // Set by the extension once WindowKeybindings has registered them.
+        // Set by the extension: false once WindowKeybindings failed to
+        // register the shortcuts.
         this.keybindingsServed = false;
         // Set by the extension to ask WindowRules whether a window is an
         // overlay.
@@ -290,12 +292,12 @@ export class WindowControlService {
     // it has never been mapped, whatever the reason it is hidden now, also
     // when it was created minimized or on another workspace.
     //
-    // A window that predates the service (it is rebuilt at every enable,
-    // and GNOME disables the extension while the screen is locked) has no such
-    // history, so it is judged by its current state: hidden while unminimized
-    // and on the active workspace is the only shape a not-yet-mapped window can
-    // have. Mutter also hides a transient window while a window it is transient
-    // for is minimized, so such a window counts as placed.
+    // A window that predates the service (it is rebuilt at every enable) has
+    // no such history, so it is judged by its current state: hidden while
+    // unminimized and on the active workspace is the only shape a
+    // not-yet-mapped window can have. Mutter also hides a transient window
+    // while a window it is transient for is minimized, so such a window
+    // counts as placed.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;

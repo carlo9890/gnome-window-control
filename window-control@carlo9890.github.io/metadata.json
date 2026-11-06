@@ -1,7 +1,7 @@
 {
   "uuid": "window-control@carlo9890.github.io",
   "name": "Window Control",
-  "description": "List, move and tile windows from a script, a rules file or the keyboard. It works on Wayland, where wmctrl and xdotool reach only XWayland windows, and on X11.\n\n* Scripts: list every window with its ID, title, WM class, PID, workspace, monitor and geometry. Activate, move, resize, minimize, maximize, fullscreen, keep above, make sticky or close a window, move it to another workspace or monitor, or wait until a window opens. Use the wctl command-line client or any D-Bus client, such as gdbus.\n* Rules: a rule in ~/.config/gnome-window-control/rules.json places a matching window when it opens. The extension reads that file and never writes it.\n* Keyboard: Super+Ctrl and a numpad key tile the focused window on a 4x2 grid. You can rebind or unbind every shortcut in GSettings.\n\nNo preferences window and no panel icon. When you disable the extension, the D-Bus interface, the rules and the shortcuts stop.\n\nIMPORTANT: the D-Bus interface has no access control. Any application in your session can read your window titles and control your windows. Do not enable the extension if that is not acceptable to you.\n\nwctl is a separate download and is not installed with this extension. Get it and the full documentation from the project page.",
+  "description": "List, move and tile windows from a script, a rules file or the keyboard. It works on Wayland, where wmctrl and xdotool reach only XWayland windows, and on X11.\n\n* Scripts: list every window with its ID, title, WM class, PID, workspace, monitor and geometry. Activate, move, resize, minimize, maximize, fullscreen, keep above, make sticky or close a window, move it to another workspace or monitor, or wait until a window opens. Use the wctl command-line client or any D-Bus client, such as gdbus.\n* Rules: a rule in ~/.config/gnome-window-control/rules.json places a matching window when it opens. The extension reads that file and never writes it.\n* Keyboard: Super+Ctrl and a numpad key tile the focused window on a 4x2 grid. You can rebind or unbind every shortcut in GSettings.\n\nNo preferences window and no panel icon. When you disable the extension, the D-Bus interface, the rules and the shortcuts stop.\n\nIMPORTANT: the D-Bus interface has no access control. Any application in your session can read your window titles and control your windows, also while the screen is locked. Do not enable the extension if that is not acceptable to you.\n\nwctl is a separate download and is not installed with this extension. Get it and the full documentation from the project page.",
   "shell-version": [
     "45",
     "46",
@@ -9,6 +9,10 @@
     "48",
     "49",
     "50"
+  ],
+  "session-modes": [
+    "user",
+    "unlock-dialog"
   ],
   "settings-schema": "org.gnome.shell.extensions.window-control",
   "url": "https://github.com/carlo9890/gnome-window-control",

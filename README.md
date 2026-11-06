@@ -330,8 +330,9 @@ sh -c 'wctl unminimize -c quake --no-animation; case $? in 0) wctl activate -c q
 
 Give the overlay a class of its own: every window the rule matches becomes an
 overlay. Unlike a placement, the overlay part of a rule also holds for the
-windows already open when the file loads, so an overlay stays one after a
-screen unlock, and a window stops being one when you remove the rule. Match an
+windows already open when the file loads, so an overlay stays one after the
+extension is enabled again, and a window stops being one when you remove the
+rule. Match an
 overlay by class: each load checks a title rule against the title a window has
 then.
 `wctl info` lists `overlay` among a window's states, and `wctl list --json`
@@ -589,9 +590,16 @@ What this means in practice:
   `console.debug()`, gated behind `G_MESSAGES_DEBUG`, and no log line contains a
   title or a caller-supplied match string at any level. See
   [docs/MONITORING.md](docs/MONITORING.md).
-- **Nothing runs while the session is locked.** `metadata.json` sets no
-  `session-modes`, so it defaults to `user`, and GNOME unloads the extension on
-  the lock screen. The interface cannot be queried until you unlock.
+- **The interface and the rules stay up while the session is locked.**
+  `metadata.json` declares the `unlock-dialog` session mode, so scripts keep
+  working and a window that opens while the screen is locked still gets its
+  rule. An application in your session can therefore list window titles and
+  move or close windows while you are away, as it can while you are at the
+  desk. The lock screen shows nothing from the extension, and the keyboard
+  shortcuts are off while the screen is locked or blanked. When an extension
+  loaded before this one does not run on the lock screen, the shell restarts
+  this one once, at the first lock after login: a `wctl wait` pending then
+  ends with exit 5.
 - **Disabling the extension removes the interface.** `disable()` unexports the
   object; there are no signal handlers or timers left behind.
 - **Well-sandboxed Flatpak applications generally cannot reach it,** because the
