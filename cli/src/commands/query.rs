@@ -336,6 +336,7 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // there is no plain-output branch to write, and the version string stays in
     // one place.
     parse_json_flag(args)?;
+    ctx.bus.check_timeout()?;
 
     let mut document = serde_json::json!({
         "wctl": crate::VERSION,

@@ -17,7 +17,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::commands::{monitor_index, primary_monitor, take_flag, workarea_of};
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 use crate::geometry::{self, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -280,6 +280,18 @@ fn unresolved<T>(id: u64, json_output: bool, result: Result<T>) -> Result<T> {
     })
 }
 
+/// The window's workarea, with a window or monitor gone as a document under
+/// `--json`. A failure of the bus itself says nothing about this placement,
+/// so it stays an error, as it is when the selector lookup meets it.
+fn unresolved_workarea(ctx: &mut Ctx, id: u64, json_output: bool) -> Result<(Value, i32, Rect)> {
+    match window_workarea(ctx, id) {
+        Err(failure) if failure.code() == EXIT_NOT_FOUND => {
+            unresolved(id, json_output, Err(failure))
+        }
+        other => other,
+    }
+}
+
 /// Split `--json` and `--settled` out of an argument list. They may appear on
 /// either side of the selector, so this runs before the selector is parsed.
 fn take_output_flags(args: &[String]) -> (bool, bool, Vec<String>) {
@@ -362,7 +374,7 @@ pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     geometry::check_place_tokens(tokens)?;
     let id = selector::lookup(ctx, &selector)?;
 
-    let (_, monitor_index, workarea) = unresolved(id, json_output, window_workarea(ctx, id))?;
+    let (_, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
     let target = unresolved(
         id,
         json_output,
@@ -455,7 +467,7 @@ pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let cells = geometry::tile_cells(position)?;
     let id = selector::lookup(ctx, &selector)?;
 
-    let (_, monitor_index, workarea) = unresolved(id, json_output, window_workarea(ctx, id))?;
+    let (_, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
     let target = geometry::tile_rect(cells, workarea);
 
     let applied = move_resize_to(ctx, id, target);
@@ -496,7 +508,7 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     };
     let id = selector::lookup(ctx, &selector)?;
 
-    let (window, monitor_index, workarea) = unresolved(id, json_output, window_workarea(ctx, id))?;
+    let (window, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
     let (win_x, win_y, win_w, win_h) = model::frame_rect(&window);
 
     // Size is preserved, so this is a Move.
@@ -524,7 +536,6 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fail::EXIT_NOT_FOUND;
 
     #[test]
     fn a_failure_before_the_rectangle_is_a_document_under_json() {

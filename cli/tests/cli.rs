@@ -128,6 +128,25 @@ fn wctl_timeout_is_only_read_when_a_connection_is_needed() {
     );
 }
 
+/// Under `--json` a failed call is a document, but a bad WCTL_TIMEOUT is a
+/// usage error, whatever the selector form: no document reports it.
+#[test]
+fn a_bad_wctl_timeout_is_no_json_document() {
+    for args in [
+        vec!["version", "--json"],
+        vec!["tile", "42", "left", "--json"],
+        vec!["place", "42", "0", "0", "50%", "100%", "--json"],
+        vec!["center", "42", "--json"],
+    ] {
+        let (out, code) = wctl_env(&args, Some("abc"));
+        assert_eq!(code, 1, "wctl {args:?} with a bad WCTL_TIMEOUT: {out}");
+        assert!(
+            out.contains("WCTL_TIMEOUT must be") && !out.starts_with('{'),
+            "wctl {args:?} printed: {out}"
+        );
+    }
+}
+
 #[test]
 fn wctl_timeout_environment_guards() {
     for (value, command) in [

@@ -252,6 +252,13 @@ impl Bus {
         }
     }
 
+    /// Fail on a bad `WCTL_TIMEOUT` before the first call, for a command whose
+    /// call failures are a document: the bad value is a usage error, not an
+    /// outcome of the call.
+    pub fn check_timeout(&self) -> Result<()> {
+        crate::reply_timeout(self.timeout_flag).map(|_| ())
+    }
+
     fn conn(&self) -> Result<&Connection> {
         if let Some(conn) = self.conn.get() {
             return Ok(conn);
