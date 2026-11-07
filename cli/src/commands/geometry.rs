@@ -17,7 +17,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::commands::{monitor_index, primary_monitor, take_flag, workarea_of};
-use crate::fail::{Fail, Result};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
 use crate::geometry::{self, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -193,7 +193,8 @@ fn settle(ctx: &mut Ctx, id: u64) -> Result<Rect> {
 
 /// Report a geometry command that resolved a rectangle first.
 ///
-/// Under `--json` stdout carries a document on EVERY outcome, so a caller never
+/// Under `--json` stdout carries a document on EVERY outcome once the window
+/// is known (see `unresolved` for the failures before this), so a caller never
 /// has to parse an English sentence off the same stream; the exit code still
 /// classifies the failure. Without it, nothing about the existing output moves.
 fn report_placement(
@@ -259,6 +260,35 @@ fn report_placement(
             let code = failure.code();
             Err(Fail::plain(document.to_string()).with_code(code))
         }
+    }
+}
+
+/// Under `--json`, a failure between the window lookup and the resolved
+/// rectangle -- the window gone, its monitor gone, a percentage that resolves
+/// to nothing on this workarea -- is a document too, with the same exit code.
+fn unresolved<T>(id: u64, json_output: bool, result: Result<T>) -> Result<T> {
+    result.map_err(|failure| {
+        if !json_output {
+            return failure;
+        }
+        let document = serde_json::json!({
+            "window_id": id,
+            "placed": false,
+            "message": failure.to_string(),
+        });
+        Fail::plain(document.to_string()).with_code(failure.code())
+    })
+}
+
+/// The window's workarea, with a window or monitor gone as a document under
+/// `--json`. A failure of the bus itself says nothing about this placement,
+/// so it stays an error, as it is when the selector lookup meets it.
+fn unresolved_workarea(ctx: &mut Ctx, id: u64, json_output: bool) -> Result<(Value, i32, Rect)> {
+    match window_workarea(ctx, id) {
+        Err(failure) if failure.code() == EXIT_NOT_FOUND => {
+            unresolved(id, json_output, Err(failure))
+        }
+        other => other,
     }
 }
 
@@ -344,8 +374,12 @@ pub fn place(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     geometry::check_place_tokens(tokens)?;
     let id = selector::lookup(ctx, &selector)?;
 
-    let (_, monitor_index, workarea) = window_workarea(ctx, id)?;
-    let target = geometry::resolve_place_rect(tokens, workarea)?;
+    let (_, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
+    let target = unresolved(
+        id,
+        json_output,
+        geometry::resolve_place_rect(tokens, workarea),
+    )?;
 
     let applied = move_resize_to(ctx, id, target);
     let placement = Placement {
@@ -433,7 +467,7 @@ pub fn tile(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let cells = geometry::tile_cells(position)?;
     let id = selector::lookup(ctx, &selector)?;
 
-    let (_, monitor_index, workarea) = window_workarea(ctx, id)?;
+    let (_, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
     let target = geometry::tile_rect(cells, workarea);
 
     let applied = move_resize_to(ctx, id, target);
@@ -474,7 +508,7 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     };
     let id = selector::lookup(ctx, &selector)?;
 
-    let (window, monitor_index, workarea) = window_workarea(ctx, id)?;
+    let (window, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
     let (win_x, win_y, win_w, win_h) = model::frame_rect(&window);
 
     // Size is preserved, so this is a Move.
@@ -497,4 +531,25 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         target,
     };
     report_placement(ctx, id, &placement, applied, settled, message, json_output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failure_before_the_rectangle_is_a_document_under_json() {
+        let failure =
+            || -> Result<()> { Err(Fail::plain("Window not found: 42").with_code(EXIT_NOT_FOUND)) };
+        let document = unresolved(42, true, failure()).unwrap_err();
+        assert_eq!(document.code(), EXIT_NOT_FOUND);
+        assert!(document.is_plain());
+        assert_eq!(
+            document.to_string(),
+            r#"{"window_id":42,"placed":false,"message":"Window not found: 42"}"#
+        );
+
+        let plain = unresolved(42, false, failure()).unwrap_err();
+        assert_eq!(plain.to_string(), "Window not found: 42");
+    }
 }

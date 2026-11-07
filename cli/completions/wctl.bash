@@ -25,7 +25,10 @@ _wctl() {
 
     # Complete command names, plus the global options that may precede them.
     if [[ $cword -eq $((1 + off)) ]]; then
-        COMPREPLY=($(compgen -W "$commands --timeout" -- "$cur"))
+        # The global option is taken once, so it is not offered again after it.
+        local globals="--timeout"
+        [[ $off -eq 2 ]] && globals=""
+        COMPREPLY=($(compgen -W "$commands $globals" -- "$cur"))
         return
     fi
 
@@ -139,6 +142,9 @@ _wctl() {
         minimize|unminimize)
             if [[ $slot -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words) --no-animation" -- "$cur"))
+            elif [[ $slot -eq 3 && "$prev" == "--no-animation" ]]; then
+                # The flag may come before the window too.
+                COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 && " ${words[*]} " != *" --no-animation "* ]]; then
                 COMPREPLY=($(compgen -W "--no-animation" -- "$cur"))
             fi

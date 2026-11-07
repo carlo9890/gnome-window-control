@@ -99,7 +99,8 @@ export class WindowKeybindings {
     }
 
     // Only NORMAL windows, the same set the D-Bus surface exposes, and not a
-    // fullscreen one: a frame requested there is dropped, as rules.js documents.
+    // fullscreen one: mutter drops a frame requested there (see _frameRefusal
+    // in dbus-service.js).
     _actionable(name, win) {
         if (!win || win.get_window_type() !== Meta.WindowType.NORMAL) {
             console.debug(`[Window Control] ${name}: no normal window focused`);

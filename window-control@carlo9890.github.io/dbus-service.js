@@ -9,7 +9,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
-    isFullyMaximized, maximizeFlags, maximizeWindow, minimizeWindow, skipNextEffect, unmaximizeWindow,
+    isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, skipNextEffect,
+    unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once and kept for the life of the shell, never per enable(). GJS
@@ -69,6 +70,15 @@ class NamedError extends Error {
         super(message);
         this.dbusName = name;
     }
+}
+
+// A D-Bus call arrives outside any input event, where
+// global.get_current_time() is 0, and mutter reads 0 as "no timestamp":
+// activate() then only flags a window on another workspace as demanding
+// attention, and delete() skips the ping that shows the "not responding"
+// dialog for a hung client.
+function _timestamp() {
+    return global.display.get_current_time_roundtrip();
 }
 
 function _workspaceIndex(win) {
@@ -293,22 +303,13 @@ export class WindowControlService {
     // when it was created minimized or on another workspace.
     //
     // A window that predates the service (it is rebuilt at every enable) has
-    // no such history, so it is judged by its current state: hidden while
-    // unminimized and on the active workspace is the only shape a
-    // not-yet-mapped window can have. Mutter also hides a transient window
-    // while a window it is transient for is minimized, so such a window
-    // counts as placed.
+    // no such history, so it is judged by its current state (looksUnmapped).
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
         if (this._createdSinceStart.has(win))
             return true;
-        for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for()) {
-            if (parent.minimized)
-                return false;
-        }
-        return !win.minimized &&
-            win.located_on_workspace(global.workspace_manager.get_active_workspace());
+        return looksUnmapped(win);
     }
 
     // Look up a window by ID and run an action on it, for the simple boolean
@@ -337,7 +338,7 @@ export class WindowControlService {
         const predicate = this._matchPredicate(kind, value);
         const win = predicate ? this._findWindowByPredicate(predicate) : null;
         if (win) {
-            win.activate(global.get_current_time());
+            win.activate(_timestamp());
             console.debug(`[Window Control] ${label} -> true`);
             return true;
         }
@@ -443,7 +444,7 @@ export class WindowControlService {
 
     Activate(windowId) {
         return this._actOnWindow(windowId, 'Activate',
-            win => win.activate(global.get_current_time()));
+            win => win.activate(_timestamp()));
     }
 
     ActivateByTitle(title) {
@@ -464,9 +465,18 @@ export class WindowControlService {
         return this._activateMatching('pid', String(pid));
     }
 
+    // Mutter does not focus a minimized window or one on another workspace,
+    // so that is reported as false rather than as a focus. is_hidden() is
+    // not asked: mutter updates it later, so it is still true right after an
+    // unminimize or a workspace switch.
     Focus(windowId) {
-        return this._actOnWindow(windowId, 'Focus',
-            win => win.focus(global.get_current_time()));
+        return this._actOnWindow(windowId, 'Focus', win => {
+            if (win.minimized ||
+                !win.located_on_workspace(global.workspace_manager.get_active_workspace()))
+                return false;
+            win.focus(_timestamp());
+            return true;
+        });
     }
 
     // Mutter keeps the focused window as a property, so this is one read
@@ -619,7 +629,7 @@ export class WindowControlService {
         }
         if (Main.overview.visible)
             Main.overview.hide();
-        manager.get_workspace_by_index(workspaceIndex).activate(global.get_current_time());
+        manager.get_workspace_by_index(workspaceIndex).activate(_timestamp());
         const switched = manager.get_active_workspace_index() === workspaceIndex;
         console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> ${switched}`);
         return switched;
@@ -823,7 +833,7 @@ export class WindowControlService {
     // the app id arrives with a later commit), and it is not shown (mapped and
     // placed) until the client commits its first buffer, so evaluate now and
     // again when either property is set and when the window is shown. Handlers
-    // are dropped once the window matched, was unmanaged, or no waiter is left.
+    // are dropped once the window is unmanaged or no waiter is left.
     _onWindowCreated(win) {
         this._createdSinceStart.add(win);
         if (this._waiters.length === 0) {
@@ -882,11 +892,14 @@ export class WindowControlService {
     // arrive after creation, so a window that cannot match yet may match once
     // 'notify::wm-class' fires. Nothing is evaluated here either -- the caller
     // has just scanned every shown window, so a second pass cannot match.
+    // Every type, not only NORMAL: a dialog retyped to NORMAL during the wait
+    // must wake it (see _trackWindow), and _evaluateWindow checks the type.
     // Handlers cost five connections per window and only exist while a wait
     // is pending.
     _trackExistingWindows() {
-        for (const win of this._getAllWindows()) {
-            if (!this._trackedWindows.has(win))
+        for (const actor of global.get_window_actors()) {
+            const win = actor.get_meta_window();
+            if (win && !this._trackedWindows.has(win))
                 this._trackWindow(win);
         }
     }
@@ -1024,13 +1037,16 @@ export class WindowControlService {
     }
 
     // A minimized window is restored without the animation. activate() does
-    // the restore itself, and restores every minimized transient parent with
-    // the window.
+    // the restore itself, and shows the window wherever it is. It restores
+    // every minimized transient parent too, but leaves each on its workspace,
+    // so only a parent on the active one shows an effect.
     ActivateNoAnimation(windowId) {
         return this._actOnWindow(windowId, 'ActivateNoAnimation', win => {
-            for (let restored = win; restored; restored = restored.get_transient_for())
-                this._skipUnminimizeEffect(restored);
-            win.activate(global.get_current_time());
+            if (win.minimized)
+                skipNextEffect(win);
+            for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for())
+                this._skipUnminimizeEffect(parent);
+            win.activate(_timestamp());
         });
     }
 
@@ -1072,7 +1088,7 @@ export class WindowControlService {
     // Asks the client to close; it may refuse or prompt.
     Close(windowId) {
         return this._actOnWindow(windowId, 'Close',
-            win => win.delete(global.get_current_time()));
+            win => win.delete(_timestamp()));
     }
 
     // The export goes first: it throws when the object path is taken, and the

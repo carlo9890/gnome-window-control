@@ -99,6 +99,27 @@ fn wctl_timeout_is_only_read_when_a_connection_is_needed() {
         );
     }
 
+    // The rules file commands open no connection either, and a usage error is
+    // reported before one would be.
+    let dir = std::env::temp_dir().join(format!("wctl-timeout-rules-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    std::fs::write(&file, "[]").expect("rules file");
+    let path = file.to_str().unwrap();
+    for args in [
+        vec!["rules", "check", "--file", path],
+        vec!["rules", "list", "--file", path],
+        vec!["rules", "path", "--file", path],
+    ] {
+        let (out, code) = wctl_env(&args, Some("abc"));
+        assert_eq!(code, 0, "wctl {args:?} with a bad WCTL_TIMEOUT: {out}");
+        assert!(!out.contains("WCTL_TIMEOUT must be"), "printed: {out}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    let (out, _) = wctl_env(&["move", "abc", "1", "2"], Some("abc"));
+    assert!(out.contains("Window ID must be a number"), "printed: {out}");
+
     // An explicit flag is a usage error whatever the command, because the user
     // typed it for this invocation.
     expect_die(
@@ -107,10 +128,39 @@ fn wctl_timeout_is_only_read_when_a_connection_is_needed() {
     );
 }
 
+/// Under `--json` a failed call is a document, but a bad WCTL_TIMEOUT is a
+/// usage error, whatever the selector form: no document reports it.
+#[test]
+fn a_bad_wctl_timeout_is_no_json_document() {
+    for args in [
+        vec!["version", "--json"],
+        vec!["tile", "42", "left", "--json"],
+        vec!["place", "42", "0", "0", "50%", "100%", "--json"],
+        vec!["center", "42", "--json"],
+    ] {
+        let (out, code) = wctl_env(&args, Some("abc"));
+        assert_eq!(code, 1, "wctl {args:?} with a bad WCTL_TIMEOUT: {out}");
+        assert!(
+            out.contains("WCTL_TIMEOUT must be") && !out.starts_with('{'),
+            "wctl {args:?} printed: {out}"
+        );
+    }
+}
+
 #[test]
 fn wctl_timeout_environment_guards() {
-    for value in ["abc", "0", "2.5"] {
-        let (out, code) = wctl_env(&["list"], Some(value));
+    for (value, command) in [
+        ("abc", "list"),
+        ("0", "list"),
+        ("2.5", "list"),
+        ("abc", "wait"),
+    ] {
+        let args: &[&str] = if command == "wait" {
+            &["wait", "-c", "x"]
+        } else {
+            &["list"]
+        };
+        let (out, code) = wctl_env(args, Some(value));
         assert_ne!(code, 0, "WCTL_TIMEOUT={value} should fail, printed: {out}");
         assert!(
             out.contains("WCTL_TIMEOUT must be a positive number of seconds"),
@@ -406,13 +456,17 @@ fn an_unreachable_bus_names_the_session_bus() {
 /// from the argument list, but never out of a selector's value slot.
 #[test]
 fn output_flags_are_not_taken_from_a_selector_value() {
-    expect_not("Usage", &["tile", "-t", "--json", "left"]);
-    expect_not(
-        "Usage",
+    // Each parses in full and goes on to the bus. A flag taken out of the
+    // value slot would leave a usage error or "Option -t requires an
+    // argument" instead, before any connection.
+    let reaches_the_bus = "Cannot connect to the session bus";
+    expect_die(reaches_the_bus, &["tile", "-t", "--json", "left"]);
+    expect_die(
+        reaches_the_bus,
         &["place", "-s", "--settled", "0", "0", "100", "100"],
     );
-    expect_not("Usage", &["info", "-t", "--json"]);
-    expect_not("Usage", &["center", "--json", "-c", "--settled"]);
+    expect_die(reaches_the_bus, &["info", "-t", "--json"]);
+    expect_die(reaches_the_bus, &["center", "--json", "-c", "--settled"]);
 }
 
 #[test]
@@ -460,6 +514,21 @@ fn wait_guards() {
     expect_die("PID must be a number", &["wait", "-p", "0"]);
     expect_die("PID must be a number", &["wait", "-p", "99999999999"]);
     expect_die("Substring must not be empty", &["wait", "-s", ""]);
+    expect_die("Class must not be empty", &["wait", "-c", ""]);
+    expect_die("Title must not be empty", &["wait", "-t", ""]);
+    expect_die("Class must not be empty", &["info", "-c", ""]);
+    expect_die(
+        "-c requires a value; an empty one would match only a window whose class is the empty string",
+        &["rules", "add", "-c", "", "tile", "left"],
+    );
+    expect_die(
+        "-t requires a value; an empty one would match only a window whose title is the empty string",
+        &["rules", "add", "-t", "", "tile", "left"],
+    );
+    expect_die(
+        "-s requires a value; an empty one would match every window",
+        &["rules", "add", "-s", "", "tile", "left"],
+    );
     expect_die("Usage: wctl wait", &["wait"]);
     expect_die("Usage: wctl wait", &["wait", "-c", "a", "-t", "b"]);
     expect_die("Usage: wctl wait", &["wait", "123"]);
@@ -1349,4 +1418,106 @@ fn rules_add_takes_a_class_prefix() {
         ],
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn an_argument_that_is_not_utf8_is_an_error_not_a_crash() {
+    use std::os::unix::ffi::OsStrExt;
+    let output = Command::new(cargo_bin("wctl"))
+        .args(["list", "-t"])
+        .arg(std::ffi::OsStr::from_bytes(b"caf\xe9"))
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output()
+        .expect("wctl runs");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
+    assert!(
+        stderr.contains("Arguments must be valid UTF-8"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn rules_add_leaves_no_temporary_file_when_the_write_fails() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-write-fail-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    // A file size limit of 0 makes the write of the temporary file fail after
+    // it has been created, the way a full disk does.
+    let script = format!(
+        "trap '' XFSZ; ulimit -f 0; exec \"$0\" rules add --file '{}' -c kitty tile left",
+        file.display()
+    );
+    let output = Command::new("bash")
+        .args(["-c", &script])
+        .arg(cargo_bin("wctl"))
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output()
+        .expect("bash runs");
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .expect("read dir")
+        .map(|entry| entry.expect("entry").file_name())
+        .collect();
+    assert!(left.is_empty(), "left behind: {left:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The words the bash completion offers for `line`, the last word being the
+/// one completed. A stub `_init_completion` fills the four variables the
+/// bash-completion package would, so the package need not be installed. The
+/// window IDs come from this binary, which finds no bus.
+fn bash_completions(line: &[&str]) -> Vec<String> {
+    let binary = cargo_bin("wctl");
+    let script = format!(
+        r#"_init_completion() {{
+    words=("${{COMP_WORDS[@]}}"); cword=$COMP_CWORD
+    cur=${{words[cword]}}; prev=${{words[cword-1]}}
+}}
+source <(wctl completion bash)
+COMP_WORDS=({words}); COMP_CWORD={cword}
+_wctl
+printf '%s\n' "${{COMPREPLY[@]}}""#,
+        words = line
+            .iter()
+            .map(|word| format!("'{word}'"))
+            .collect::<Vec<_>>()
+            .join(" "),
+        cword = line.len() - 1,
+    );
+    let path = format!(
+        "{}:{}",
+        binary.parent().expect("binary directory").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .args(["-c", &script])
+        .env("PATH", path)
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output()
+        .expect("bash runs");
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+#[test]
+fn bash_completion_offers_what_each_position_accepts() {
+    let offered = bash_completions(&["wctl", ""]);
+    assert!(
+        offered.iter().any(|word| word == "--timeout"),
+        "{offered:?}"
+    );
+    // The global option is taken once.
+    let offered = bash_completions(&["wctl", "--timeout", "2", ""]);
+    assert!(offered.iter().any(|word| word == "list"), "{offered:?}");
+    assert!(
+        !offered.iter().any(|word| word == "--timeout"),
+        "{offered:?}"
+    );
+    // --no-animation may come before the window.
+    let offered = bash_completions(&["wctl", "minimize", "--no-animation", ""]);
+    assert!(offered.iter().any(|word| word == "focused"), "{offered:?}");
 }

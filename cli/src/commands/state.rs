@@ -87,7 +87,20 @@ pub fn focus(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let selector = selector::parse_exact(0, "Usage: wctl focus <WINDOW>", args)?;
     let id = selector::lookup(ctx, &selector)?;
     let ok = ctx.bus.call_bool("Focus", &(id,))?;
-    report(ok, "Window focused", not_found(id))
+    report_with(ok, "Window focused", || focus_failure(ctx, id))
+}
+
+/// Why a focus came back `false`: no such window, or one mutter does not
+/// focus because it is hidden.
+fn focus_failure(ctx: &mut Ctx, id: u64) -> Fail {
+    ctx.invalidate_windows();
+    match ctx.window_by_id(id) {
+        Ok(_) => Fail::plain(format!(
+            "Window {id} is hidden (minimized or on another workspace); activate it instead"
+        ))
+        .with_code(EXIT_REFUSED),
+        Err(failure) => failure,
+    }
 }
 
 /// The state commands that take nothing but a window.

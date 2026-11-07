@@ -342,8 +342,12 @@ fn replace_file(path: &Path, text: &str) -> Result<()> {
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
 
     let temporary = directory.join(format!(".rules.json.{}", std::process::id()));
-    std::fs::write(&temporary, text)
-        .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary.display())))?;
+    std::fs::write(&temporary, text).map_err(|e| {
+        // A write that fails after creating the file (a full disk) must not
+        // leave it next to rules.json.
+        let _ = std::fs::remove_file(&temporary);
+        Fail::error(format!("Cannot write {}: {e}", temporary.display()))
+    })?;
     // The new file takes the place of the old one, so it keeps its mode.
     if let Ok(metadata) = std::fs::metadata(path) {
         let _ = std::fs::set_permissions(&temporary, metadata.permissions());
@@ -475,8 +479,16 @@ fn parse_rule_match(args: &[String]) -> Result<(Map<String, Value>, usize)> {
         return Err(Fail::error(format!("Option {first} requires an argument")));
     };
     if value.is_empty() {
+        // An empty class or title matches only a window whose class or title
+        // is the empty string, any other empty value every window: either way
+        // not a rule anyone means.
+        let matches = match first {
+            "-c" => "only a window whose class is the empty string",
+            "-t" => "only a window whose title is the empty string",
+            _ => "every window",
+        };
         return Err(Fail::error(format!(
-            "{first} requires a value; an empty one would match every window"
+            "{first} requires a value; an empty one would match {matches}"
         )));
     }
 
@@ -813,8 +825,12 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         width,
         height,
     };
+    // rules.js skips the geometry of a fullscreen window.
+    let fullscreen = model::flag(&window, "is_fullscreen")
+        && winner.is_some_and(|index| compiled[index].action.is_some());
     let target = winner
         .zip(workarea)
+        .filter(|_| !fullscreen)
         .and_then(|(index, workarea)| compiled[index].resolve(workarea, frame));
 
     if json {
@@ -837,6 +853,8 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         });
         if workarea.is_none() {
             report["skipped"] = serde_json::json!(SKIPPED_NO_SUCH_MONITOR);
+        } else if fullscreen {
+            report["skipped"] = serde_json::json!(SKIPPED_FULLSCREEN);
         }
         println!("{report}");
         return Ok(());
@@ -886,6 +904,10 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         "  monitor {monitor}, workarea {},{} {}x{}",
         workarea.x, workarea.y, workarea.width, workarea.height
     );
+    if fullscreen {
+        println!("  the window is fullscreen; the geometry would be skipped");
+        return Ok(());
+    }
     match target {
         Some(rect) => println!(
             "  would place at {},{} {}x{}",
@@ -898,6 +920,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 }
 
 const SKIPPED_NO_SUCH_MONITOR: &str = "no such monitor";
+const SKIPPED_FULLSCREEN: &str = "fullscreen";
 
 fn window_line(id: u64, wm_class: &str, title: &str) -> String {
     format!(

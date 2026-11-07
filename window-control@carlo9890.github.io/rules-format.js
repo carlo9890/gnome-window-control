@@ -246,11 +246,9 @@ export function compileRule(rule, index) {
             throw new Error(`${label}.match.${key}: must be a string`);
         // Checked here rather than left to matchPredicate, which only refuses an
         // empty substring, prefix, suffix or class prefix. An empty class or
-        // title builds a predicate that is true only for a window with no class
-        // or no title at all -- never what the user meant, and a rule that
-        // silently never fires is worse than a message. The spec's validation
-        // table says every match value is non-empty; this is what makes that
-        // true.
+        // title builds a predicate that is true only for a window whose class
+        // or title is the empty string -- never what the user meant, and a rule
+        // that silently never fires is worse than a message.
         if (value === '')
             throw new Error(`${label}.match.${key}: must not be empty`);
         predicates.push(matchPredicate(kind, value));

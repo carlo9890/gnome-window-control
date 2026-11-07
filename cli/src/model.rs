@@ -62,9 +62,9 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn new(timeout: Duration) -> Self {
+    pub fn new(timeout_flag: Option<Duration>) -> Self {
         Ctx {
-            bus: Bus::new(timeout),
+            bus: Bus::new(timeout_flag),
             windows: None,
         }
     }

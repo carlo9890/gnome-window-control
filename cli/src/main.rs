@@ -104,8 +104,16 @@ fn restore_sigpipe() {
 
 fn main() {
     restore_sigpipe();
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Err(failure) = run(&args) {
+    // Not env::args(): it panics on an argument that is not UTF-8, and with
+    // `panic = "abort"` that is a SIGABRT and a panic dump, not an error.
+    let args: Result<Vec<String>> = std::env::args_os()
+        .skip(1)
+        .map(|arg| {
+            arg.into_string()
+                .map_err(|_| Fail::error("Arguments must be valid UTF-8"))
+        })
+        .collect();
+    if let Err(failure) = args.and_then(|args| run(&args)) {
         std::process::exit(failure.report());
     }
 }
@@ -164,10 +172,12 @@ fn global_options(args: &[String]) -> Result<(Option<Duration>, &[String])> {
     Ok((None, args))
 }
 
-/// The reply timeout for a command that will open a bus connection.
+/// The reply timeout for a command that opens a bus connection.
 ///
-/// `WCTL_TIMEOUT` is read HERE and not in `global_options`, so a stale or
-/// mistyped value cannot break a command that never opens a connection. That
+/// `Bus` calls this when it opens a connection, not before dispatch, so a
+/// stale or mistyped value cannot break a command that never opens one: the
+/// `rules` subcommands that only read or write the file, and every usage
+/// error, are reported as if the variable were unset. That
 /// matters most for `wctl completion bash`: it is run from a shell rc file,
 /// usually as `eval "$(wctl completion bash)"`, where an error would reach
 /// every new shell and install no completion at all.
@@ -205,7 +215,7 @@ fn run(args: &[String]) -> Result<()> {
         _ => {}
     }
 
-    let mut ctx = Ctx::new(reply_timeout(timeout_flag)?);
+    let mut ctx = Ctx::new(timeout_flag);
     match command {
         "list" => query::list(&mut ctx, rest),
         "focused" => query::focused(&mut ctx, rest),
@@ -301,9 +311,16 @@ mod tests {
     fn help_documents_every_command() {
         let help = help::text();
         for command in COMMANDS {
-            // help and completion are the meta commands; they appear in the
-            // OTHER section and need no synopsis of their own.
-            assert!(help.contains(command), "help text is missing {command}");
+            // A synopsis line: four spaces, then the command as a whole word.
+            // A bare substring would let "focus" pass on "focused" and
+            // "resize" on "move-resize".
+            let synopsis = help.lines().any(|line| {
+                line.strip_prefix("    ").is_some_and(|rest| {
+                    rest.strip_prefix(command)
+                        .is_some_and(|after| after.is_empty() || after.starts_with(' '))
+                })
+            });
+            assert!(synopsis, "help text has no synopsis line for {command}");
         }
     }
 

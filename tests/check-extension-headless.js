@@ -259,6 +259,7 @@ export const sessionMode = {
         get_current_monitor: () => 0,
         list_all_windows: () => [...windows],
         focus_window: null,
+        get_current_time_roundtrip: () => 1234,
     });
 
     function focus(win) {
@@ -277,7 +278,6 @@ export const sessionMode = {
         display,
         get_window_actors: () => windows.map(win => ({ get_meta_window: () => win })),
         workspace_manager: { get_active_workspace: () => workspace },
-        get_current_time: () => 0,
     };
 
     // The session bus as the extension sees it: name watches, and a way to make a
@@ -319,7 +319,8 @@ export const sessionMode = {
         call.get_sender = () => call.sender;
         call.get_connection = () => bus;
         call.return_value = variant => {
-            call.reply = { value: variant.deepUnpack() };
+            // GDBus takes null for an empty reply, which the geometry methods send.
+            call.reply = { value: variant === null ? null : variant.deepUnpack() };
             call.replies += 1;
         };
         call.return_dbus_error = (error, message) => {
@@ -422,6 +423,26 @@ export const sessionMode = {
         dialog.emit('notify::window-type');
         check('wait D finds a dialog shown before it was retyped to NORMAL',
             showReply(wait) === '{"value":[6]}', showReply(wait));
+        service.unexport();
+        windows.length = 0;
+    }
+
+    // -- WaitForWindow: a dialog that exists before the wait, retyped later ------
+    //
+    // E is created as a dialog while no wait runs. The wait must still watch it,
+    // so a retype to NORMAL and its map during the wait reply with it.
+
+    {
+        const service = startService();
+        const dialog = createWindow({ id: 7, wmClass: 'E', type: Meta.WindowType.MODAL_DIALOG });
+        const wait = invocation();
+        service.WaitForWindowAsync(['class', 'E', 300], wait);
+        dialog.type = Meta.WindowType.NORMAL;
+        dialog.emit('notify::window-type');
+        dialog.map();
+        check('wait E finds a dialog that predates the wait once it is NORMAL and shown',
+            showReply(wait) === '{"value":[7]}', showReply(wait));
+        await sleep(400);
         service.unexport();
         windows.length = 0;
     }
@@ -664,6 +685,98 @@ export const sessionMode = {
             check(`${name} lets an unexpected throw through to GJS`, error?.message === expected, `${error}`);
         }
         service.unexport();
+        windows.length = 0;
+    }
+
+    // -- The timestamp a window call hands mutter ---------------------------------
+    //
+    // global.get_current_time() is 0 outside an input event: mutter only flags a
+    // window on another workspace for an activate at 0, and pings no client for a
+    // delete at 0.
+
+    {
+        const service = startService();
+        const win = createWindow({ id: 9, wmClass: 'T' });
+        win.map();
+        const times = [];
+        win.activate = time => times.push(['activate', time]);
+        win.focus = time => times.push(['focus', time]);
+        win.delete = time => times.push(['delete', time]);
+        service.Activate(9);
+        service.ActivateByWmClass('T');
+        service.ActivateNoAnimation(9);
+        service.Focus(9);
+        service.Close(9);
+        check('every window call hands mutter a real timestamp',
+            times.length === 5 && times.every(([, time]) => time === 1234), JSON.stringify(times));
+        win.minimize();
+        check('Focus answers false for a minimized window, and does not ask mutter',
+            service.Focus(9) === false && times.length === 5, JSON.stringify(times));
+        win.minimized = false;
+        win.onActiveWorkspace = false;
+        check('Focus answers false for a window on another workspace, and does not ask mutter',
+            service.Focus(9) === false && times.length === 5, JSON.stringify(times));
+        // Mutter updates is_hidden() later than the minimized state and the
+        // workspace, so it can still be true right after an unminimize.
+        win.onActiveWorkspace = true;
+        check('Focus asks mutter for an unminimized window that still reads as hidden',
+            win.is_hidden() && service.Focus(9) === true && times.length === 6, JSON.stringify(times));
+        // activate() shows the window wherever it is, so its skip is armed on
+        // any workspace; it leaves a transient parent on its own workspace, so
+        // a parent's skip is armed only where the parent will be seen.
+        const skipped = [];
+        const realSkip = Main.wm.skipNextEffect;
+        Main.wm.skipNextEffect = actor => skipped.push(actor);
+        win.minimize();
+        win.onActiveWorkspace = false;
+        const seen = createWindow({ id: 33, wmClass: 'T' });
+        seen.minimize();
+        const unseen = createWindow({ id: 34, wmClass: 'T' });
+        unseen.minimize();
+        unseen.onActiveWorkspace = false;
+        win.transientFor = seen;
+        seen.transientFor = unseen;
+        service.ActivateNoAnimation(9);
+        Main.wm.skipNextEffect = realSkip;
+        check('ActivateNoAnimation skips the animation of the window on another workspace and of a parent on the active one only',
+            skipped.length === 2 && skipped[0] === win && skipped[1] === seen,
+            skipped.map(actor => actor.id).join(','));
+        service.unexport();
+        windows.length = 0;
+    }
+
+    // -- A load that empties the rules while a rule waits for an unmaximize ------
+    //
+    // The rule has done its other steps and unmaximized the window; the load
+    // affects new windows only, so the frame still follows once the restore
+    // lands, rather than leaving the rule half applied.
+
+    {
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        rules._compile('[{"match":{"class":"max"},"tile":"left"}]');
+        const win = createWindow({ id: 31, wmClass: 'max', maximizeFlags: Meta.MaximizeFlags.BOTH });
+        win.map();
+        await sleep(100);
+        check('a maximized window under a rule waits for its unmaximize',
+            rules._tracked.get(win)?.wait !== undefined && win.moves.length === 0, JSON.stringify(win.moves));
+        rules._compile('[]');
+        await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
+        check('a load to no rules lets the pending unmaximize wait place the window',
+            JSON.stringify(win.moves) === '[[0,0,480,1080]]' && !rules._tracked.has(win),
+            JSON.stringify(win.moves));
+
+        // The same for a window whose apply is queued for the next idle.
+        rules._compile('[{"match":{"class":"max"},"tile":"left"}]');
+        const queued = createWindow({ id: 36, wmClass: 'max' });
+        queued.map();
+        rules._compile('[]');
+        await sleep(100);
+        check('a load to no rules lets a queued apply place the window',
+            JSON.stringify(queued.moves) === '[[0,0,480,1080]]' && !rules._tracked.has(queued),
+            JSON.stringify(queued.moves));
+        rules.disable();
         windows.length = 0;
     }
 
@@ -1026,9 +1139,13 @@ export const sessionMode = {
         await sleep(400);
         check('a focus gone to no window when the grace period ends keeps the overlay', !open.minimized);
 
+        // `pinned` was hidden by an earlier focus loss; shown again, it is the
+        // overlay without the focus that the overview must hide.
+        restore(pinned);
         focus(open);
         Main.overview.emit('showing');
-        check('an overview gesture that may still be cancelled hides no overlay', !open.minimized);
+        check('an overview gesture that may still be cancelled hides no overlay',
+            !open.minimized && !pinned.minimized);
         Main.overview.emit('shown');
         check('an open overview hides an overlay at once', open.minimized);
         check('an open overview hides an overlay that was not focused', pinned.minimized);
@@ -1083,6 +1200,34 @@ export const sessionMode = {
             JSON.stringify(notifies));
         check('a release keeps an above the user set again after the overlay set its own', late.above);
         rules._compile(OVERLAY_RULES);
+
+        // A load while a matching window is not shown yet: it becomes an
+        // overlay when its rule is applied, not before, so no focus change can
+        // minimize a window that was never on screen.
+        const launching = createWindow({ id: 27, wmClass: 'term' });
+        rules._compile(OVERLAY_RULES);
+        focus(other);
+        await sleep(400);
+        check('a load makes no overlay of a window mutter has not shown',
+            !overlays._windows.has(launching) && !launching.minimized);
+        launching.map();
+        await sleep(100);
+        check('that window becomes an overlay once shown', isOverlay(launching));
+        launching.emit('unmanaged');
+
+        // The same for a window created while no rule watched for new ones,
+        // so nothing recorded its map: its state shows it is not shown yet.
+        rules._compile('[]');
+        const untracked = createWindow({ id: 35, wmClass: 'term' });
+        rules._compile(OVERLAY_RULES);
+        focus(other);
+        await sleep(400);
+        check('a load makes no overlay of an untracked window mutter has not shown',
+            !rules._tracked.has(untracked) && !overlays._windows.has(untracked) && !untracked.minimized);
+        untracked.map();
+        rules._compile(OVERLAY_RULES);
+        check('that window becomes an overlay at the next load once shown', isOverlay(untracked));
+        untracked.emit('unmanaged');
 
         const fresh = createWindow({ id: 25, wmClass: 'term' });
         fresh.map();

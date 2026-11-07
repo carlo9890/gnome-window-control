@@ -57,7 +57,10 @@ export const DBUS_INTERFACE_XML = `
       <arg type="b" direction="out" name="success"/>
     </method>
 
-    <!-- Focuses the window without raising it. -->
+    <!--
+      Focuses the window without raising it. false also for a hidden window
+      (minimized, or on another workspace), which mutter does not focus.
+    -->
     <method name="Focus">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="b" direction="out" name="success"/>

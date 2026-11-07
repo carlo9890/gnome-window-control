@@ -336,6 +336,7 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // there is no plain-output branch to write, and the version string stays in
     // one place.
     parse_json_flag(args)?;
+    ctx.bus.check_timeout()?;
 
     let mut document = serde_json::json!({
         "wctl": crate::VERSION,
@@ -355,14 +356,17 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             // What the extension supports, which the number cannot say: an
             // install from extensions.gnome.org reports that site's upload
             // number. An extension too old to serve the method reports none.
-            document["capabilities"] = Value::Array(
-                ctx.bus
-                    .get_capabilities()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(Value::String)
-                    .collect(),
-            );
+            match ctx.bus.capabilities_of_answering() {
+                Ok(names) => {
+                    document["capabilities"] =
+                        Value::Array(names.into_iter().map(Value::String).collect());
+                }
+                Err(failure) => {
+                    document["capabilities"] = Value::Null;
+                    document["message"] = Value::String(failure.to_string());
+                    return Err(Fail::plain(document.to_string()).with_code(failure.code()));
+                }
+            }
             if compatible {
                 println!("{document}");
                 return Ok(());

@@ -78,11 +78,16 @@ pub fn validate_pid(token: &str) -> Result<i32> {
 }
 
 /// Refuse a match value the extension would refuse: a PID that is not one,
-/// and an empty substring, which matches every window.
+/// and an empty substring, which matches every window. An empty class or
+/// title is refused too: the window list reports a missing one as "", but the
+/// extension's own predicate (`wait`) compares the missing value, so the two
+/// would name different windows.
 pub fn validate_value(kind: Kind, value: &str) -> Result<()> {
     match kind {
         Kind::Pid => validate_pid(value).map(|_| ()),
         Kind::Substring if value.is_empty() => Err(Fail::error("Substring must not be empty")),
+        Kind::Class if value.is_empty() => Err(Fail::error("Class must not be empty")),
+        Kind::Title if value.is_empty() => Err(Fail::error("Title must not be empty")),
         _ => Ok(()),
     }
 }

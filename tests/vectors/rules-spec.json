@@ -418,6 +418,24 @@
       "message": "rules[0].workspace: must be a non-negative integer"
     },
     {
+      "name": "match is checked before the geometry key, whatever their file order",
+      "document": [{ "tile": "nowhere", "match": { "class": 1 } }],
+      "valid": false,
+      "message": "rules[0].match.class: must be a string"
+    },
+    {
+      "name": "the geometry key is checked before workspace, whatever their file order",
+      "document": [{ "match": { "class": "a" }, "workspace": -1, "tile": "nowhere" }],
+      "valid": false,
+      "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
+    },
+    {
+      "name": "workspace is checked before monitor, whatever their file order",
+      "document": [{ "match": { "class": "a" }, "monitor": -1, "workspace": -1 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
       "name": "monitor is negative",
       "document": [{ "match": { "class": "a" }, "monitor": -1 }],
       "valid": false,
@@ -437,6 +455,22 @@
     {
       "name": "workspace written with an exponent is an integer",
       "document": [{ "match": { "class": "a" }, "workspace": 1e1 }],
+      "valid": true
+    },
+    {
+      "name": "a decimal one ulp below 2 is not an integer (both parsers must round correctly)",
+      "document": [{ "match": { "class": "a" }, "workspace": 1.9999999999999998 }],
+      "valid": false,
+      "message": "rules[0].workspace: must be a non-negative integer"
+    },
+    {
+      "name": "a decimal that rounds to exactly 75 is the integer 75",
+      "document": [{ "match": { "class": "a" }, "workspace": 74.999999999999994443 }],
+      "valid": true
+    },
+    {
+      "name": "a place size that rounds to exactly 75 is the size 75",
+      "document": [{ "match": { "class": "a" }, "place": [0, 0, 74.999999999999994443, 100] }],
       "valid": true
     },
     {

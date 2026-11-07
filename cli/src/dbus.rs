@@ -97,15 +97,43 @@ fn is_timeout(err: &zbus::Error) -> bool {
     }
 }
 
+/// What a timed-out call says happened. The bus daemon's NoReply also stands
+/// for a shell that left the bus with the call pending -- a crash or a
+/// restart -- so it is not called slow.
+fn no_reply(err: &zbus::Error) -> &'static str {
+    match err {
+        zbus::Error::MethodError(name, _, _)
+            if name.as_str() == "org.freedesktop.DBus.Error.NoReply" =>
+        {
+            "GNOME Shell did not reply: it stopped responding or left the bus."
+        }
+        _ => "GNOME Shell did not reply in time.",
+    }
+}
+
+/// `map_err` for a call on its own connection (`call_bounded`): the global
+/// `--timeout` does not set its bound, so the hint does not name it.
+fn map_bounded_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
+    if is_timeout(&err) {
+        return Fail::error(format!(
+            "{} Check that the shell is responding.",
+            no_reply(&err)
+        ))
+        .with_code(EXIT_TIMEOUT);
+    }
+    map_err(err, serves_object)
+}
+
 /// Map a failed call to the message and exit code wctl reports.
 ///
 /// `serves_object` is asked only for an UnknownMethod, to tell an extension
 /// that is not running from one too old to serve the method.
 fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
     if is_timeout(&err) {
-        return Fail::error(
-            "GNOME Shell did not reply in time. Raise --timeout, or check that the shell is responding.",
-        )
+        return Fail::error(format!(
+            "{} Raise --timeout, or check that the shell is responding.",
+            no_reply(&err)
+        ))
         .with_code(EXIT_TIMEOUT);
     }
 
@@ -193,36 +221,49 @@ fn serves_object(conn: &Connection) -> bool {
     .is_ok()
 }
 
-fn call_on<B, R>(conn: &Connection, method: &str, body: &B) -> Result<R>
+fn call_on<B, R>(
+    conn: &Connection,
+    method: &str,
+    body: &B,
+    mapper: fn(zbus::Error, Box<dyn FnOnce() -> bool + '_>) -> Fail,
+) -> Result<R>
 where
     B: serde::ser::Serialize + DynamicType,
     R: serde::de::DeserializeOwned + zbus::zvariant::Type,
 {
     proxy(conn)?
         .call(method, body)
-        .map_err(|err| map_err(err, || serves_object(conn)))
+        .map_err(|err| mapper(err, Box::new(|| serves_object(conn))))
 }
 
 pub struct Bus {
     conn: OnceCell<Connection>,
-    /// How long a method call waits for the shell to reply. Stored rather than
-    /// applied at construction, because the connection is opened lazily.
-    timeout: Duration,
+    /// The `--timeout` flag, if given. The reply timeout is resolved from it,
+    /// or from `WCTL_TIMEOUT`, only when the connection is opened, so a bad
+    /// `WCTL_TIMEOUT` cannot break a command that never opens one.
+    timeout_flag: Option<Duration>,
 }
 
 impl Bus {
-    pub fn new(timeout: Duration) -> Self {
+    pub fn new(timeout_flag: Option<Duration>) -> Self {
         Bus {
             conn: OnceCell::new(),
-            timeout,
+            timeout_flag,
         }
+    }
+
+    /// Fail on a bad `WCTL_TIMEOUT` before the first call, for a command whose
+    /// call failures are a document: the bad value is a usage error, not an
+    /// outcome of the call.
+    pub fn check_timeout(&self) -> Result<()> {
+        crate::reply_timeout(self.timeout_flag).map(|_| ())
     }
 
     fn conn(&self) -> Result<&Connection> {
         if let Some(conn) = self.conn.get() {
             return Ok(conn);
         }
-        let conn = session_connection(self.timeout)?;
+        let conn = session_connection(crate::reply_timeout(self.timeout_flag)?)?;
         // set() cannot fail: get() above returned None and we are single threaded.
         let _ = self.conn.set(conn);
         Ok(self.conn.get().expect("connection was just stored"))
@@ -234,7 +275,7 @@ impl Bus {
         B: serde::ser::Serialize + DynamicType,
         R: serde::de::DeserializeOwned + zbus::zvariant::Type,
     {
-        call_on(self.conn()?, method, body)
+        call_on(self.conn()?, method, body, |err, asks| map_err(err, asks))
     }
 
     /// Call a method that returns a JSON document as a string.
@@ -275,7 +316,15 @@ impl Bus {
         B: serde::ser::Serialize + DynamicType,
         R: serde::de::DeserializeOwned + zbus::zvariant::Type,
     {
-        call_on(&session_connection(client_bound)?, method, body)
+        // The variable does not set this bound, but a bad one is still an
+        // error for every command that opens a connection.
+        crate::reply_timeout(self.timeout_flag)?;
+        call_on(
+            &session_connection(client_bound)?,
+            method,
+            body,
+            |err, asks| map_bounded_err(err, asks),
+        )
     }
 
     /// The extension version the running shell has loaded.
@@ -290,6 +339,20 @@ impl Bus {
     /// there reports a number this project never released.
     pub fn get_capabilities(&self) -> Result<Vec<String>> {
         self.call("GetCapabilities", &())
+    }
+
+    /// The feature names of an extension that has just answered another call.
+    ///
+    /// One too old to serve GetCapabilities reports none; any other failure --
+    /// a timeout, or an extension disabled since that answer -- is a failure,
+    /// not an empty list a caller would read as "no capabilities".
+    pub fn capabilities_of_answering(&self) -> Result<Vec<String>> {
+        let conn = self.conn()?;
+        match proxy(conn)?.call::<_, _, Vec<String>>("GetCapabilities", &()) {
+            Ok(names) => Ok(names),
+            Err(err) if is_unknown_method(&err) && serves_object(conn) => Ok(Vec::new()),
+            Err(err) => Err(map_err(err, || serves_object(conn))),
+        }
     }
 
     /// The feature names the loaded extension reports, or `None` when nobody
@@ -423,6 +486,28 @@ mod tests {
             let (code, plain, _) = mapped_unasked(err);
             assert_eq!((code, plain), (4, false));
         }
+    }
+
+    #[test]
+    fn a_timeout_names_the_right_cause_and_the_right_remedy() {
+        let message = |fail: Fail| fail.to_string();
+        assert_eq!(
+            message(map_err(timed_out(), || false)),
+            "GNOME Shell did not reply in time. Raise --timeout, or check that the shell is responding."
+        );
+        // --timeout does not set the bound of a call on its own connection.
+        assert_eq!(
+            message(map_bounded_err(timed_out(), || false)),
+            "GNOME Shell did not reply in time. Check that the shell is responding."
+        );
+        // The bus daemon sends NoReply for a shell that left with the call
+        // pending, too.
+        let no_reply = method_error(
+            "org.freedesktop.DBus.Error.NoReply",
+            "Message recipient disconnected from message bus without replying",
+        );
+        assert!(message(map_bounded_err(no_reply, || false))
+            .starts_with("GNOME Shell did not reply: it stopped responding or left the bus."));
     }
 
     #[test]

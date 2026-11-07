@@ -30,7 +30,7 @@ wctl minimize focused                      # minimize the focused window
 
 - **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
 - **Window info** - Get detailed information about any window
-- **Window selectors** - Address a window by ID, `focused`, WM class, title, title substring, or PID in every `wctl` command
+- **Window selectors** - Address a window by ID, `focused`, WM class, title, title substring, or PID in every `wctl` command (`activate` takes all but `focused`)
 - **Activate windows** - Focus/raise windows by ID, title, WM class, or PID
 - **Move/resize windows** - Position and size windows programmatically
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
@@ -143,7 +143,8 @@ wctl info 12345 --json             # one window's details
 # Every command that takes a window accepts a selector instead of an ID:
 #   <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
 # A selector must match exactly one window. With several matches wctl lists
-# the candidates and exits 1; with none it exits 2. An empty -s "" is refused.
+# the candidates and exits 1; with none it exits 2. An empty value is refused.
+# activate takes no `focused`, and its -c/-t/-s/-p take the first match.
 wctl tile -c kitty left
 wctl close -s "Untitled"
 
@@ -180,7 +181,7 @@ matching the message text:
 | 0 | Success |
 | 1 | Usage error, or a failure with no more specific code below |
 | 2 | The window, workspace or monitor does not exist |
-| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, or it cannot be minimized |
+| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, it cannot be minimized, or it is hidden and cannot take the focus |
 | 4 | Timed out waiting for a window, or for the shell to reply |
 | 5 | The extension is not usable: not running, or a version this `wctl` cannot rely on |
 
@@ -199,7 +200,9 @@ read -r w h < <(wctl resolve-place center top 50% 100% --json |
 ```
 
 `place`, `tile` and `center` take `--json` too, reporting the workarea used and
-the rectangle computed. All of them report the rectangle wctl **requested**;
+the rectangle computed. Once the window is known, every outcome is a document:
+a window or monitor that is gone gives `"placed":false` and a `message`. All of
+them report the rectangle wctl **requested**;
 mutter still clamps to size hints, and a client that quantises its own size (a
 terminal, to whole cells) settles a few pixels off, so comparing against it needs
 a tolerance.
@@ -229,6 +232,9 @@ is still 9. `compatible` is true for every extension version from
 rather than comparing version numbers: an install from extensions.gnome.org
 carries that site's own upload number in `extension`, which no release of this
 project ever had. An empty list means the extension is too old to answer.
+When the call fails for another reason (a timeout, an extension disabled
+in between), `capabilities` is `null` and the command exits with that
+failure's code.
 
 ### Using gdbus Directly
 
@@ -435,7 +441,9 @@ It names the rule that wins, any later rule the first-match-wins order makes
 dead, the workarea used, and the exact rectangle the action resolves to. When
 the rule names a monitor that does not exist, it says the extension skips the
 rest of the rule and exits 0; with `--json`, `workarea` and `target` are `null`
-and `"skipped"` is `"no such monitor"`. This is
+and `"skipped"` is `"no such monitor"`. For a fullscreen window it says the
+extension skips the geometry; with `--json`, `target` is `null` and `"skipped"`
+is `"fullscreen"`. This is
 the one `rules` subcommand that needs the extension running, because it resolves
 a live window. It never moves anything. Against an extension that does not
 report the `rules` capability it exits 5 instead, because that extension
