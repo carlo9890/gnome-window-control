@@ -199,8 +199,7 @@ export class WindowControlService {
     //
     // The three geometry methods are async (GJS convention:
     // <Method>Async(params, invocation)) only so they can answer here rather
-    // than by throwing. They do no waiting -- see NamedError for why throwing
-    // is the wrong shape for a routine refusal.
+    // than by throwing. They do no waiting.
     _geometryCall(invocation, label, body) {
         try {
             body();
