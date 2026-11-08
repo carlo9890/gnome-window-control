@@ -78,36 +78,25 @@ export const DBUS_INTERFACE_XML = `
     <!--
       ERRORS RAISED BY NAME
 
-      Move, Resize and MoveResize do not return a success flag. They complete,
-      or they raise one of the names below, because a bare boolean could not say
-      which failure happened and every caller had to guess it back by refetching
-      the window and reading its flags -- a guess that cannot see tiling at all.
-      WaitForWindow and WaitForGeometry raise too, for the same reason.
-      These are the names the extension raises on
-      purpose; a handler never invents a name at the throw site. Any other
-      method that throws an Error unexpectedly answers with GJS's own
-      org.gnome.gjs.JSError.<name> (TypeError, for example); before GNOME 50,
-      a wait method that throws before it starts waiting sends no reply.
+      Move, Resize, MoveResize, WaitForWindow and WaitForGeometry return no
+      success flag: they complete or raise one of the names below. Any other
+      unexpected throw answers with GJS's own org.gnome.gjs.JSError.<name>;
+      before GNOME 50, a wait method that throws before it starts waiting
+      sends no reply.
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
             no window has that id (WaitForGeometry: or it closed mid-wait)
         org.gnome.Shell.Extensions.WindowControl.Refused
-            the window exists and mutter will drop the request: the frame is
-            pinned by fullscreen, maximize or tiling. The message names which.
+            fullscreen, maximize or tiling pins the frame; the message says which
         org.gnome.Shell.Extensions.WindowControl.Timeout
             WaitForGeometry: the frame did not settle within timeout_ms
         org.gnome.Shell.Extensions.WindowControl.Disabled
-            the extension was disabled while a WaitForWindow or
-            WaitForGeometry call was pending
+            the extension was disabled while a wait was pending
         org.freedesktop.DBus.Error.InvalidArgs
-            a size or a wait time was not positive, timeout_ms was below
-            quiet_ms, or a wait selector was refused (unknown kind, empty
-            substring, pid that is not a positive decimal integer)
+            a non-positive size or wait time, timeout_ms below quiet_ms, or
+            an invalid wait selector
         org.freedesktop.DBus.Error.Failed
             Move, Resize or MoveResize raised something unexpected
-
-      BREAKING: before extension version 10 these three returned 'b success'.
-      A client written against the old signature fails to parse the reply.
     -->
 
     <method name="Move">

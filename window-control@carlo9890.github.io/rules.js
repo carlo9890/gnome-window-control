@@ -1,39 +1,7 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Window rules: put a new window on a well-defined spot, driven by
-// ~/.config/gnome-window-control/rules.json. On GNOME 49 and later the window
-// is drawn there from its first frame; on every shell the rule is applied the
-// moment mutter shows the window.
-//
-// The file is a JSON array. Each rule names the windows it applies to and
-// what to do with them, in the vocabulary wctl already has:
-//
-//   [
-//     {"match": {"class": "kitty"},        "tile": "left"},
-//     {"match": {"substr": "Report"},      "place": ["right", "top", "50%", "100%"]},
-//     {"match": {"title": "Calculator"},   "center": "both", "monitor": 1},
-//     {"match": {"class": "Slack"},        "workspace": 2}
-//   ]
-//
-// match:     class (exact WM class), title (exact), substr (title contains),
-//            title_prefix (title starts with), title_suffix (title ends with),
-//            class_prefix (WM class starts with). Several keys must all match.
-// place:     [X, Y, WIDTH, HEIGHT] with the tokens of `wctl place`.
-// tile:      a `wctl tile` position.
-// center:    horizontal | vertical | both, keeps the window's own size.
-// workspace: index; one beyond the last appends a single workspace.
-// monitor:   index; the workarea place/tile/center resolve against.
-// overlay:   true keeps the window above the others and out of Alt+Tab, and
-//            hides it when another window takes the focus (see overlay.js).
-//
-// The first matching rule wins, in file order, and is applied exactly once per
-// window. A window that resizes itself later is left alone. The file is
-// re-read on every change while its directory can be watched. Which windows
-// are overlays is decided again on every load, for the open windows too.
-//
-// The grammar itself -- the token vocabulary, the tile grid and every
-// validation message -- lives in rules-format.js, which imports nothing so the
-// headless check can load it. This file is the half that touches windows.
+// Window rules: apply the rules in ~/.config/gnome-window-control/rules.json
+// to new windows. The format is in rules-format.js and the README.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -54,11 +22,8 @@ const LATE_IDENTITY_GRACE_MS = 2000;
 // Collapse the burst of file events one save produces into a single reload.
 const RELOAD_DEBOUNCE_MS = 100;
 
-// Meta.Window's 'configure' signal hands a handler the window's initial
-// configuration before the client has drawn anything. Mutter 48 has the signal
-// too, but applies what the handler sets through a different code path that was
-// never checked here, so it is used from 49 on: get_maximize_flags() is the
-// method that release added (see window-helpers.js).
+// Mutter 49 and later, where the 'configure' signal hands a handler the
+// window's initial configuration before the client has drawn anything.
 const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
     typeof Meta.Window.prototype.get_maximize_flags === 'function';
 
@@ -284,7 +249,6 @@ export class WindowRules {
         return this._overlays?.has(win) ?? false;
     }
 
-    // A window that is not NORMAL matches no rule.
     _winningIndex(win) {
         return win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
     }
@@ -355,10 +319,10 @@ export class WindowRules {
             entry.graceId = 0;
             // Not from inside the 'shown' emission: mutter is still applying
             // the client's first committed size there, and a frame requested
-            // that early is overwritten by it (measured on GNOME 46: the
-            // position stuck, the size did not). One trip through the main
-            // loop is enough. The 'unmanaged' handler stays connected until
-            // then, so a window that closes first is never touched.
+            // that early is overwritten by it: the position sticks, the size
+            // does not. One trip through the main loop is enough. The
+            // 'unmanaged' handler stays connected until then, so a window
+            // that closes first is never touched.
             entry.applyId = this._addIdle(() => {
                 entry.applyId = 0;
                 this._untrack(win);

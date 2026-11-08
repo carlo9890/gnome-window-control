@@ -21,19 +21,7 @@ import {
 // "No such method" while introspection still lists the method.
 const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML);
 
-// Reported by GetCapabilities. A name here is a promise a caller may rely on,
-// so it is added together with the feature and never removed while the
-// feature is served. 'rules' means rules.json is read and applied;
-// 'rules-title-affix' means its title_prefix and title_suffix match keys are
-// known -- an extension without it refuses a file that carries one, whole;
-// 'rules-class-prefix' means the same for its class_prefix match key;
-// 'rules-overlay' means the same for its overlay rule key, and that
-// ListDetailed reports is_overlay;
-// 'keybindings' means the tile shortcuts in the settings schema are served
-// while the screen is unlocked, and is left out when their registration
-// failed;
-// 'no-animation' means MinimizeNoAnimation and UnminimizeNoAnimation are;
-// 'activate-no-animation' means ActivateNoAnimation is.
+// Reported by GetCapabilities; a caller gates a newer feature on its name.
 const CAPABILITIES = [
     'rules', 'rules-title-affix', 'rules-class-prefix', 'rules-overlay', 'keybindings',
     'no-animation', 'activate-no-animation',
@@ -52,19 +40,8 @@ const DBUS_ERROR_INVALID_ARGS = 'org.freedesktop.DBus.Error.InvalidArgs';
 const DBUS_ERROR_FAILED = 'org.freedesktop.DBus.Error.Failed';
 
 // A failure that must reach the caller as a specific D-Bus error name.
-//
-// Gio.DBusError.new_for_dbus_error() does not work here: it returns a
-// GLib.Error, and GJS answers a thrown GLib.Error with
-// g_dbus_method_invocation_return_gerror(); an unregistered domain then goes on
-// the wire as org.gtk.GDBus.UnmappedGError.Quark._g_2dio_2derror_2dquark.Code36
-// with the real name buried in the message text, where no caller can switch on
-// it (measured against GNOME 46).
-//
-// A plain Error is not subject to that: GJS's synchronous dispatch forwards
-// `e.name` verbatim once it contains a dot. The handlers are async anyway, and
-// answer with return_dbus_error() themselves, for a different reason -- that
-// same synchronous path also calls logError(), which would write a journal
-// warning for every ordinary refusal.
+// Gio.DBusError.new_for_dbus_error() returns a GLib.Error, which goes on the
+// wire as org.gtk.GDBus.UnmappedGError... with the real name lost.
 class NamedError extends Error {
     constructor(name, message) {
         super(message);
@@ -104,12 +81,6 @@ const WINDOW_TYPE_NAMES = {
     [Meta.WindowType.OVERRIDE_OTHER]: 'override_other',
 };
 
-// Per-call lines use console.debug(), which GLib drops unless
-// G_MESSAGES_DEBUG is set; console.log() would leave a journal line per D-Bus
-// call. No line holds a title, a WM class or a match value: titles leak
-// document names and URLs into a log that outlives the caller. A caller's
-// `kind` is logged only after _matchPredicate() has accepted it, since until
-// then it is arbitrary text, newlines included.
 export class WindowControlService {
     constructor(metadata) {
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
@@ -192,36 +163,9 @@ export class WindowControlService {
         return Number.isInteger(value) && value >= 0 && value < count;
     }
 
-    // The state in which mutter drops a frame geometry request outright.
-    // move_frame()/move_resize_frame() return without error and the frame does
-    // not move, so a handler that reports true would be claiming a move that
-    // never happened.
-    //
-    // Any maximize flag counts, not just BOTH. Measured on GNOME 46 in a nested
-    // session, moving a window to (150, 300):
-    //
-    //   maximized BOTH      x and y both pinned      nothing moves
-    //   tiled side by side  x, y, width, height all overwritten by
-    //                       constrain_tiling()       nothing moves
-    //   maximized VERTICAL  x honoured, y pinned     the move half happens
-    //
-    // A tiled window reports MAXIMIZE_VERTICAL and nothing else, and GJS has no
-    // tiled predicate, so the vertical case cannot be told from the tiled one.
-    // Both are refused. For a genuinely tiled window that is exactly right; for
-    // a merely vertically-maximized one it refuses a request that would have
-    // been half-applied while reporting success.
-    //
-    // Verifying instead of refusing is not available: move_resize_frame() is
-    // asynchronous, and get_frame_rect() read in the same handler still returns
-    // the old rect even for a move that succeeds (measured), so a post-call
-    // comparison would report failure for every successful call. (Waiting for
-    // it to settle is available -- see WaitForGeometry -- but that is a
-    // separate call, deliberately: a geometry request must stay cheap.)
-    //
-    // Returns the reason as a phrase, or null when the frame is free. Naming
-    // the state is the point: a client outside the shell can read
-    // is_maximized/is_fullscreen for itself but has no tiled predicate at all,
-    // so it could never tell the third case from the second.
+    // Mutter silently ignores frame requests on a fullscreen, maximized or
+    // tiled window. A tiled window reports only MAXIMIZE_VERTICAL and GJS has
+    // no tiled predicate, so any maximize flag refuses.
     _frameRefusal(win) {
         if (win.is_fullscreen())
             return 'the window is fullscreen; unfullscreen it first';
@@ -291,19 +235,9 @@ export class WindowControlService {
         return false;
     }
 
-    // True for a window that mutter has created but not yet mapped and
-    // placed. A geometry request on such a window is overridden by mutter's
-    // initial placement, so WaitForWindow must not reply before it is shown.
-    //
-    // is_hidden() alone cannot answer this: minimized windows and windows on
-    // another workspace are hidden too, and both are placed. For a window
-    // created while the service runs the answer is known outright -- its
-    // first-show watch records the map, so if it has never been seen unhidden
-    // it has never been mapped, whatever the reason it is hidden now, also
-    // when it was created minimized or on another workspace.
-    //
-    // A window that predates the service (it is rebuilt at every enable) has
-    // no such history, so it is judged by its current state (looksUnmapped).
+    // True for a window mutter has not mapped and placed yet: its initial
+    // placement would override a geometry request. is_hidden() is not enough,
+    // as minimized windows and windows on other workspaces are hidden too.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
@@ -617,9 +551,9 @@ export class WindowControlService {
     }
 
     // While the Activities overview is shown, Meta.Workspace.activate() leaves
-    // the active workspace unchanged (verified on GNOME 46), so the overview is
-    // hidden first. The result is read back rather than assumed, so a switch
-    // that did not take effect reports false.
+    // the active workspace unchanged, so the overview is hidden first. The
+    // result is read back rather than assumed, so a switch that did not take
+    // effect reports false.
     ActivateWorkspace(workspaceIndex) {
         console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) called`);
         const manager = global.workspace_manager;
@@ -700,19 +634,9 @@ export class WindowControlService {
         this._trackExistingWindows();
     }
 
-    // Reply once the window's frame has held still for quiet_ms, with the rect
-    // as it then stands.
-    //
-    // Async (GJS convention: <Method>Async(params, invocation)) for the same
-    // reason WaitForWindow is: the reply comes from a signal handler or a timer
-    // and the shell main loop is never blocked.
-    //
-    // The quiet period is a heuristic and is meant to be. What it removes is
-    // the sampling: a client outside the shell can only poll get_frame_rect()
-    // and compare, which costs a round trip per sample and still races the
-    // compositor -- get_frame_rect() read right after a move still returns the
-    // old rectangle, so the first sample is reliably wrong. Here every change is
-    // a signal, so the timer only has to outlast the gap between two of them.
+    // Reply with the frame rect once it has held still for quiet_ms. A client
+    // cannot poll for this: get_frame_rect() read right after a move still
+    // returns the old rect.
     WaitForGeometryAsync([windowId, quietMs, timeoutMs], invocation) {
         console.debug(`[Window Control] WaitForGeometry(${windowId}, ${quietMs}, ${timeoutMs}) called`);
         if (quietMs <= 0 || timeoutMs < quietMs) {
@@ -762,8 +686,6 @@ export class WindowControlService {
         });
     }
 
-    // Every frame change restarts the quiet timer, so it only fires once the
-    // frame has been still for the whole period.
     _restartQuietPeriod(watcher) {
         this._removeSource(watcher.quietId);
         watcher.quietId = this._addTimeout(watcher.quietMs, () => {
@@ -823,17 +745,8 @@ export class WindowControlService {
             this._untrackWindow(win, watchFirstShow);
     }
 
-    // Remember that this window was seen from creation: _isUnshown() needs to
-    // tell "mutter has not mapped it yet" from "mapped, currently hidden", and
-    // for such a window the record of its first map makes that knowable. With
-    // no waiter pending, the first-show watch records it.
-    //
-    // With one pending, the window is tracked instead. A new window may not
-    // carry its wm_class or title yet when 'window-created' fires (on Wayland
-    // the app id arrives with a later commit), and it is not shown (mapped and
-    // placed) until the client commits its first buffer, so evaluate now and
-    // again when either property is set and when the window is shown. Handlers
-    // are dropped once the window is unmanaged or no waiter is left.
+    // On Wayland a new window may get its app id and title only with a later
+    // commit, so a pending waiter evaluates it again when they change.
     _onWindowCreated(win) {
         this._createdSinceStart.add(win);
         if (this._waiters.length === 0) {
@@ -844,13 +757,8 @@ export class WindowControlService {
         this._evaluateWindow(win);
     }
 
-    // Connect the per-window handlers. Does not evaluate: the caller has
-    // either just scanned every window (WaitForWindow) or evaluates itself.
-    //
-    // 'window-type' is watched too: on Wayland a toplevel is created NORMAL
-    // and a later gtk_surface.set_modal retypes it to MODAL_DIALOG, so a
-    // window that was the wrong type at one evaluation may be the right one
-    // at the next, and the reverse.
+    // 'window-type' is watched because on Wayland gtk_surface.set_modal can
+    // retype a NORMAL toplevel to MODAL_DIALOG after creation.
     _trackWindow(win) {
         const evaluate = () => {
             this._evaluateWindow(win);
@@ -878,24 +786,8 @@ export class WindowControlService {
         this._dropFirstShowWatch(win);
     }
 
-    // Track every window that already exists when a waiter registers.
-    //
-    // 'window-created' tracks only the windows created while a waiter is
-    // pending, so without this two cases never wake a waiter: the window
-    // created in the gap just before the call, which has already missed the
-    // signal and is still unshown; and any window already on screen whose
-    // title or class changes later -- `wait -t 'Report.pdf - LibreOffice
-    // Writer'` against an already-open LibreOffice, or `wait -c` against a
-    // Wayland client whose app_id lands after mapping.
-    //
-    // The predicate is deliberately not applied: on Wayland wm_class and title
-    // arrive after creation, so a window that cannot match yet may match once
-    // 'notify::wm-class' fires. Nothing is evaluated here either -- the caller
-    // has just scanned every shown window, so a second pass cannot match.
-    // Every type, not only NORMAL: a dialog retyped to NORMAL during the wait
-    // must wake it (see _trackWindow), and _evaluateWindow checks the type.
-    // Handlers cost five connections per window and only exist while a wait
-    // is pending.
+    // A waiter must also wake on a window that already exists and later
+    // changes its title, class or type.
     _trackExistingWindows() {
         for (const actor of global.get_window_actors()) {
             const win = actor.get_meta_window();
@@ -1085,7 +977,6 @@ export class WindowControlService {
         });
     }
 
-    // Asks the client to close; it may refuse or prompt.
     Close(windowId) {
         return this._actOnWindow(windowId, 'Close',
             win => win.delete(_timestamp()));
