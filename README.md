@@ -231,10 +231,9 @@ is still 9. `compatible` is true for every extension version from
 `capabilities` is what the extension says it supports, by name. Ask for a name
 rather than comparing version numbers: an install from extensions.gnome.org
 carries that site's own upload number in `extension`, which no release of this
-project ever had. An empty list means the extension is too old to answer.
-`no-animation` means the extension has `MinimizeNoAnimation` and
-`UnminimizeNoAnimation`, and `activate-no-animation` means it has
-`ActivateNoAnimation`.
+project ever had. `no-animation` means the extension has `MinimizeNoAnimation`
+and `UnminimizeNoAnimation`, and `activate-no-animation` means it has
+`ActivateNoAnimation`. An empty list means the extension is too old to answer.
 When the call fails for another reason (a timeout, an extension disabled
 in between), `capabilities` is `null` and the command exits with that
 failure's code.
