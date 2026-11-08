@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Window rules: apply the rules in ~/.config/gnome-window-control/rules.json
-// to new windows. The format is in rules-format.js and the README.
+// Window rules: place each new window by the rules in
+// ~/.config/gnome-window-control/rules.json, and keep the overlay rules on the
+// open windows. The grammar is in rules-format.js.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -23,7 +24,9 @@ const LATE_IDENTITY_GRACE_MS = 2000;
 const RELOAD_DEBOUNCE_MS = 100;
 
 // Mutter 49 and later, where the 'configure' signal hands a handler the
-// window's initial configuration before the client has drawn anything.
+// window's initial configuration before the client has drawn anything. Mutter
+// 48 has the signal too but applies the handler's values another way, so the
+// get_maximize_flags() probe, new in 49, leaves it out.
 const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
     typeof Meta.Window.prototype.get_maximize_flags === 'function';
 

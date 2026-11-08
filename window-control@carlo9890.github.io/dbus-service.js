@@ -21,7 +21,8 @@ import {
 // "No such method" while introspection still lists the method.
 const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML);
 
-// Reported by GetCapabilities; a caller gates a newer feature on its name.
+// Reported by GetCapabilities, without 'keybindings' when the shortcuts could
+// not be registered; a caller gates a newer feature on its name.
 const CAPABILITIES = [
     'rules', 'rules-title-affix', 'rules-class-prefix', 'rules-overlay', 'keybindings',
     'no-animation', 'activate-no-animation',
@@ -41,7 +42,8 @@ const DBUS_ERROR_FAILED = 'org.freedesktop.DBus.Error.Failed';
 
 // A failure that must reach the caller as a specific D-Bus error name.
 // Gio.DBusError.new_for_dbus_error() returns a GLib.Error, which goes on the
-// wire as org.gtk.GDBus.UnmappedGError... with the real name lost.
+// wire as org.gtk.GDBus.UnmappedGError... with the real name only in the
+// message text, where no caller can switch on it.
 class NamedError extends Error {
     constructor(name, message) {
         super(message);
@@ -163,9 +165,10 @@ export class WindowControlService {
         return Number.isInteger(value) && value >= 0 && value < count;
     }
 
-    // Mutter silently ignores frame requests on a fullscreen, maximized or
-    // tiled window. A tiled window reports only MAXIMIZE_VERTICAL and GJS has
-    // no tiled predicate, so any maximize flag refuses.
+    // Mutter drops a frame request on a fullscreen, maximized or tiled window,
+    // and applies only the free axis on a window maximized on one axis. A
+    // tiled window reports only MAXIMIZE_VERTICAL and GJS has no tiled
+    // predicate, so any maximize flag refuses.
     _frameRefusal(win) {
         if (win.is_fullscreen())
             return 'the window is fullscreen; unfullscreen it first';
@@ -199,7 +202,8 @@ export class WindowControlService {
     //
     // The three geometry methods are async (GJS convention:
     // <Method>Async(params, invocation)) only so they can answer here rather
-    // than by throwing. They do no waiting.
+    // than by throwing. They do no waiting. GJS logs a throw from a
+    // synchronous handler as a warning, one per ordinary refusal.
     _geometryCall(invocation, label, body) {
         try {
             body();
@@ -236,7 +240,9 @@ export class WindowControlService {
 
     // True for a window mutter has not mapped and placed yet: its initial
     // placement would override a geometry request. is_hidden() is not enough,
-    // as minimized windows and windows on other workspaces are hidden too.
+    // as minimized windows and windows on other workspaces are hidden too. A
+    // window created since enable has a recorded first show; one that existed
+    // before is judged by its current state.
     _isUnshown(win) {
         if (this._hasBeenShown(win))
             return false;
@@ -756,8 +762,8 @@ export class WindowControlService {
         this._evaluateWindow(win);
     }
 
-    // 'window-type' is watched because on Wayland gtk_surface.set_modal can
-    // retype a NORMAL toplevel to MODAL_DIALOG after creation.
+    // 'window-type' is watched because a client can retype a window after
+    // creation, and a dialog that becomes NORMAL must wake a waiter.
     _trackWindow(win) {
         const evaluate = () => {
             this._evaluateWindow(win);
@@ -786,7 +792,7 @@ export class WindowControlService {
     }
 
     // A waiter must also wake on a window that already exists and later
-    // changes its title, class or type.
+    // changes its title, class or type, so windows of every type are tracked.
     _trackExistingWindows() {
         for (const actor of global.get_window_actors()) {
             const win = actor.get_meta_window();

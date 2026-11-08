@@ -79,10 +79,10 @@ export const DBUS_INTERFACE_XML = `
       ERRORS RAISED BY NAME
 
       Move, Resize, MoveResize, WaitForWindow and WaitForGeometry return no
-      success flag: they complete or raise one of the names below. Any other
-      unexpected throw answers with GJS's own org.gnome.gjs.JSError.<name>;
-      before GNOME 50, a wait method that throws before it starts waiting
-      sends no reply.
+      success flag: they complete or raise one of the names below. In any
+      other method, an unexpected Error answers with GJS's own
+      org.gnome.gjs.JSError.<name>; before GNOME 50, a wait method that throws
+      before it starts waiting sends no reply.
 
         org.gnome.Shell.Extensions.WindowControl.NotFound
             no window has that id (WaitForGeometry: or it closed mid-wait)

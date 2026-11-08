@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 // The rules.json grammar: the token vocabulary, the tile grid, the match
 // predicate, and the validation that turns a parsed document into rules.
-// It imports no gi:// module, so plain `gjs` can load it.
+// It imports nothing, so plain `gjs` can load it without the mutter typelib.
 
 // rules.json match key -> matchPredicate() kind.
 export const MATCH_KINDS = {
