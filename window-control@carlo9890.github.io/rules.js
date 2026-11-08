@@ -72,7 +72,7 @@ export class WindowRules {
             GLib.source_remove(id);
         this._sourceIds.clear();
         this._reloadId = 0;
-        this._loadCancellable?.cancel();
+        this._loadCancellable.cancel();
         this._loadCancellable = null;
         if (this._fileMonitor) {
             this._fileMonitor.disconnect(this._fileMonitorId);
@@ -246,7 +246,7 @@ export class WindowRules {
     }
 
     isOverlay(win) {
-        return this._overlays?.has(win) ?? false;
+        return this._overlays.has(win);
     }
 
     _winningIndex(win) {
