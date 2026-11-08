@@ -108,6 +108,8 @@ for (const group of VECTORS.geometry.tile) {
 
 check('tile: an unknown position resolves to nothing',
     tileRect('nowhere', { x: 0, y: 0, width: 1000, height: 1000 }) === null);
+check('tile: an inherited Object key resolves to nothing',
+    tileRect('toString', { x: 0, y: 0, width: 1000, height: 1000 }) === null);
 
 // The first vector group pins every cell, so a position added to the grid
 // without a vector is caught here rather than going untested.
