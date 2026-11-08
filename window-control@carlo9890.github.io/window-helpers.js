@@ -12,10 +12,10 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
 // longer take a Meta.MaximizeFlags argument, and get_maximized() was removed in
-// favor of get_maximize_flags()/is_maximized() (verified against mutter 49.0
-// window.h). The rest of the Meta.Window API used here is unchanged across
-// GNOME 45-50. Detect the pre-49 API via the removed
-// get_maximized() method so a single extension works on all supported shells.
+// favor of get_maximize_flags()/is_maximized(). The rest of the Meta.Window
+// API used here is unchanged across GNOME 45-50. Detect the pre-49 API via the
+// removed get_maximized() method so a single extension works on all supported
+// shells.
 export function maximizeFlags(win) {
     if (typeof win.get_maximized === 'function') {
         return win.get_maximized();                                  // GNOME <= 48
@@ -43,13 +43,9 @@ export function unmaximizeWindow(win) {
     }
 }
 
-// Skip the shell's animation for the minimize or unminimize the
-// caller requests next. Main.wm.skipNextEffect() holds until the actor's
-// next effect of any kind, so a caller arms it only for a request that
-// changes the window's visibility: one that leaves the window as hidden as
-// it was -- already in that state, or on another workspace -- runs no
-// effect, and the skip would swallow a later, unrelated animation instead.
-// The callers pass a window that mutter has shown, so it has an actor.
+// Skip the animation of the next minimize or unminimize. The skip holds until
+// the actor's next effect of any kind, so arm it only for a request that
+// changes the window's visibility.
 export function skipNextEffect(win) {
     Main.wm.skipNextEffect(win.get_compositor_private());
 }
@@ -105,7 +101,7 @@ export const UNMAXIMIZE_SETTLE_MS = 1000;
 // the restored size, which is why the callers wait at all. 'size-changed' is
 // emitted from inside mutter's own move-resize, so the frame is requested from
 // an idle callback rather than from the handler: a request made re-entrantly
-// is overwritten when the outer call continues (both measured on GNOME 46).
+// is overwritten when the outer call continues.
 export class UnmaximizeWait {
     constructor(win, settled) {
         this._win = win;

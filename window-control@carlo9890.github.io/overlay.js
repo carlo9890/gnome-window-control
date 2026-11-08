@@ -122,7 +122,6 @@ export class WindowOverlays {
             // shell's own menus and dialogs take the keyboard that way.
             if (!focus)
                 continue;
-            // Each turn to another window starts the grace period again.
             this._removeGrace(entry);
             entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FOCUS_LOSS_GRACE_MS, () => {
                 entry.graceId = 0;

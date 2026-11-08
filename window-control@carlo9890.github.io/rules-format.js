@@ -2,15 +2,7 @@
 // SPDX-License-Identifier: MIT
 // The rules.json grammar: the token vocabulary, the tile grid, the match
 // predicate, and the validation that turns a parsed document into rules.
-//
-// Normative definition: docs/specs/RULES-JSON.md. `wctl rules check` carries a
-// second implementation of the same grammar in cli/src/rules.rs; the two are
-// pinned to one another by tests/vectors/rules-spec.json.
-//
-// This module imports nothing. No gi://, so plain `gjs` loads it without the
-// mutter typelib and CI can run tests/check-rules-format.js on a bare runner.
-// Keep it that way: the window-touching half lives in rules.js, the Meta
-// maximize API in window-helpers.js.
+// It imports nothing, so plain `gjs` can load it without the mutter typelib.
 
 // rules.json match key -> matchPredicate() kind.
 export const MATCH_KINDS = {
@@ -22,7 +14,6 @@ export const MATCH_KINDS = {
     class_prefix: 'class_prefix',
 };
 
-// The match keys as the validation messages list them.
 const MATCH_KEY_NAMES = Object.keys(MATCH_KINDS).join(', ');
 
 // A tile position as (startCol, endCol, startRow, endRow) of the 4x2 grid.
@@ -156,8 +147,7 @@ export function resolvePlacePosition(token, keywords, workareaPos, workareaSize,
 
 // The four `place` tokens against a workarea, sizes first so the alignment
 // keywords can use them. Null when any token is invalid. A token is a string
-// or a number: String() renders the array ["left"] as "left", so any other
-// type is refused before the coercion.
+// or a number.
 export function resolvePlaceRect(tokens, workarea) {
     if (!tokens.every(token => typeof token === 'string' || typeof token === 'number'))
         return null;
@@ -176,9 +166,6 @@ export function resolvePlaceRect(tokens, workarea) {
 // A tile position in pixels. Cells floor, so a workarea width not divisible
 // by four leaves a remainder at the right edge. Null for an unknown position.
 export function tileRect(position, workarea) {
-    // hasOwn, not `TILE_CELLS[position]`: a plain object literal inherits from
-    // Object.prototype, so "toString" and "constructor" are truthy lookups that
-    // would reach the destructuring below as a function and throw.
     if (!Object.hasOwn(TILE_CELLS, position))
         return null;
     const [startCol, endCol, startRow, endRow] = TILE_CELLS[position];
@@ -192,7 +179,6 @@ export function tileRect(position, workarea) {
     };
 }
 
-// The frame moved to the middle of the workarea on the given axes.
 export function centerRect(axis, frame, workarea) {
     const horizontal = axis === 'horizontal' || axis === 'both';
     const vertical = axis === 'vertical' || axis === 'both';
@@ -236,9 +222,6 @@ export function compileRule(rule, index) {
         throw new Error(`${label}.match: must be an object`);
     const predicates = [];
     for (const [key, value] of Object.entries(rule.match)) {
-        // hasOwn for the same reason as TILE_CELLS in tileRect: MATCH_KINDS["constructor"]
-        // is a truthy inherited lookup, and the function it returns would reach
-        // matchPredicate as a kind and push a null predicate into the rule.
         if (!Object.hasOwn(MATCH_KINDS, key))
             throw new Error(`${label}.match.${key}: unknown key (use ${MATCH_KEY_NAMES})`);
         const kind = MATCH_KINDS[key];
@@ -270,7 +253,6 @@ export function compileRule(rule, index) {
         }
         geometry = { kind: 'place', tokens };
     } else if ('tile' in rule) {
-        // typeof first: hasOwn coerces its key, so ["left"] would pass as "left".
         if (typeof rule.tile !== 'string' || !Object.hasOwn(TILE_CELLS, rule.tile))
             throw new Error(`${label}.tile: must be one of ${Object.keys(TILE_CELLS).join(', ')}`);
         geometry = { kind: 'tile', position: rule.tile };
