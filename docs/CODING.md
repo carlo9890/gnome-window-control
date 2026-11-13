@@ -37,7 +37,7 @@ If it fails, the code has a syntax error and must not be committed.
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
   The two wait handlers have no try/catch either. The three geometry handlers
-  and `ApplyRules` run their body through `_geometryCall`, which answers with
+  and `ApplyRules` run their body through `_namedErrorCall`, which answers with
   the body's `GLib.Variant` (an empty reply for none), a `NamedError` by its
   name, and any other throw with `Failed`. Before GNOME 50, GJS sends no reply
   for a throw from an `...Async` handler.

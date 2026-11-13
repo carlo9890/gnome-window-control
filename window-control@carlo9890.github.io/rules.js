@@ -31,11 +31,11 @@ const RELOAD_DEBOUNCE_MS = 100;
 const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
     typeof Meta.Window.prototype.get_maximize_flags === 'function';
 
-// get_monitor_geometry() is in mutter's stage coordinates: logical pixels in
-// its logical layout mode, physical pixels in the physical one. X11 is
-// physical. The Wayland backend is logical from mutter 50 on, and before that
-// only with the scale-monitor-framebuffer experimental feature.
-const STAGE_ALWAYS_LOGICAL_ON_WAYLAND = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
+// get_monitor_geometry() is in mutter's stage coordinates: logical or
+// physical pixels. X11 is physical. Wayland is logical from mutter 50 on,
+// before that only with scale-monitor-framebuffer. Mutter 50 has no X11 and
+// no Meta.is_wayland_compositor().
+const STAGE_ALWAYS_LOGICAL = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
 
 export class WindowRules {
     constructor() {
@@ -58,7 +58,7 @@ export class WindowRules {
     }
 
     enable() {
-        if (!STAGE_ALWAYS_LOGICAL_ON_WAYLAND)
+        if (!STAGE_ALWAYS_LOGICAL)
             this._mutterSettings = new Gio.Settings({ schema_id: 'org.gnome.mutter' });
         this._overlays = new WindowOverlays();
         const dir = Gio.File.new_for_path(CONFIG_DIR);
@@ -210,7 +210,7 @@ export class WindowRules {
     // A tracked window is skipped: its own rule is still on the way, or its
     // unmaximize is. So is a window `isUnshown` reports, which mutter has not
     // shown yet: its initial placement would override the frame.
-    applyRules(only = null, isUnshown = looksUnmapped) {
+    applyRules(only, isUnshown) {
         let applied = 0;
         for (const win of only ? [only] : global.display.list_all_windows()) {
             if (this._tracked.has(win) || isUnshown(win))
@@ -316,9 +316,9 @@ export class WindowRules {
     _matchIndex(win, fallbackMonitor, headStart = null) {
         const resolvesAgainst = rule =>
             rule.monitor ?? (rule === headStart?.rule ? headStart.monitor : fallbackMonitor);
-        return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) &&
-            (rule.minWidth === null ||
-                fitsMonitor(rule.minWidth, this._monitorWidth(resolvesAgainst(rule)))));
+        const fits = rule => rule.minWidth === null ||
+            fitsMonitor(rule.minWidth, this._monitorWidth(resolvesAgainst(rule)));
+        return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) && fits(rule));
     }
 
     _monitorExists(monitor) {
@@ -335,10 +335,8 @@ export class WindowRules {
     }
 
     _stageIsLogical() {
-        if (!Meta.is_wayland_compositor())
-            return false;
-        return STAGE_ALWAYS_LOGICAL_ON_WAYLAND ||
-            this._mutterSettings.get_strv('experimental-features').includes('scale-monitor-framebuffer');
+        return STAGE_ALWAYS_LOGICAL || (Meta.is_wayland_compositor() &&
+            this._mutterSettings.get_strv('experimental-features').includes('scale-monitor-framebuffer'));
     }
 
     isOverlay(win) {
@@ -441,9 +439,9 @@ export class WindowRules {
         });
     }
 
-    // `again` is an apply to a window placed before (applyRules). It moves
-    // the window to no workspace that does not exist: mutter would append
-    // one at each apply.
+    // `again` is an apply to a window placed before (applyRules). With it, a
+    // rule workspace that does not exist is skipped: mutter would append one
+    // at each apply.
     _apply(win, rule, index, headStartMonitor, again = false) {
         const id = win.get_id();
         // A load between the match and this call has decided the open

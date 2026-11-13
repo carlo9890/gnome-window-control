@@ -357,6 +357,20 @@ export const sessionMode = {
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     const Main = await import(`file://${EXT}/stub-main.js`);
 
+    // Take Meta.is_wayland_compositor away, as mutter 50 has it, until
+    // restore(): a stub set after this is removed with it.
+    function hideIsWayland() {
+        const real = Object.getOwnPropertyDescriptor(Meta, 'is_wayland_compositor');
+        Meta.is_wayland_compositor = undefined;
+        return {
+            restore() {
+                delete Meta.is_wayland_compositor;
+                if (real)
+                    Object.defineProperty(Meta, 'is_wayland_compositor', real);
+            },
+        };
+    }
+
     // An exported service, on a fake export: nothing here may reach a bus.
     function startService() {
         const service = new WindowControlService({ version: 0 });
@@ -1383,25 +1397,22 @@ export const sessionMode = {
         check('min_width: a monitor that does not exist fits no min_width',
             JSON.stringify(undocked.moves) === RIGHT, JSON.stringify(undocked.moves));
 
-        // A 3840 px panel at scale 2 is 1920 logical pixels wide. In the
-        // physical layout mode (X11) its geometry is 3840 wide, and the scale
-        // is divided out; in the logical mode the geometry is logical already.
-        const realIsWayland = Meta.is_wayland_compositor;
+        // On mutter 50 the stage is always logical: the geometry of a 3840 px
+        // panel at scale 2 is taken as it is. Mutter 50 has no
+        // is_wayland_compositor(); an older typelib's is hidden, so a call
+        // of it fails here on every typelib.
+        const hidden = hideIsWayland();
         monitors[0] = { x: 0, y: 0, width: 3840, height: 2160, scale: 2 };
-        Meta.is_wayland_compositor = () => false;
-        const physical = createWindow({ id: 34, wmClass: 'term' });
-        physical.map();
-        await sleep(200);
-        check('min_width: the physical layout mode divides out the scale',
-            JSON.stringify(physical.moves) === LEFT, JSON.stringify(physical.moves));
-        Meta.is_wayland_compositor = () => true;
-        const logical = createWindow({ id: 35, wmClass: 'term' });
-        logical.map();
-        await sleep(200);
-        check('min_width: the logical layout mode takes the geometry as it is',
-            JSON.stringify(logical.moves) === RIGHT, JSON.stringify(logical.moves));
-        Meta.is_wayland_compositor = realIsWayland;
-        monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
+        try {
+            const logical = createWindow({ id: 35, wmClass: 'term' });
+            logical.map();
+            await sleep(200);
+            check('min_width: mutter 50 takes a scaled geometry as it is',
+                JSON.stringify(logical.moves) === RIGHT, JSON.stringify(logical.moves));
+        } finally {
+            hidden.restore();
+            monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
+        }
         rules.disable();
     }
 
@@ -1459,8 +1470,13 @@ export const sessionMode = {
     // org.gnome.mutter experimental-features; else the scale is divided out.
 
     {
+        windows.length = 0;
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term', min_width: 3000 }, tile: 'right' },
+            { match: { class: 'term' }, tile: 'left' },
+        ]));
         const realSettings = Gio.Settings;
-        const realIsWayland = Meta.is_wayland_compositor;
+        const hidden = hideIsWayland();
         let features = [];
         Gio.Settings = class {
             get_strv(key) { return key === 'experimental-features' ? features : []; }
@@ -1470,16 +1486,25 @@ export const sessionMode = {
         const rules = new WindowRules49();
         try {
             rules.enable();
+            await sleep(300);
             check('below 50: a Wayland stage without the feature is physical', rules._monitorWidth(0) === 1920,
                 `${rules._monitorWidth(0)}`);
+            const physical = createWindow({ id: 36, wmClass: 'term' });
+            physical.map();
+            await sleep(200);
+            check('below 50: a physical stage falls through to the next rule',
+                JSON.stringify(physical.moves) === '[[0,0,480,1080]]', JSON.stringify(physical.moves));
             features = ['scale-monitor-framebuffer'];
             check('below 50: scale-monitor-framebuffer makes the stage logical', rules._monitorWidth(0) === 3840,
+                `${rules._monitorWidth(0)}`);
+            Meta.is_wayland_compositor = () => false;
+            check('below 50: an X11 stage is physical, whatever the feature', rules._monitorWidth(0) === 1920,
                 `${rules._monitorWidth(0)}`);
             rules.disable();
             check('below 50: disable() drops the mutter settings', rules._mutterSettings === null);
         } finally {
             Gio.Settings = realSettings;
-            Meta.is_wayland_compositor = realIsWayland;
+            hidden.restore();
             monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
         }
     }
@@ -1554,7 +1579,7 @@ export const sessionMode = {
         check('ApplyRules skips a window mutter has not shown', unshown.moves.length === 0);
         check('ApplyRules releases an overlay no rule makes one', !rules.isOverlay(loose));
         check('ApplyRules skips a window waiting for its unmaximize',
-            rules._tracked.has(maximized) && rules.applyRules() === 4 && maximized.moves.length === 0,
+            rules._tracked.has(maximized) && rules.applyRules(null, win => service._isUnshown(win)) === 4 && maximized.moves.length === 0,
             JSON.stringify(maximized.moves));
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
         check('ApplyRules places a maximized window once the unmaximize landed',

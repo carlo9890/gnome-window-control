@@ -116,71 +116,16 @@ mutter typelib (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package
 `gir1.2-mutter-14`), which the extension job in `.github/workflows/build.yml`
 installs.
 
-It pins:
-
-- the `disable()` teardown that [CODING.md](CODING.md#javascript-the-extension) requires:
-  `unexport()` fails a pending `WaitForWindow` and `WaitForGeometry` with
-  `Disabled` and leaves no handler, subscription or timer,
-  `WindowRules.disable()` leaves no handler or grace timer, neither of the two
-  removes a source twice, and `WindowKeybindings.disable()` destroys a pending
-  `UnmaximizeWait`;
-- an `enable()` whose D-Bus export fails throws and leaves no handler on the
-  display;
-- a config directory that `WindowRules` cannot watch is logged at error level,
-  `rules.json` is read at `enable()` and not after a write, and `disable()`
-  then throws nothing and leaves no handler or source;
-- a keyboard shortcut that cannot be registered removes the ones registered
-  before it, and the extension serves none;
-- the lock screen removes the shortcuts and the unlock serves them again, an
-  `enable()` while locked serves none, the service stays exported throughout,
-  and `disable()` leaves no session-mode handler;
-- a load of `rules.json` that finds no file, and a reload that finds one, log
-  nothing at notice level;
-- both wait methods drop a call, with no reply, when its caller leaves the bus,
-  also when the caller left before the call was handled;
-- `WaitForWindow` for a window created during an earlier wait and mapped after
-  it, for one created minimized during an earlier wait and not yet mapped, and
-  for a dialog retyped to `NORMAL` after it was shown and hidden;
-- `ListDetailed`'s `has_been_shown` for a window created minimized while no
-  wait runs, before and after its map, and for one that predates the service,
-  hidden on its own or because its parent is minimized;
-- `GetWorkarea` answers `(-1, -1, -1, -1)` only for an index that is not a
-  monitor, and lets a lookup that throws through to GJS;
-- `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry` raise
-  `InvalidArgs`, with one reply, for a size or a wait time that is not
-  positive, and for a `timeout_ms` below `quiet_ms`;
-- a synchronous handler (`List`, `ListDetailed`, `Activate`, `ActivateBy*`)
-  lets an unexpected throw through to GJS instead of answering `false` or `[]`;
-- the rules grace period for a window that is not `NORMAL` when shown, and
-  that a match within it ends the grace timer;
-- `min_width`: a narrow monitor falls through to the next rule, a wide one
-  takes the rule, a rule's own `monitor` is the one tested, and a monitor that
-  does not exist fits no `min_width`; the scale is divided out in the
-  physical layout mode and not in the logical one, and below mutter 50 a
-  Wayland stage is logical only with `scale-monitor-framebuffer`; the
-  head-start rule is tested on its head-start monitor, and another rule that
-  wins once shown on the window's monitor;
-- `ApplyRules`: it places a shown window, a minimized one without a restore,
-  and a maximized one after its unmaximize; it skips a tracked window and one
-  mutter has not shown; it moves no window to a workspace that does not
-  exist; it releases an overlay no rule makes one; its reply
-  counts the matched windows, an id applies to that window only, and an id no
-  window has raises `NotFound`; it skips a window waiting for its unmaximize;
-  it waits for a reload that is due and for the read in flight at
-  `enable()` (through the extension's own wiring), applies the rules as
-  saved, and one pending at `disable()` gets `Disabled`;
-- overlay windows: a load takes the open windows and a new window takes the
-  rule once shown; the hide after the focus grace period and at the overview's
-  `shown`, not at `showing`; no hide for the overlay's own dialog, a focus that
-  comes back in time, no focused window, or an overlay on another workspace;
-  no `notify::skip-taskbar`; and the release by a load without the rule, by
-  `unmanaged` and by `disable()`, which leaves no handler, timer, `skip_taskbar`
-  override or "above" the overlay set; `ListDetailed`'s `is_overlay`; and that
-  a title change does not extend the rules grace period.
-
-Add a case here for extension logic a fake window can drive. Anything reachable
+Each section of the check opens with a comment that says what it pins. Add a
+case there for extension logic a fake window can drive. Anything reachable
 this way must be verified this way before a shell is even considered; see the
 hard rules in [RUNNING.md](RUNNING.md).
+
+Never replace a `Meta` function with a stub in a case that runs the current
+mutter's code path: the stub hides a call that throws on the real shell, and
+CI's older typelib hides a removed API too. Take such an API away for the case,
+as `hideIsWayland()` does. Stub one only in a case that runs an older mutter's
+path, as the below-50 `min_width` section does.
 
 ## Query and modification tests
 
