@@ -91,12 +91,27 @@ an integer from 1 to 2147483647; `0`, a fraction and a string are refused with
 | Property | Value |
 |---|---|
 | Tested monitor | the rule's own `monitor`; else, before the first frame, the monitor `_preplace` predicts; once shown, the monitor a head start resolved against, else the monitor the window is on |
-| Width compared | `get_monitor_geometry(i).width`, the width `ListMonitors` reports, in mutter's stage coordinates: logical pixels in mutter's logical layout mode, physical pixels in its physical mode (X11, and Wayland without `scale-monitor-framebuffer`); not the workarea, which loses the panels |
+| Width compared | the monitor's logical width; not the workarea, which loses the panels. See below |
 | Fits | width >= `min_width` (`fitsMonitor`, `fits_monitor`) |
 | Tested monitor does not exist | the rule does not match, and a later rule can |
 
 `min_width` names no window, so `match` still MUST name at least one of the
 six keys above.
+
+The logical width is `get_monitor_geometry(i).width`, the width `ListMonitors`
+reports, divided by `get_monitor_scale(i)` and rounded when mutter's stage is
+in physical pixels, and taken as it is when the stage is logical:
+
+| Session | Stage | Decided by |
+|---|---|---|
+| X11 | physical | `Meta.is_wayland_compositor()` false |
+| Wayland, GNOME 50 and later | logical | mutter's native backend is always logical |
+| Wayland, GNOME 45 to 49 | logical only when `org.gnome.mutter` `experimental-features` holds `scale-monitor-framebuffer` | mutter's own test of that setting |
+
+`wctl rules test` reads the same answer from the `layout-mode` property of
+`org.gnome.Mutter.DisplayConfig.GetCurrentState` (1 logical, 2 physical,
+absent physical), and asks only when a monitor's scale is not 1
+(`rules::logical_width`, `Bus::stage_is_logical`).
 
 The tested monitor depends on the rule, so it is decided for each rule in
 turn: a rule with `"monitor": 1` tests monitor 1 wherever the window shows.
@@ -311,6 +326,12 @@ to `NORMAL` within it gets the rule, one after it does not.
 `ApplyRules` (`wctl rules apply`) runs `applyRules` in `rules.js`: the rules
 loaded now, applied to every window `list_all_windows()` returns, or to the one
 window named.
+
+A reload that is due (the `RELOAD_DEBOUNCE_MS` timer is armed) or a read that is
+in flight is waited for first (`whenLoaded`), so a file saved just before the
+call is applied as saved. A call still waiting at `disable()` raises
+`Disabled`. A save whose file event has not reached the shell when the call
+arrives is not waited for.
 
 For each window, in this order:
 

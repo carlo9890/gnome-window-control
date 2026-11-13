@@ -155,13 +155,15 @@ It pins:
   that a match within it ends the grace timer;
 - `min_width`: a narrow monitor falls through to the next rule, a wide one
   takes the rule, a rule's own `monitor` is the one tested, and a monitor that
-  does not exist fits no `min_width`;
+  does not exist fits no `min_width`; the scale is divided out in the
+  physical layout mode and not in the logical one;
 - `ApplyRules`: it places a shown window, a minimized one without a restore,
   and a maximized one after its unmaximize; it skips a tracked window and one
   mutter has not shown; it moves no window to a workspace that does not
   exist; it releases an overlay no rule makes one; its reply
   counts the matched windows, an id applies to that window only, and an id no
-  window has raises `NotFound`;
+  window has raises `NotFound`; it waits for a reload that is due and applies
+  the rules as saved, and one pending at `disable()` gets `Disabled`;
 - overlay windows: a load takes the open windows and a new window takes the
   rule once shown; the hide after the focus grace period and at the overview's
   `shown`, not at `showing`; no hide for the overlay's own dialog, a focus that

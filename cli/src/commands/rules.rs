@@ -972,15 +972,24 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 }
 
 /// (index, logical width) of every monitor, what `min_width` is compared
-/// against.
+/// against. Mutter's layout mode is asked only when a monitor is scaled.
 fn monitor_widths(ctx: &mut Ctx) -> Result<Vec<(i64, i64)>> {
-    Ok(super::monitor_list(ctx)?
+    let monitors = super::monitor_list(ctx)?;
+    let scale = |monitor: &Value| monitor["scale"].as_f64().unwrap_or(1.0);
+    let stage_is_logical = if monitors.iter().any(|monitor| scale(monitor) != 1.0) {
+        ctx.bus.stage_is_logical()?
+    } else {
+        false
+    };
+    Ok(monitors
         .iter()
         .map(|monitor| {
-            (
-                model::number(monitor, "index"),
+            let width = rules::logical_width(
                 model::number(monitor, "width"),
-            )
+                scale(monitor),
+                stage_is_logical,
+            );
+            (model::number(monitor, "index"), width)
         })
         .collect())
 }

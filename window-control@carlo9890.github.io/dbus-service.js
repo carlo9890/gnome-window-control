@@ -102,6 +102,7 @@ export class WindowControlService {
         // overlay, and to have it apply the rules again (ApplyRules).
         this.isOverlay = () => false;
         this.applyRules = () => 0;
+        this.whenRulesLoaded = callback => callback(true);
         // WaitForWindow state. A window is tracked only while at least one
         // waiter is pending.
         this._waiters = [];
@@ -204,8 +205,8 @@ export class WindowControlService {
     // named error otherwise.
     //
     // The three geometry methods and ApplyRules are async (GJS convention:
-    // <Method>Async(params, invocation)) only so they can answer here rather
-    // than by throwing. They do no waiting. GJS logs a throw from a
+    // <Method>Async(params, invocation)) so they can answer here rather than
+    // by throwing. Only ApplyRules waits, for a rules.json read in flight. GJS logs a throw from a
     // synchronous handler as a warning, one per ordinary refusal.
     _geometryCall(invocation, label, body) {
         try {
@@ -484,15 +485,21 @@ export class WindowControlService {
     // which must exist.
     ApplyRulesAsync([windowId], invocation) {
         console.debug(`[Window Control] ApplyRules(${windowId}) called`);
-        this._geometryCall(invocation, 'ApplyRules', () => {
-            let only = null;
-            if (windowId !== 0) {
-                only = this._findWindowById(windowId);
-                if (!only)
-                    throw new NamedError(DBUS_ERROR_NOT_FOUND, `Window not found: ${windowId}`);
+        this.whenRulesLoaded(loaded => {
+            if (!loaded) {
+                invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'The extension was disabled');
+                return;
             }
-            const applied = this.applyRules(only, win => this._isUnshown(win));
-            return new GLib.Variant('(u)', [applied]);
+            this._geometryCall(invocation, 'ApplyRules', () => {
+                let only = null;
+                if (windowId !== 0) {
+                    only = this._findWindowById(windowId);
+                    if (!only)
+                        throw new NamedError(DBUS_ERROR_NOT_FOUND, `Window not found: ${windowId}`);
+                }
+                const applied = this.applyRules(only, win => this._isUnshown(win));
+                return new GLib.Variant('(u)', [applied]);
+            });
         });
     }
 

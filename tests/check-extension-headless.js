@@ -92,7 +92,8 @@ try {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
-            .replace("'gi://Shell'", "'./stub-shell.js'");
+            .replace("'gi://Shell'", "'./stub-shell.js'")
+            .replace("'resource:///org/gnome/shell/misc/config.js'", "'./stub-config.js'");
         write(`${EXT}/${name}`, text);
     }
     write(`${EXT}/stub-main.js`, `const handlers = new Map();
@@ -139,6 +140,7 @@ export const sessionMode = {
 };
 `);
     write(`${EXT}/stub-extension.js`, 'export class Extension {}\n');
+    write(`${EXT}/stub-config.js`, "export const PACKAGE_VERSION = '50.0';\n");
     write(`${EXT}/stub-shell.js`, 'export default { ActionMode: { NORMAL: 1 } };\n');
 
     // -- fakes -----------------------------------------------------------------
@@ -255,11 +257,12 @@ export const sessionMode = {
 
     const windows = [];
     // Logical monitor rectangles; a check that adds one removes it again.
-    const monitors = [{ x: 0, y: 0, width: 1920, height: 1080 }];
+    const monitors = [{ x: 0, y: 0, width: 1920, height: 1080, scale: 1 }];
     const display = new Emitter();
     Object.assign(display, {
         get_n_monitors: () => monitors.length,
         get_monitor_geometry: index => monitors[index],
+        get_monitor_scale: index => monitors[index].scale,
         get_current_monitor: () => 0,
         list_all_windows: () => [...windows],
         focus_window: null,
@@ -1325,7 +1328,7 @@ export const sessionMode = {
 
     {
         windows.length = 0;
-        monitors.push({ x: 1920, y: 0, width: 3840, height: 2160 });
+        monitors.push({ x: 1920, y: 0, width: 3840, height: 2160, scale: 1 });
         write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
             { match: { class: 'term', min_width: 3000 }, tile: 'right' },
             { match: { class: 'term' }, tile: 'left' },
@@ -1359,6 +1362,26 @@ export const sessionMode = {
         await sleep(200);
         check('min_width: a monitor that does not exist fits no min_width',
             JSON.stringify(undocked.moves) === RIGHT, JSON.stringify(undocked.moves));
+
+        // A 3840 px panel at scale 2 is 1920 logical pixels wide. In the
+        // physical layout mode (X11) its geometry is 3840 wide, and the scale
+        // is divided out; in the logical mode the geometry is logical already.
+        const realIsWayland = Meta.is_wayland_compositor;
+        monitors[0] = { x: 0, y: 0, width: 3840, height: 2160, scale: 2 };
+        Meta.is_wayland_compositor = () => false;
+        const physical = createWindow({ id: 34, wmClass: 'term' });
+        physical.map();
+        await sleep(200);
+        check('min_width: the physical layout mode divides out the scale',
+            JSON.stringify(physical.moves) === LEFT, JSON.stringify(physical.moves));
+        Meta.is_wayland_compositor = () => true;
+        const logical = createWindow({ id: 35, wmClass: 'term' });
+        logical.map();
+        await sleep(200);
+        check('min_width: the logical layout mode takes the geometry as it is',
+            JSON.stringify(logical.moves) === RIGHT, JSON.stringify(logical.moves));
+        Meta.is_wayland_compositor = realIsWayland;
+        monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
         rules.disable();
     }
 
@@ -1382,6 +1405,7 @@ export const sessionMode = {
         await sleep(300);
         const service = startService();
         service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
+        service.whenRulesLoaded = callback => rules.whenLoaded(callback);
         const LEFT = '[[0,0,480,1080]]';
         const RIGHT = '[[1440,0,480,1080]]';
 
@@ -1451,8 +1475,30 @@ export const sessionMode = {
         check('ApplyRules(id) raises NotFound for an id no window has', missing.replies === 1 &&
             missing.reply.error === 'org.gnome.Shell.Extensions.WindowControl.NotFound', showReply(missing));
 
-        service.unexport();
+        // A file saved just before the call is applied as saved: the call
+        // waits for the reload, and one pending at disable() gets Disabled.
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term' }, tile: 'right' },
+        ]));
+        for (let waited = 0; waited < 1000 && !rules._reloadId; waited += 5)
+            await sleep(5);   // the file event, not yet the debounced reload
+        placed.moves.length = 0;
+        const afterSave = invocation();
+        service.ApplyRulesAsync([40], afterSave);
+        check('ApplyRules waits for a reload that is due', afterSave.replies === 0, showReply(afterSave));
+        await sleep(400);
+        check('ApplyRules applies the rules as saved', showReply(afterSave) === '{"value":[1]}' &&
+            JSON.stringify(placed.moves) === RIGHT, `${showReply(afterSave)} ${JSON.stringify(placed.moves)}`);
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, '[]');
+        for (let waited = 0; waited < 1000 && !rules._reloadId; waited += 5)
+            await sleep(5);
+        const pending = invocation();
+        service.ApplyRulesAsync([0], pending);
+
         rules.disable();
+        check('an ApplyRules pending at disable() gets Disabled', pending.replies === 1 &&
+            pending.reply.error === DBUS_ERROR_DISABLED, showReply(pending));
+        service.unexport();
         check('ApplyRules leaves no handler behind after disable()',
             display.handlerCount() === 0 && maximized.handlerCount() === 0 && rules._sourceIds.size === 0,
             `display ${display.handlerCount()}, window ${maximized.handlerCount()}`);

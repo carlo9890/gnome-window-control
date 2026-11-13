@@ -7,6 +7,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
 import { UnmaximizeWait, looksUnmapped, maximizeFlags, workareaOf } from './window-helpers.js';
@@ -30,6 +31,12 @@ const RELOAD_DEBOUNCE_MS = 100;
 const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
     typeof Meta.Window.prototype.get_maximize_flags === 'function';
 
+// get_monitor_geometry() is in mutter's stage coordinates: logical pixels in
+// its logical layout mode, physical pixels in the physical one. X11 is
+// physical. The Wayland backend is logical from mutter 50 on, and before that
+// only with the scale-monitor-framebuffer experimental feature.
+const STAGE_ALWAYS_LOGICAL_ON_WAYLAND = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
+
 export class WindowRules {
     constructor() {
         this._rules = [];
@@ -39,6 +46,11 @@ export class WindowRules {
         this._fileMonitorId = 0;
         this._reloadId = 0;
         this._loadCancellable = null;
+        // A read in flight, and what waits for it (whenLoaded).
+        this._loading = false;
+        this._afterLoad = [];
+        // org.gnome.mutter, read for the layout mode below mutter 50.
+        this._mutterSettings = null;
         this._overlays = null;
         // The pending reload debounce, and the grace and apply sources of
         // every tracked window; disable() removes them.
@@ -46,6 +58,8 @@ export class WindowRules {
     }
 
     enable() {
+        if (!STAGE_ALWAYS_LOGICAL_ON_WAYLAND)
+            this._mutterSettings = new Gio.Settings({ schema_id: 'org.gnome.mutter' });
         this._overlays = new WindowOverlays();
         const dir = Gio.File.new_for_path(CONFIG_DIR);
         try {
@@ -77,6 +91,10 @@ export class WindowRules {
         this._reloadId = 0;
         this._loadCancellable.cancel();
         this._loadCancellable = null;
+        this._loading = false;
+        for (const callback of this._afterLoad.splice(0))
+            callback(false);
+        this._mutterSettings = null;
         if (this._fileMonitor) {
             this._fileMonitor.disconnect(this._fileMonitorId);
             this._fileMonitor.cancel();
@@ -104,6 +122,7 @@ export class WindowRules {
     // nothing.
     _load() {
         this._loadCancellable?.cancel();
+        this._loading = true;
         const cancellable = new Gio.Cancellable();
         this._loadCancellable = cancellable;
         const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
@@ -124,10 +143,30 @@ export class WindowRules {
                     console.debug(`[Window Control] no ${RULES_FILE}; window rules off`);
                 else
                     console.error(`[Window Control] ${RULES_FILE}: cannot read: ${e.message}; window rules off`);
+                this._finishLoad();
                 return;
             }
             this._compile(text);
+            this._finishLoad();
         });
+    }
+
+    // Run `callback(true)` once no reload is due and no read is in flight, at
+    // once when none is; `callback(false)` at disable() instead. A file saved
+    // just before ApplyRules is then applied as saved, not as before.
+    whenLoaded(callback) {
+        if (this._reloadId || this._loading)
+            this._afterLoad.push(callback);
+        else
+            callback(true);
+    }
+
+    _finishLoad() {
+        this._loading = false;
+        if (this._reloadId)
+            return;
+        for (const callback of this._afterLoad.splice(0))
+            callback(true);
     }
 
     _compile(text) {
@@ -282,10 +321,20 @@ export class WindowRules {
         return monitor >= 0 && monitor < global.display.get_n_monitors();
     }
 
-    // The width of a monitor in mutter's stage coordinates, or null when
-    // there is no such monitor.
+    // The logical width of a monitor, or null when there is no such monitor.
     _monitorWidth(monitor) {
-        return this._monitorExists(monitor) ? global.display.get_monitor_geometry(monitor).width : null;
+        if (!this._monitorExists(monitor))
+            return null;
+        const { width } = global.display.get_monitor_geometry(monitor);
+        const scale = global.display.get_monitor_scale(monitor);
+        return scale === 1 || this._stageIsLogical() ? width : Math.round(width / scale);
+    }
+
+    _stageIsLogical() {
+        if (!Meta.is_wayland_compositor())
+            return false;
+        return STAGE_ALWAYS_LOGICAL_ON_WAYLAND ||
+            this._mutterSettings.get_strv('experimental-features').includes('scale-monitor-framebuffer');
     }
 
     isOverlay(win) {

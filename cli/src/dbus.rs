@@ -8,11 +8,12 @@
 //! gdbus.
 
 use std::cell::OnceCell;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use zbus::blocking::connection::Builder;
 use zbus::blocking::{Connection, Proxy};
-use zbus::zvariant::DynamicType;
+use zbus::zvariant::{DynamicType, OwnedValue};
 
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_NO_EXTENSION, EXIT_REFUSED, EXIT_TIMEOUT};
 
@@ -374,6 +375,36 @@ impl Bus {
             Err(err) if is_unknown_method(&err) => serves_object(&conn).then(Vec::new),
             Err(_) => None,
         }
+    }
+
+    /// Is mutter's stage, the coordinates `ListMonitors` reports, in logical
+    /// pixels? `GetCurrentState` of org.gnome.Mutter.DisplayConfig carries
+    /// the answer as its `layout-mode` property: 1 logical, 2 physical. A
+    /// state without it is physical.
+    pub fn stage_is_logical(&self) -> Result<bool> {
+        type Properties = HashMap<String, OwnedValue>;
+        type Identity = (String, String, String, String);
+        type Mode = (String, i32, i32, f64, f64, Vec<f64>, Properties);
+        type Monitor = (Identity, Vec<Mode>, Properties);
+        type Logical = (i32, i32, f64, u32, bool, Vec<Identity>, Properties);
+        let reply = self
+            .conn()?
+            .call_method(
+                Some("org.gnome.Mutter.DisplayConfig"),
+                "/org/gnome/Mutter/DisplayConfig",
+                Some("org.gnome.Mutter.DisplayConfig"),
+                "GetCurrentState",
+                &(),
+            )
+            .map_err(|err| Fail::error(format!("Cannot read mutter's layout mode: {err}")))?;
+        let (_, _, _, properties): (u32, Vec<Monitor>, Vec<Logical>, Properties) = reply
+            .body()
+            .deserialize()
+            .map_err(|err| Fail::error(format!("Cannot read mutter's layout mode: {err}")))?;
+        Ok(properties
+            .get("layout-mode")
+            .and_then(|mode| u32::try_from(mode).ok())
+            == Some(1))
     }
 
     pub fn get_focused(&self) -> Result<(u64, String, String)> {

@@ -70,6 +70,18 @@ fn all_match_key_names() -> String {
     format!("{}, {MIN_WIDTH_KEY}", match_key_names())
 }
 
+/// The logical width of a monitor from its width in mutter's stage
+/// coordinates: the stage is logical already in mutter's logical layout mode,
+/// and physical, so scaled by `scale`, in the physical one. Mirrors
+/// `_monitorWidth` in rules.js.
+pub fn logical_width(stage_width: i64, scale: f64, stage_is_logical: bool) -> i64 {
+    if scale == 1.0 || stage_is_logical {
+        stage_width
+    } else {
+        (stage_width as f64 / scale).round() as i64
+    }
+}
+
 /// Does a monitor this wide meet a rule's `min_width`? A rule without one fits
 /// every monitor. A width of None is a monitor that does not exist, which a
 /// rule with `min_width` never fits. Mirrors fitsMonitor in rules-format.js.
@@ -539,6 +551,14 @@ mod tests {
                 "min_width: {name}"
             );
         }
+    }
+
+    #[test]
+    fn logical_width_divides_out_the_scale_of_a_physical_stage_only() {
+        assert_eq!(logical_width(3840, 2.0, false), 1920);
+        assert_eq!(logical_width(3840, 2.0, true), 3840);
+        assert_eq!(logical_width(1920, 1.0, false), 1920);
+        assert_eq!(logical_width(2880, 1.5, false), 1920);
     }
 
     #[test]

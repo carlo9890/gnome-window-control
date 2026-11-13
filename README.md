@@ -320,7 +320,7 @@ is ignored until you fix it, so one typo never places a window half-right.
 ### Rules per monitor size
 
 `"min_width": <pixels>` in `match` makes a rule match only when the monitor it
-places the window on is at least that many pixels wide. Put it before a
+places the window on is at least that many logical pixels wide. Put it before a
 rule without it, and the second rule is the fallback on a smaller monitor:
 
 ```json
@@ -332,9 +332,10 @@ rule without it, and the second rule is the fallback on a smaller monitor:
 
 - The monitor tested is the rule's own `monitor`, else the monitor the window
   opens on.
-- The width is the one `wctl monitors` reports. With fractional scaling on
-  Wayland it is the logical width (a 3840 px panel at 200% is 1920 wide); on
-  X11, and on Wayland without fractional scaling, it is the physical width.
+- Logical width is the width after scaling: a 3840 px panel at 200% is 1920
+  wide, in a Wayland or an X11 session. `wctl monitors` shows the logical
+  width on Wayland with GNOME 50 or fractional scaling, and the physical width
+  otherwise.
 - When the rule's `monitor` does not exist, a rule with `min_width` does not
   match, so the next rule can.
 - `wctl rules add ... --min-width 3000` writes the key.
@@ -509,7 +510,8 @@ It prints how many windows a rule matched. It reads the rules file first and
 stops on a file the extension would refuse, as `rules check` does. It exits 5
 when the loaded extension does not report `rules-apply`, or refuses a key the
 file uses. It reads the rules the extension has
-loaded, so it takes no `--file`.
+loaded, so it takes no `--file`. A change you saved just before, with an
+editor or `wctl rules add`, is read first and then applied.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
