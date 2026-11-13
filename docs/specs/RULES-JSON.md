@@ -373,19 +373,21 @@ A window whose winning rule has `"overlay": true` is an overlay. The rule's
 other keys apply as for any rule; `overlay` adds the behaviour below.
 
 **Which windows are overlays.** Unlike the rest of a rule, which applies once
-to a new window, membership is decided:
+to a new window and again at `ApplyRules`, membership is decided:
 
 1. when a rule is applied to a new window (`_apply`), before its other keys;
 2. at every load of the file, for every open `NORMAL` window
    (`_syncOverlays`): a window whose winning rule has `overlay` becomes an
    overlay, every other window stops being one. This is what keeps an overlay
-   one after the extension is enabled again.
+   one after the extension is enabled again;
+3. at `ApplyRules`, for each window it reaches
+   ([Applying the rules again](#applying-the-rules-again)), as at a load.
 
 A load matches each open window by its class and title at that moment. A
 title change between loads does not change membership, but the next load can:
 match an overlay by class to keep it stable. A window stops being
-an overlay when it is unmanaged, when a load no longer makes it one, and at
-`disable()`.
+an overlay when it is unmanaged, when a load or `ApplyRules` no longer makes
+it one, and at `disable()`.
 
 **While a window is an overlay** (`WindowOverlays.add`):
 
@@ -500,5 +502,7 @@ report the `rules` capability from `GetCapabilities`; that name, not the
 version number, is how a caller learns the file is read. An extension that
 knows `title_prefix` and `title_suffix` MUST also report `rules-title-affix`:
 one without it refuses a file that carries either key. An extension that knows
-`class_prefix` MUST report `rules-class-prefix`, and one that knows `overlay`
-MUST report `rules-overlay`, for the same reason.
+`class_prefix` MUST report `rules-class-prefix`, one that knows `overlay`
+MUST report `rules-overlay`, and one that knows `min_width` MUST report
+`rules-min-width`, for the same reason. An extension that serves `ApplyRules`
+MUST report `rules-apply`.
