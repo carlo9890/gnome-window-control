@@ -54,8 +54,9 @@ README.md                  user docs; the D-Bus method table
   service). Path `/org/gnome/Shell/Extensions/WindowControl`, interface
   `org.gnome.Shell.Extensions.WindowControl`. Who can call it is in
   README.md's "Security model".
-- **The D-Bus surface is fixed in scope**: it offers no layout, and what it
-  must not grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
+- **The D-Bus surface is fixed in scope**: it offers no layout, except
+  `ApplyRules`, which applies the user's rules.json again; what it must not
+  grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
 - `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
   lives in `dbus-interface.js` and is imported into `dbus-service.js`.
