@@ -83,7 +83,8 @@ with only the `gjs` package.
 so `wctl rules check` and the extension cannot disagree about whether a file is
 valid, about the message text or about a rectangle. The GJS check reads every
 group; in `cli/src/rules.rs`, `rules_spec_vectors` reads `validation`,
-`geometry_vectors` reads `geometry`, and `match_vectors` reads `match.cases`.
+`geometry_vectors` reads `geometry`, `match_vectors` reads `match.cases`, and
+`min_width_vectors` reads `match.min_width`.
 Two parts are read by the GJS check only, because `rules.json` has no `pid` key
 and the CLI builds no predicate from a bare kind: the `pid` cases and
 `match.no_predicate`. A new group gets a reader on each side in the same commit:
@@ -152,6 +153,9 @@ It pins:
   lets an unexpected throw through to GJS instead of answering `false` or `[]`;
 - the rules grace period for a window that is not `NORMAL` when shown, and
   that a match within it ends the grace timer;
+- `min_width`: a narrow monitor falls through to the next rule, a wide one
+  takes the rule, a rule's own `monitor` is the one tested, and a monitor that
+  does not exist fits no `min_width`;
 - overlay windows: a load takes the open windows and a new window takes the
   rule once shown; the hide after the focus grace period and at the overview's
   `shown`, not at `showing`; no hide for the overlay's own dialog, a focus that

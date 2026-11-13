@@ -183,6 +183,7 @@ export const sessionMode = {
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
                 above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
+                monitor: 0,
             });
         }
 
@@ -216,7 +217,7 @@ export const sessionMode = {
         get_client_type() { return Meta.WindowClientType.WAYLAND; }
         is_fullscreen() { return false; }
         unmaximize() { this.maximizeFlags = 0; }
-        get_monitor() { return 0; }
+        get_monitor() { return this.monitor; }
         get_workspace() { return workspace; }
         get_transient_for() { return this.transientFor; }
 
@@ -253,9 +254,12 @@ export const sessionMode = {
     };
 
     const windows = [];
+    // Logical monitor rectangles; a check that adds one removes it again.
+    const monitors = [{ x: 0, y: 0, width: 1920, height: 1080 }];
     const display = new Emitter();
     Object.assign(display, {
-        get_n_monitors: () => 1,
+        get_n_monitors: () => monitors.length,
+        get_monitor_geometry: index => monitors[index],
         get_current_monitor: () => 0,
         list_all_windows: () => [...windows],
         focus_window: null,
@@ -1309,6 +1313,53 @@ export const sessionMode = {
             unknownSourceRemovals(linesBeforeDisable) === 0);
         check('overlay lines log nothing at notice level',
             noticesSince(linesBeforeReload).length === 0, JSON.stringify(noticesSince(linesBeforeReload)));
+    }
+
+    // -- WindowRules: min_width -------------------------------------------------
+    //
+    // A rule with min_width matches only when the monitor it resolves against,
+    // its own `monitor` or else the window's, is at least that wide; a monitor
+    // that does not exist fits no min_width. The fake workarea is 1920x1080 on
+    // every monitor, so tile left is [0,0,480,1080] and tile right
+    // [1440,0,480,1080].
+
+    {
+        windows.length = 0;
+        monitors.push({ x: 1920, y: 0, width: 3840, height: 2160 });
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term', min_width: 3000 }, tile: 'right' },
+            { match: { class: 'term' }, tile: 'left' },
+            { match: { class: 'docked', min_width: 3000 }, monitor: 1, tile: 'left' },
+            { match: { class: 'docked' }, tile: 'right' },
+        ]));
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        const LEFT = '[[0,0,480,1080]]';
+        const RIGHT = '[[1440,0,480,1080]]';
+
+        const narrow = createWindow({ id: 30, wmClass: 'term' });
+        narrow.map();
+        const wide = createWindow({ id: 31, wmClass: 'term' });
+        wide.monitor = 1;
+        wide.map();
+        const docked = createWindow({ id: 32, wmClass: 'docked' });
+        docked.map();
+        await sleep(200);
+        check('min_width: a narrow monitor falls through to the next rule',
+            JSON.stringify(narrow.moves) === LEFT, JSON.stringify(narrow.moves));
+        check('min_width: a wide monitor takes the rule', JSON.stringify(wide.moves) === RIGHT,
+            JSON.stringify(wide.moves));
+        check("min_width: the rule's own monitor is the one tested",
+            JSON.stringify(docked.moves) === LEFT, JSON.stringify(docked.moves));
+
+        monitors.pop();
+        const undocked = createWindow({ id: 33, wmClass: 'docked' });
+        undocked.map();
+        await sleep(200);
+        check('min_width: a monitor that does not exist fits no min_width',
+            JSON.stringify(undocked.moves) === RIGHT, JSON.stringify(undocked.moves));
+        rules.disable();
     }
 } finally {
     GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);

@@ -8,7 +8,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import { WindowOverlays } from './overlay.js';
-import { centerRect, compileRules, resolvePlaceRect, tileRect } from './rules-format.js';
+import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
 import { UnmaximizeWait, looksUnmapped, maximizeFlags, workareaOf } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
@@ -244,8 +244,19 @@ export class WindowRules {
             GLib.source_remove(id);
     }
 
-    _matchIndex(win) {
-        return this._rules.findIndex(rule => rule.predicates.every(p => p(win)));
+    // The first rule whose predicates hold for the window and whose min_width
+    // the monitor it resolves against meets: its own `monitor`, else
+    // `fallbackMonitor`, the one the window is on or will be shown on.
+    _matchIndex(win, fallbackMonitor) {
+        return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) &&
+            fitsMonitor(rule.minWidth, this._monitorWidth(rule.monitor ?? fallbackMonitor)));
+    }
+
+    // The logical width of a monitor, or null when there is no such monitor.
+    _monitorWidth(monitor) {
+        if (monitor < 0 || monitor >= global.display.get_n_monitors())
+            return null;
+        return global.display.get_monitor_geometry(monitor).width;
     }
 
     isOverlay(win) {
@@ -253,7 +264,8 @@ export class WindowRules {
     }
 
     _winningIndex(win) {
-        return win.get_window_type() === Meta.WindowType.NORMAL ? this._matchIndex(win) : -1;
+        return win.get_window_type() === Meta.WindowType.NORMAL
+            ? this._matchIndex(win, win.get_monitor()) : -1;
     }
 
     // Put the rule's frame into the window's initial configuration: mutter
@@ -273,18 +285,19 @@ export class WindowRules {
             win.get_window_type() !== Meta.WindowType.NORMAL ||
             win.is_fullscreen() || maximizeFlags(win) !== 0)
             return;
-        const index = this._matchIndex(win);
+        // Without a monitor in the rule, the one mutter's own placement
+        // would pick: a window with a parent goes over that parent, any
+        // other window under the pointer. The window has no position to
+        // derive one from yet.
+        const predicted = win.get_transient_for()?.get_monitor() ??
+            global.display.get_current_monitor();
+        const index = this._matchIndex(win, predicted);
         if (index < 0)
             return;
         const rule = this._rules[index];
         if (!rule.geometry || rule.geometry.kind === 'center')
             return;
-        // Without a monitor in the rule, the one mutter's own placement
-        // would pick: a window with a parent goes over that parent, any
-        // other window under the pointer. The window has no position to
-        // derive one from yet.
-        const monitor = rule.monitor ?? win.get_transient_for()?.get_monitor() ??
-            global.display.get_current_monitor();
+        const monitor = rule.monitor ?? predicted;
         if (monitor < 0 || monitor >= global.display.get_n_monitors())
             return;
         const target = this._resolve(rule.geometry, win, workareaOf(win, monitor));

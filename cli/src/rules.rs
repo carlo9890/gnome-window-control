@@ -8,8 +8,9 @@
 //! `wctl` cannot load GJS, and the whole point of `wctl rules check` is to give
 //! the same verdict without a running shell. The two are kept honest by
 //! `tests/vectors/rules-spec.json`, which both read: the `rules_spec_vectors`,
-//! `geometry_vectors` and `match_vectors` tests below assert its groups, and
-//! `tests/check-rules-format.js` asserts the same ones against the extension.
+//! `geometry_vectors`, `match_vectors` and `min_width_vectors` tests below
+//! assert its groups, and `tests/check-rules-format.js` asserts the same ones
+//! against the extension.
 //!
 //! So the error strings here are not this file's to choose. They are the
 //! extension's messages, reproduced exactly, and `docs/specs/RULES-JSON.md` is
@@ -54,9 +55,30 @@ pub const MATCH_KEYS: [(&str, &str); 6] = [
     ("class_prefix", "class_prefix"),
 ];
 
-/// The `match` keys as the messages list them.
+/// The `match` key that is a condition on the monitor rather than a window
+/// predicate.
+pub const MIN_WIDTH_KEY: &str = "min_width";
+
+/// The window predicate keys, as the "must name at least one of" message
+/// lists them.
 fn match_key_names() -> String {
     MATCH_KEYS.map(|(key, _)| key).join(", ")
+}
+
+/// Every `match` key, as the "unknown key" message lists them.
+fn all_match_key_names() -> String {
+    format!("{}, {MIN_WIDTH_KEY}", match_key_names())
+}
+
+/// Does a monitor this wide meet a rule's `min_width`? A rule without one fits
+/// every monitor. A width of None is a monitor that does not exist, which a
+/// rule with `min_width` never fits. Mirrors fitsMonitor in rules-format.js.
+pub fn fits_monitor(min_width: Option<i64>, monitor_width: Option<i64>) -> bool {
+    match (min_width, monitor_width) {
+        (None, _) => true,
+        (Some(min_width), Some(width)) => width >= min_width,
+        (Some(_), None) => false,
+    }
 }
 
 pub const CENTER_AXES: [&str; 3] = ["horizontal", "vertical", "both"];
@@ -83,6 +105,8 @@ pub enum Action {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
     pub matches: Vec<Match>,
+    /// The logical width the monitor the rule resolves against must have.
+    pub min_width: Option<i64>,
     pub action: Option<Action>,
     pub workspace: Option<i64>,
     pub monitor: Option<i64>,
@@ -226,11 +250,24 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
     };
 
     let mut matches = Vec::new();
+    let mut min_width = None;
     for (key, value) in js_entries(match_block) {
+        if key == MIN_WIDTH_KEY {
+            // The integer test compile_index applies, from 1 up.
+            match value.as_f64() {
+                Some(width)
+                    if width.fract() == 0.0 && (1.0..=f64::from(i32::MAX)).contains(&width) =>
+                {
+                    min_width = Some(width as i64);
+                    continue;
+                }
+                _ => return Err(format!("{label}.match.{key}: must be a positive integer")),
+            }
+        }
         let Some((_, kind)) = MATCH_KEYS.iter().find(|(name, _)| name == key) else {
             return Err(format!(
                 "{label}.match.{key}: unknown key (use {})",
-                match_key_names()
+                all_match_key_names()
             ));
         };
         let Some(text) = value.as_str() else {
@@ -319,6 +356,7 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
 
     Ok(Rule {
         matches,
+        min_width,
         action,
         workspace,
         monitor,
@@ -372,6 +410,7 @@ mod tests {
         let tokens: Vec<String> = tokens.as_array().unwrap().iter().map(js_string).collect();
         Rule {
             matches: vec![],
+            min_width: None,
             action: Some(Action::Place([
                 tokens[0].clone(),
                 tokens[1].clone(),
@@ -416,6 +455,7 @@ mod tests {
             for (position, expected) in group["cells"].as_object().unwrap() {
                 let rule = Rule {
                     matches: vec![],
+                    min_width: None,
                     action: Some(Action::Tile(position.clone())),
                     workspace: None,
                     monitor: None,
@@ -433,6 +473,7 @@ mod tests {
             let name = case["name"].as_str().unwrap();
             let rule = Rule {
                 matches: vec![],
+                min_width: None,
                 action: Some(Action::Center(case["axis"].as_str().unwrap().to_string())),
                 workspace: None,
                 monitor: None,
@@ -463,6 +504,7 @@ mod tests {
                     kind: kind.to_string(),
                     value: case["value"].as_str().unwrap().to_string(),
                 }],
+                min_width: None,
                 action: Some(Action::Tile("left".to_string())),
                 workspace: None,
                 monitor: None,
@@ -480,6 +522,32 @@ mod tests {
                 "match: {name}"
             );
         }
+    }
+
+    /// The monitor condition, against `fits_monitor`.
+    #[test]
+    fn min_width_vectors() {
+        let vectors = vectors();
+        for case in vectors["match"]["min_width"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            assert_eq!(
+                fits_monitor(case["min_width"].as_i64(), case["monitor_width"].as_i64()),
+                case["fits"].as_bool().unwrap(),
+                "min_width: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_compiled_rule_carries_its_min_width() {
+        let document = serde_json::json!([
+            {"match": {"class": "a", "min_width": 3000}, "tile": "left"},
+            {"match": {"class": "a"}, "tile": "left"},
+        ]);
+        let compiled = compile_rules(&document).unwrap();
+        assert_eq!(compiled[0].min_width, Some(3000));
+        assert_eq!(compiled[1].min_width, None);
+        assert_eq!(compiled[0].matches.len(), 1);
     }
 
     /// Every validation case in the shared vectors, verdict and message.

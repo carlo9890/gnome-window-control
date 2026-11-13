@@ -16,6 +16,10 @@ export const MATCH_KINDS = {
 
 const MATCH_KEY_NAMES = Object.keys(MATCH_KINDS).join(', ');
 
+// Every rules.json match key: the window predicates, then the condition on the
+// monitor the rule resolves against.
+const ALL_MATCH_KEY_NAMES = `${MATCH_KEY_NAMES}, min_width`;
+
 // A tile position as (startCol, endCol, startRow, endRow) of the 4x2 grid.
 export const TILE_CELLS = {
     'top-left': [0, 0, 0, 0],
@@ -104,6 +108,13 @@ export function matchPredicate(kind, value) {
     default:
         return null;
     }
+}
+
+// Does a monitor this wide meet a rule's min_width? A rule without one fits
+// every monitor. A width of null is a monitor that does not exist, which a
+// rule with min_width never fits.
+export function fitsMonitor(minWidth, monitorWidth) {
+    return minWidth === null || (monitorWidth !== null && monitorWidth >= minWidth);
 }
 
 // The same arithmetic as cli/src/geometry.rs, integer and truncating, so a
@@ -221,9 +232,16 @@ export function compileRule(rule, index) {
     if (!isPlainObject(rule.match))
         throw new Error(`${label}.match: must be an object`);
     const predicates = [];
+    let minWidth = null;
     for (const [key, value] of Object.entries(rule.match)) {
+        if (key === 'min_width') {
+            if (!Number.isInteger(value) || value < 1 || value > INT32_MAX)
+                throw new Error(`${label}.match.min_width: must be a positive integer`);
+            minWidth = value;
+            continue;
+        }
         if (!Object.hasOwn(MATCH_KINDS, key))
-            throw new Error(`${label}.match.${key}: unknown key (use ${MATCH_KEY_NAMES})`);
+            throw new Error(`${label}.match.${key}: unknown key (use ${ALL_MATCH_KEY_NAMES})`);
         const kind = MATCH_KINDS[key];
         if (typeof value !== 'string')
             throw new Error(`${label}.match.${key}: must be a string`);
@@ -270,7 +288,7 @@ export function compileRule(rule, index) {
     if (!geometry && workspace === null && monitor === null && !overlay)
         throw new Error(`${label}: has nothing to do (add place, tile, center, workspace, monitor or overlay)`);
 
-    return { predicates, geometry, workspace, monitor, overlay };
+    return { predicates, minWidth, geometry, workspace, monitor, overlay };
 }
 
 // Parse and validate the whole file. Throws on the first problem: a file with

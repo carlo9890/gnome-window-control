@@ -63,7 +63,7 @@ type mutter takes them as. A JSON number with a zero fraction is an integer:
 
 ## match
 
-Keys are selector kinds; values are strings. Every key present must match, so
+Keys are selector kinds, plus `min_width`. Every key present must match, so
 two keys are an AND.
 
 | Key | Matches | Predicate kind |
@@ -81,6 +81,36 @@ would match every window; an empty `class` or `title` would match only a window
 that has none, so a rule carrying one could never usefully fire. All six are
 refused with the same message rather than loaded as a rule that silently never
 matches.
+
+### min_width
+
+`min_width` is a condition on the monitor, not on the window. Its value MUST be
+an integer from 1 to 2147483647; `0`, a fraction and a string are refused with
+`rules[N].match.min_width: must be a positive integer`.
+
+| Property | Value |
+|---|---|
+| Tested monitor | the rule's own `monitor`; else, before the first frame, the monitor `_preplace` predicts, and once shown, the monitor the window is on |
+| Width compared | the monitor's logical width, `get_monitor_geometry(i).width`; not the workarea, which loses the panels |
+| Fits | width >= `min_width` (`fitsMonitor`, `fits_monitor`) |
+| Tested monitor does not exist | the rule does not match, and a later rule can |
+
+`min_width` names no window, so `match` still MUST name at least one of the
+six keys above.
+
+The tested monitor depends on the rule, so it is decided for each rule in
+turn: a rule with `"monitor": 1` tests monitor 1 wherever the window shows.
+
+A rule with `min_width` before a rule without it is the fallback pattern:
+
+```json
+[
+  { "match": { "class": "kitty", "min_width": 3000 }, "place": ["center", "top", "75%", "100%"] },
+  { "match": { "class": "kitty" }, "place": ["center", "top", "100%", "100%"] }
+]
+```
+
+### Absent keys
 
 `focused`, numeric window ID and PID are deliberately absent: a static file
 cannot name a window that does not exist yet. `matchPredicate` still supports
@@ -172,7 +202,7 @@ fails:
 
 1. Unknown keys of the rule object, in JavaScript property order.
 2. `match`: that it is an object, then its keys in JavaScript property order,
-   then that it names at least one.
+   then that it names at least one window predicate.
 3. `place`, `tile` and `center`: that at most one is present, then its value.
 4. `workspace`, `monitor`, `overlay`, in that order, whatever their file order.
 5. That the rule has something to do.
@@ -206,6 +236,7 @@ which a file written by `wctl rules add` can contain:
 | Unknown `match` key | `rules[N].match.<key>: unknown key (use ...)` |
 | `match` value not a string | `rules[N].match.<key>: must be a string` |
 | `match` value empty | `rules[N].match.<key>: must not be empty` |
+| `min_width` not an integer from 1 to 2147483647 | `rules[N].match.min_width: must be a positive integer` |
 | Two or more of `place`/`tile`/`center` | `rules[N]: place, tile and center are mutually exclusive` |
 | `place` not 4 elements | `rules[N].place: must be [X, Y, WIDTH, HEIGHT]` |
 | A `place` token unresolvable | `rules[N].place: X is a number or left\|center\|right, ...` |
@@ -223,7 +254,8 @@ on a real workarea is skipped at apply time instead.
 
 ## Matching and application
 
-The first rule whose every predicate matches wins, in file order. Later
+The first rule whose every predicate matches, and whose `min_width` the
+tested monitor fits ([min_width](#min_width)), wins, in file order. Later
 matching rules are ignored. `wctl rules test <WINDOW>` reports which rule wins
 for a live window, which later ones it shadows, and the rectangle the action
 resolves to, without moving anything.
@@ -414,7 +446,10 @@ Adding a key means editing, in one commit, on BOTH sides:
   `Rule::matches_window`.
 - For a rule key, how it is applied: `_apply` in `rules.js`, and `Rule`,
   `Action` and `Rule::resolve` in `cli/src/rules.rs`.
-- For a match key, `shadows` in `cli/src/commands/rules.rs`.
+- For a match key, `shadows` in `cli/src/commands/rules.rs`. A key that is
+  no window predicate, as `min_width`, is handled before `MATCH_KINDS` in
+  `compileRule` and before `MATCH_KEYS` in `compile_rule`, and is read in
+  `_matchIndex` in `rules.js` and in `test` in `cli/src/commands/rules.rs`.
 - A case in `tests/vectors/rules-spec.json`.
 - Its capability name (see below): in `CAPABILITIES` in `dbus-service.js`,
   and in `NEWER_MATCH_KEYS` (a match key) or `NEWER_RULE_KEYS` (a rule key) in

@@ -85,7 +85,7 @@ pub fn monitor_index(token: &str) -> Result<i32> {
 /// Every option of any command that takes a value. A helper that takes one
 /// option out of an argument list skips the value of each of these, so a value
 /// is never read as an option name.
-pub const VALUE_OPTIONS: [&str; 13] = [
+pub const VALUE_OPTIONS: [&str; 14] = [
     "-c",
     "-t",
     "-s",
@@ -97,6 +97,7 @@ pub const VALUE_OPTIONS: [&str; 13] = [
     "--workspace",
     "--monitor",
     "--timeout",
+    "--min-width",
     "--at",
     "--file",
 ];

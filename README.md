@@ -286,6 +286,7 @@ as the `wctl` commands:
   `title_suffix` (title ends with), `class_prefix` (WM class starts with, for
   apps that put a per-window part in the class, such as a Chrome app window's
   `chrome-github.com__<owner>_<repo>-Default`). Several keys must all match.
+  `match` can also hold `min_width`: see [Rules per monitor size](#rules-per-monitor-size).
 - **place** — `[X, Y, WIDTH, HEIGHT]`, the tokens of `wctl place`: X is a number
   or `left|center|right`, Y a number or `top|center|bottom`, WIDTH/HEIGHT a
   positive number or a percentage like `50%`.
@@ -313,6 +314,29 @@ the window appears first and moves a moment later.
 This sets the *initial* position only: an app that resizes itself afterwards is
 left alone. A rule with a bad value is reported to the journal and the whole file
 is ignored until you fix it, so one typo never places a window half-right.
+
+### Rules per monitor size
+
+`"min_width": <pixels>` in `match` makes a rule match only when the monitor it
+places the window on is at least that many logical pixels wide. Put it before a
+rule without it, and the second rule is the fallback on a smaller monitor:
+
+```json
+[
+  { "match": { "class": "kitty", "min_width": 3000 }, "place": ["center", "top", "75%", "100%"] },
+  { "match": { "class": "kitty" },                    "place": ["center", "top", "100%", "100%"] }
+]
+```
+
+- The monitor tested is the rule's own `monitor`, else the monitor the window
+  opens on.
+- Logical width is the width `wctl monitors` reports: a 3840 px panel at 200%
+  scale is 1920 wide.
+- When the rule's `monitor` does not exist, a rule with `min_width` does not
+  match, so the next rule can.
+- `wctl rules add ... --min-width 3000` writes the key.
+
+`min_width` needs an extension that reports `rules-min-width`.
 
 ### Overlay windows
 
@@ -399,7 +423,8 @@ shell running, and with `--file`, they say nothing.
 `title_prefix` and `title_suffix` need an extension that also reports
 `rules-title-affix`. An older one refuses a file that has either key and then
 applies no rule at all; `add` and `remove` warn about that too. `class_prefix`
-needs `rules-class-prefix` in the same way, and `overlay` needs `rules-overlay`.
+needs `rules-class-prefix` in the same way, `overlay` needs `rules-overlay`,
+and `min_width` needs `rules-min-width`.
 
 ### Checking the file
 

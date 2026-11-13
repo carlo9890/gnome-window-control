@@ -109,8 +109,8 @@ PLACEMENT RULES:
                             Validate the file. Same verdict and same message
                             the extension would log, so a file this accepts
                             is a file the shell will load.
-    rules add <MATCH> [ACTION] [--workspace <N>] [--monitor <N>]
-              [--overlay] [--at <N>] [--dry-run]
+    rules add <MATCH> [ACTION] [--min-width <PX>] [--workspace <N>]
+              [--monitor <N>] [--overlay] [--at <N>] [--dry-run]
                             Append a rule (or insert it at --at). MATCH is
                             -c <CLASS>, -t <TITLE>, -s <SUBSTR>,
                             --title-prefix <TEXT> or --title-suffix <TEXT>
@@ -125,7 +125,10 @@ PLACEMENT RULES:
                             --overlay is given. --overlay keeps the window
                             on top and out of Alt+Tab, and minimizes it
                             when another window takes the focus or the
-                            overview opens.
+                            overview opens. --min-width makes the rule
+                            match only when the monitor the window lands on
+                            is at least PX logical pixels wide; put it
+                            before a rule without it for a fallback.
     rules remove <INDEX> [--dry-run]
                             Remove the rule at INDEX
     rules test <WINDOW> [--json]

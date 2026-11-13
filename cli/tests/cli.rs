@@ -1234,6 +1234,125 @@ fn rules_add_overlay_writes_the_key_with_or_without_an_action() {
 }
 
 #[test]
+fn rules_add_min_width_goes_into_match() {
+    let dir = std::env::temp_dir().join(format!("wctl-rules-min-width-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let file = dir.join("rules.json");
+    let path = file.to_str().unwrap();
+
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "--min-width",
+        "3000",
+        "-c",
+        "kitty",
+        "place",
+        "center",
+        "top",
+        "75%",
+        "100%",
+        "--dry-run",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let document: serde_json::Value = serde_json::from_str(&out).expect("JSON");
+    assert_eq!(
+        document,
+        serde_json::json!([{
+            "match": {"class": "kitty", "min_width": 3000},
+            "place": ["center", "top", "75%", "100%"],
+        }])
+    );
+
+    for bad in ["0", "-1", "wide", "2147483648"] {
+        expect_die(
+            "--min-width must be a positive number",
+            &[
+                "rules",
+                "add",
+                "--file",
+                path,
+                "-c",
+                "kitty",
+                "tile",
+                "left",
+                "--min-width",
+                bad,
+            ],
+        );
+    }
+    expect_die(
+        "Option --min-width requires a value",
+        &["rules", "add", "--file", path, "-c", "kitty", "--min-width"],
+    );
+    // min_width names no window, so it is no action either.
+    expect_die(
+        "A rule needs an action",
+        &[
+            "rules",
+            "add",
+            "--file",
+            path,
+            "-c",
+            "kitty",
+            "--min-width",
+            "3000",
+        ],
+    );
+
+    // Written ahead of the general rule, the general one is no shadow of it;
+    // the reverse order is.
+    let (out, code) = wctl(&[
+        "rules", "add", "--file", path, "-c", "kitty", "tile", "left",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "-c",
+        "kitty",
+        "tile",
+        "right",
+        "--min-width",
+        "3000",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert!(out.contains("will never fire"), "printed: {out}");
+    let (out, code) = wctl(&[
+        "rules",
+        "add",
+        "--file",
+        path,
+        "-c",
+        "kitty",
+        "tile",
+        "right",
+        "--min-width",
+        "3000",
+        "--at",
+        "0",
+    ]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert!(!out.contains("will never fire"), "printed: {out}");
+
+    let (out, code) = wctl(&["rules", "list", "--file", path]);
+    assert_eq!(code, 0, "printed: {out}");
+    assert!(
+        out.lines()
+            .nth(1)
+            .unwrap_or("")
+            .contains("class=kitty min_width=3000"),
+        "printed: {out}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn rules_add_takes_a_title_prefix_and_suffix() {
     let dir = std::env::temp_dir().join(format!("wctl-rules-prefix-{}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();

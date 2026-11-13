@@ -41,7 +41,7 @@ const NO_RULES_SUPPORT: &str =
 
 /// The match keys added after `rules`, each with the capability an extension
 /// reports when it knows them and the warning for one that does not.
-const NEWER_MATCH_KEYS: [(&[&str], &str, &str); 2] = [
+const NEWER_MATCH_KEYS: [(&[&str], &str, &str); 3] = [
     (
         &["title_prefix", "title_suffix"],
         "rules-title-affix",
@@ -54,6 +54,14 @@ const NEWER_MATCH_KEYS: [(&[&str], &str, &str); 2] = [
         &["class_prefix"],
         "rules-class-prefix",
         "The extension GNOME Shell has loaded does not know class_prefix. It \
+         refuses a rules file that has it, so no rule is applied until a newer \
+         extension is loaded: install it, then restart the shell (log out and \
+         back in on Wayland).",
+    ),
+    (
+        &[rules::MIN_WIDTH_KEY],
+        "rules-min-width",
+        "The extension GNOME Shell has loaded does not know min_width. It \
          refuses a rules file that has it, so no rule is applied until a newer \
          extension is loaded: install it, then restart the shell (log out and \
          back in on Wayland).",
@@ -119,7 +127,7 @@ const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTION
 
 const ADD_USAGE: &str =
     "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR|--title-prefix TEXT|--title-suffix TEXT|--class-prefix TEXT> [tile POSITION|place X Y W H|center [AXIS]] \
-[--workspace N] [--monitor N] [--overlay] [--at N] [--dry-run]";
+[--min-width N] [--workspace N] [--monitor N] [--overlay] [--at N] [--dry-run]";
 
 /// The rules file the extension reads.
 ///
@@ -367,6 +375,10 @@ fn describe_match(rule: &rules::Rule) -> String {
     rule.matches
         .iter()
         .map(|m| format!("{}={}", m.key, m.value))
+        .chain(
+            rule.min_width
+                .map(|width| format!("{}={width}", rules::MIN_WIDTH_KEY)),
+        )
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -558,27 +570,34 @@ fn parse_rule_action(kind: &str, rest: &[String]) -> Result<(String, Value)> {
 /// or title by the same value, a substring by any title predicate whose value
 /// contains it, a prefix or suffix by a title or a like predicate that starts
 /// or ends with it, and a class prefix by a class or a class prefix that
-/// starts with it.
+/// starts with it. An earlier `min_width` must be implied too: by a later one
+/// at least as large, tested against the same monitor.
 fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
-    earlier.matches.iter().all(|general| {
-        later.matches.iter().any(
-            |specific| match (general.kind.as_str(), specific.kind.as_str()) {
-                ("class", "class") | ("title", "title") => general.value == specific.value,
-                ("substring", "title" | "substring" | "prefix" | "suffix") => {
-                    specific.value.contains(&general.value)
+    let width_implied = match (earlier.min_width, later.min_width) {
+        (None, _) => true,
+        (Some(general), Some(specific)) => specific >= general && earlier.monitor == later.monitor,
+        (Some(_), None) => false,
+    };
+    width_implied
+        && earlier.matches.iter().all(|general| {
+            later.matches.iter().any(|specific| {
+                match (general.kind.as_str(), specific.kind.as_str()) {
+                    ("class", "class") | ("title", "title") => general.value == specific.value,
+                    ("substring", "title" | "substring" | "prefix" | "suffix") => {
+                        specific.value.contains(&general.value)
+                    }
+                    ("prefix", "title" | "prefix") => specific.value.starts_with(&general.value),
+                    ("suffix", "title" | "suffix") => specific.value.ends_with(&general.value),
+                    ("class_prefix", "class" | "class_prefix") => {
+                        specific.value.starts_with(&general.value)
+                    }
+                    _ => false,
                 }
-                ("prefix", "title" | "prefix") => specific.value.starts_with(&general.value),
-                ("suffix", "title" | "suffix") => specific.value.ends_with(&general.value),
-                ("class_prefix", "class" | "class_prefix") => {
-                    specific.value.starts_with(&general.value)
-                }
-                _ => false,
-            },
-        )
-    })
+            })
+        })
 }
 
-/// `wctl rules add <MATCH> [ACTION] [--workspace N] [--monitor N] [--overlay] [--at N] [--dry-run]`
+/// `wctl rules add <MATCH> [ACTION] [--min-width N] [--workspace N] [--monitor N] [--overlay] [--at N] [--dry-run]`
 ///
 /// The action may be left out when `--workspace`, `--monitor` or `--overlay` is
 /// given: the grammar accepts a rule that only moves the window there, or only
@@ -592,13 +611,14 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // action is positional.
     let mut workspace = None;
     let mut monitor = None;
+    let mut min_width = None;
     let mut at = None;
     let mut rest = Vec::with_capacity(args.len());
     let mut index = 0;
     while index < args.len() {
         let option = args[index].as_str();
         match option {
-            "--workspace" | "--monitor" | "--at" => {}
+            "--workspace" | "--monitor" | "--min-width" | "--at" => {}
             // A selector option's VALUE is never an option name.
             _ if super::VALUE_OPTIONS.contains(&option) => {
                 rest.extend(args[index..].iter().take(2).cloned());
@@ -615,7 +635,15 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             return Err(Fail::error(format!("Option {option} requires a value")));
         };
         let not_a_number = || Fail::error(format!("{option} must be a non-negative number"));
-        if option == "--at" {
+        if option == "--min-width" {
+            // i32 is the bound the rule itself is validated against, and 0
+            // would be refused by it.
+            let width = super::index(value, option)
+                .ok()
+                .filter(|width| *width > 0)
+                .ok_or_else(|| Fail::error("--min-width must be a positive number"))?;
+            min_width = Some(i64::from(width));
+        } else if option == "--at" {
             // A position in the file, not a rule field: any run of digits is
             // a number here, and one past the end is reported as that.
             if !crate::selector::is_window_id(value) {
@@ -634,7 +662,10 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         index += 2;
     }
 
-    let (match_block, shift) = parse_rule_match(&rest)?;
+    let (mut match_block, shift) = parse_rule_match(&rest)?;
+    if let Some(min_width) = min_width {
+        match_block.insert(rules::MIN_WIDTH_KEY.to_string(), Value::from(min_width));
+    }
     let action = match rest[shift..].split_first() {
         Some((kind, action_args)) => Some(parse_rule_action(kind, action_args)?),
         None if workspace.is_some() || monitor.is_some() || overlay => None,
@@ -793,13 +824,28 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let window = ctx.window_by_id(id)?;
     let wm_class = model::text(&window, "wm_class").to_string();
     let title = model::text(&window, "title").to_string();
+    let window_monitor = model::number(&window, "monitor_index");
+    let monitor_widths = if compiled.iter().any(|rule| rule.min_width.is_some()) {
+        monitor_widths(ctx)?
+    } else {
+        Vec::new()
+    };
 
     // Every rule that matches, in file order. The first wins; the rest are
-    // shadowed, which is the case this command exists to name.
+    // shadowed, which is the case this command exists to name. A min_width is
+    // tested against the monitor the rule resolves against: its own, else the
+    // one the window is on.
     let matching: Vec<usize> = compiled
         .iter()
         .enumerate()
-        .filter(|(_, rule)| rule.matches_window(&wm_class, &title))
+        .filter(|(_, rule)| {
+            let monitor = rule.monitor.unwrap_or(window_monitor);
+            let width = monitor_widths
+                .iter()
+                .find(|(index, _)| *index == monitor)
+                .map(|(_, width)| *width);
+            rule.matches_window(&wm_class, &title) && rules::fits_monitor(rule.min_width, width)
+        })
         .map(|(index, _)| index)
         .collect();
 
@@ -810,9 +856,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // -- so that is an outcome to report, not an error. A missing monitor the
     // window itself reports is still an error.
     let rule_monitor = winner.and_then(|index| compiled[index].monitor);
-    let monitor = rule_monitor
-        .map(|monitor| monitor as i32)
-        .unwrap_or_else(|| model::number(&window, "monitor_index") as i32);
+    let monitor = rule_monitor.unwrap_or(window_monitor) as i32;
     let workarea = if rule_monitor.is_some() {
         super::workarea_if_present(ctx, monitor)?
     } else {
@@ -919,6 +963,21 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// (index, logical width) of every monitor, what `min_width` is compared
+/// against.
+fn monitor_widths(ctx: &mut Ctx) -> Result<Vec<(i64, i64)>> {
+    let json = ctx.bus.call_json("ListMonitors")?;
+    Ok(model::parse_array(&json, "monitor list")?
+        .iter()
+        .map(|monitor| {
+            (
+                model::number(monitor, "index"),
+                model::number(monitor, "width"),
+            )
+        })
+        .collect())
+}
+
 const SKIPPED_NO_SUCH_MONITOR: &str = "no such monitor";
 const SKIPPED_FULLSCREEN: &str = "fullscreen";
 
@@ -1022,6 +1081,52 @@ mod tests {
             refused_keys(&reported(&["rules"]), &both),
             vec![NEWER_MATCH_KEYS[1].2, overlay_warning]
         );
+    }
+
+    /// An earlier min_width is a narrower rule unless the later one has at
+    /// least that min_width on the same monitor.
+    #[test]
+    fn shadows_follows_what_a_min_width_implies() {
+        let with = |min_width: Option<i64>, monitor: Option<i64>| {
+            let mut block = json!({"class": "kitty"});
+            if let Some(width) = min_width {
+                block["min_width"] = json!(width);
+            }
+            let mut rule = json!({"match": block, "tile": "left"});
+            if let Some(monitor) = monitor {
+                rule["monitor"] = json!(monitor);
+            }
+            rules::compile_rule(&rule, 0).expect("a valid rule")
+        };
+        let cases = [
+            (None, None, Some(3000), None, true),
+            (Some(3000), None, None, None, false),
+            (Some(3000), None, Some(3000), None, true),
+            (Some(3000), None, Some(3840), None, true),
+            (Some(3840), None, Some(3000), None, false),
+            (Some(3000), Some(1), Some(3000), None, false),
+            (Some(3000), Some(1), Some(3000), Some(1), true),
+        ];
+        for (earlier_width, earlier_monitor, later_width, later_monitor, expected) in cases {
+            assert_eq!(
+                shadows(
+                    &with(earlier_width, earlier_monitor),
+                    &with(later_width, later_monitor)
+                ),
+                expected,
+                "{earlier_width:?} on {earlier_monitor:?} before {later_width:?} on {later_monitor:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn describe_match_names_the_min_width_last() {
+        let rule = rules::compile_rule(
+            &json!({"match": {"min_width": 3000, "class": "kitty"}, "tile": "left"}),
+            0,
+        )
+        .expect("a valid rule");
+        assert_eq!(describe_match(&rule), "class=kitty min_width=3000");
     }
 
     fn rule(key: &str, value: &str) -> rules::Rule {

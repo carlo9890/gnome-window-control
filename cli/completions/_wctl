@@ -210,6 +210,7 @@ _wctl() {
                                 "${rule_match}--title-suffix[Match a title that ends with this]:text:" \
                                 "${rule_match}--class-prefix[Match a WM class that starts with this]:text:" \
                                 '2:action:(tile place center)' \
+                                '--min-width[Match only on a monitor at least this wide]:pixels:' \
                                 '--workspace[Also move the window to this workspace]:index:' \
                                 '--monitor[Resolve the geometry on this monitor]:index:' \
                                 '--overlay[Keep on top, out of Alt+Tab, hidden on focus loss]' \
