@@ -1236,11 +1236,49 @@ fn rules_add_overlay_writes_the_key_with_or_without_an_action() {
 /// it then needs the bus.
 #[test]
 fn rules_apply_guards_fire_before_any_bus_call() {
-    expect_die("Usage: wctl rules apply", &["rules", "apply", "1", "2"]);
-    expect_die("Option -c requires an argument", &["rules", "apply", "-c"]);
-    expect_not("connect", &["rules", "apply", "1", "2"]);
-    expect_die("connect", &["rules", "apply"]);
-    expect_die("connect", &["rules", "apply", "focused"]);
+    // apply reads the extension's own rules file, so the test points
+    // XDG_CONFIG_HOME at a directory of its own instead of the developer's.
+    let config = std::env::temp_dir().join(format!("wctl-rules-apply-{}", std::process::id()));
+    std::fs::remove_dir_all(&config).ok();
+    let rules_dir = config.join("gnome-window-control");
+    std::fs::create_dir_all(&rules_dir).expect("temp dir");
+    let apply = |args: &[&str]| -> (String, i32) {
+        let output = Command::new(cargo_bin("wctl"))
+            .args(args)
+            .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+            .env("XDG_CONFIG_HOME", &config)
+            .env_remove("WCTL_TIMEOUT")
+            .output()
+            .expect("wctl runs");
+        let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+        (combined, output.status.code().unwrap_or(-1))
+    };
+    let expect = |needle: &str, args: &[&str]| {
+        let (out, code) = apply(args);
+        assert_ne!(code, 0, "wctl {args:?} should fail, printed: {out}");
+        assert!(
+            out.contains(needle),
+            "wctl {args:?} should mention {needle:?}, printed: {out}"
+        );
+    };
+
+    expect("Usage: wctl rules apply", &["rules", "apply", "1", "2"]);
+    expect("Option -c requires an argument", &["rules", "apply", "-c"]);
+    assert!(!apply(&["rules", "apply", "1", "2"]).0.contains("connect"));
+    // No file means no rules, so the call goes on to the bus.
+    expect("connect", &["rules", "apply"]);
+    expect("connect", &["rules", "apply", "focused"]);
+
+    // A file the extension would refuse is reported before any bus call.
+    std::fs::write(
+        rules_dir.join("rules.json"),
+        r#"[{"match":{"class":"a"},"tile":"nowhere"}]"#,
+    )
+    .expect("write rules file");
+    expect("rules[0].tile: must be one of", &["rules", "apply"]);
+    assert!(!apply(&["rules", "apply"]).0.contains("connect"));
+    std::fs::remove_dir_all(&config).ok();
 }
 
 #[test]

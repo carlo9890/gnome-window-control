@@ -309,12 +309,16 @@ export class WindowRules {
     }
 
     // The first rule whose predicates hold for the window and whose min_width
-    // the monitor it resolves against meets: its own `monitor`, else
-    // `fallbackMonitor`, the one the window is on or will be shown on.
-    _matchIndex(win, fallbackMonitor) {
+    // the monitor it resolves against meets: its own `monitor`; else, for the
+    // rule that took the head start, the monitor that head start resolved
+    // against; else `fallbackMonitor`, the one the window is on or will be
+    // shown on. So the monitor tested is the monitor the rule is placed on.
+    _matchIndex(win, fallbackMonitor, headStart = null) {
+        const resolvesAgainst = rule =>
+            rule.monitor ?? (rule === headStart?.rule ? headStart.monitor : fallbackMonitor);
         return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) &&
             (rule.minWidth === null ||
-                fitsMonitor(rule.minWidth, this._monitorWidth(rule.monitor ?? fallbackMonitor))));
+                fitsMonitor(rule.minWidth, this._monitorWidth(resolvesAgainst(rule)))));
     }
 
     _monitorExists(monitor) {
@@ -341,11 +345,10 @@ export class WindowRules {
         return this._overlays.has(win);
     }
 
-    // `fallbackMonitor` is the monitor a rule without its own `monitor`
-    // resolves against, the window's own by default.
-    _winningIndex(win, fallbackMonitor = win.get_monitor()) {
+    // `headStart` is the window's head start, if it took one (_preplace).
+    _winningIndex(win, headStart = null) {
         return win.get_window_type() === Meta.WindowType.NORMAL
-            ? this._matchIndex(win, fallbackMonitor) : -1;
+            ? this._matchIndex(win, win.get_monitor(), headStart) : -1;
     }
 
     // Put the rule's frame into the window's initial configuration: mutter
@@ -400,10 +403,8 @@ export class WindowRules {
         entry.shown = true;
         // A shown window that is not NORMAL matches nothing, so it gets the
         // same grace period as an unmatched one: a retype to NORMAL within it
-        // still gets the rule, and one after it cannot move the window. A
-        // window with a head start is matched against the monitor the head
-        // start resolved against, the one its frame was set for.
-        const index = this._winningIndex(win, entry.headStart?.monitor ?? win.get_monitor());
+        // still gets the rule, and one after it cannot move the window.
+        const index = this._winningIndex(win, entry.headStart);
         if (index >= 0) {
             const rule = this._rules[index];
             // A rule that took the head start resolves against the same

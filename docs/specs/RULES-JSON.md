@@ -9,7 +9,7 @@ Two implementations follow it, and they are pinned to each other:
 | Implementation | Where | Pinned by |
 |---|---|---|
 | The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`, `resolvePlaceRect`, `tileRect`, `centerRect`) | `tests/check-rules-format.js` |
-| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors` and `match_vectors` tests in that file |
+| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors`, `match_vectors` and `min_width_vectors` tests in that file |
 
 Both read the same cases from `tests/vectors/rules-spec.json`. Change this file,
 both implementations and the vectors in **one commit**: a message or a formula

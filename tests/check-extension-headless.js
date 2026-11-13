@@ -142,6 +142,14 @@ export const sessionMode = {
     write(`${EXT}/stub-extension.js`, 'export class Extension {}\n');
     write(`${EXT}/stub-config.js`, "export const PACKAGE_VERSION = '50.0';\n");
     write(`${EXT}/stub-shell.js`, 'export default { ActionMode: { NORMAL: 1 } };\n');
+    // The same modules as a GNOME 49 shell loads them, for the layout-mode
+    // branch below mutter 50.
+    const EXT49 = `${SCRATCH}/ext49`;
+    GLib.mkdir_with_parents(EXT49, 0o755);
+    for (const name of ['overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js',
+        'stub-main.js', 'stub-shell.js'])
+        write(`${EXT49}/${name}`, read(`${EXT}/${name}`));
+    write(`${EXT49}/stub-config.js`, "export const PACKAGE_VERSION = '49.2';\n");
 
     // -- fakes -----------------------------------------------------------------
 
@@ -211,7 +219,7 @@ export const sessionMode = {
         get_compositor_private() { return this; }
         is_on_all_workspaces() { return false; }
         is_skip_taskbar() { return false; }
-        get_title() { return ''; }
+        get_title() { return this.title ?? ''; }
         get_pid() { return 1; }
         get_window_type() { return this.type; }
         is_hidden() { return this.hidden; }
@@ -263,7 +271,8 @@ export const sessionMode = {
         get_n_monitors: () => monitors.length,
         get_monitor_geometry: index => monitors[index],
         get_monitor_scale: index => monitors[index].scale,
-        get_current_monitor: () => 0,
+        currentMonitor: 0,
+        get_current_monitor() { return this.currentMonitor; },
         list_all_windows: () => [...windows],
         focus_window: null,
         get_current_time_roundtrip: () => 1234,
@@ -344,6 +353,7 @@ export const sessionMode = {
     const { WindowControlService } = await import(`file://${EXT}/dbus-service.js`);
     const { default: WindowControlExtension } = await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
+    const { WindowRules: WindowRules49 } = await import(`file://${EXT49}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     const Main = await import(`file://${EXT}/stub-main.js`);
 
@@ -902,6 +912,16 @@ export const sessionMode = {
         try {
             extension.enable();
             const service = extension._service;
+            // enable() starts the first read of rules.json, so an ApplyRules
+            // right after it waits for that read, through the extension's
+            // own wiring of the service to WindowRules.
+            const wired = invocation();
+            service.ApplyRulesAsync([0], wired);
+            check('ApplyRules waits for the read in flight at enable()', wired.replies === 0,
+                showReply(wired));
+            await sleep(300);
+            check('ApplyRules answers once the read landed', showReply(wired) === '{"value":[0]}',
+                showReply(wired));
             check('enable() while unlocked serves the shortcuts',
                 adds() === 10 && service.keybindingsServed, `${adds()} bound`);
             Main.sessionMode.setLocked(true);
@@ -1385,6 +1405,85 @@ export const sessionMode = {
         rules.disable();
     }
 
+    // -- min_width with a head start ---------------------------------------------
+    //
+    // A rule that took the head start is tested on the monitor the head start
+    // resolved against, the monitor it is placed on. Another rule that wins
+    // once shown is tested on the monitor the window is on.
+
+    {
+        windows.length = 0;
+        monitors.push({ x: 1920, y: 0, width: 3840, height: 2160, scale: 1 });
+        display.currentMonitor = 1;
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { title: 'Loading' }, place: ['0', '0', '300', '200'] },
+            { match: { class: 'pre', min_width: 3000 }, place: ['0', '0', '800', '600'] },
+            { match: { class: 'pre' }, place: ['0', '0', '400', '300'] },
+        ]));
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        const configure = () => ({
+            get_is_initial: () => true,
+            set_position(x, y) { this.position = [x, y]; },
+            set_size(width, height) { this.size = [width, height]; },
+        });
+
+        const same = createWindow({ id: 50, wmClass: 'pre' });
+        const sameConfig = configure();
+        rules._preplace(same, sameConfig);
+        same.monitor = 0;
+        same.map();
+        const other = createWindow({ id: 51, wmClass: 'pre' });
+        other.title = 'Loading';
+        const otherConfig = configure();
+        rules._preplace(other, otherConfig);
+        other.title = '';
+        other.monitor = 0;
+        other.map();
+        await sleep(200);
+        check('min_width: the head start is taken on the predicted monitor',
+            JSON.stringify(sameConfig.size) === '[800,600]', JSON.stringify(sameConfig.size));
+        check('min_width: the head-start rule is tested on its head-start monitor',
+            JSON.stringify(same.moves) === '[[0,0,800,600]]', JSON.stringify(same.moves));
+        check("min_width: another rule is tested on the window's monitor",
+            JSON.stringify(other.moves) === '[[0,0,400,300]]', JSON.stringify(other.moves));
+        rules.disable();
+        monitors.pop();
+        display.currentMonitor = 0;
+    }
+
+    // -- min_width below mutter 50 ----------------------------------------------
+    //
+    // A Wayland stage is logical only with scale-monitor-framebuffer in
+    // org.gnome.mutter experimental-features; else the scale is divided out.
+
+    {
+        const realSettings = Gio.Settings;
+        const realIsWayland = Meta.is_wayland_compositor;
+        let features = [];
+        Gio.Settings = class {
+            get_strv(key) { return key === 'experimental-features' ? features : []; }
+        };
+        Meta.is_wayland_compositor = () => true;
+        monitors[0] = { x: 0, y: 0, width: 3840, height: 2160, scale: 2 };
+        const rules = new WindowRules49();
+        try {
+            rules.enable();
+            check('below 50: a Wayland stage without the feature is physical', rules._monitorWidth(0) === 1920,
+                `${rules._monitorWidth(0)}`);
+            features = ['scale-monitor-framebuffer'];
+            check('below 50: scale-monitor-framebuffer makes the stage logical', rules._monitorWidth(0) === 3840,
+                `${rules._monitorWidth(0)}`);
+            rules.disable();
+            check('below 50: disable() drops the mutter settings', rules._mutterSettings === null);
+        } finally {
+            Gio.Settings = realSettings;
+            Meta.is_wayland_compositor = realIsWayland;
+            monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
+        }
+    }
+
     // -- ApplyRules: the rules applied again to open windows ---------------------
     //
     // Every shown window a rule matches is placed again, a minimized one too
@@ -1454,6 +1553,9 @@ export const sessionMode = {
         check('ApplyRules skips a window still in its grace period', evaluating.moves.length === 0);
         check('ApplyRules skips a window mutter has not shown', unshown.moves.length === 0);
         check('ApplyRules releases an overlay no rule makes one', !rules.isOverlay(loose));
+        check('ApplyRules skips a window waiting for its unmaximize',
+            rules._tracked.has(maximized) && rules.applyRules() === 4 && maximized.moves.length === 0,
+            JSON.stringify(maximized.moves));
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
         check('ApplyRules places a maximized window once the unmaximize landed',
             JSON.stringify(maximized.moves) === LEFT && !rules._tracked.has(maximized),
