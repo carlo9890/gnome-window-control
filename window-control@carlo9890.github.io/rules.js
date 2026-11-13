@@ -211,7 +211,7 @@ export class WindowRules {
     // A tracked window is skipped: its own rule is still on the way, or its
     // unmaximize is. So is a window `isUnshown` reports, which mutter has not
     // shown yet: its initial placement would override the frame.
-    applyRules(only = null, isUnshown = looksUnmapped) {
+    applyRules(only, isUnshown) {
         let applied = 0;
         for (const win of only ? [only] : global.display.list_all_windows()) {
             if (this._tracked.has(win) || isUnshown(win))
@@ -318,8 +318,7 @@ export class WindowRules {
         const resolvesAgainst = rule =>
             rule.monitor ?? (rule === headStart?.rule ? headStart.monitor : fallbackMonitor);
         return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) &&
-            (rule.minWidth === null ||
-                fitsMonitor(rule.minWidth, this._monitorWidth(resolvesAgainst(rule)))));
+            fitsMonitor(rule.minWidth, this._monitorWidth(resolvesAgainst(rule))));
     }
 
     _monitorExists(monitor) {
@@ -441,9 +440,9 @@ export class WindowRules {
         });
     }
 
-    // `again` is an apply to a window placed before (applyRules). It moves
-    // the window to no workspace that does not exist: mutter would append
-    // one at each apply.
+    // `again` is an apply to a window placed before (applyRules). With it, a
+    // rule workspace that does not exist is skipped: mutter would append one
+    // at each apply.
     _apply(win, rule, index, headStartMonitor, again = false) {
         const id = win.get_id();
         // A load between the match and this call has decided the open

@@ -1548,7 +1548,7 @@ export const sessionMode = {
         check('ApplyRules skips a window mutter has not shown', unshown.moves.length === 0);
         check('ApplyRules releases an overlay no rule makes one', !rules.isOverlay(loose));
         check('ApplyRules skips a window waiting for its unmaximize',
-            rules._tracked.has(maximized) && rules.applyRules() === 4 && maximized.moves.length === 0,
+            rules._tracked.has(maximized) && rules.applyRules(null, win => service._isUnshown(win)) === 4 && maximized.moves.length === 0,
             JSON.stringify(maximized.moves));
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
         check('ApplyRules places a maximized window once the unmaximize landed',

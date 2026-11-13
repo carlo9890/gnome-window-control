@@ -101,8 +101,8 @@ export class WindowControlService {
         // Set by the extension to ask WindowRules whether a window is an
         // overlay, and to have it apply the rules again (ApplyRules).
         this.isOverlay = () => false;
-        this.applyRules = () => 0;
-        this.whenRulesLoaded = callback => callback(true);
+        this.applyRules = null;
+        this.whenRulesLoaded = null;
         // WaitForWindow state. A window is tracked only while at least one
         // waiter is pending.
         this._waiters = [];
@@ -200,15 +200,16 @@ export class WindowControlService {
         return win;
     }
 
-    // Run a geometry handler body and answer the invocation: the body's
-    // GLib.Variant, or an empty reply when it returns none, on success, and a
-    // named error otherwise.
+    // Run a handler body and answer the invocation: the body's GLib.Variant,
+    // or an empty reply when it returns none, on success, and a named error
+    // otherwise.
     //
     // The three geometry methods and ApplyRules are async (GJS convention:
     // <Method>Async(params, invocation)) so they can answer here rather than
-    // by throwing. Only ApplyRules waits, for a rules.json read in flight. GJS logs a throw from a
-    // synchronous handler as a warning, one per ordinary refusal.
-    _geometryCall(invocation, label, body) {
+    // by throwing. GJS logs a throw from a synchronous handler as a warning,
+    // one per ordinary refusal. Only ApplyRules waits, for a rules.json read
+    // in flight.
+    _namedErrorCall(invocation, label, body) {
         try {
             invocation.return_value(body() ?? null);
         } catch (e) {
@@ -445,7 +446,7 @@ export class WindowControlService {
     // dbus-interface.js.
     MoveAsync([windowId, x, y], invocation) {
         console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
-        this._geometryCall(invocation, 'Move', () => {
+        this._namedErrorCall(invocation, 'Move', () => {
             const win = this._geometryTarget(windowId, 'Move');
             win.move_frame(true, x, y);
             console.debug(`[Window Control] Move(${windowId}) -> ok`);
@@ -455,7 +456,7 @@ export class WindowControlService {
     // Keeps the position. Raises on failure.
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
-        this._geometryCall(invocation, 'Resize', () => {
+        this._namedErrorCall(invocation, 'Resize', () => {
             if (width <= 0 || height <= 0) {
                 throw new NamedError(DBUS_ERROR_INVALID_ARGS,
                     'Resize: width and height must be positive');
@@ -470,7 +471,7 @@ export class WindowControlService {
     // One request for both, so mutter applies them together. Raises on failure.
     MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
-        this._geometryCall(invocation, 'MoveResize', () => {
+        this._namedErrorCall(invocation, 'MoveResize', () => {
             if (width <= 0 || height <= 0) {
                 throw new NamedError(DBUS_ERROR_INVALID_ARGS,
                     'MoveResize: width and height must be positive');
@@ -490,7 +491,7 @@ export class WindowControlService {
                 invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'The extension was disabled');
                 return;
             }
-            this._geometryCall(invocation, 'ApplyRules', () => {
+            this._namedErrorCall(invocation, 'ApplyRules', () => {
                 let only = null;
                 if (windowId !== 0) {
                     only = this._findWindowById(windowId);
