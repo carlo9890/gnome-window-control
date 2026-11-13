@@ -9,7 +9,7 @@ Two implementations follow it, and they are pinned to each other:
 | Implementation | Where | Pinned by |
 |---|---|---|
 | The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`, `resolvePlaceRect`, `tileRect`, `centerRect`) | `tests/check-rules-format.js` |
-| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors` and `match_vectors` tests in that file |
+| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors`, `match_vectors` and `min_width_vectors` tests in that file |
 
 Both read the same cases from `tests/vectors/rules-spec.json`. Change this file,
 both implementations and the vectors in **one commit**: a message or a formula
@@ -63,7 +63,7 @@ type mutter takes them as. A JSON number with a zero fraction is an integer:
 
 ## match
 
-Keys are selector kinds; values are strings. Every key present must match, so
+Keys are selector kinds, plus `min_width`. Every key present must match, so
 two keys are an AND.
 
 | Key | Matches | Predicate kind |
@@ -81,6 +81,51 @@ would match every window; an empty `class` or `title` would match only a window
 that has none, so a rule carrying one could never usefully fire. All six are
 refused with the same message rather than loaded as a rule that silently never
 matches.
+
+### min_width
+
+`min_width` is a condition on the monitor, not on the window. Its value MUST be
+an integer from 1 to 2147483647; `0`, a fraction and a string are refused with
+`rules[N].match.min_width: must be a positive integer`.
+
+| Property | Value |
+|---|---|
+| Tested monitor | the rule's own `monitor`; else, before the first frame, the monitor `_preplace` predicts; once shown, the monitor a head start resolved against, else the monitor the window is on |
+| Width compared | the monitor's logical width; not the workarea, which loses the panels. See below |
+| Fits | width >= `min_width` (`fitsMonitor`, `fits_monitor`) |
+| Tested monitor does not exist | the rule does not match, and a later rule can |
+
+`min_width` names no window, so `match` still MUST name at least one of the
+six keys above.
+
+The logical width is `get_monitor_geometry(i).width`, the width `ListMonitors`
+reports, divided by `get_monitor_scale(i)` and rounded when mutter's stage is
+in physical pixels, and taken as it is when the stage is logical:
+
+| Session | Stage | Decided by |
+|---|---|---|
+| X11 | physical | `Meta.is_wayland_compositor()` false |
+| Wayland, GNOME 50 and later | logical | mutter's native backend is always logical |
+| Wayland, GNOME 45 to 49 | logical only when `org.gnome.mutter` `experimental-features` holds `scale-monitor-framebuffer` | mutter's own test of that setting |
+
+`wctl rules test` reads the same answer from the `layout-mode` property of
+`org.gnome.Mutter.DisplayConfig.GetCurrentState` (1 logical, 2 physical,
+absent physical), and asks only when a monitor's scale is not 1
+(`rules::logical_width`, `Bus::stage_is_logical`).
+
+The tested monitor depends on the rule, so it is decided for each rule in
+turn: a rule with `"monitor": 1` tests monitor 1 wherever the window shows.
+
+A rule with `min_width` before a rule without it is the fallback pattern:
+
+```json
+[
+  { "match": { "class": "kitty", "min_width": 3000 }, "place": ["center", "top", "75%", "100%"] },
+  { "match": { "class": "kitty" }, "place": ["center", "top", "100%", "100%"] }
+]
+```
+
+### Absent keys
 
 `focused`, numeric window ID and PID are deliberately absent: a static file
 cannot name a window that does not exist yet. `matchPredicate` still supports
@@ -172,7 +217,7 @@ fails:
 
 1. Unknown keys of the rule object, in JavaScript property order.
 2. `match`: that it is an object, then its keys in JavaScript property order,
-   then that it names at least one.
+   then that it names at least one window predicate.
 3. `place`, `tile` and `center`: that at most one is present, then its value.
 4. `workspace`, `monitor`, `overlay`, in that order, whatever their file order.
 5. That the rule has something to do.
@@ -206,6 +251,7 @@ which a file written by `wctl rules add` can contain:
 | Unknown `match` key | `rules[N].match.<key>: unknown key (use ...)` |
 | `match` value not a string | `rules[N].match.<key>: must be a string` |
 | `match` value empty | `rules[N].match.<key>: must not be empty` |
+| `min_width` not an integer from 1 to 2147483647 | `rules[N].match.min_width: must be a positive integer` |
 | Two or more of `place`/`tile`/`center` | `rules[N]: place, tile and center are mutually exclusive` |
 | `place` not 4 elements | `rules[N].place: must be [X, Y, WIDTH, HEIGHT]` |
 | A `place` token unresolvable | `rules[N].place: X is a number or left\|center\|right, ...` |
@@ -223,18 +269,20 @@ on a real workarea is skipped at apply time instead.
 
 ## Matching and application
 
-The first rule whose every predicate matches wins, in file order. Later
+The first rule whose every predicate matches, and whose `min_width` the
+tested monitor fits ([min_width](#min_width)), wins, in file order. Later
 matching rules are ignored. `wctl rules test <WINDOW>` reports which rule wins
 for a live window, which later ones it shadows, and the rectangle the action
 resolves to, without moving anything.
 
-A rule applies **once per window**, at the point mutter has shown it; on
+A rule applies **once per new window**, at the point mutter has shown it; on
 GNOME 49 and later its frame is also handed to mutter before the first frame
 (see the initial configuration below). The
 window is untracked before the action runs, so a later title change or resize
 never re-triggers it. This sets the initial placement only. The one part
 decided again later is which windows are overlays
-([Overlay windows](#overlay-windows)).
+([Overlay windows](#overlay-windows)); `ApplyRules` applies the rules again
+on request ([Applying the rules again](#applying-the-rules-again)).
 
 Gating, in order:
 
@@ -272,6 +320,36 @@ and first real title can arrive late. After that it is untracked, so a title
 change hours later cannot rearrange a window the user has since placed. A shown
 window that is not `NORMAL` matches nothing and gets the same period: a retype
 to `NORMAL` within it gets the rule, one after it does not.
+
+### Applying the rules again
+
+`ApplyRules` (`wctl rules apply`) runs `applyRules` in `rules.js`: the rules
+loaded now, applied to every window `list_all_windows()` returns, or to the one
+window named.
+
+A reload that is due (the `RELOAD_DEBOUNCE_MS` timer is armed) or a read that is
+in flight is waited for first (`whenLoaded`), so a file saved just before the
+call is applied as saved. A call still waiting at `disable()` raises
+`Disabled`. A save whose file event has not reached the shell when the call
+arrives is not waited for.
+
+For each window, in this order:
+
+1. A window `_tracked` holds is skipped: its own apply, grace period or
+   unmaximize wait is still running.
+2. A window that has not been shown is skipped: mutter's initial placement
+   would override the frame. `ApplyRules` decides this with the service's
+   own record of first shows (`_isUnshown`).
+3. The winning rule is decided as for a shown window: `NORMAL` only, first
+   match wins, `min_width` against the rule's `monitor`, else
+   `get_monitor()`.
+4. The window stops being an overlay unless the winning rule has `overlay`.
+5. A matched window goes through `_apply`, with the action order above,
+   except that a `workspace` at or past `get_n_workspaces()` is skipped with a
+   debug line: mutter would append one more workspace at each apply. A
+   minimized window keeps its minimized state.
+
+The reply counts the windows of step 5.
 
 ### Initial configuration (GNOME 49 and later)
 
@@ -319,19 +397,21 @@ A window whose winning rule has `"overlay": true` is an overlay. The rule's
 other keys apply as for any rule; `overlay` adds the behaviour below.
 
 **Which windows are overlays.** Unlike the rest of a rule, which applies once
-to a new window, membership is decided:
+to a new window and again at `ApplyRules`, membership is decided:
 
 1. when a rule is applied to a new window (`_apply`), before its other keys;
 2. at every load of the file, for every open `NORMAL` window
    (`_syncOverlays`): a window whose winning rule has `overlay` becomes an
    overlay, every other window stops being one. This is what keeps an overlay
-   one after the extension is enabled again.
+   one after the extension is enabled again;
+3. at `ApplyRules`, for each window it reaches
+   ([Applying the rules again](#applying-the-rules-again)), as at a load.
 
 A load matches each open window by its class and title at that moment. A
 title change between loads does not change membership, but the next load can:
 match an overlay by class to keep it stable. A window stops being
-an overlay when it is unmanaged, when a load no longer makes it one, and at
-`disable()`.
+an overlay when it is unmanaged, when a load or `ApplyRules` no longer makes
+it one, and at `disable()`.
 
 **While a window is an overlay** (`WindowOverlays.add`):
 
@@ -414,7 +494,10 @@ Adding a key means editing, in one commit, on BOTH sides:
   `Rule::matches_window`.
 - For a rule key, how it is applied: `_apply` in `rules.js`, and `Rule`,
   `Action` and `Rule::resolve` in `cli/src/rules.rs`.
-- For a match key, `shadows` in `cli/src/commands/rules.rs`.
+- For a match key, `shadows` in `cli/src/commands/rules.rs`. A key that is
+  no window predicate, as `min_width`, is handled before `MATCH_KINDS` in
+  `compileRule` and before `MATCH_KEYS` in `compile_rule`, and is read in
+  `_matchIndex` in `rules.js` and in `test` in `cli/src/commands/rules.rs`.
 - A case in `tests/vectors/rules-spec.json`.
 - Its capability name (see below): in `CAPABILITIES` in `dbus-service.js`,
   and in `NEWER_MATCH_KEYS` (a match key) or `NEWER_RULE_KEYS` (a rule key) in
@@ -443,5 +526,7 @@ report the `rules` capability from `GetCapabilities`; that name, not the
 version number, is how a caller learns the file is read. An extension that
 knows `title_prefix` and `title_suffix` MUST also report `rules-title-affix`:
 one without it refuses a file that carries either key. An extension that knows
-`class_prefix` MUST report `rules-class-prefix`, and one that knows `overlay`
-MUST report `rules-overlay`, for the same reason.
+`class_prefix` MUST report `rules-class-prefix`, one that knows `overlay`
+MUST report `rules-overlay`, and one that knows `min_width` MUST report
+`rules-min-width`, for the same reason. An extension that serves `ApplyRules`
+MUST report `rules-apply`.

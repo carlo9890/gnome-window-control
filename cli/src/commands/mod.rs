@@ -85,7 +85,7 @@ pub fn monitor_index(token: &str) -> Result<i32> {
 /// Every option of any command that takes a value. A helper that takes one
 /// option out of an argument list skips the value of each of these, so a value
 /// is never read as an option name.
-pub const VALUE_OPTIONS: [&str; 13] = [
+pub const VALUE_OPTIONS: [&str; 14] = [
     "-c",
     "-t",
     "-s",
@@ -97,6 +97,7 @@ pub const VALUE_OPTIONS: [&str; 13] = [
     "--workspace",
     "--monitor",
     "--timeout",
+    "--min-width",
     "--at",
     "--file",
 ];
@@ -131,15 +132,19 @@ pub fn take_flag(args: &[String], flag: &str) -> (bool, Vec<String>) {
     (found, rest)
 }
 
+/// The monitor documents `ListMonitors` reports.
+pub fn monitor_list(ctx: &mut Ctx) -> Result<Vec<serde_json::Value>> {
+    let json = ctx.bus.call_json("ListMonitors")?;
+    model::parse_array(&json, "monitor list")
+}
+
 /// Index of the primary monitor.
 ///
 /// `place` and `tile` resolve against the monitor their window is on. The
 /// commands that take no window default to the PRIMARY monitor rather than
 /// monitor 0, which is not necessarily the same one.
 pub fn primary_monitor(ctx: &mut Ctx) -> Result<i32> {
-    let json = ctx.bus.call_json("ListMonitors")?;
-    let monitors = model::parse_array(&json, "monitor list")?;
-    monitors
+    monitor_list(ctx)?
         .iter()
         .find(|monitor| model::flag(monitor, "is_primary"))
         .map(|monitor| model::number(monitor, "index") as i32)

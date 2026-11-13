@@ -86,7 +86,9 @@ the correct form.
   approves it on the PR:
   - extension code, in any module, that reads pixels, injects input or ends
     a window's client by any means (`kill()`, a signal to its PID);
-  - a D-Bus method, new or changed, that lays out windows;
+  - a D-Bus method, new or changed, that lays out windows. `ApplyRules` is
+    the approved exception (PR #86): it applies the user's own rules.json
+    through `_apply` in `rules.js` and adds no layout of its own;
   - a new property in the `ListDetailed` window document, or window data
     that any other method returns and `ListDetailed` does not hold;
   - any other D-Bus addition that does not act on a window's geometry,
@@ -95,7 +97,8 @@ the correct form.
 
   The correct forms: `wctl tile` and `wctl center` compose a layout from
   `Move`, `MoveResize` and `GetWorkarea`; rules and shortcuts take their
-  rectangles from `rules-format.js` without D-Bus; `Close` goes through
+  rectangles from `rules-format.js` without D-Bus, and `ApplyRules` only
+  starts that rules path; `Close` goes through
   `Meta.Window.delete`.
 - A new D-Bus method comes with its row in the method table in `README.md` — flag
   a method in `dbus-interface.js` that the table does not list.

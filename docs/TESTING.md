@@ -83,7 +83,8 @@ with only the `gjs` package.
 so `wctl rules check` and the extension cannot disagree about whether a file is
 valid, about the message text or about a rectangle. The GJS check reads every
 group; in `cli/src/rules.rs`, `rules_spec_vectors` reads `validation`,
-`geometry_vectors` reads `geometry`, and `match_vectors` reads `match.cases`.
+`geometry_vectors` reads `geometry`, `match_vectors` reads `match.cases`, and
+`min_width_vectors` reads `match.min_width`.
 Two parts are read by the GJS check only, because `rules.json` has no `pid` key
 and the CLI builds no predicate from a bare kind: the `pid` cases and
 `match.no_predicate`. A new group gets a reader on each side in the same commit:
@@ -152,6 +153,22 @@ It pins:
   lets an unexpected throw through to GJS instead of answering `false` or `[]`;
 - the rules grace period for a window that is not `NORMAL` when shown, and
   that a match within it ends the grace timer;
+- `min_width`: a narrow monitor falls through to the next rule, a wide one
+  takes the rule, a rule's own `monitor` is the one tested, and a monitor that
+  does not exist fits no `min_width`; the scale is divided out in the
+  physical layout mode and not in the logical one, and below mutter 50 a
+  Wayland stage is logical only with `scale-monitor-framebuffer`; the
+  head-start rule is tested on its head-start monitor, and another rule that
+  wins once shown on the window's monitor;
+- `ApplyRules`: it places a shown window, a minimized one without a restore,
+  and a maximized one after its unmaximize; it skips a tracked window and one
+  mutter has not shown; it moves no window to a workspace that does not
+  exist; it releases an overlay no rule makes one; its reply
+  counts the matched windows, an id applies to that window only, and an id no
+  window has raises `NotFound`; it skips a window waiting for its unmaximize;
+  it waits for a reload that is due and for the read in flight at
+  `enable()` (through the extension's own wiring), applies the rules as
+  saved, and one pending at `disable()` gets `Disabled`;
 - overlay windows: a load takes the open windows and a new window takes the
   rule once shown; the hide after the focus grace period and at the overview's
   `shown`, not at `showing`; no hide for the overlay's own dialog, a focus that

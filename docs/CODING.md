@@ -24,11 +24,11 @@ If it fails, the code has a syntax error and must not be committed.
   before you write extension code, and write the code and its comments to them:
   a human reviewer reads every line of each upload, and a violation costs a new
   release.
-- `Move`, `Resize`, `MoveResize`, `WaitForWindow` and `WaitForGeometry` raise
-  named D-Bus errors instead of reporting a boolean.
+- `Move`, `Resize`, `MoveResize`, `ApplyRules`, `WaitForWindow` and
+  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean.
   `WaitForWindow` returns the `window_id`, or 0 on timeout; `WaitForGeometry`
   returns the settled rectangle, or raises `Timeout`; the three geometry methods
-  return nothing at all. `GetWorkarea` returns `(-1, -1, -1, -1)` for an index
+  return nothing at all; `ApplyRules` returns how many windows a rule matched. `GetWorkarea` returns `(-1, -1, -1, -1)` for an index
   that is not a monitor.
   The names, and the reason each method raises, are in the ERRORS block in
   `dbus-interface.js`; add to that list rather than inventing a name at the
@@ -37,8 +37,9 @@ If it fails, the code has a syntax error and must not be committed.
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
   The two wait handlers have no try/catch either. The three geometry handlers
-  run their body through `_geometryCall`, which answers a `NamedError` by its
-  name and any other throw with `Failed`. Before GNOME 50, GJS sends no reply
+  and `ApplyRules` run their body through `_geometryCall`, which answers with
+  the body's `GLib.Variant` (an empty reply for none), a `NamedError` by its
+  name, and any other throw with `Failed`. Before GNOME 50, GJS sends no reply
   for a throw from an `...Async` handler.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.

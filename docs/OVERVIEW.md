@@ -54,8 +54,9 @@ README.md                  user docs; the D-Bus method table
   service). Path `/org/gnome/Shell/Extensions/WindowControl`, interface
   `org.gnome.Shell.Extensions.WindowControl`. Who can call it is in
   README.md's "Security model".
-- **The D-Bus surface is fixed in scope**: it offers no layout, and what it
-  must not grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
+- **The D-Bus surface is fixed in scope**: it offers no layout, except
+  `ApplyRules`, which applies the user's rules.json again; what it must not
+  grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
 - `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
   lives in `dbus-interface.js` and is imported into `dbus-service.js`.
@@ -83,7 +84,8 @@ README.md                  user docs; the D-Bus method table
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
   service: it reads `~/.config/gnome-window-control/rules.json`, watches
   `window-created`, and places a matching window once mutter has shown it. It
-  makes no D-Bus call. The GNOME-49 maximize API detection is shared with
+  makes no D-Bus call; `ApplyRules` in `dbus-service.js` calls its
+  `applyRules` to place the open windows again. The GNOME-49 maximize API detection is shared with
   `dbus-service.js` through `window-helpers.js`. A geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   above), so a rule waits for `shown` and then applies from an idle callback; a

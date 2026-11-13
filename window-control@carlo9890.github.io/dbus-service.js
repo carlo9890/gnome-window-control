@@ -24,7 +24,8 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // Reported by GetCapabilities, without 'keybindings' when the shortcuts could
 // not be registered; a caller gates a newer feature on its name.
 const CAPABILITIES = [
-    'rules', 'rules-title-affix', 'rules-class-prefix', 'rules-overlay', 'keybindings',
+    'rules', 'rules-title-affix', 'rules-class-prefix', 'rules-overlay', 'rules-min-width', 'rules-apply',
+    'keybindings',
     'no-animation', 'activate-no-animation',
 ];
 
@@ -98,8 +99,10 @@ export class WindowControlService {
         // register the shortcuts.
         this.keybindingsServed = false;
         // Set by the extension to ask WindowRules whether a window is an
-        // overlay.
+        // overlay, and to have it apply the rules again (ApplyRules).
         this.isOverlay = () => false;
+        this.applyRules = () => 0;
+        this.whenRulesLoaded = callback => callback(true);
         // WaitForWindow state. A window is tracked only while at least one
         // waiter is pending.
         this._waiters = [];
@@ -197,17 +200,17 @@ export class WindowControlService {
         return win;
     }
 
-    // Run a geometry handler body and answer the invocation: an empty reply on
-    // success, a named error otherwise.
+    // Run a geometry handler body and answer the invocation: the body's
+    // GLib.Variant, or an empty reply when it returns none, on success, and a
+    // named error otherwise.
     //
-    // The three geometry methods are async (GJS convention:
-    // <Method>Async(params, invocation)) only so they can answer here rather
-    // than by throwing. They do no waiting. GJS logs a throw from a
+    // The three geometry methods and ApplyRules are async (GJS convention:
+    // <Method>Async(params, invocation)) so they can answer here rather than
+    // by throwing. Only ApplyRules waits, for a rules.json read in flight. GJS logs a throw from a
     // synchronous handler as a warning, one per ordinary refusal.
     _geometryCall(invocation, label, body) {
         try {
-            body();
-            invocation.return_value(null);
+            invocation.return_value(body() ?? null);
         } catch (e) {
             if (e instanceof NamedError) {
                 invocation.return_dbus_error(e.dbusName, e.message);
@@ -475,6 +478,28 @@ export class WindowControlService {
             const win = this._geometryTarget(windowId, 'MoveResize');
             win.move_resize_frame(true, x, y, width, height);
             console.debug(`[Window Control] MoveResize(${windowId}) -> ok`);
+        });
+    }
+
+    // 0 applies the rules to every open window; any other id to that window,
+    // which must exist.
+    ApplyRulesAsync([windowId], invocation) {
+        console.debug(`[Window Control] ApplyRules(${windowId}) called`);
+        this.whenRulesLoaded(loaded => {
+            if (!loaded) {
+                invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'The extension was disabled');
+                return;
+            }
+            this._geometryCall(invocation, 'ApplyRules', () => {
+                let only = null;
+                if (windowId !== 0) {
+                    only = this._findWindowById(windowId);
+                    if (!only)
+                        throw new NamedError(DBUS_ERROR_NOT_FOUND, `Window not found: ${windowId}`);
+                }
+                const applied = this.applyRules(only, win => this._isUnshown(win));
+                return new GLib.Variant('(u)', [applied]);
+            });
         });
     }
 

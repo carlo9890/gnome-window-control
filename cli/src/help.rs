@@ -101,16 +101,16 @@ TILING & POSITIONING:
 PLACEMENT RULES:
     Rules in ~/.config/gnome-window-control/rules.json place a window the
     moment it appears. The extension re-reads the file on every change; no
-    restart. Only rules test needs a running shell. Every subcommand takes
-    --file <PATH> to act on another file.
+    restart. Only rules test and rules apply need a running shell. Every
+    subcommand but rules apply takes --file <PATH> to act on another file.
     rules list [--json]     Show the rules in file order
     rules path              Print the path of the rules file
     rules check [--json]
                             Validate the file. Same verdict and same message
                             the extension would log, so a file this accepts
                             is a file the shell will load.
-    rules add <MATCH> [ACTION] [--workspace <N>] [--monitor <N>]
-              [--overlay] [--at <N>] [--dry-run]
+    rules add <MATCH> [ACTION] [--min-width <PX>] [--workspace <N>]
+              [--monitor <N>] [--overlay] [--at <N>] [--dry-run]
                             Append a rule (or insert it at --at). MATCH is
                             -c <CLASS>, -t <TITLE>, -s <SUBSTR>,
                             --title-prefix <TEXT> or --title-suffix <TEXT>
@@ -125,14 +125,20 @@ PLACEMENT RULES:
                             --overlay is given. --overlay keeps the window
                             on top and out of Alt+Tab, and minimizes it
                             when another window takes the focus or the
-                            overview opens.
+                            overview opens. --min-width makes the rule
+                            match only when the monitor the window lands on
+                            is at least PX logical pixels wide; put it
+                            before a rule without it for a fallback.
     rules remove <INDEX> [--dry-run]
                             Remove the rule at INDEX
     rules test <WINDOW> [--json]
                             Which rule matches this window, where it would put
                             it, and which later rules it shadows. Read-only:
-                            nothing is moved. The one subcommand that needs a
-                            running shell.
+                            nothing is moved.
+    rules apply [<WINDOW>]  Apply the rules the extension has loaded again, to
+                            every open window or to WINDOW, as a new window
+                            gets them: reset windows to their rule. A
+                            minimized window stays minimized.
 
 WORKSPACE & MONITOR COMMANDS:
     workspace <N>                       Switch to workspace N

@@ -286,6 +286,7 @@ as the `wctl` commands:
   `title_suffix` (title ends with), `class_prefix` (WM class starts with, for
   apps that put a per-window part in the class, such as a Chrome app window's
   `chrome-github.com__<owner>_<repo>-Default`). Several keys must all match.
+  `match` can also hold `min_width`: see [Rules per monitor size](#rules-per-monitor-size).
 - **place** — `[X, Y, WIDTH, HEIGHT]`, the tokens of `wctl place`: X is a number
   or `left|center|right`, Y a number or `top|center|bottom`, WIDTH/HEIGHT a
   positive number or a percentage like `50%`.
@@ -303,7 +304,8 @@ as the `wctl` commands:
 
 `place`, `tile` and `center` are mutually exclusive in one rule; combine any of
 them with `workspace`, `monitor` and `overlay`. The first matching rule wins, in
-file order, and applies once per window.
+file order, and applies once per new window; `wctl rules apply` applies the
+rules to the open windows again.
 
 On GNOME 49 and later a `place` or `tile` rule takes effect before the window
 is drawn, so it opens in place. On GNOME 45 to 48, and for `center`,
@@ -311,8 +313,34 @@ is drawn, so it opens in place. On GNOME 45 to 48, and for `center`,
 the window appears first and moves a moment later.
 
 This sets the *initial* position only: an app that resizes itself afterwards is
-left alone. A rule with a bad value is reported to the journal and the whole file
+left alone until you run `wctl rules apply` ([Resetting windows to their
+rules](#resetting-windows-to-their-rules)). A rule with a bad value is reported to the journal and the whole file
 is ignored until you fix it, so one typo never places a window half-right.
+
+### Rules per monitor size
+
+`"min_width": <pixels>` in `match` makes a rule match only when the monitor it
+places the window on is at least that many logical pixels wide. Put it before a
+rule without it, and the second rule is the fallback on a smaller monitor:
+
+```json
+[
+  { "match": { "class": "kitty", "min_width": 3000 }, "place": ["center", "top", "75%", "100%"] },
+  { "match": { "class": "kitty" },                    "place": ["center", "top", "100%", "100%"] }
+]
+```
+
+- The monitor tested is the rule's own `monitor`, else the monitor the window
+  opens on.
+- Logical width is the width after scaling: a 3840 px panel at 200% is 1920
+  wide, in a Wayland or an X11 session. `wctl monitors` shows the logical
+  width on Wayland with GNOME 50 or fractional scaling, and the physical width
+  otherwise.
+- When the rule's `monitor` does not exist, a rule with `min_width` does not
+  match, so the next rule can.
+- `wctl rules add ... --min-width 3000` writes the key.
+
+`min_width` needs an extension that reports `rules-min-width`.
 
 ### Overlay windows
 
@@ -399,7 +427,8 @@ shell running, and with `--file`, they say nothing.
 `title_prefix` and `title_suffix` need an extension that also reports
 `rules-title-affix`. An older one refuses a file that has either key and then
 applies no rule at all; `add` and `remove` warn about that too. `class_prefix`
-needs `rules-class-prefix` in the same way, and `overlay` needs `rules-overlay`.
+needs `rules-class-prefix` in the same way, `overlay` needs `rules-overlay`,
+and `min_width` needs `rules-min-width`.
 
 ### Checking the file
 
@@ -445,14 +474,44 @@ the rule names a monitor that does not exist, it says the extension skips the
 rest of the rule and exits 0; with `--json`, `workarea` and `target` are `null`
 and `"skipped"` is `"no such monitor"`. For a fullscreen window it says the
 extension skips the geometry; with `--json`, `target` is `null` and `"skipped"`
-is `"fullscreen"`. This is
-the one `rules` subcommand that needs the extension running, because it resolves
-a live window. It never moves anything. Against an extension that does not
-report the `rules` capability it exits 5 instead, because that extension
-ignores the file. It also exits 5 when the file uses `title_prefix`,
-`title_suffix`, `class_prefix` or `overlay` and the extension does not report
-`rules-title-affix`, `rules-class-prefix` or `rules-overlay` for it, because
-that extension refuses the whole file.
+is `"fullscreen"`. It
+needs the extension running, because it resolves a live window. It never moves
+anything. Against an extension that does not report the `rules` capability it
+exits 5 instead, because that extension ignores the file. It also exits 5 when
+the file uses `title_prefix`, `title_suffix`, `class_prefix`, `overlay` or
+`min_width` and the extension does not report `rules-title-affix`,
+`rules-class-prefix`, `rules-overlay` or `rules-min-width` for it, because that
+extension refuses the whole file.
+
+### Resetting windows to their rules
+
+```bash
+wctl rules apply             # every open window
+wctl rules apply -c kitty    # one window
+```
+
+The extension applies the rules it has loaded again, as it does to a new
+window: the first matching rule wins, and `min_width` tests the monitor the
+window is on now. Use it after you moved windows by hand, or after you docked
+or undocked a laptop.
+
+- A maximized window is restored first, then placed.
+- A minimized window is placed and stays minimized.
+- A fullscreen window gets its `workspace` and `monitor`, but no geometry.
+- A `workspace` that does not exist is skipped, so each apply does not add
+  one more workspace.
+- A window that no rule matches is not touched.
+- A window that opened in the last two seconds and still waits for its
+  rule is skipped.
+- A rule matches the title a window has now, which can differ from its title
+  when it opened.
+
+It prints how many windows a rule matched. It reads the rules file first and
+stops on a file the extension would refuse, as `rules check` does. It exits 5
+when the loaded extension does not report `rules-apply`, or refuses a key the
+file uses. It reads the rules the extension has
+loaded, so it takes no `--file`. A change you saved just before, with an
+editor or `wctl rules add`, is read first and then applied.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
@@ -525,6 +584,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Move` | `(tii) -> ()` | Move window to (x, y). Raises on failure — see **Errors** below |
 | `Resize` | `(tii) -> ()` | Resize window to (width, height). Raises on failure |
 | `MoveResize` | `(tiiii) -> ()` | Move and resize window. Raises on failure |
+| `ApplyRules` | `(t) -> u` | Apply the loaded rules.json rules again: `0` for every open window, else that window. Returns how many windows a rule matched. Raises `NotFound` for an id no window has |
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
 | `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area; `(-1, -1, -1, -1)` for an index that is not a monitor, and only then |
 | `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |
@@ -550,7 +610,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 ### Errors
 
 `Move`, `Resize` and `MoveResize` return nothing and raise instead;
-`WaitForWindow` and `WaitForGeometry` raise too. The ERRORS block in
+`ApplyRules`, `WaitForWindow` and `WaitForGeometry` raise too. The ERRORS block in
 `window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
 errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
 raises without declaring them there, and `org.gnome.gjs.JSError.*` is the name
@@ -563,9 +623,9 @@ ends the call.
 | `org.gnome.Shell.Extensions.WindowControl.NotFound` | No window has that ID (also `WaitForGeometry`, if the window closes while waiting) |
 | `org.gnome.Shell.Extensions.WindowControl.Refused` | The frame is pinned by fullscreen, maximize or tiling — the message names which |
 | `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
-| `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending |
+| `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending (a wait, or an `ApplyRules` waiting for a rules.json read) |
 | `org.freedesktop.DBus.Error.InvalidArgs` | A size or a wait time was not positive, `timeout_ms` was below `quiet_ms`, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
-| `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize` or `MoveResize` raised something unexpected |
+| `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize` or `ApplyRules` raised something unexpected |
 | `org.gnome.gjs.JSError.*` | Any other method threw a JavaScript `Error` unexpectedly; GJS names the D-Bus error after it (`org.gnome.gjs.JSError.TypeError`) |
 
 **Breaking change in extension version 10.** Before it, those three methods

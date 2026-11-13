@@ -92,7 +92,8 @@ try {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
-            .replace("'gi://Shell'", "'./stub-shell.js'");
+            .replace("'gi://Shell'", "'./stub-shell.js'")
+            .replace("'resource:///org/gnome/shell/misc/config.js'", "'./stub-config.js'");
         write(`${EXT}/${name}`, text);
     }
     write(`${EXT}/stub-main.js`, `const handlers = new Map();
@@ -139,7 +140,16 @@ export const sessionMode = {
 };
 `);
     write(`${EXT}/stub-extension.js`, 'export class Extension {}\n');
+    write(`${EXT}/stub-config.js`, "export const PACKAGE_VERSION = '50.0';\n");
     write(`${EXT}/stub-shell.js`, 'export default { ActionMode: { NORMAL: 1 } };\n');
+    // The same modules as a GNOME 49 shell loads them, for the layout-mode
+    // branch below mutter 50.
+    const EXT49 = `${SCRATCH}/ext49`;
+    GLib.mkdir_with_parents(EXT49, 0o755);
+    for (const name of ['overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js',
+        'stub-main.js', 'stub-shell.js'])
+        write(`${EXT49}/${name}`, read(`${EXT}/${name}`));
+    write(`${EXT49}/stub-config.js`, "export const PACKAGE_VERSION = '49.2';\n");
 
     // -- fakes -----------------------------------------------------------------
 
@@ -183,6 +193,7 @@ export const sessionMode = {
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
                 above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
+                monitor: 0,
             });
         }
 
@@ -208,7 +219,7 @@ export const sessionMode = {
         get_compositor_private() { return this; }
         is_on_all_workspaces() { return false; }
         is_skip_taskbar() { return false; }
-        get_title() { return ''; }
+        get_title() { return this.title ?? ''; }
         get_pid() { return 1; }
         get_window_type() { return this.type; }
         is_hidden() { return this.hidden; }
@@ -216,7 +227,7 @@ export const sessionMode = {
         get_client_type() { return Meta.WindowClientType.WAYLAND; }
         is_fullscreen() { return false; }
         unmaximize() { this.maximizeFlags = 0; }
-        get_monitor() { return 0; }
+        get_monitor() { return this.monitor; }
         get_workspace() { return workspace; }
         get_transient_for() { return this.transientFor; }
 
@@ -229,7 +240,7 @@ export const sessionMode = {
         }
         get_frame_rect() { return { x: 10, y: 10, width: 400, height: 300 }; }
         move_resize_frame(userOp, x, y, width, height) { this.moves.push([x, y, width, height]); }
-        change_workspace_by_index() {}
+        change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
         move_to_monitor() {}
 
         map() {
@@ -253,10 +264,15 @@ export const sessionMode = {
     };
 
     const windows = [];
+    // Logical monitor rectangles; a check that adds one removes it again.
+    const monitors = [{ x: 0, y: 0, width: 1920, height: 1080, scale: 1 }];
     const display = new Emitter();
     Object.assign(display, {
-        get_n_monitors: () => 1,
-        get_current_monitor: () => 0,
+        get_n_monitors: () => monitors.length,
+        get_monitor_geometry: index => monitors[index],
+        get_monitor_scale: index => monitors[index].scale,
+        currentMonitor: 0,
+        get_current_monitor() { return this.currentMonitor; },
         list_all_windows: () => [...windows],
         focus_window: null,
         get_current_time_roundtrip: () => 1234,
@@ -277,7 +293,7 @@ export const sessionMode = {
     globalThis.global = {
         display,
         get_window_actors: () => windows.map(win => ({ get_meta_window: () => win })),
-        workspace_manager: { get_active_workspace: () => workspace },
+        workspace_manager: { get_active_workspace: () => workspace, get_n_workspaces: () => 1 },
     };
 
     // The session bus as the extension sees it: name watches, and a way to make a
@@ -337,6 +353,7 @@ export const sessionMode = {
     const { WindowControlService } = await import(`file://${EXT}/dbus-service.js`);
     const { default: WindowControlExtension } = await import(`file://${EXT}/extension.js`);
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
+    const { WindowRules: WindowRules49 } = await import(`file://${EXT49}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
     const Main = await import(`file://${EXT}/stub-main.js`);
 
@@ -895,6 +912,16 @@ export const sessionMode = {
         try {
             extension.enable();
             const service = extension._service;
+            // enable() starts the first read of rules.json, so an ApplyRules
+            // right after it waits for that read, through the extension's
+            // own wiring of the service to WindowRules.
+            const wired = invocation();
+            service.ApplyRulesAsync([0], wired);
+            check('ApplyRules waits for the read in flight at enable()', wired.replies === 0,
+                showReply(wired));
+            await sleep(300);
+            check('ApplyRules answers once the read landed', showReply(wired) === '{"value":[0]}',
+                showReply(wired));
             check('enable() while unlocked serves the shortcuts',
                 adds() === 10 && service.keybindingsServed, `${adds()} bound`);
             Main.sessionMode.setLocked(true);
@@ -1309,6 +1336,274 @@ export const sessionMode = {
             unknownSourceRemovals(linesBeforeDisable) === 0);
         check('overlay lines log nothing at notice level',
             noticesSince(linesBeforeReload).length === 0, JSON.stringify(noticesSince(linesBeforeReload)));
+    }
+
+    // -- WindowRules: min_width -------------------------------------------------
+    //
+    // A rule with min_width matches only when the monitor it resolves against,
+    // its own `monitor` or else the window's, is at least that wide; a monitor
+    // that does not exist fits no min_width. The fake workarea is 1920x1080 on
+    // every monitor, so tile left is [0,0,480,1080] and tile right
+    // [1440,0,480,1080].
+
+    {
+        windows.length = 0;
+        monitors.push({ x: 1920, y: 0, width: 3840, height: 2160, scale: 1 });
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term', min_width: 3000 }, tile: 'right' },
+            { match: { class: 'term' }, tile: 'left' },
+            { match: { class: 'docked', min_width: 3000 }, monitor: 1, tile: 'left' },
+            { match: { class: 'docked' }, tile: 'right' },
+        ]));
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        const LEFT = '[[0,0,480,1080]]';
+        const RIGHT = '[[1440,0,480,1080]]';
+
+        const narrow = createWindow({ id: 30, wmClass: 'term' });
+        narrow.map();
+        const wide = createWindow({ id: 31, wmClass: 'term' });
+        wide.monitor = 1;
+        wide.map();
+        const docked = createWindow({ id: 32, wmClass: 'docked' });
+        docked.map();
+        await sleep(200);
+        check('min_width: a narrow monitor falls through to the next rule',
+            JSON.stringify(narrow.moves) === LEFT, JSON.stringify(narrow.moves));
+        check('min_width: a wide monitor takes the rule', JSON.stringify(wide.moves) === RIGHT,
+            JSON.stringify(wide.moves));
+        check("min_width: the rule's own monitor is the one tested",
+            JSON.stringify(docked.moves) === LEFT, JSON.stringify(docked.moves));
+
+        monitors.pop();
+        const undocked = createWindow({ id: 33, wmClass: 'docked' });
+        undocked.map();
+        await sleep(200);
+        check('min_width: a monitor that does not exist fits no min_width',
+            JSON.stringify(undocked.moves) === RIGHT, JSON.stringify(undocked.moves));
+
+        // A 3840 px panel at scale 2 is 1920 logical pixels wide. In the
+        // physical layout mode (X11) its geometry is 3840 wide, and the scale
+        // is divided out; in the logical mode the geometry is logical already.
+        const realIsWayland = Meta.is_wayland_compositor;
+        monitors[0] = { x: 0, y: 0, width: 3840, height: 2160, scale: 2 };
+        Meta.is_wayland_compositor = () => false;
+        const physical = createWindow({ id: 34, wmClass: 'term' });
+        physical.map();
+        await sleep(200);
+        check('min_width: the physical layout mode divides out the scale',
+            JSON.stringify(physical.moves) === LEFT, JSON.stringify(physical.moves));
+        Meta.is_wayland_compositor = () => true;
+        const logical = createWindow({ id: 35, wmClass: 'term' });
+        logical.map();
+        await sleep(200);
+        check('min_width: the logical layout mode takes the geometry as it is',
+            JSON.stringify(logical.moves) === RIGHT, JSON.stringify(logical.moves));
+        Meta.is_wayland_compositor = realIsWayland;
+        monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
+        rules.disable();
+    }
+
+    // -- min_width with a head start ---------------------------------------------
+    //
+    // A rule that took the head start is tested on the monitor the head start
+    // resolved against, the monitor it is placed on. Another rule that wins
+    // once shown is tested on the monitor the window is on.
+
+    {
+        windows.length = 0;
+        monitors.push({ x: 1920, y: 0, width: 3840, height: 2160, scale: 1 });
+        display.currentMonitor = 1;
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { title: 'Loading' }, place: ['0', '0', '300', '200'] },
+            { match: { class: 'pre', min_width: 3000 }, place: ['0', '0', '800', '600'] },
+            { match: { class: 'pre' }, place: ['0', '0', '400', '300'] },
+        ]));
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        const configure = () => ({
+            get_is_initial: () => true,
+            set_position(x, y) { this.position = [x, y]; },
+            set_size(width, height) { this.size = [width, height]; },
+        });
+
+        const same = createWindow({ id: 50, wmClass: 'pre' });
+        const sameConfig = configure();
+        rules._preplace(same, sameConfig);
+        same.monitor = 0;
+        same.map();
+        const other = createWindow({ id: 51, wmClass: 'pre' });
+        other.title = 'Loading';
+        const otherConfig = configure();
+        rules._preplace(other, otherConfig);
+        other.title = '';
+        other.monitor = 0;
+        other.map();
+        await sleep(200);
+        check('min_width: the head start is taken on the predicted monitor',
+            JSON.stringify(sameConfig.size) === '[800,600]', JSON.stringify(sameConfig.size));
+        check('min_width: the head-start rule is tested on its head-start monitor',
+            JSON.stringify(same.moves) === '[[0,0,800,600]]', JSON.stringify(same.moves));
+        check("min_width: another rule is tested on the window's monitor",
+            JSON.stringify(other.moves) === '[[0,0,400,300]]', JSON.stringify(other.moves));
+        rules.disable();
+        monitors.pop();
+        display.currentMonitor = 0;
+    }
+
+    // -- min_width below mutter 50 ----------------------------------------------
+    //
+    // A Wayland stage is logical only with scale-monitor-framebuffer in
+    // org.gnome.mutter experimental-features; else the scale is divided out.
+
+    {
+        const realSettings = Gio.Settings;
+        const realIsWayland = Meta.is_wayland_compositor;
+        let features = [];
+        Gio.Settings = class {
+            get_strv(key) { return key === 'experimental-features' ? features : []; }
+        };
+        Meta.is_wayland_compositor = () => true;
+        monitors[0] = { x: 0, y: 0, width: 3840, height: 2160, scale: 2 };
+        const rules = new WindowRules49();
+        try {
+            rules.enable();
+            check('below 50: a Wayland stage without the feature is physical', rules._monitorWidth(0) === 1920,
+                `${rules._monitorWidth(0)}`);
+            features = ['scale-monitor-framebuffer'];
+            check('below 50: scale-monitor-framebuffer makes the stage logical', rules._monitorWidth(0) === 3840,
+                `${rules._monitorWidth(0)}`);
+            rules.disable();
+            check('below 50: disable() drops the mutter settings', rules._mutterSettings === null);
+        } finally {
+            Gio.Settings = realSettings;
+            Meta.is_wayland_compositor = realIsWayland;
+            monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
+        }
+    }
+
+    // -- ApplyRules: the rules applied again to open windows ---------------------
+    //
+    // Every shown window a rule matches is placed again, a minimized one too
+    // and without a restore, a maximized one after its unmaximize. A tracked
+    // window and one mutter has not shown are skipped. A window whose rule
+    // has no overlay stops being one. The D-Bus method takes 0 for every
+    // window, an id for one, and raises NotFound for an id no window has.
+
+    {
+        windows.length = 0;
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term' }, tile: 'left' },
+            { match: { class: 'quake' }, tile: 'right', overlay: true },
+            { match: { class: 'far' }, workspace: 7 },
+        ]));
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        const service = startService();
+        service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
+        service.whenRulesLoaded = callback => rules.whenLoaded(callback);
+        const LEFT = '[[0,0,480,1080]]';
+        const RIGHT = '[[1440,0,480,1080]]';
+
+        const placed = createWindow({ id: 40, wmClass: 'term' });
+        placed.map();
+        const hidden = createWindow({ id: 41, wmClass: 'term' });
+        hidden.map();
+        const maximized = createWindow({ id: 42, wmClass: 'term' });
+        maximized.map();
+        const quake = createWindow({ id: 43, wmClass: 'quake' });
+        quake.map();
+        await sleep(200);
+        for (const win of [placed, hidden, maximized, quake])
+            win.moves.length = 0;
+        hidden.minimize();
+        maximized.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        const evaluating = createWindow({ id: 44, wmClass: 'other' });
+        evaluating.map();
+        const unshown = new FakeWindow({ id: 45, wmClass: 'term' });
+        windows.push(unshown);
+        const loose = createWindow({ id: 46, wmClass: 'loose' });
+        loose.map();
+        const far = createWindow({ id: 47, wmClass: 'far' });
+        far.map();
+        await sleep(2200);   // past LATE_IDENTITY_GRACE_MS: 'loose' is untracked
+        rules._overlays.add(loose);
+        check('a new window goes to a workspace past the last one, as mutter appends it',
+            JSON.stringify(far.workspaceMoves) === '[7]', JSON.stringify(far.workspaceMoves));
+
+        const all = invocation();
+        service.ApplyRulesAsync([0], all);
+        await sleep(100);
+        check('ApplyRules(0) replies with the windows a rule matched',
+            showReply(all) === '{"value":[5]}', showReply(all));
+        check('ApplyRules moves no window to a workspace that does not exist',
+            JSON.stringify(far.workspaceMoves) === '[7]', JSON.stringify(far.workspaceMoves));
+        check('ApplyRules places a shown window again', JSON.stringify(placed.moves) === LEFT,
+            JSON.stringify(placed.moves));
+        check('ApplyRules places a minimized window and leaves it minimized',
+            JSON.stringify(hidden.moves) === LEFT && hidden.minimized, JSON.stringify(hidden.moves));
+        check('ApplyRules unmaximizes a maximized window before it places it',
+            maximized.maximizeFlags === 0 && maximized.moves.length === 0 && rules._tracked.has(maximized),
+            JSON.stringify(maximized.moves));
+        check('ApplyRules keeps an overlay rule an overlay', JSON.stringify(quake.moves) === RIGHT &&
+            rules.isOverlay(quake), JSON.stringify(quake.moves));
+        check('ApplyRules skips a window still in its grace period', evaluating.moves.length === 0);
+        check('ApplyRules skips a window mutter has not shown', unshown.moves.length === 0);
+        check('ApplyRules releases an overlay no rule makes one', !rules.isOverlay(loose));
+        check('ApplyRules skips a window waiting for its unmaximize',
+            rules._tracked.has(maximized) && rules.applyRules() === 4 && maximized.moves.length === 0,
+            JSON.stringify(maximized.moves));
+        await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
+        check('ApplyRules places a maximized window once the unmaximize landed',
+            JSON.stringify(maximized.moves) === LEFT && !rules._tracked.has(maximized),
+            JSON.stringify(maximized.moves));
+
+        placed.moves.length = 0;
+        quake.moves.length = 0;
+        const one = invocation();
+        service.ApplyRulesAsync([40], one);
+        await sleep(100);
+        check('ApplyRules(id) places only that window', showReply(one) === '{"value":[1]}' &&
+            JSON.stringify(placed.moves) === LEFT && quake.moves.length === 0, showReply(one));
+        const none = invocation();
+        service.ApplyRulesAsync([46], none);
+        check('ApplyRules(id) replies 0 when no rule matches', showReply(none) === '{"value":[0]}',
+            showReply(none));
+        const missing = invocation();
+        service.ApplyRulesAsync([999], missing);
+        check('ApplyRules(id) raises NotFound for an id no window has', missing.replies === 1 &&
+            missing.reply.error === 'org.gnome.Shell.Extensions.WindowControl.NotFound', showReply(missing));
+
+        // A file saved just before the call is applied as saved: the call
+        // waits for the reload, and one pending at disable() gets Disabled.
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term' }, tile: 'right' },
+        ]));
+        for (let waited = 0; waited < 1000 && !rules._reloadId; waited += 5)
+            await sleep(5);   // the file event, not yet the debounced reload
+        placed.moves.length = 0;
+        const afterSave = invocation();
+        service.ApplyRulesAsync([40], afterSave);
+        check('ApplyRules waits for a reload that is due', afterSave.replies === 0, showReply(afterSave));
+        await sleep(400);
+        check('ApplyRules applies the rules as saved', showReply(afterSave) === '{"value":[1]}' &&
+            JSON.stringify(placed.moves) === RIGHT, `${showReply(afterSave)} ${JSON.stringify(placed.moves)}`);
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, '[]');
+        for (let waited = 0; waited < 1000 && !rules._reloadId; waited += 5)
+            await sleep(5);
+        const pending = invocation();
+        service.ApplyRulesAsync([0], pending);
+
+        rules.disable();
+        check('an ApplyRules pending at disable() gets Disabled', pending.replies === 1 &&
+            pending.reply.error === DBUS_ERROR_DISABLED, showReply(pending));
+        service.unexport();
+        check('ApplyRules leaves no handler behind after disable()',
+            display.handlerCount() === 0 && maximized.handlerCount() === 0 && rules._sourceIds.size === 0,
+            `display ${display.handlerCount()}, window ${maximized.handlerCount()}`);
     }
 } finally {
     GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);

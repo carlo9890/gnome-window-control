@@ -78,8 +78,8 @@ export const DBUS_INTERFACE_XML = `
     <!--
       ERRORS RAISED BY NAME
 
-      Move, Resize, MoveResize, WaitForWindow and WaitForGeometry return no
-      success flag: they complete or raise one of the names below. In any
+      Move, Resize, MoveResize, ApplyRules, WaitForWindow and WaitForGeometry
+      return no success flag: they complete or raise one of the names below. In any
       other method, an unexpected Error answers with GJS's own
       org.gnome.gjs.JSError.<name>; before GNOME 50, a wait method that throws
       before it starts waiting sends no reply.
@@ -91,12 +91,13 @@ export const DBUS_INTERFACE_XML = `
         org.gnome.Shell.Extensions.WindowControl.Timeout
             WaitForGeometry: the frame did not settle within timeout_ms
         org.gnome.Shell.Extensions.WindowControl.Disabled
-            the extension was disabled while a wait was pending
+            the extension was disabled while a wait, or an ApplyRules waiting
+            for rules.json, was pending
         org.freedesktop.DBus.Error.InvalidArgs
             a non-positive size or wait time, timeout_ms below quiet_ms, or
             an invalid wait selector
         org.freedesktop.DBus.Error.Failed
-            Move, Resize or MoveResize raised something unexpected
+            Move, Resize, MoveResize or ApplyRules raised something unexpected
     -->
 
     <method name="Move">
@@ -118,6 +119,19 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="in" name="y"/>
       <arg type="i" direction="in" name="width"/>
       <arg type="i" direction="in" name="height"/>
+    </method>
+
+    <!--
+      Applies the loaded rules.json rules again, as a new window gets them
+      once shown: window_id 0 means every open window, any other id that one
+      window. applied is the number of windows a rule matched. A window whose
+      own first placement is still pending is skipped. A rules.json change
+      that is still being read is waited for, so the rules applied are the
+      ones saved.
+    -->
+    <method name="ApplyRules">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="u" direction="out" name="applied"/>
     </method>
 
     <!-- (-1, -1, -1, -1) when no window has that id. -->

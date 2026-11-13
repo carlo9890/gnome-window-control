@@ -22,7 +22,8 @@ import { ROOT, check, report } from './check-helper.js';
 const format = await import(
     GLib.filename_to_uri(`${ROOT}/window-control@carlo9890.github.io/rules-format.js`, null));
 const {
-    compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, nextWidePosition, TILE_CELLS,
+    compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, fitsMonitor, nextWidePosition,
+    TILE_CELLS,
 } = format;
 
 const [, bytes] = GLib.file_get_contents(`${ROOT}/tests/vectors/rules-spec.json`);
@@ -179,6 +180,23 @@ for (const vector of VECTORS.match.no_predicate) {
     check(`match rejected: ${vector.name}`,
         matchPredicate(vector.kind, vector.value) === null,
         'expected null, got a predicate');
+}
+
+for (const vector of VECTORS.match.min_width) {
+    const actual = fitsMonitor(vector.min_width, vector.monitor_width);
+    check(`min_width: ${vector.name}`, actual === vector.fits,
+        `expected ${vector.fits}, got ${actual}`);
+}
+
+// A compiled rule carries the min_width the monitor condition reads, and null
+// without one.
+{
+    const [withWidth, without] = compileRules(JSON.stringify([
+        { match: { class: 'a', min_width: 3000 }, tile: 'left' },
+        { match: { class: 'a' }, tile: 'left' },
+    ]));
+    check('min_width: a compiled rule carries it', withWidth.minWidth === 3000 && without.minWidth === null,
+        `${withWidth.minWidth}, ${without.minWidth}`);
 }
 
 // -- report ----------------------------------------------------------------
