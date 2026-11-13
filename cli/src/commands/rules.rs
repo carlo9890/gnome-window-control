@@ -974,8 +974,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 /// (index, logical width) of every monitor, what `min_width` is compared
 /// against.
 fn monitor_widths(ctx: &mut Ctx) -> Result<Vec<(i64, i64)>> {
-    let json = ctx.bus.call_json("ListMonitors")?;
-    Ok(model::parse_array(&json, "monitor list")?
+    Ok(super::monitor_list(ctx)?
         .iter()
         .map(|monitor| {
             (
@@ -988,8 +987,10 @@ fn monitor_widths(ctx: &mut Ctx) -> Result<Vec<(i64, i64)>> {
 
 /// `wctl rules apply [<WINDOW>]`
 ///
-/// The rules the extension has loaded, not a file: the extension applies them
-/// to every open window, or to the one named, as it does to a new window.
+/// The extension applies the rules it has loaded to every open window, or to
+/// the one named, as it does to a new window. The rules file is read first,
+/// as `test` reads it: a file the extension refuses loads no rule, and an
+/// apply would then report success while it does nothing.
 fn apply(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let selector = if args.is_empty() {
         None
@@ -1001,13 +1002,23 @@ fn apply(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         )?)
     };
 
+    let (raw, _) = load(&default_path()?)?;
+
     let capabilities = ctx.bus.get_capabilities()?;
     if !capabilities.iter().any(|name| name == APPLY_CAPABILITY) {
         return Err(Fail::error(NO_APPLY_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
+    if let Some(warning) = refused_keys(&capabilities, &raw).first() {
+        return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
+    }
 
+    // ApplyRules reads 0 as every open window, so the window ID 0, which no
+    // window has, must not reach it.
     let id = match &selector {
-        Some(selector) => crate::selector::lookup(ctx, selector)?,
+        Some(selector) => match crate::selector::lookup(ctx, selector)? {
+            0 => return Err(super::not_found(0)),
+            id => id,
+        },
         None => 0,
     };
     let applied: u32 = ctx.bus.call("ApplyRules", &(id,))?;
@@ -1019,7 +1030,10 @@ fn applied_line(id: u64, applied: u32) -> String {
     match (id, applied) {
         (0, 1) => "Applied the rules to 1 window".to_string(),
         (0, count) => format!("Applied the rules to {count} windows"),
-        (id, 0) => format!("No rule applied to window {id}"),
+        (id, 0) => format!(
+            "No rule applied to window {id}: no rule matches it, or it opened a moment \
+             ago and its own rule is still on the way"
+        ),
         (id, _) => format!("Applied a rule to window {id}"),
     }
 }
@@ -1259,7 +1273,11 @@ mod tests {
         assert_eq!(applied_line(0, 0), "Applied the rules to 0 windows");
         assert_eq!(applied_line(0, 1), "Applied the rules to 1 window");
         assert_eq!(applied_line(0, 3), "Applied the rules to 3 windows");
-        assert_eq!(applied_line(7, 0), "No rule applied to window 7");
+        assert_eq!(
+            applied_line(7, 0),
+            "No rule applied to window 7: no rule matches it, or it opened a moment ago \
+             and its own rule is still on the way"
+        );
         assert_eq!(applied_line(7, 1), "Applied a rule to window 7");
     }
 

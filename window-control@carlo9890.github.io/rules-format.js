@@ -16,9 +16,11 @@ export const MATCH_KINDS = {
 
 const MATCH_KEY_NAMES = Object.keys(MATCH_KINDS).join(', ');
 
-// Every rules.json match key: the window predicates, then the condition on the
-// monitor the rule resolves against.
-const ALL_MATCH_KEY_NAMES = `${MATCH_KEY_NAMES}, min_width`;
+// The match key that is a condition on the monitor the rule resolves
+// against, not a window predicate.
+const MIN_WIDTH_KEY = 'min_width';
+
+const ALL_MATCH_KEY_NAMES = `${MATCH_KEY_NAMES}, ${MIN_WIDTH_KEY}`;
 
 // A tile position as (startCol, endCol, startRow, endRow) of the 4x2 grid.
 export const TILE_CELLS = {
@@ -209,11 +211,15 @@ function isPlainObject(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isIntegerFrom(value, min) {
+    return Number.isInteger(value) && value >= min && value <= INT32_MAX;
+}
+
 function compileIndex(rule, key, label) {
     if (!(key in rule))
         return null;
     const value = rule[key];
-    if (!Number.isInteger(value) || value < 0 || value > INT32_MAX)
+    if (!isIntegerFrom(value, 0))
         throw new Error(`${label}.${key}: must be a non-negative integer`);
     return value;
 }
@@ -234,9 +240,9 @@ export function compileRule(rule, index) {
     const predicates = [];
     let minWidth = null;
     for (const [key, value] of Object.entries(rule.match)) {
-        if (key === 'min_width') {
-            if (!Number.isInteger(value) || value < 1 || value > INT32_MAX)
-                throw new Error(`${label}.match.min_width: must be a positive integer`);
+        if (key === MIN_WIDTH_KEY) {
+            if (!isIntegerFrom(value, 1))
+                throw new Error(`${label}.match.${key}: must be a positive integer`);
             minWidth = value;
             continue;
         }

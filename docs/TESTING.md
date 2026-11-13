@@ -158,7 +158,8 @@ It pins:
   does not exist fits no `min_width`;
 - `ApplyRules`: it places a shown window, a minimized one without a restore,
   and a maximized one after its unmaximize; it skips a tracked window and one
-  mutter has not shown; it releases an overlay no rule makes one; its reply
+  mutter has not shown; it moves no window to a workspace that does not
+  exist; it releases an overlay no rule makes one; its reply
   counts the matched windows, an id applies to that window only, and an id no
   window has raises `NotFound`;
 - overlay windows: a load takes the open windows and a new window takes the

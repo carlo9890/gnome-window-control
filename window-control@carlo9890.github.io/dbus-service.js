@@ -203,7 +203,7 @@ export class WindowControlService {
     // GLib.Variant, or an empty reply when it returns none, on success, and a
     // named error otherwise.
     //
-    // The three geometry methods are async (GJS convention:
+    // The three geometry methods and ApplyRules are async (GJS convention:
     // <Method>Async(params, invocation)) only so they can answer here rather
     // than by throwing. They do no waiting. GJS logs a throw from a
     // synchronous handler as a warning, one per ordinary refusal.
@@ -483,6 +483,7 @@ export class WindowControlService {
     // 0 applies the rules to every open window; any other id to that window,
     // which must exist.
     ApplyRulesAsync([windowId], invocation) {
+        console.debug(`[Window Control] ApplyRules(${windowId}) called`);
         this._geometryCall(invocation, 'ApplyRules', () => {
             let only = null;
             if (windowId !== 0) {
@@ -490,7 +491,8 @@ export class WindowControlService {
                 if (!only)
                     throw new NamedError(DBUS_ERROR_NOT_FOUND, `Window not found: ${windowId}`);
             }
-            return new GLib.Variant('(u)', [this.applyRules(only)]);
+            const applied = this.applyRules(only, win => this._isUnshown(win));
+            return new GLib.Variant('(u)', [applied]);
         });
     }
 

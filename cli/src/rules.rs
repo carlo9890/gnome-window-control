@@ -214,16 +214,24 @@ fn compile_index(rule: &Map<String, Value>, key: &str, label: &str) -> Result<Op
     let Some(value) = rule.get(key) else {
         return Ok(None);
     };
-    // JSON's 2.0 and 2e0 parse to the JS number 2, which Number.isInteger
-    // accepts, so a float with no fraction is an integer here too. as_f64 is
-    // exact over the accepted range, and refuses nothing as_i64 would accept
-    // inside it.
-    match value.as_f64() {
-        Some(index) if index.fract() == 0.0 && (0.0..=f64::from(i32::MAX)).contains(&index) => {
-            Ok(Some(index as i64))
-        }
-        _ => Err(format!("{label}.{key}: must be a non-negative integer")),
-    }
+    integer_from(value, 0)
+        .map(Some)
+        .ok_or_else(|| format!("{label}.{key}: must be a non-negative integer"))
+}
+
+/// The value as an integer from `min` to `i32::MAX`, or None.
+///
+/// JSON's 2.0 and 2e0 parse to the JS number 2, which Number.isInteger
+/// accepts, so a float with no fraction is an integer here too. as_f64 is
+/// exact over the accepted range, and refuses nothing as_i64 would accept
+/// inside it. Mirrors isIntegerFrom in rules-format.js.
+fn integer_from(value: &Value, min: i32) -> Option<i64> {
+    value
+        .as_f64()
+        .filter(|number| {
+            number.fract() == 0.0 && (f64::from(min)..=f64::from(i32::MAX)).contains(number)
+        })
+        .map(|number| number as i64)
 }
 
 /// Validate one rule, or return the message naming the offending key.
@@ -253,16 +261,11 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
     let mut min_width = None;
     for (key, value) in js_entries(match_block) {
         if key == MIN_WIDTH_KEY {
-            // The integer test compile_index applies, from 1 up.
-            match value.as_f64() {
-                Some(width)
-                    if width.fract() == 0.0 && (1.0..=f64::from(i32::MAX)).contains(&width) =>
-                {
-                    min_width = Some(width as i64);
-                    continue;
-                }
-                _ => return Err(format!("{label}.match.{key}: must be a positive integer")),
-            }
+            min_width = Some(
+                integer_from(value, 1)
+                    .ok_or_else(|| format!("{label}.match.{key}: must be a positive integer"))?,
+            );
+            continue;
         }
         let Some((_, kind)) = MATCH_KEYS.iter().find(|(name, _)| name == key) else {
             return Err(format!(

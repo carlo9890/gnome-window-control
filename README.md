@@ -320,7 +320,7 @@ is ignored until you fix it, so one typo never places a window half-right.
 ### Rules per monitor size
 
 `"min_width": <pixels>` in `match` makes a rule match only when the monitor it
-places the window on is at least that many logical pixels wide. Put it before a
+places the window on is at least that many pixels wide. Put it before a
 rule without it, and the second rule is the fallback on a smaller monitor:
 
 ```json
@@ -332,8 +332,9 @@ rule without it, and the second rule is the fallback on a smaller monitor:
 
 - The monitor tested is the rule's own `monitor`, else the monitor the window
   opens on.
-- Logical width is the width `wctl monitors` reports: a 3840 px panel at 200%
-  scale is 1920 wide.
+- The width is the one `wctl monitors` reports. With fractional scaling on
+  Wayland it is the logical width (a 3840 px panel at 200% is 1920 wide); on
+  X11, and on Wayland without fractional scaling, it is the physical width.
 - When the rule's `monitor` does not exist, a rule with `min_width` does not
   match, so the next rule can.
 - `wctl rules add ... --min-width 3000` writes the key.
@@ -496,14 +497,18 @@ or undocked a laptop.
 - A maximized window is restored first, then placed.
 - A minimized window is placed and stays minimized.
 - A fullscreen window gets its `workspace` and `monitor`, but no geometry.
+- A `workspace` that does not exist is skipped, so each apply does not add
+  one more workspace.
 - A window that no rule matches is not touched.
 - A window that opened in the last two seconds and still waits for its
   rule is skipped.
 - A rule matches the title a window has now, which can differ from its title
   when it opened.
 
-It prints how many windows a rule matched, and exits 5 when the loaded
-extension does not report `rules-apply`. It reads the rules the extension has
+It prints how many windows a rule matched. It reads the rules file first and
+stops on a file the extension would refuse, as `rules check` does. It exits 5
+when the loaded extension does not report `rules-apply`, or refuses a key the
+file uses. It reads the rules the extension has
 loaded, so it takes no `--file`.
 
 The complete format, the token grammar, the tile grid and every validation rule

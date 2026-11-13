@@ -90,8 +90,8 @@ an integer from 1 to 2147483647; `0`, a fraction and a string are refused with
 
 | Property | Value |
 |---|---|
-| Tested monitor | the rule's own `monitor`; else, before the first frame, the monitor `_preplace` predicts, and once shown, the monitor the window is on |
-| Width compared | the monitor's logical width, `get_monitor_geometry(i).width`; not the workarea, which loses the panels |
+| Tested monitor | the rule's own `monitor`; else, before the first frame, the monitor `_preplace` predicts; once shown, the monitor a head start resolved against, else the monitor the window is on |
+| Width compared | `get_monitor_geometry(i).width`, the width `ListMonitors` reports, in mutter's stage coordinates: logical pixels in mutter's logical layout mode, physical pixels in its physical mode (X11, and Wayland without `scale-monitor-framebuffer`); not the workarea, which loses the panels |
 | Fits | width >= `min_width` (`fitsMonitor`, `fits_monitor`) |
 | Tested monitor does not exist | the rule does not match, and a later rule can |
 
@@ -316,13 +316,16 @@ For each window, in this order:
 
 1. A window `_tracked` holds is skipped: its own apply, grace period or
    unmaximize wait is still running.
-2. A window `looksUnmapped` reports is skipped: mutter's initial placement
-   would override the frame.
+2. A window that has not been shown is skipped: mutter's initial placement
+   would override the frame. `ApplyRules` decides this with the service's
+   own record of first shows (`_isUnshown`).
 3. The winning rule is decided as for a shown window: `NORMAL` only, first
    match wins, `min_width` against the rule's `monitor`, else
    `get_monitor()`.
 4. The window stops being an overlay unless the winning rule has `overlay`.
-5. A matched window goes through `_apply`, with the action order above. A
+5. A matched window goes through `_apply`, with the action order above,
+   except that a `workspace` at or past `get_n_workspaces()` is skipped with a
+   debug line: mutter would append one more workspace at each apply. A
    minimized window keeps its minimized state.
 
 The reply counts the windows of step 5.

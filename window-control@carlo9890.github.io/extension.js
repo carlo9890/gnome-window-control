@@ -18,7 +18,7 @@ export default class WindowControlExtension extends Extension {
         this._rules = new WindowRules();
         this._rules.enable();
         this._service.isOverlay = win => this._rules.isOverlay(win);
-        this._service.applyRules = win => this._rules.applyRules(win);
+        this._service.applyRules = (win, isUnshown) => this._rules.applyRules(win, isUnshown);
         this._keybindings = new WindowKeybindings();
         this._keybindingsFailed = false;
         // The shell keeps the extension enabled when the screen locks and

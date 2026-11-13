@@ -144,8 +144,8 @@ export class WindowRules {
 
     // An overlay rule holds for the windows already open too, not only for
     // new ones: an open overlay must still be one after the extension is
-    // enabled again, and after an edit of the file. Placement stays a
-    // once-per-new-window affair.
+    // enabled again, and after an edit of the file. Placement happens once
+    // per new window, and again only at applyRules.
     _syncOverlays() {
         if (this._overlays.size === 0 && !this._rules.some(rule => rule.overlay))
             return;
@@ -169,12 +169,12 @@ export class WindowRules {
     // as a load does. Returns how many windows a rule matched.
     //
     // A tracked window is skipped: its own rule is still on the way, or its
-    // unmaximize is. So is a window mutter has not shown yet, whose initial
-    // placement would override the frame.
-    applyRules(only = null) {
+    // unmaximize is. So is a window `isUnshown` reports, which mutter has not
+    // shown yet: its initial placement would override the frame.
+    applyRules(only = null, isUnshown = looksUnmapped) {
         let applied = 0;
         for (const win of only ? [only] : global.display.list_all_windows()) {
-            if (this._tracked.has(win) || looksUnmapped(win))
+            if (this._tracked.has(win) || isUnshown(win))
                 continue;
             const index = this._winningIndex(win);
             const rule = this._rules[index];
@@ -182,7 +182,7 @@ export class WindowRules {
                 this._overlays.remove(win);
             if (index < 0)
                 continue;
-            this._apply(win, rule, index, null);
+            this._apply(win, rule, index, null, true);
             applied++;
         }
         console.debug(`[Window Control] rules applied again to ${applied} window(s)`);
@@ -274,23 +274,29 @@ export class WindowRules {
     // `fallbackMonitor`, the one the window is on or will be shown on.
     _matchIndex(win, fallbackMonitor) {
         return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) &&
-            fitsMonitor(rule.minWidth, this._monitorWidth(rule.monitor ?? fallbackMonitor)));
+            (rule.minWidth === null ||
+                fitsMonitor(rule.minWidth, this._monitorWidth(rule.monitor ?? fallbackMonitor))));
     }
 
-    // The logical width of a monitor, or null when there is no such monitor.
+    _monitorExists(monitor) {
+        return monitor >= 0 && monitor < global.display.get_n_monitors();
+    }
+
+    // The width of a monitor in mutter's stage coordinates, or null when
+    // there is no such monitor.
     _monitorWidth(monitor) {
-        if (monitor < 0 || monitor >= global.display.get_n_monitors())
-            return null;
-        return global.display.get_monitor_geometry(monitor).width;
+        return this._monitorExists(monitor) ? global.display.get_monitor_geometry(monitor).width : null;
     }
 
     isOverlay(win) {
         return this._overlays.has(win);
     }
 
-    _winningIndex(win) {
+    // `fallbackMonitor` is the monitor a rule without its own `monitor`
+    // resolves against, the window's own by default.
+    _winningIndex(win, fallbackMonitor = win.get_monitor()) {
         return win.get_window_type() === Meta.WindowType.NORMAL
-            ? this._matchIndex(win, win.get_monitor()) : -1;
+            ? this._matchIndex(win, fallbackMonitor) : -1;
     }
 
     // Put the rule's frame into the window's initial configuration: mutter
@@ -323,7 +329,7 @@ export class WindowRules {
         if (!rule.geometry || rule.geometry.kind === 'center')
             return;
         const monitor = rule.monitor ?? predicted;
-        if (monitor < 0 || monitor >= global.display.get_n_monitors())
+        if (!this._monitorExists(monitor))
             return;
         const target = this._resolve(rule.geometry, win, workareaOf(win, monitor));
         if (!target)
@@ -345,8 +351,10 @@ export class WindowRules {
         entry.shown = true;
         // A shown window that is not NORMAL matches nothing, so it gets the
         // same grace period as an unmatched one: a retype to NORMAL within it
-        // still gets the rule, and one after it cannot move the window.
-        const index = this._winningIndex(win);
+        // still gets the rule, and one after it cannot move the window. A
+        // window with a head start is matched against the monitor the head
+        // start resolved against, the one its frame was set for.
+        const index = this._winningIndex(win, entry.headStart?.monitor ?? win.get_monitor());
         if (index >= 0) {
             const rule = this._rules[index];
             // A rule that took the head start resolves against the same
@@ -383,14 +391,21 @@ export class WindowRules {
         });
     }
 
-    _apply(win, rule, index, headStartMonitor) {
+    // `again` is an apply to a window placed before (applyRules). It moves
+    // the window to no workspace that does not exist: mutter would append
+    // one at each apply.
+    _apply(win, rule, index, headStartMonitor, again = false) {
         const id = win.get_id();
         // A load between the match and this call has decided the open
         // windows already; a rule it dropped makes no overlay.
         if (rule.overlay && this._rules.includes(rule))
             this._overlays.add(win);
-        if (rule.workspace !== null)
-            win.change_workspace_by_index(rule.workspace, true);
+        if (rule.workspace !== null) {
+            if (again && rule.workspace >= global.workspace_manager.get_n_workspaces())
+                console.debug(`[Window Control] rules[${index}] -> ${id}: no such workspace, skipped`);
+            else
+                win.change_workspace_by_index(rule.workspace, true);
+        }
         if (rule.monitor !== null) {
             if (rule.monitor >= global.display.get_n_monitors()) {
                 console.debug(`[Window Control] rules[${index}] -> ${id}: no such monitor, skipped`);

@@ -230,7 +230,7 @@ export const sessionMode = {
         }
         get_frame_rect() { return { x: 10, y: 10, width: 400, height: 300 }; }
         move_resize_frame(userOp, x, y, width, height) { this.moves.push([x, y, width, height]); }
-        change_workspace_by_index() {}
+        change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
         move_to_monitor() {}
 
         map() {
@@ -281,7 +281,7 @@ export const sessionMode = {
     globalThis.global = {
         display,
         get_window_actors: () => windows.map(win => ({ get_meta_window: () => win })),
-        workspace_manager: { get_active_workspace: () => workspace },
+        workspace_manager: { get_active_workspace: () => workspace, get_n_workspaces: () => 1 },
     };
 
     // The session bus as the extension sees it: name watches, and a way to make a
@@ -1375,12 +1375,13 @@ export const sessionMode = {
         write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
             { match: { class: 'term' }, tile: 'left' },
             { match: { class: 'quake' }, tile: 'right', overlay: true },
+            { match: { class: 'far' }, workspace: 7 },
         ]));
         const rules = new WindowRules();
         rules.enable();
         await sleep(300);
         const service = startService();
-        service.applyRules = win => rules.applyRules(win);
+        service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
         const LEFT = '[[0,0,480,1080]]';
         const RIGHT = '[[1440,0,480,1080]]';
 
@@ -1403,14 +1404,20 @@ export const sessionMode = {
         windows.push(unshown);
         const loose = createWindow({ id: 46, wmClass: 'loose' });
         loose.map();
+        const far = createWindow({ id: 47, wmClass: 'far' });
+        far.map();
         await sleep(2200);   // past LATE_IDENTITY_GRACE_MS: 'loose' is untracked
         rules._overlays.add(loose);
+        check('a new window goes to a workspace past the last one, as mutter appends it',
+            JSON.stringify(far.workspaceMoves) === '[7]', JSON.stringify(far.workspaceMoves));
 
         const all = invocation();
         service.ApplyRulesAsync([0], all);
         await sleep(100);
         check('ApplyRules(0) replies with the windows a rule matched',
-            showReply(all) === '{"value":[4]}', showReply(all));
+            showReply(all) === '{"value":[5]}', showReply(all));
+        check('ApplyRules moves no window to a workspace that does not exist',
+            JSON.stringify(far.workspaceMoves) === '[7]', JSON.stringify(far.workspaceMoves));
         check('ApplyRules places a shown window again', JSON.stringify(placed.moves) === LEFT,
             JSON.stringify(placed.moves));
         check('ApplyRules places a minimized window and leaves it minimized',

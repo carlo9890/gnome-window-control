@@ -997,8 +997,7 @@ fn rules_file_surface_needs_no_bus() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// `wctl rules test` is the one subcommand that needs a shell, so only its
-/// guards are headless. The cases below must all fail BEFORE the bus call:
+/// `wctl rules test` needs a shell, so only its guards are headless. The cases below must all fail BEFORE the bus call:
 /// a usage error, and a rules file that does not validate.
 #[test]
 fn rules_test_guards_fire_before_the_bus() {
