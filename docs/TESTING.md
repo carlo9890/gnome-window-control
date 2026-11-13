@@ -156,6 +156,11 @@ It pins:
 - `min_width`: a narrow monitor falls through to the next rule, a wide one
   takes the rule, a rule's own `monitor` is the one tested, and a monitor that
   does not exist fits no `min_width`;
+- `ApplyRules`: it places a shown window, a minimized one without a restore,
+  and a maximized one after its unmaximize; it skips a tracked window and one
+  mutter has not shown; it releases an overlay no rule makes one; its reply
+  counts the matched windows, an id applies to that window only, and an id no
+  window has raises `NotFound`;
 - overlay windows: a load takes the open windows and a new window takes the
   rule once shown; the hide after the focus grace period and at the overview's
   `shown`, not at `showing`; no hide for the overlay's own dialog, a focus that

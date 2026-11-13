@@ -164,6 +164,31 @@ export class WindowRules {
         }
     }
 
+    // Apply the rules again to the open windows, or to `only`, as a new
+    // window gets them once shown, and decide each one's overlay membership
+    // as a load does. Returns how many windows a rule matched.
+    //
+    // A tracked window is skipped: its own rule is still on the way, or its
+    // unmaximize is. So is a window mutter has not shown yet, whose initial
+    // placement would override the frame.
+    applyRules(only = null) {
+        let applied = 0;
+        for (const win of only ? [only] : global.display.list_all_windows()) {
+            if (this._tracked.has(win) || looksUnmapped(win))
+                continue;
+            const index = this._winningIndex(win);
+            const rule = this._rules[index];
+            if (!rule?.overlay)
+                this._overlays.remove(win);
+            if (index < 0)
+                continue;
+            this._apply(win, rule, index, null);
+            applied++;
+        }
+        console.debug(`[Window Control] rules applied again to ${applied} window(s)`);
+        return applied;
+    }
+
     // 'window-created' is connected only while there is a rule to apply, so an
     // empty or absent file costs nothing per window.
     _syncWatch() {

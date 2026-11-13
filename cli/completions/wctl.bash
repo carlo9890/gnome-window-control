@@ -79,13 +79,15 @@ _wctl() {
         rules)
             local subcommand="${words[$((2 + off))]:-}"
             if [[ $pos -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "list path check add remove test" -- "$cur"))
+                COMPREPLY=($(compgen -W "list path check add remove test apply" -- "$cur"))
             elif [[ $subcommand == add ]]; then
                 COMPREPLY=($(compgen -W "-c -t -s --title-prefix --title-suffix --class-prefix tile place center --min-width --workspace --monitor --overlay --at --dry-run --file" -- "$cur"))
             elif [[ $subcommand == remove ]]; then
                 COMPREPLY=($(compgen -W "--dry-run --file" -- "$cur"))
             elif [[ $subcommand == test ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words) --json --file" -- "$cur"))
+            elif [[ $subcommand == apply ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $subcommand == path ]]; then
                 COMPREPLY=($(compgen -W "--file" -- "$cur"))
             else

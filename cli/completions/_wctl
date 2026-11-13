@@ -196,7 +196,7 @@ _wctl() {
                     ;;
                 rules)
                     local -a rules_args=(
-                        '1:subcommand:(list path check add remove test)'
+                        '1:subcommand:(list path check add remove test apply)'
                         '--file[Rules file to use (default: the configured one)]:file:_files'
                     )
                     local rule_match='(-c -t -s --title-prefix --title-suffix --class-prefix)'
@@ -226,6 +226,10 @@ _wctl() {
                             _arguments "${rules_args[@]}" "${_wctl_selector_opts[@]}" \
                                 '2:window:_wctl_window_ids' \
                                 '--json[Output as JSON]'
+                            ;;
+                        apply)
+                            _arguments '1:subcommand:(apply)' "${_wctl_selector_opts[@]}" \
+                                '2:window:_wctl_window_ids'
                             ;;
                         path)
                             _arguments "${rules_args[@]}"

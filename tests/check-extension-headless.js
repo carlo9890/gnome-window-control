@@ -1361,6 +1361,95 @@ export const sessionMode = {
             JSON.stringify(undocked.moves) === RIGHT, JSON.stringify(undocked.moves));
         rules.disable();
     }
+
+    // -- ApplyRules: the rules applied again to open windows ---------------------
+    //
+    // Every shown window a rule matches is placed again, a minimized one too
+    // and without a restore, a maximized one after its unmaximize. A tracked
+    // window and one mutter has not shown are skipped. A window whose rule
+    // has no overlay stops being one. The D-Bus method takes 0 for every
+    // window, an id for one, and raises NotFound for an id no window has.
+
+    {
+        windows.length = 0;
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term' }, tile: 'left' },
+            { match: { class: 'quake' }, tile: 'right', overlay: true },
+        ]));
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        const service = startService();
+        service.applyRules = win => rules.applyRules(win);
+        const LEFT = '[[0,0,480,1080]]';
+        const RIGHT = '[[1440,0,480,1080]]';
+
+        const placed = createWindow({ id: 40, wmClass: 'term' });
+        placed.map();
+        const hidden = createWindow({ id: 41, wmClass: 'term' });
+        hidden.map();
+        const maximized = createWindow({ id: 42, wmClass: 'term' });
+        maximized.map();
+        const quake = createWindow({ id: 43, wmClass: 'quake' });
+        quake.map();
+        await sleep(200);
+        for (const win of [placed, hidden, maximized, quake])
+            win.moves.length = 0;
+        hidden.minimize();
+        maximized.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        const evaluating = createWindow({ id: 44, wmClass: 'other' });
+        evaluating.map();
+        const unshown = new FakeWindow({ id: 45, wmClass: 'term' });
+        windows.push(unshown);
+        const loose = createWindow({ id: 46, wmClass: 'loose' });
+        loose.map();
+        await sleep(2200);   // past LATE_IDENTITY_GRACE_MS: 'loose' is untracked
+        rules._overlays.add(loose);
+
+        const all = invocation();
+        service.ApplyRulesAsync([0], all);
+        await sleep(100);
+        check('ApplyRules(0) replies with the windows a rule matched',
+            showReply(all) === '{"value":[4]}', showReply(all));
+        check('ApplyRules places a shown window again', JSON.stringify(placed.moves) === LEFT,
+            JSON.stringify(placed.moves));
+        check('ApplyRules places a minimized window and leaves it minimized',
+            JSON.stringify(hidden.moves) === LEFT && hidden.minimized, JSON.stringify(hidden.moves));
+        check('ApplyRules unmaximizes a maximized window before it places it',
+            maximized.maximizeFlags === 0 && maximized.moves.length === 0 && rules._tracked.has(maximized),
+            JSON.stringify(maximized.moves));
+        check('ApplyRules keeps an overlay rule an overlay', JSON.stringify(quake.moves) === RIGHT &&
+            rules.isOverlay(quake), JSON.stringify(quake.moves));
+        check('ApplyRules skips a window still in its grace period', evaluating.moves.length === 0);
+        check('ApplyRules skips a window mutter has not shown', unshown.moves.length === 0);
+        check('ApplyRules releases an overlay no rule makes one', !rules.isOverlay(loose));
+        await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
+        check('ApplyRules places a maximized window once the unmaximize landed',
+            JSON.stringify(maximized.moves) === LEFT && !rules._tracked.has(maximized),
+            JSON.stringify(maximized.moves));
+
+        placed.moves.length = 0;
+        quake.moves.length = 0;
+        const one = invocation();
+        service.ApplyRulesAsync([40], one);
+        await sleep(100);
+        check('ApplyRules(id) places only that window', showReply(one) === '{"value":[1]}' &&
+            JSON.stringify(placed.moves) === LEFT && quake.moves.length === 0, showReply(one));
+        const none = invocation();
+        service.ApplyRulesAsync([46], none);
+        check('ApplyRules(id) replies 0 when no rule matches', showReply(none) === '{"value":[0]}',
+            showReply(none));
+        const missing = invocation();
+        service.ApplyRulesAsync([999], missing);
+        check('ApplyRules(id) raises NotFound for an id no window has', missing.replies === 1 &&
+            missing.reply.error === 'org.gnome.Shell.Extensions.WindowControl.NotFound', showReply(missing));
+
+        service.unexport();
+        rules.disable();
+        check('ApplyRules leaves no handler behind after disable()',
+            display.handlerCount() === 0 && maximized.handlerCount() === 0 && rules._sourceIds.size === 0,
+            `display ${display.handlerCount()}, window ${maximized.handlerCount()}`);
+    }
 } finally {
     GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);
 }

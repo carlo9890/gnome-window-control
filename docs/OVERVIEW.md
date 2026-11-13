@@ -83,7 +83,8 @@ README.md                  user docs; the D-Bus method table
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
   service: it reads `~/.config/gnome-window-control/rules.json`, watches
   `window-created`, and places a matching window once mutter has shown it. It
-  makes no D-Bus call. The GNOME-49 maximize API detection is shared with
+  makes no D-Bus call; `ApplyRules` in `dbus-service.js` calls its
+  `applyRules` to place the open windows again. The GNOME-49 maximize API detection is shared with
   `dbus-service.js` through `window-helpers.js`. A geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   above), so a rule waits for `shown` and then applies from an idle callback; a

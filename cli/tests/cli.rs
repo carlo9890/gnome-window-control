@@ -1233,6 +1233,17 @@ fn rules_add_overlay_writes_the_key_with_or_without_an_action() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// `rules apply` checks its selector before the bus, and with or without one
+/// it then needs the bus.
+#[test]
+fn rules_apply_guards_fire_before_any_bus_call() {
+    expect_die("Usage: wctl rules apply", &["rules", "apply", "1", "2"]);
+    expect_die("Option -c requires an argument", &["rules", "apply", "-c"]);
+    expect_not("connect", &["rules", "apply", "1", "2"]);
+    expect_die("connect", &["rules", "apply"]);
+    expect_die("connect", &["rules", "apply", "focused"]);
+}
+
 #[test]
 fn rules_add_min_width_goes_into_match() {
     let dir = std::env::temp_dir().join(format!("wctl-rules-min-width-{}", std::process::id()));

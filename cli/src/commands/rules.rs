@@ -9,7 +9,7 @@
 //! that the loaded extension does not report the `rules` capability. `test`
 //! opens it to resolve a live window, and refuses an extension without that
 //! capability or without the capability of a match key or a rule key the file
-//! holds.
+//! holds. `apply` asks the extension to apply the rules it has loaded again.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -33,6 +33,14 @@ pub const RULES_CAPABILITY: &str = "rules";
 /// must cost a moment and no more: `rules add` runs from keybindings, and the
 /// 25 s a real call is entitled to would read as a hang.
 const CAPABILITY_PROBE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The capability an extension reports when it serves ApplyRules.
+const APPLY_CAPABILITY: &str = "rules-apply";
+
+const NO_APPLY_SUPPORT: &str =
+    "The extension GNOME Shell has loaded cannot apply the rules again. Check \
+     with 'wctl version --json', install a newer extension, then restart the \
+     shell (log out and back in on Wayland).";
 
 const NO_RULES_SUPPORT: &str =
     "The extension GNOME Shell has loaded does not apply rules. Check with \
@@ -123,7 +131,7 @@ fn refused_keys(reported: &[String], document: &[Value]) -> Vec<&'static str> {
         .collect()
 }
 
-const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test> [OPTIONS]";
+const USAGE: &str = "Usage: wctl rules <check|list|path|add|remove|test|apply> [OPTIONS]";
 
 const ADD_USAGE: &str =
     "Usage: wctl rules add <-c CLASS|-t TITLE|-s SUBSTR|--title-prefix TEXT|--title-suffix TEXT|--class-prefix TEXT> [tile POSITION|place X Y W H|center [AXIS]] \
@@ -978,6 +986,44 @@ fn monitor_widths(ctx: &mut Ctx) -> Result<Vec<(i64, i64)>> {
         .collect())
 }
 
+/// `wctl rules apply [<WINDOW>]`
+///
+/// The rules the extension has loaded, not a file: the extension applies them
+/// to every open window, or to the one named, as it does to a new window.
+fn apply(ctx: &mut Ctx, args: &[String]) -> Result<()> {
+    let selector = if args.is_empty() {
+        None
+    } else {
+        Some(crate::selector::parse_exact(
+            0,
+            "Usage: wctl rules apply [<WINDOW>]",
+            args,
+        )?)
+    };
+
+    let capabilities = ctx.bus.get_capabilities()?;
+    if !capabilities.iter().any(|name| name == APPLY_CAPABILITY) {
+        return Err(Fail::error(NO_APPLY_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
+    }
+
+    let id = match &selector {
+        Some(selector) => crate::selector::lookup(ctx, selector)?,
+        None => 0,
+    };
+    let applied: u32 = ctx.bus.call("ApplyRules", &(id,))?;
+    println!("{}", applied_line(id, applied));
+    Ok(())
+}
+
+fn applied_line(id: u64, applied: u32) -> String {
+    match (id, applied) {
+        (0, 1) => "Applied the rules to 1 window".to_string(),
+        (0, count) => format!("Applied the rules to {count} windows"),
+        (id, 0) => format!("No rule applied to window {id}"),
+        (id, _) => format!("Applied a rule to window {id}"),
+    }
+}
+
 const SKIPPED_NO_SUCH_MONITOR: &str = "no such monitor";
 const SKIPPED_FULLSCREEN: &str = "fullscreen";
 
@@ -1010,6 +1056,7 @@ pub fn rules(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         "add" => add(ctx, rest),
         "remove" => remove(ctx, rest),
         "test" => test(ctx, rest),
+        "apply" => apply(ctx, rest),
         other => Err(Fail::error(format!(
             "Unknown rules subcommand: {other}. {USAGE}"
         ))),
@@ -1205,6 +1252,15 @@ mod tests {
                 "{earlier_key}={earlier_value} before {later_key}={later_value}"
             );
         }
+    }
+
+    #[test]
+    fn applied_line_names_the_count_or_the_window() {
+        assert_eq!(applied_line(0, 0), "Applied the rules to 0 windows");
+        assert_eq!(applied_line(0, 1), "Applied the rules to 1 window");
+        assert_eq!(applied_line(0, 3), "Applied the rules to 3 windows");
+        assert_eq!(applied_line(7, 0), "No rule applied to window 7");
+        assert_eq!(applied_line(7, 1), "Applied a rule to window 7");
     }
 
     #[test]

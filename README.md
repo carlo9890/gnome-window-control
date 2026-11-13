@@ -304,7 +304,8 @@ as the `wctl` commands:
 
 `place`, `tile` and `center` are mutually exclusive in one rule; combine any of
 them with `workspace`, `monitor` and `overlay`. The first matching rule wins, in
-file order, and applies once per window.
+file order, and applies once per new window; `wctl rules apply` applies the
+rules to the open windows again.
 
 On GNOME 49 and later a `place` or `tile` rule takes effect before the window
 is drawn, so it opens in place. On GNOME 45 to 48, and for `center`,
@@ -312,7 +313,8 @@ is drawn, so it opens in place. On GNOME 45 to 48, and for `center`,
 the window appears first and moves a moment later.
 
 This sets the *initial* position only: an app that resizes itself afterwards is
-left alone. A rule with a bad value is reported to the journal and the whole file
+left alone until you run `wctl rules apply` ([Resetting windows to their
+rules](#resetting-windows-to-their-rules)). A rule with a bad value is reported to the journal and the whole file
 is ignored until you fix it, so one typo never places a window half-right.
 
 ### Rules per monitor size
@@ -470,14 +472,39 @@ the rule names a monitor that does not exist, it says the extension skips the
 rest of the rule and exits 0; with `--json`, `workarea` and `target` are `null`
 and `"skipped"` is `"no such monitor"`. For a fullscreen window it says the
 extension skips the geometry; with `--json`, `target` is `null` and `"skipped"`
-is `"fullscreen"`. This is
-the one `rules` subcommand that needs the extension running, because it resolves
-a live window. It never moves anything. Against an extension that does not
-report the `rules` capability it exits 5 instead, because that extension
-ignores the file. It also exits 5 when the file uses `title_prefix`,
-`title_suffix`, `class_prefix` or `overlay` and the extension does not report
-`rules-title-affix`, `rules-class-prefix` or `rules-overlay` for it, because
-that extension refuses the whole file.
+is `"fullscreen"`. It
+needs the extension running, because it resolves a live window. It never moves
+anything. Against an extension that does not report the `rules` capability it
+exits 5 instead, because that extension ignores the file. It also exits 5 when
+the file uses `title_prefix`, `title_suffix`, `class_prefix`, `overlay` or
+`min_width` and the extension does not report `rules-title-affix`,
+`rules-class-prefix`, `rules-overlay` or `rules-min-width` for it, because that
+extension refuses the whole file.
+
+### Resetting windows to their rules
+
+```bash
+wctl rules apply             # every open window
+wctl rules apply -c kitty    # one window
+```
+
+The extension applies the rules it has loaded again, as it does to a new
+window: the first matching rule wins, and `min_width` tests the monitor the
+window is on now. Use it after you moved windows by hand, or after you docked
+or undocked a laptop.
+
+- A maximized window is restored first, then placed.
+- A minimized window is placed and stays minimized.
+- A fullscreen window gets its `workspace` and `monitor`, but no geometry.
+- A window that no rule matches is not touched.
+- A window that opened in the last two seconds and still waits for its
+  rule is skipped.
+- A rule matches the title a window has now, which can differ from its title
+  when it opened.
+
+It prints how many windows a rule matched, and exits 5 when the loaded
+extension does not report `rules-apply`. It reads the rules the extension has
+loaded, so it takes no `--file`.
 
 The complete format, the token grammar, the tile grid and every validation rule
 are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
@@ -550,6 +577,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Move` | `(tii) -> ()` | Move window to (x, y). Raises on failure — see **Errors** below |
 | `Resize` | `(tii) -> ()` | Resize window to (width, height). Raises on failure |
 | `MoveResize` | `(tiiii) -> ()` | Move and resize window. Raises on failure |
+| `ApplyRules` | `(t) -> u` | Apply the loaded rules.json rules again: `0` for every open window, else that window. Returns how many windows a rule matched. Raises `NotFound` for an id no window has |
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
 | `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area; `(-1, -1, -1, -1)` for an index that is not a monitor, and only then |
 | `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |

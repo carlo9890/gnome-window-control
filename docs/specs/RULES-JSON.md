@@ -260,13 +260,14 @@ matching rules are ignored. `wctl rules test <WINDOW>` reports which rule wins
 for a live window, which later ones it shadows, and the rectangle the action
 resolves to, without moving anything.
 
-A rule applies **once per window**, at the point mutter has shown it; on
+A rule applies **once per new window**, at the point mutter has shown it; on
 GNOME 49 and later its frame is also handed to mutter before the first frame
 (see the initial configuration below). The
 window is untracked before the action runs, so a later title change or resize
 never re-triggers it. This sets the initial placement only. The one part
 decided again later is which windows are overlays
-([Overlay windows](#overlay-windows)).
+([Overlay windows](#overlay-windows)); `ApplyRules` applies the rules again
+on request ([Applying the rules again](#applying-the-rules-again)).
 
 Gating, in order:
 
@@ -304,6 +305,27 @@ and first real title can arrive late. After that it is untracked, so a title
 change hours later cannot rearrange a window the user has since placed. A shown
 window that is not `NORMAL` matches nothing and gets the same period: a retype
 to `NORMAL` within it gets the rule, one after it does not.
+
+### Applying the rules again
+
+`ApplyRules` (`wctl rules apply`) runs `applyRules` in `rules.js`: the rules
+loaded now, applied to every window `list_all_windows()` returns, or to the one
+window named.
+
+For each window, in this order:
+
+1. A window `_tracked` holds is skipped: its own apply, grace period or
+   unmaximize wait is still running.
+2. A window `looksUnmapped` reports is skipped: mutter's initial placement
+   would override the frame.
+3. The winning rule is decided as for a shown window: `NORMAL` only, first
+   match wins, `min_width` against the rule's `monitor`, else
+   `get_monitor()`.
+4. The window stops being an overlay unless the winning rule has `overlay`.
+5. A matched window goes through `_apply`, with the action order above. A
+   minimized window keeps its minimized state.
+
+The reply counts the windows of step 5.
 
 ### Initial configuration (GNOME 49 and later)
 
