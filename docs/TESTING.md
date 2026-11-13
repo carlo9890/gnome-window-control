@@ -155,9 +155,10 @@ It pins:
   that a match within it ends the grace timer;
 - `min_width`: a narrow monitor falls through to the next rule, a wide one
   takes the rule, a rule's own `monitor` is the one tested, and a monitor that
-  does not exist fits no `min_width`; the scale is divided out in the
-  physical layout mode and not in the logical one, and below mutter 50 a
-  Wayland stage is logical only with `scale-monitor-framebuffer`; the
+  does not exist fits no `min_width`; mutter 50 takes a scaled geometry as
+  it is without `Meta.is_wayland_compositor()`, which it does not have; below
+  mutter 50 the scale is divided out on X11 and on a Wayland stage without
+  `scale-monitor-framebuffer`, so a scaled monitor falls through; the
   head-start rule is tested on its head-start monitor, and another rule that
   wins once shown on the window's monitor;
 - `ApplyRules`: it places a shown window, a minimized one without a restore,
