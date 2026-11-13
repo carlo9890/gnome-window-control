@@ -31,11 +31,10 @@ const RELOAD_DEBOUNCE_MS = 100;
 const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
     typeof Meta.Window.prototype.get_maximize_flags === 'function';
 
-// get_monitor_geometry() is in mutter's stage coordinates: logical pixels in
-// its logical layout mode, physical pixels in the physical one. X11 is
-// physical. The Wayland backend is logical from mutter 50 on, and before that
-// only with the scale-monitor-framebuffer experimental feature. Mutter 50 is
-// Wayland only.
+// get_monitor_geometry() is in mutter's stage coordinates: logical or
+// physical pixels. X11 is physical. Wayland is logical from mutter 50 on,
+// before that only with scale-monitor-framebuffer. Mutter 50 has no X11 and
+// no Meta.is_wayland_compositor().
 const STAGE_ALWAYS_LOGICAL = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
 
 export class WindowRules {
@@ -335,7 +334,6 @@ export class WindowRules {
         return scale === 1 || this._stageIsLogical() ? width : Math.round(width / scale);
     }
 
-    // Mutter 50 has no X11 backend and no Meta.is_wayland_compositor().
     _stageIsLogical() {
         return STAGE_ALWAYS_LOGICAL || (Meta.is_wayland_compositor() &&
             this._mutterSettings.get_strv('experimental-features').includes('scale-monitor-framebuffer'));
