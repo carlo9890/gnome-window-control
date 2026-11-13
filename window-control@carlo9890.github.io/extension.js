@@ -13,13 +13,13 @@ export default class WindowControlExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         this._service = new WindowControlService(this.metadata);
-        this._service.export();
-        console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
         this._rules = new WindowRules();
-        this._rules.enable();
         this._service.isOverlay = win => this._rules.isOverlay(win);
         this._service.applyRules = (win, isUnshown) => this._rules.applyRules(win, isUnshown);
         this._service.whenRulesLoaded = callback => this._rules.whenLoaded(callback);
+        this._service.export();
+        console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
+        this._rules.enable();
         this._keybindings = new WindowKeybindings();
         this._keybindingsFailed = false;
         // The shell keeps the extension enabled when the screen locks and
