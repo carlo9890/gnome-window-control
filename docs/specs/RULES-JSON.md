@@ -104,7 +104,7 @@ in physical pixels, and taken as it is when the stage is logical:
 
 | Session | Stage | Decided by |
 |---|---|---|
-| X11 | physical | `Meta.is_wayland_compositor()` false |
+| X11, GNOME 45 to 49 (GNOME 50 has no X11 session) | physical | `Meta.is_wayland_compositor()` false |
 | Wayland, GNOME 50 and later | logical | mutter's native backend is always logical |
 | Wayland, GNOME 45 to 49 | logical only when `org.gnome.mutter` `experimental-features` holds `scale-monitor-framebuffer` | mutter's own test of that setting |
 

@@ -1383,24 +1383,15 @@ export const sessionMode = {
         check('min_width: a monitor that does not exist fits no min_width',
             JSON.stringify(undocked.moves) === RIGHT, JSON.stringify(undocked.moves));
 
-        // A 3840 px panel at scale 2 is 1920 logical pixels wide. In the
-        // physical layout mode (X11) its geometry is 3840 wide, and the scale
-        // is divided out; in the logical mode the geometry is logical already.
-        const realIsWayland = Meta.is_wayland_compositor;
+        // On mutter 50 the stage is always logical: the geometry of a 3840 px
+        // panel at scale 2 is taken as it is. This runs on the real Meta of
+        // mutter 50, which has no is_wayland_compositor().
         monitors[0] = { x: 0, y: 0, width: 3840, height: 2160, scale: 2 };
-        Meta.is_wayland_compositor = () => false;
-        const physical = createWindow({ id: 34, wmClass: 'term' });
-        physical.map();
-        await sleep(200);
-        check('min_width: the physical layout mode divides out the scale',
-            JSON.stringify(physical.moves) === LEFT, JSON.stringify(physical.moves));
-        Meta.is_wayland_compositor = () => true;
         const logical = createWindow({ id: 35, wmClass: 'term' });
         logical.map();
         await sleep(200);
-        check('min_width: the logical layout mode takes the geometry as it is',
+        check('min_width: mutter 50 takes a scaled geometry as it is',
             JSON.stringify(logical.moves) === RIGHT, JSON.stringify(logical.moves));
-        Meta.is_wayland_compositor = realIsWayland;
         monitors[0] = { x: 0, y: 0, width: 1920, height: 1080, scale: 1 };
         rules.disable();
     }
@@ -1474,6 +1465,9 @@ export const sessionMode = {
                 `${rules._monitorWidth(0)}`);
             features = ['scale-monitor-framebuffer'];
             check('below 50: scale-monitor-framebuffer makes the stage logical', rules._monitorWidth(0) === 3840,
+                `${rules._monitorWidth(0)}`);
+            Meta.is_wayland_compositor = () => false;
+            check('below 50: an X11 stage is physical, whatever the feature', rules._monitorWidth(0) === 1920,
                 `${rules._monitorWidth(0)}`);
             rules.disable();
             check('below 50: disable() drops the mutter settings', rules._mutterSettings === null);

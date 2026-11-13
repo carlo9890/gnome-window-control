@@ -34,8 +34,9 @@ const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
 // get_monitor_geometry() is in mutter's stage coordinates: logical pixels in
 // its logical layout mode, physical pixels in the physical one. X11 is
 // physical. The Wayland backend is logical from mutter 50 on, and before that
-// only with the scale-monitor-framebuffer experimental feature.
-const STAGE_ALWAYS_LOGICAL_ON_WAYLAND = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
+// only with the scale-monitor-framebuffer experimental feature. Mutter 50 is
+// Wayland only.
+const STAGE_ALWAYS_LOGICAL = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
 
 export class WindowRules {
     constructor() {
@@ -58,7 +59,7 @@ export class WindowRules {
     }
 
     enable() {
-        if (!STAGE_ALWAYS_LOGICAL_ON_WAYLAND)
+        if (!STAGE_ALWAYS_LOGICAL)
             this._mutterSettings = new Gio.Settings({ schema_id: 'org.gnome.mutter' });
         this._overlays = new WindowOverlays();
         const dir = Gio.File.new_for_path(CONFIG_DIR);
@@ -334,11 +335,10 @@ export class WindowRules {
         return scale === 1 || this._stageIsLogical() ? width : Math.round(width / scale);
     }
 
+    // Mutter 50 has no X11 backend and no Meta.is_wayland_compositor().
     _stageIsLogical() {
-        if (!Meta.is_wayland_compositor())
-            return false;
-        return STAGE_ALWAYS_LOGICAL_ON_WAYLAND ||
-            this._mutterSettings.get_strv('experimental-features').includes('scale-monitor-framebuffer');
+        return STAGE_ALWAYS_LOGICAL || (Meta.is_wayland_compositor() &&
+            this._mutterSettings.get_strv('experimental-features').includes('scale-monitor-framebuffer'));
     }
 
     isOverlay(win) {
