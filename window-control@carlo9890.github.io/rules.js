@@ -317,8 +317,9 @@ export class WindowRules {
     _matchIndex(win, fallbackMonitor, headStart = null) {
         const resolvesAgainst = rule =>
             rule.monitor ?? (rule === headStart?.rule ? headStart.monitor : fallbackMonitor);
-        return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) &&
-            fitsMonitor(rule.minWidth, this._monitorWidth(resolvesAgainst(rule))));
+        const fits = rule => rule.minWidth === null ||
+            fitsMonitor(rule.minWidth, this._monitorWidth(resolvesAgainst(rule)));
+        return this._rules.findIndex(rule => rule.predicates.every(p => p(win)) && fits(rule));
     }
 
     _monitorExists(monitor) {
