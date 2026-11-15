@@ -491,8 +491,9 @@ wctl rules apply             # every open window
 wctl rules apply -c kitty    # one window
 ```
 
-`Super+Ctrl+KP_Multiply` does the same for every open window from the keyboard
-(see [Keyboard shortcuts](#keyboard-shortcuts)).
+`Super+Ctrl+KP_Multiply` applies the rules to every open window from the
+keyboard, without the file check and the count (see
+[Keyboard shortcuts](#keyboard-shortcuts)).
 
 The extension applies the rules it has loaded again, as it does to a new
 window: the first matching rule wins, and `min_width` tests the monitor the
@@ -536,9 +537,11 @@ The extension tiles the focused window from the keyboard, to the same 4x2 grid
 columns of four; press it again on the same window and it goes `wide-left`.
 A maximized window is unmaximized first; a fullscreen one is left alone.
 
-`Super+Ctrl+KP_Multiply` (the numpad `*`) applies the rules again to every open
-window, as `wctl rules apply` does ([Resetting windows to their
-rules](#resetting-windows-to-their-rules)).
+`Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
+every open window, as `wctl rules apply` does ([Resetting windows to their
+rules](#resetting-windows-to-their-rules)). It does not check the file and
+prints no count: a file with an error moves nothing, and only the journal
+says why.
 
 Every shortcut is a GSettings key, so you change one without editing anything:
 
