@@ -88,7 +88,7 @@ validate() {
     # so `build.sh all` (and therefore CI) fails on a syntax error before packaging.
     if command -v node >/dev/null 2>&1; then
         local js
-        for js in "$EXTENSION_DIR"/*.js; do
+        for js in "$EXTENSION_DIR"/*.js "$EXTENSION_DIR"/prefs/*.js; do
             if ! node --check "$js"; then
                 log_error "JavaScript syntax error in: $js"
                 exit 1

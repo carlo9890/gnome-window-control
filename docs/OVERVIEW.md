@@ -15,6 +15,9 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── overlay.js             WindowOverlays: what an overlay rule does while a window is one (owned by WindowRules)
 ├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
 ├── keybindings.js         WindowKeybindings: the tile and apply-rules shortcuts (no D-Bus)
+├── indicator.js           the optional top-bar icon and its menu
+├── prefs.js               the preferences window (its own process, GTK4 + libadwaita)
+├── prefs/                 the modules only prefs.js loads: the Shortcuts and Rules pages
 ├── schemas/               the GSettings schema the shortcuts are read from
 ├── window-helpers.js      the GNOME 49 maximize API, the quiet minimize, the workarea lookup and the unmaximize wait, shared by the modules above
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
@@ -35,6 +38,7 @@ scripts/                   build.sh, release.sh, check-version.sh, check-static.
                            start-nested.sh, start-headless.sh, debug-dbus.sh
 tests/                     test suites (see docs/TESTING.md)
 ├── check-rules-format.js  headless gjs check of the rules.json grammar
+├── check-prefs.js         headless gjs check of the prefs shortcut list and rules validation
 ├── check-extension-headless.js  the extension against fake windows (needs the mutter typelib)
 ├── check-helper.js        the root, check() and report() both checks share (imports only gi://GLib)
 └── vectors/               shared test vectors read by GJS and Rust alike
@@ -111,6 +115,14 @@ README.md                  user docs; the D-Bus method table
   `ApplyRules(0)` path without a D-Bus caller. The zip ships the schema
   XML only: every install path but a plain copy compiles it, and `build.sh
   install` compiles it for that one.
+- **The preferences window** (`prefs.js`, `prefs/`) runs in its own process,
+  not in GNOME Shell. It writes the schema keys and `rules.json`; the
+  extension only reads them. The Rules page validates with `rules-format.js`
+  (through `prefs/rules-check.js`) and applies the rules with the
+  `ApplyRules(0)` D-Bus call. `indicator.js` is the top-bar icon that the
+  `show-indicator` key turns on; `extension.js` adds and removes it
+  (`_syncIndicator`) and removes it while the screen is locked, as the
+  shortcuts are.
 - **The rules.json grammar** is `rules-format.js` — the one module that imports
   **nothing**, so plain `gjs` loads it without the mutter typelib and CI can
   check it. `cli/src/rules.rs` is a second implementation of the same grammar;

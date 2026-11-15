@@ -56,6 +56,11 @@ jobs:
       - name: Check the rules.json grammar against the shared vectors
         run: env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
 
+      # The prefs modules that import no GTK: the shortcut list against the
+      # schema, and the rules editor's validation.
+      - name: Check the preferences shortcut list and rules validation
+        run: env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js
+
       # dbus-service.js, rules.js and keybindings.js import gi://Meta, so this
       # check needs the mutter typelib. The package name carries the mutter
       # API version (gir1.2-mutter-14 on Ubuntu 24.04), so take the newest
