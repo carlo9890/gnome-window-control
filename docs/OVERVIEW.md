@@ -14,7 +14,7 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── rules.js               WindowRules: rules.json auto-placement (no D-Bus)
 ├── overlay.js             WindowOverlays: what an overlay rule does while a window is one (owned by WindowRules)
 ├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
-├── keybindings.js         WindowKeybindings: the tile shortcuts (no D-Bus)
+├── keybindings.js         WindowKeybindings: the tile and apply-rules shortcuts (no D-Bus)
 ├── schemas/               the GSettings schema the shortcuts are read from
 ├── window-helpers.js      the GNOME 49 maximize API, the quiet minimize, the workarea lookup and the unmaximize wait, shared by the modules above
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
@@ -106,7 +106,9 @@ README.md                  user docs; the D-Bus method table
   half a cell, so a terminal snapped to its character grid still counts), not
   from remembered state. A maximized window is restored first and placed once
   the restore has landed, through the `UnmaximizeWait` class in
-  `window-helpers.js` that `rules.js` uses too. The zip ships the schema
+  `window-helpers.js` that `rules.js` uses too. `apply-rules` is the one
+  shortcut without `PER_WINDOW`: it calls the service's `applyRulesToAll`, the
+  `ApplyRules(0)` path without a D-Bus caller. The zip ships the schema
   XML only: every install path but a plain copy compiles it, and `build.sh
   install` compiles it for that one.
 - **The rules.json grammar** is `rules-format.js` — the one module that imports

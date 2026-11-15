@@ -504,6 +504,14 @@ export class WindowControlService {
         });
     }
 
+    // ApplyRules(0) for the apply-rules shortcut, which has no caller to answer.
+    applyRulesToAll() {
+        this.whenRulesLoaded(loaded => {
+            if (loaded)
+                this.applyRules(null, win => this._isUnshown(win));
+        });
+    }
+
     GetGeometry(windowId) {
         console.debug(`[Window Control] GetGeometry(${windowId}) called`);
         const win = this._findWindowById(windowId);

@@ -21,8 +21,8 @@ are in [RUNNING.md](RUNNING.md). Add a version here when you run them on another
 
 ## The keyboard-shortcut suite
 
-`tests/test-keybindings.sh` presses every shortcut and asserts the frame that
-lands, through the same oracle as the modification suite. It cannot press keys
+`tests/test-keybindings.sh` presses every tile shortcut and asserts the frame
+that lands, through the same oracle as the modification suite. It cannot press keys
 on the real desktop: it injects them with `tests/inject-keys.js` over mutter's
 `org.gnome.Mutter.RemoteDesktop` API, which needs a shell that has no real
 keyboard in front of it. Run it against a headless shell started with

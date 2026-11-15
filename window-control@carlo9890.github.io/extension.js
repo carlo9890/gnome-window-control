@@ -20,7 +20,7 @@ export default class WindowControlExtension extends Extension {
         this._service.export();
         console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
         this._rules.enable();
-        this._keybindings = new WindowKeybindings();
+        this._keybindings = new WindowKeybindings(() => this._service.applyRulesToAll());
         this._keybindingsFailed = false;
         // The shell keeps the extension enabled when the screen locks and
         // calls enable() during a lock too, so the shortcuts follow the mode.

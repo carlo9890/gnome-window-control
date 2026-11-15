@@ -861,6 +861,34 @@ export const sessionMode = {
             JSON.stringify(removed) === JSON.stringify(added), `added ${added}, removed ${removed}`);
     }
 
+    // -- WindowKeybindings: the apply-rules shortcut -----------------------------
+    //
+    // It acts on every open window, so mutter calls it without a focused window.
+
+    {
+        const realAdd = Main.wm.addKeybinding;
+        const registered = new Map();
+        Main.wm.addKeybinding = (name, settings, flags, mode, handler) => {
+            registered.set(name, { flags, handler });
+            return 1;
+        };
+        let applied = 0;
+        const keybindings = new WindowKeybindings(() => applied++);
+        try {
+            keybindings.enable({});
+        } finally {
+            Main.wm.addKeybinding = realAdd;
+        }
+        const binding = registered.get('apply-rules');
+        check('apply-rules is registered without PER_WINDOW', binding !== undefined &&
+            binding.flags === Meta.KeyBindingFlags.IGNORE_AUTOREPEAT, `flags ${binding?.flags}`);
+        binding?.handler(display, null);
+        check('apply-rules applies the rules once per press', applied === 1, `${applied} apply(s)`);
+        check('the tile shortcuts keep PER_WINDOW',
+            (registered.get('tile-left')?.flags & Meta.KeyBindingFlags.PER_WINDOW) !== 0);
+        keybindings.disable();
+    }
+
     // -- enable() when the D-Bus export fails -------------------------------------
     //
     // The shell calls no disable() for an extension whose enable() threw, so the
@@ -937,21 +965,21 @@ export const sessionMode = {
             check('ApplyRules answers once the read landed', showReply(wired) === '{"value":[0]}',
                 showReply(wired));
             check('enable() while unlocked serves the shortcuts',
-                adds() === 10 && service.keybindingsServed, `${adds()} bound`);
+                adds() === 11 && service.keybindingsServed, `${adds()} bound`);
             Main.sessionMode.setLocked(true);
             check('the lock removes every shortcut', adds() === 0, `${adds()} bound`);
             check('the lock keeps the keybindings capability', service.keybindingsServed);
             check('the lock keeps the service', extension._service === service && service._dbusImpl !== null);
             Main.sessionMode.setLocked(false);
             check('the unlock registers each shortcut once',
-                adds() === 10 && new Set(bound).size === 10, `${adds()} bound`);
+                adds() === 11 && new Set(bound).size === 11, `${adds()} bound`);
             Main.sessionMode.setLocked(true);
             extension.disable();
             extension.enable();
             check('enable() while locked registers no shortcut', adds() === 0, `${adds()} bound`);
             Main.sessionMode.setLocked(false);
             check('the unlock after enable() while locked serves the shortcuts',
-                adds() === 10 && extension._service.keybindingsServed, `${adds()} bound`);
+                adds() === 11 && extension._service.keybindingsServed, `${adds()} bound`);
             extension.disable();
             check('disable() leaves no sessionMode handler', Main.sessionMode.handlerCount() === 0,
                 `${Main.sessionMode.handlerCount()} handler(s)`);
@@ -1601,6 +1629,14 @@ export const sessionMode = {
         service.ApplyRulesAsync([999], missing);
         check('ApplyRules(id) raises NotFound for an id no window has', missing.replies === 1 &&
             missing.reply.error === 'org.gnome.Shell.Extensions.WindowControl.NotFound', showReply(missing));
+
+        // The apply-rules shortcut applies the rules as ApplyRules(0) does.
+        placed.moves.length = 0;
+        quake.moves.length = 0;
+        service.applyRulesToAll();
+        check('applyRulesToAll places every window a rule matches',
+            JSON.stringify(placed.moves) === LEFT && JSON.stringify(quake.moves) === RIGHT,
+            `${JSON.stringify(placed.moves)} ${JSON.stringify(quake.moves)}`);
 
         // A file saved just before the call is applied as saved: the call
         // waits for the reload, and one pending at disable() gets Disabled.

@@ -65,6 +65,10 @@
       <default>['&lt;Super&gt;&lt;Control&gt;KP_Add']</default>
       <summary>Tile the focused window wide-right, or wide-left when it already is wide-right</summary>
     </key>
+    <key name="apply-rules" type="as">
+      <default>['&lt;Super&gt;&lt;Control&gt;KP_Multiply']</default>
+      <summary>Apply the rules.json rules again to every open window</summary>
+    </key>
 
   </schema>
 </schemalist>
