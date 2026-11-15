@@ -3,8 +3,9 @@
   SPDX-FileCopyrightText: 2026 hko9890
   SPDX-License-Identifier: MIT
 
-  Keyboard shortcuts. Each key is a list of accelerators, the shape
-  Main.wm.addKeybinding reads; an empty list unbinds the action.
+  The top-bar icon switch, and the keyboard shortcuts. Each shortcut key is a
+  list of accelerators, the shape Main.wm.addKeybinding reads; an empty list
+  unbinds the action.
 
   One name per numpad key is enough: mutter resolves a keysym to its keycode
   and matches on that, so KP_Home fires with Num Lock on or off, and naming
@@ -24,6 +25,12 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.window-control"
           path="/org/gnome/shell/extensions/window-control/">
+
+    <key name="show-indicator" type="b">
+      <default>false</default>
+      <summary>Show an icon in the top bar</summary>
+      <description>The icon opens a menu that applies the rules again and opens the preferences window.</description>
+    </key>
 
     <key name="tile-top-left" type="as">
       <default>['&lt;Super&gt;&lt;Control&gt;KP_Home']</default>

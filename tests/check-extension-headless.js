@@ -2,8 +2,9 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 //
-// Drive the real extension.js, dbus-service.js, rules.js, overlay.js and
-// keybindings.js against fake windows, without a GNOME Shell and without D-Bus. Run from
+// Drive the real extension.js, dbus-service.js, rules.js, overlay.js,
+// keybindings.js and indicator.js against fake windows, without a GNOME Shell
+// and without D-Bus. Run from
 // anywhere, with the mutter typelib directory on GI_TYPELIB_PATH (the newest
 // one installed):
 //
@@ -11,7 +12,8 @@
 //         GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js
 //
 // The extension files are copied into a temporary directory, where the
-// shell-only imports (ui/main.js, extensions/extension.js, gi://Shell) are
+// shell-only imports (ui/main.js, extensions/extension.js, gi://Shell, gi://St,
+// ui/panelMenu.js, ui/popupMenu.js) are
 // pointed at stubs written next to them. Every other line is the shipped code.
 //
 // Exits 0 when every check passes, 1 when any fails.
@@ -50,8 +52,34 @@ function unknownSourceRemovals(from) {
 
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
-// A Gio.Settings whose schema has every key the shortcuts ask for.
-const SETTINGS = { settings_schema: { has_key: () => true } };
+// A Gio.Settings whose schema has every key the extension asks for.
+const SETTINGS = {
+    values: { 'show-indicator': false },
+    keys: null,                        // null: every key; else the keys the schema has
+    handlers: new Map(),
+    nextId: 1,
+    settings_schema: { has_key: name => SETTINGS.keys === null || SETTINGS.keys.includes(name) },
+    get_boolean(name) {
+        if (!this.settings_schema.has_key(name))
+            throw new Error(`GSettings would abort the shell: no key ${name}`);
+        return this.values[name];
+    },
+    set(name, value) {
+        this.values[name] = value;
+        for (const [signal, callback] of [...this.handlers.values()]) {
+            if (signal === `changed::${name}`)
+                callback(this, name);
+        }
+    },
+    connect(signal, callback) {
+        this.handlers.set(this.nextId, [signal, callback]);
+        return this.nextId++;
+    },
+    disconnect(id) {
+        if (!this.handlers.delete(id))
+            throw new Error(`bad settings handler id ${id}`);
+    },
+};
 
 // Nothing here may reach a real session bus or the user's rules.json. The
 // scratch dir is removed however the checks end; a throw still exits 1.
@@ -89,11 +117,14 @@ try {
 
     const EXT = `${SCRATCH}/ext`;
     GLib.mkdir_with_parents(EXT, 0o755);
-    for (const name of ['dbus-interface.js', 'dbus-service.js', 'extension.js', 'keybindings.js',
+    for (const name of ['dbus-interface.js', 'dbus-service.js', 'extension.js', 'indicator.js', 'keybindings.js',
         'overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js']) {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
+            .replace("'resource:///org/gnome/shell/ui/panelMenu.js'", "'./stub-panel-menu.js'")
+            .replace("'resource:///org/gnome/shell/ui/popupMenu.js'", "'./stub-popup-menu.js'")
+            .replace("'gi://St'", "'./stub-st.js'")
             .replace("'gi://Shell'", "'./stub-shell.js'")
             .replace("'resource:///org/gnome/shell/misc/config.js'", "'./stub-config.js'");
         write(`${EXT}/${name}`, text);
@@ -120,6 +151,15 @@ export const overview = {
     handlerCount: () => handlers.size,
 };
 export const wm = { skipNextEffect() {}, addKeybinding: () => 1, removeKeybinding() {} };
+export const panel = {
+    statusArea: {},
+    addToStatusArea(role, button) {
+        if (this.statusArea[role])
+            throw new Error(\`\${role} is already in the status area\`);
+        this.statusArea[role] = button;
+        button.role = role;
+    },
+};
 const modeHandlers = new Map();
 export const sessionMode = {
     isLocked: false,
@@ -142,6 +182,52 @@ export const sessionMode = {
 };
 `);
     write(`${EXT}/stub-extension.js`, 'export class Extension {}\n');
+    write(`${EXT}/stub-st.js`, `export default {
+    Icon: class {
+        constructor(props) {
+            Object.assign(this, props);
+        }
+    },
+};
+`);
+    write(`${EXT}/stub-panel-menu.js`, `import { panel } from './stub-main.js';
+export class Button {
+    constructor(alignment, name) {
+        this.name = name;
+        this.children = [];
+        this.menu = { items: [], addMenuItem: item => this.menu.items.push(item) };
+    }
+    add_child(child) {
+        this.children.push(child);
+    }
+    destroy() {
+        delete panel.statusArea[this.role];
+    }
+}
+`);
+    write(`${EXT}/stub-popup-menu.js`, `export class PopupMenuItem {
+    constructor(label) {
+        this.label = label;
+        this.handlers = [];
+    }
+    connect(signal, callback) {
+        this.handlers.push([signal, callback]);
+        return this.handlers.length;
+    }
+    disconnect(id) {
+        if (!this.handlers[id - 1])
+            throw new Error(\`bad menu item handler id \${id}\`);
+        this.handlers[id - 1] = null;
+    }
+    activate() {
+        for (const handler of this.handlers) {
+            if (handler?.[0] === 'activate')
+                handler[1](this);
+        }
+    }
+}
+export class PopupSeparatorMenuItem {}
+`);
     write(`${EXT}/stub-config.js`, "export const PACKAGE_VERSION = '50.0';\n");
     write(`${EXT}/stub-shell.js`, 'export default { ActionMode: { NORMAL: 1 } };\n');
     // The same modules as a GNOME 49 shell loads them, for the layout-mode
@@ -1036,6 +1122,78 @@ export const sessionMode = {
             WindowControlService.prototype.export = realExport;
             Main.wm.addKeybinding = realAdd;
             Main.wm.removeKeybinding = realRemove;
+        }
+    }
+
+    // -- the top-bar icon ----------------------------------------------------------
+    //
+    // Off by default; the show-indicator setting adds and removes it while the
+    // extension runs. Like the shortcuts, it goes while the screen is locked.
+
+    {
+        const extension = new WindowControlExtension();
+        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.uuid = 'window-control@test';
+        extension.getSettings = () => SETTINGS;
+        let preferencesOpened = 0;
+        extension.openPreferences = () => preferencesOpened++;
+        const realExport = WindowControlService.prototype.export;
+        WindowControlService.prototype.export = function () {
+            this._dbusImpl = { export() {}, unexport() {} };
+            realExport.call(this);
+        };
+        const shown = () => Main.panel.statusArea[extension.uuid];
+        const handlerCount = SETTINGS.handlers.size;
+        try {
+            extension.enable();
+            check('the icon is off by default', shown() === undefined);
+            SETTINGS.set('show-indicator', true);
+            const button = shown();
+            check('turning the setting on adds the icon', button !== undefined);
+            check('the icon has a symbolic icon', button?.children[0]?.icon_name === 'view-grid-symbolic');
+            const items = button?.menu.items ?? [];
+            const labels = items.map(item => item.label ?? '---');
+            check('the menu holds Apply Rules Again, a separator and Settings',
+                JSON.stringify(labels) === JSON.stringify(['Apply Rules Again', '---', 'Settings']),
+                JSON.stringify(labels));
+            let applied = 0;
+            extension._service.applyRulesToAll = () => applied++;
+            items[0]?.activate();
+            check('Apply Rules Again applies the rules through the service', applied === 1, `${applied} call(s)`);
+            items[2]?.activate();
+            check('Settings opens the preferences window', preferencesOpened === 1, `${preferencesOpened} call(s)`);
+            delete extension._service.applyRulesToAll;
+
+            Main.sessionMode.setLocked(true);
+            check('the lock removes the icon', shown() === undefined);
+            Main.sessionMode.setLocked(false);
+            check('the unlock adds the icon again', shown() !== undefined);
+            const unlockedItems = shown()?.menu.items ?? [];
+            SETTINGS.set('show-indicator', false);
+            check('turning the setting off removes the icon', shown() === undefined);
+            check('removing the icon disconnects its menu items',
+                unlockedItems.every(item => !item.handlers || item.handlers.every(handler => handler === null)));
+            SETTINGS.set('show-indicator', true);
+            extension.disable();
+            check('disable() removes the icon', shown() === undefined);
+            check('disable() leaves no settings handler', SETTINGS.handlers.size === handlerCount,
+                `${SETTINGS.handlers.size - handlerCount} left`);
+
+            // The schema of version 23: every shortcut key, no show-indicator.
+            SETTINGS.keys = ['tile-top-left', 'tile-top-center', 'tile-top-right', 'tile-left', 'tile-center',
+                'tile-right', 'tile-bottom-left', 'tile-bottom-center', 'tile-bottom-right', 'cycle-wide',
+                'apply-rules'];
+            SETTINGS.values['show-indicator'] = true;
+            extension.enable();
+            check('a schema without show-indicator shows no icon and does not abort', shown() === undefined);
+            extension.disable();
+        } finally {
+            if (extension._service)
+                extension.disable();
+            SETTINGS.keys = null;
+            SETTINGS.values['show-indicator'] = false;
+            Main.sessionMode.isLocked = false;
+            WindowControlService.prototype.export = realExport;
         }
     }
 

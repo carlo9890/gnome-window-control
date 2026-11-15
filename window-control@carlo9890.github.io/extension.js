@@ -8,6 +8,9 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DBUS_OBJECT_PATH, WindowControlService } from './dbus-service.js';
 import { WindowRules } from './rules.js';
 import { WindowKeybindings } from './keybindings.js';
+import { WindowControlIndicator } from './indicator.js';
+
+const SHOW_INDICATOR_KEY = 'show-indicator';
 
 export default class WindowControlExtension extends Extension {
     enable() {
@@ -22,21 +25,29 @@ export default class WindowControlExtension extends Extension {
         this._rules.enable();
         this._keybindings = new WindowKeybindings(() => this._service.applyRulesToAll());
         this._keybindingsFailed = false;
+        this._indicator = null;
+        this._indicatorSettingId = this._settings.connect(`changed::${SHOW_INDICATOR_KEY}`,
+            () => this._syncIndicator());
         // The shell keeps the extension enabled when the screen locks and
-        // calls enable() during a lock too, so the shortcuts follow the mode.
-        this._sessionModeId = Main.sessionMode.connect('updated', () => this._syncKeybindings());
-        this._syncKeybindings();
+        // calls enable() during a lock too, so the shortcuts and the top-bar
+        // icon follow the mode.
+        this._sessionModeId = Main.sessionMode.connect('updated', () => this._syncSessionMode());
+        this._syncSessionMode();
     }
 
     disable() {
         // The unlock-dialog session mode keeps the D-Bus service and the rules
         // up while the screen is locked: a window that opens then still gets
         // its rules.json placement, and scripts that drive windows keep
-        // working. The keyboard shortcuts act on the desktop, so they are
-        // removed in that mode (_syncKeybindings) and the lock screen takes no
-        // input from this extension.
+        // working. The keyboard shortcuts and the top-bar icon act on the
+        // desktop, so they are removed in that mode (_syncSessionMode) and the
+        // lock screen takes no input from this extension.
         Main.sessionMode.disconnect(this._sessionModeId);
         this._sessionModeId = 0;
+        this._settings.disconnect(this._indicatorSettingId);
+        this._indicatorSettingId = 0;
+        this._indicator?.destroy();
+        this._indicator = null;
         this._keybindings.disable();
         this._keybindings = null;
         this._keybindingsFailed = false;
@@ -46,6 +57,25 @@ export default class WindowControlExtension extends Extension {
         this._service = null;
         this._settings = null;
         console.log(`[${this.metadata.name}] D-Bus service unregistered`);
+    }
+
+    _syncSessionMode() {
+        this._syncKeybindings();
+        this._syncIndicator();
+    }
+
+    // A schema compiled before show-indicator existed has no such key, and
+    // GSettings aborts the shell on a read of a key it does not know.
+    _syncIndicator() {
+        const show = !Main.sessionMode.isLocked &&
+            this._settings.settings_schema.has_key(SHOW_INDICATOR_KEY) &&
+            this._settings.get_boolean(SHOW_INDICATOR_KEY);
+        if (show && !this._indicator) {
+            this._indicator = new WindowControlIndicator(this, () => this._service.applyRulesToAll());
+        } else if (!show && this._indicator) {
+            this._indicator.destroy();
+            this._indicator = null;
+        }
     }
 
     // A registration that failed is not tried again before the next enable(),
