@@ -6,8 +6,8 @@
 //
 // The shortcuts are GSettings keys (schemas/*.gschema.xml), one per tile
 // position plus `cycle-wide` and `apply-rules`, so a user rebinds one with
-// dconf or gsettings and never edits this file. The grid and the position names are the ones
-// rules.json and wctl use, from rules-format.js.
+// dconf or gsettings and never edits this file. The grid and the position
+// names are the ones rules.json and wctl use, from rules-format.js.
 
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';

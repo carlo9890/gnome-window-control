@@ -17,7 +17,8 @@ One GNOME Shell extension, three ways to use it:
 - **On window creation** - rules in `rules.json` place a matching window the
   moment it opens. See [Automatic window placement](#automatic-window-placement).
 - **From the keyboard** - `Super+Ctrl` plus a numpad key tiles the focused
-  window. See [Keyboard shortcuts](#keyboard-shortcuts).
+  window, and the numpad `*` applies the rules again. See
+  [Keyboard shortcuts](#keyboard-shortcuts).
 
 ```bash
 wctl list                                  # every window, with ID, class and title
