@@ -34,6 +34,7 @@ const KEYSYMS = {
     KP_Down: 0xff99, KP_2: 0xffb2,
     KP_Page_Down: 0xff9b, KP_3: 0xffb3,
     KP_Add: 0xffab,
+    KP_Multiply: 0xffaa,
 };
 
 const names = ARGV;
