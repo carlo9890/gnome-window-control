@@ -5,6 +5,7 @@
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
+import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import { SHORTCUT_GROUPS } from './shortcut-list.js';
 
@@ -13,14 +14,20 @@ export function buildShortcutsPage(window, settings) {
         title: 'Shortcuts',
         icon_name: 'preferences-desktop-keyboard-shortcuts-symbolic',
     });
-    const titles = new Map(SHORTCUT_GROUPS.flatMap(group => group.keys));
+    // A schema compiled by an older install lacks the newer keys, and a read
+    // of a key the schema does not know throws.
+    const hasKey = ([key]) => settings.settings_schema.has_key(key);
+    const titles = new Map(SHORTCUT_GROUPS.flatMap(group => group.keys).filter(hasKey));
     const handlerIds = [];
     for (const group of SHORTCUT_GROUPS) {
+        const keys = group.keys.filter(hasKey);
+        if (keys.length === 0)
+            continue;
         const prefsGroup = new Adw.PreferencesGroup({
             title: group.title,
             description: group.description ?? null,
         });
-        for (const [key, title] of group.keys) {
+        for (const [key, title] of keys) {
             const row = shortcutRow(window, settings, key, title, titles);
             prefsGroup.add(row.widget);
             handlerIds.push(settings.connect(`changed::${key}`, row.update));
@@ -45,7 +52,14 @@ function shortcutRow(window, settings, key, title, titles) {
         valign: Gtk.Align.CENTER,
         css_classes: ['flat'],
     });
-    reset.connect('clicked', () => settings.reset(key));
+    reset.connect('clicked', () => {
+        const [accelerator] = settings.get_default_value(key).deep_unpack();
+        const holder = accelerator && holderOf(window, settings, accelerator, key, titles);
+        if (holder)
+            window.add_toast(new Adw.Toast({ title: GLib.markup_escape_text(usedBy(accelerator, holder), -1) }));
+        else
+            settings.reset(key);
+    });
     row.add_suffix(label);
     row.add_suffix(reset);
     row.connect('activated', () => captureShortcut(window, settings, key, title, titles));
@@ -74,15 +88,28 @@ function resetGroup(settings, titles) {
     return group;
 }
 
+function usedBy(accelerator, holder) {
+    const [, keyval, mods] = Gtk.accelerator_parse(accelerator);
+    return `${Gtk.accelerator_get_label(keyval, mods)} is already used by “${holder}”.`;
+}
+
+// Mutter binds a key by its keycode, so KP_7 and KP_Home, one key with Num
+// Lock on and off, are the same shortcut.
+function parseChord(window, accelerator) {
+    const [, keyval, keycodes, mods] = Gtk.accelerator_parse_with_keycode(accelerator, window.get_display());
+    return { keyval, keycodes: keycodes ?? [], mods };
+}
+
 // The shortcut that already holds `accelerator`, other than `key`, or null.
-function holderOf(settings, accelerator, key, titles) {
-    const wanted = Gtk.accelerator_parse(accelerator);
+function holderOf(window, settings, accelerator, key, titles) {
+    const wanted = parseChord(window, accelerator);
     for (const [other, title] of titles) {
         if (other === key)
             continue;
         for (const held of settings.get_strv(other)) {
-            const parsed = Gtk.accelerator_parse(held);
-            if (parsed[1] === wanted[1] && parsed[2] === wanted[2])
+            const chord = parseChord(window, held);
+            if (chord.mods === wanted.mods && (chord.keyval === wanted.keyval ||
+                chord.keycodes.some(keycode => wanted.keycodes.includes(keycode))))
                 return title;
         }
     }
@@ -125,10 +152,10 @@ function captureShortcut(window, settings, key, title, titles) {
         if (!Gtk.accelerator_valid(lower, mods))
             return Gdk.EVENT_STOP;
         const accelerator = Gtk.accelerator_name(lower, mods);
-        const holder = holderOf(settings, accelerator, key, titles);
+        const holder = holderOf(window, settings, accelerator, key, titles);
         if (holder) {
-            status.description = `${Gtk.accelerator_get_label(lower, mods)} is already used by “${holder}”. ` +
-                'Press another shortcut, or Esc to cancel.';
+            status.description = GLib.markup_escape_text(
+                `${usedBy(accelerator, holder)} Press another shortcut, or Esc to cancel.`, -1);
             return Gdk.EVENT_STOP;
         }
         settings.set_strv(key, [accelerator]);

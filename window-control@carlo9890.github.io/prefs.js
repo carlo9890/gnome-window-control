@@ -14,7 +14,10 @@ export default class WindowControlPreferences extends ExtensionPreferences {
         const settings = this.getSettings();
         window.set_default_size(720, 780);
         window.search_enabled = false;
-        window.add(this._buildGeneralPage(settings));
+        // A schema compiled by an older install lacks show-indicator, and a
+        // read of a key the schema does not know throws.
+        if (settings.settings_schema.has_key('show-indicator'))
+            window.add(this._buildGeneralPage(settings));
         window.add(buildShortcutsPage(window, settings));
         window.add(new RulesEditor(window).page);
     }
