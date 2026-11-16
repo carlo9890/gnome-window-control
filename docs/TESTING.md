@@ -112,7 +112,8 @@ Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `overlay.js`,
 `keybindings.js` and `indicator.js` against fake windows and a fake display that count their signal handlers. No
 GNOME session, no D-Bus: the check copies the extension files into a temporary
 directory and points the shell-only imports (`ui/main.js`, `ui/panelMenu.js`,
-`ui/popupMenu.js`, `extensions/extension.js`, `gi://Shell`, `gi://St`) at stubs
+`ui/popupMenu.js`, `misc/config.js`, `extensions/extension.js`, `gi://Shell`,
+`gi://St`) at stubs
 written there. It needs the
 mutter typelib (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package
 `gir1.2-mutter-14`), which the extension job in `.github/workflows/build.yml`
