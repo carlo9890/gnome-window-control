@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 // The shortcut rows of the preferences window: each schema key of type `as`,
-// grouped and in numpad order. Imports nothing, so a plain gjs check can hold
-// this list against the schema.
+// grouped and in numpad order, and the rule for a key the capture accepts.
+// Imports nothing, so a plain gjs check can hold them against the schema.
 
 export const SHORTCUT_GROUPS = [
     {
@@ -28,3 +28,9 @@ export const SHORTCUT_GROUPS = [
         ],
     },
 ];
+
+// GNOME Shell takes a bound key from every app, so a key without a modifier
+// other than Shift would stop that key from typing anywhere.
+export function needsModifier(mods, shiftMask) {
+    return (mods & ~shiftMask) === 0;
+}

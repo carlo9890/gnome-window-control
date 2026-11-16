@@ -592,6 +592,8 @@ gnome-extensions prefs window-control@carlo9890.github.io
   combination: Backspace disables the shortcut, and Esc keeps the old one. The
   arrow button resets a row to its default. A combination that another
   shortcut of this extension holds is refused, pressed or restored by a reset.
+  A key without Super, Ctrl or Alt is refused, because GNOME Shell would take
+  it from every app.
 - **Rules** is a text editor for `rules.json`. It checks the text as you type,
   with the same validation the extension uses, and underlines the line of the
   first error: for an error in a rule, the line where that rule starts. **Save** is available only for a valid file, and the

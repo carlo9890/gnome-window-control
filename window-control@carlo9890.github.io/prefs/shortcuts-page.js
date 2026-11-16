@@ -7,7 +7,7 @@ import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
-import { SHORTCUT_GROUPS } from './shortcut-list.js';
+import { SHORTCUT_GROUPS, needsModifier } from './shortcut-list.js';
 
 export function buildShortcutsPage(window, settings) {
     const page = new Adw.PreferencesPage({
@@ -151,6 +151,10 @@ function captureShortcut(window, settings, key, title, titles) {
         const lower = Gdk.keyval_to_lower(keyval);
         if (!Gtk.accelerator_valid(lower, mods))
             return Gdk.EVENT_STOP;
+        if (needsModifier(mods, Gdk.ModifierType.SHIFT_MASK)) {
+            status.description = 'Hold Super, Ctrl or Alt with the key. Press another shortcut, or Esc to cancel.';
+            return Gdk.EVENT_STOP;
+        }
         const accelerator = Gtk.accelerator_name(lower, mods);
         const holder = holderOf(window, settings, accelerator, key, titles);
         if (holder) {

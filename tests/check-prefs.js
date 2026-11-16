@@ -15,7 +15,7 @@ import GLib from 'gi://GLib';
 import { ROOT, check, report } from './check-helper.js';
 
 const PREFS = `${ROOT}/window-control@carlo9890.github.io/prefs`;
-const { SHORTCUT_GROUPS } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
+const { SHORTCUT_GROUPS, needsModifier } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
 const { checkRules, elementOffsets } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
 
 // -- the shortcut list holds every shortcut key of the schema, once ----------
@@ -67,6 +67,17 @@ const { checkRules, elementOffsets } = await import(GLib.filename_to_uri(`${PREF
     check('elementOffsets points at each element start',
         JSON.stringify(starts) === JSON.stringify(['{', '[', '"', '3']), JSON.stringify(starts));
     check('an empty array has no element', elementOffsets('[ ]').length === 0);
+}
+
+// -- the capture refuses a key without a modifier other than Shift ------------
+
+{
+    // The Gdk.ModifierType bits: SHIFT 1, CONTROL 4, ALT (MOD1) 8, SUPER 1 << 26.
+    const SHIFT = 1, CONTROL = 4, ALT = 8, SUPER = 1 << 26;
+    check('a plain key needs a modifier', needsModifier(0, SHIFT));
+    check('Shift alone is not enough', needsModifier(SHIFT, SHIFT));
+    check('Super, Ctrl or Alt is enough', [SUPER, CONTROL, ALT, CONTROL | SHIFT]
+        .every(mods => !needsModifier(mods, SHIFT)));
 }
 
 report();
