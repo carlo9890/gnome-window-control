@@ -14,6 +14,8 @@ import { checkRules } from './rules-check.js';
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
 const CHECK_DELAY_MS = 300;
+// An editor's save raises several events; read the file once they stop.
+const DISK_DEBOUNCE_MS = 100;
 const EXAMPLE = '[\n  { "match": { "class": "org.gnome.TextEditor" }, "tile": "left" }\n]\n';
 
 function displayPath(file) {
@@ -32,9 +34,14 @@ export class RulesEditor {
     constructor(window) {
         this._window = window;
         this._file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
+        // The text on disk, '' for no file, and the text _load put in the
+        // buffer: the two differ when the file is missing and the buffer
+        // holds EXAMPLE.
         this._savedText = null;
+        this._loadedText = null;
         this._result = { ok: false };
         this._checkId = 0;
+        this._diskId = 0;
         this._diskToast = null;
         this._cancellable = new Gio.Cancellable();
 
@@ -55,6 +62,10 @@ export class RulesEditor {
         if (this._checkId) {
             GLib.source_remove(this._checkId);
             this._checkId = 0;
+        }
+        if (this._diskId) {
+            GLib.source_remove(this._diskId);
+            this._diskId = 0;
         }
         this._monitor.disconnect(this._monitorId);
         this._monitor.cancel();
@@ -139,25 +150,52 @@ export class RulesEditor {
             text = this._readFile();
         } catch (e) {
             this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
+            this._syncButtons();
             return;
         }
         this._savedText = text ?? '';
-        this._buffer.text = text ?? EXAMPLE;
+        this._loadedText = text ?? EXAMPLE;
+        this._buffer.text = this._loadedText;
         this._check();
     }
 
     _save() {
         const text = this._buffer.text;
         try {
-            this._file.replace_contents(new TextEncoder().encode(text), null, false,
-                Gio.FileCreateFlags.NONE, null);
+            this._writeFile(text);
         } catch (e) {
             this._toast(`Cannot save ${RULES_FILE}: ${e.message}`);
             return;
         }
         this._savedText = text;
+        this._loadedText = text;
         this._syncButtons();
         this._toast(`Saved ${RULES_FILE}`);
+    }
+
+    // A write through a symlink changes its target and raises no event on
+    // the watched directory, so a new link is renamed over the old one, as
+    // wctl does.
+    _writeFile(text) {
+        let target = null;
+        try {
+            target = this._file.query_info('standard::symlink-target',
+                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_symlink_target();
+        } catch (e) {
+            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+                throw e;
+        }
+        this._file.replace_contents(new TextEncoder().encode(text), null, false, Gio.FileCreateFlags.NONE, null);
+        if (!target)
+            return;
+        const link = this._file.get_parent().get_child(`.${RULES_FILE}.link.${GLib.uuid_string_random()}`);
+        link.make_symbolic_link(target, null);
+        try {
+            link.move(this._file, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, null, null);
+        } catch (e) {
+            link.delete(null);
+            throw e;
+        }
     }
 
     // The directory rather than the file, as the extension watches it: an
@@ -173,32 +211,42 @@ export class RulesEditor {
         this._monitorId = this._monitor.connect('changed', (_monitor, file) => {
             if (file.get_basename() !== RULES_FILE)
                 return;
-            let text;
-            try {
-                text = this._readFile() ?? '';
-            } catch {
-                return;
-            }
-            if (text === this._savedText)
-                return;
-            if (this._buffer.text === this._savedText) {
-                this._load();
-                return;
-            }
-            this._savedText = text;
-            this._syncButtons();
-            this._diskToast?.dismiss();
-            this._diskToast = new Adw.Toast({
-                title: `${RULES_FILE} changed on disk`,
-                button_label: 'Reload',
-                timeout: 0,
+            if (this._diskId)
+                GLib.source_remove(this._diskId);
+            this._diskId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DISK_DEBOUNCE_MS, () => {
+                this._diskId = 0;
+                this._onDiskChange();
+                return GLib.SOURCE_REMOVE;
             });
-            this._diskToast.connect('button-clicked', () => this._load());
-            this._diskToast.connect('dismissed', () => {
-                this._diskToast = null;
-            });
-            this._window.add_toast(this._diskToast);
         });
+    }
+
+    _onDiskChange() {
+        let text;
+        try {
+            text = this._readFile() ?? '';
+        } catch {
+            return;
+        }
+        if (text === this._savedText)
+            return;
+        if (this._buffer.text === this._loadedText) {
+            this._load();
+            return;
+        }
+        this._savedText = text;
+        this._syncButtons();
+        this._diskToast?.dismiss();
+        this._diskToast = new Adw.Toast({
+            title: `${RULES_FILE} changed on disk`,
+            button_label: 'Reload',
+            timeout: 0,
+        });
+        this._diskToast.connect('button-clicked', () => this._load());
+        this._diskToast.connect('dismissed', () => {
+            this._diskToast = null;
+        });
+        this._window.add_toast(this._diskToast);
     }
 
     _scheduleCheck() {
@@ -251,7 +299,7 @@ export class RulesEditor {
         const modified = this._buffer.text !== this._savedText;
         const checked = this._checkId === 0;
         this._saveButton.sensitive = modified && checked && this._result.ok;
-        this._revertButton.sensitive = modified;
+        this._revertButton.sensitive = this._buffer.text !== this._loadedText;
         this._applyButton.sensitive = !modified;
         if (this._result.ok)
             this._statusRow.subtitle = modified ? 'Not saved' : '';
