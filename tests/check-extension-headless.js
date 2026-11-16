@@ -1179,10 +1179,10 @@ export class PopupSeparatorMenuItem {}
             check('disable() leaves no settings handler', SETTINGS.handlers.size === handlerCount,
                 `${SETTINGS.handlers.size - handlerCount} left`);
 
-            // The schema of version 23: every shortcut key, no show-indicator.
+            // The schema of version 23: the tile shortcut keys, no apply-rules
+            // and no show-indicator.
             SETTINGS.keys = ['tile-top-left', 'tile-top-center', 'tile-top-right', 'tile-left', 'tile-center',
-                'tile-right', 'tile-bottom-left', 'tile-bottom-center', 'tile-bottom-right', 'cycle-wide',
-                'apply-rules'];
+                'tile-right', 'tile-bottom-left', 'tile-bottom-center', 'tile-bottom-right', 'cycle-wide'];
             SETTINGS.values['show-indicator'] = true;
             extension.enable();
             check('a schema without show-indicator shows no icon and does not abort', shown() === undefined);

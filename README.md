@@ -591,10 +591,10 @@ gnome-extensions prefs window-control@carlo9890.github.io
 - **Shortcuts** has one row per shortcut. Click a row and press the new key
   combination: Backspace disables the shortcut, and Esc keeps the old one. The
   arrow button resets a row to its default. A combination that another
-  shortcut of this extension holds is refused.
+  shortcut of this extension holds is refused, pressed or restored by a reset.
 - **Rules** is a text editor for `rules.json`. It checks the text as you type,
-  with the same validation the extension uses, and underlines the line where
-  the first error is. **Save** is available only for a valid file, and the
+  with the same validation the extension uses, and underlines the line of the
+  first error: for an error in a rule, the line where that rule starts. **Save** is available only for a valid file, and the
   extension reads the saved file at once. **Apply** applies the saved rules to
   every open window, as `wctl rules apply` does. When another program changes
   the file while you have changes that are not saved, the page offers to load
