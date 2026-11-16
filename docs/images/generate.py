@@ -113,15 +113,20 @@ def overview():
         svg.append(keycap(tx + 14, ty + tile_h - 34, key))
         svg.append(f'<text x="{tx + 50}" y="{ty + tile_h - 17}" font-family="{MONO}" font-size="14" fill="{MUTED}">{position}</text>')
 
-    # The + key cycles the two wide positions.
+    # The bottom row: the + key cycles the two wide positions, the * key
+    # applies the rules again.
     ty = top + 3 * (tile_h + gap)
-    wide_w, wide_h, small = 3 * tile_w + 2 * gap, 60, 20
-    svg.append(f'<rect x="{left}" y="{ty}" width="{wide_w}" height="{wide_h}" rx="12" fill="{CARD}" stroke="{CARD_EDGE}"/>')
+    half_w, row_h, small = (3 * tile_w + gap) / 2, 60, 18
+    for x in (left, left + half_w + gap):
+        svg.append(f'<rect x="{x}" y="{ty}" width="{half_w}" height="{row_h}" rx="12" fill="{CARD}" stroke="{CARD_EDGE}"/>')
     svg.append(keycap(left + 14, ty + 18, "+"))
-    svg.append(f'<text x="{left + 50}" y="{ty + 35}" font-family="{MONO}" font-size="14" fill="{MUTED}">wide-right, then wide-left</text>')
-    mx = left + wide_w - 2 * (small * 4 + 9) - 46
-    svg.append(monitor(mx, ty + 9, small, "wide-right"))
-    svg.append(monitor(mx + small * 4 + 9 + 28, ty + 9, small, "wide-left"))
+    small_w = small * 4 + 9
+    svg.append(monitor(left + 50, ty + 11, small, "wide-right"))
+    svg.append(f'<text x="{left + 50 + small_w + 30}" y="{ty + 35}" text-anchor="middle" font-family="{MONO}" font-size="14" fill="{MUTED}">then</text>')
+    svg.append(monitor(left + 50 + small_w + 60, ty + 11, small, "wide-left"))
+    star_x = left + half_w + gap
+    svg.append(keycap(star_x + 14, ty + 18, "*"))
+    svg.append(f'<text x="{star_x + 50}" y="{ty + 35}" font-family="{MONO}" font-size="14" fill="{MUTED}">apply the rules again</text>')
 
     svg.append("</svg>")
     return "\n".join(svg)
