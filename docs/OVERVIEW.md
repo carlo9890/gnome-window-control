@@ -18,7 +18,7 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── indicator.js           the optional top-bar icon and its menu
 ├── prefs.js               the preferences window (its own process, GTK4 + libadwaita)
 ├── prefs/                 the modules only prefs.js loads: the Shortcuts and Rules pages
-├── schemas/               the GSettings schema the shortcuts are read from
+├── schemas/               the GSettings schema: the shortcuts and the top-bar icon switch
 ├── window-helpers.js      the GNOME 49 maximize API, the quiet minimize, the workarea lookup and the unmaximize wait, shared by the modules above
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
@@ -65,8 +65,9 @@ README.md                  user docs; the D-Bus method table
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
   lives in `dbus-interface.js` and is imported into `dbus-service.js`.
   `extension.js` only starts and stops the service, `WindowRules` and
-  `WindowKeybindings`, and removes the shortcuts while the screen is locked
-  (`_syncKeybindings`).
+  `WindowKeybindings`, adds and removes the top-bar icon (`_syncIndicator`),
+  and removes the shortcuts and the icon while the screen is locked
+  (`_syncSessionMode`).
 - `wctl` speaks D-Bus directly through **zbus's blocking API** — no gdbus, no
   busctl, no jq, and no async runtime. It has no runtime dependencies at all: the
   release asset is a static musl binary. Failures funnel through `map_err`
