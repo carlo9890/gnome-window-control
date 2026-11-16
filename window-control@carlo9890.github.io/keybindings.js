@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 // Keyboard shortcuts: tile the focused window to a grid position, the way a
-// `wctl tile focused <position>` would, without a process spawn per key.
+// `wctl tile focused <position>` would, and apply the rules.json rules again,
+// the way `wctl rules apply` would, without a process spawn per key.
 //
 // The shortcuts are GSettings keys (schemas/*.gschema.xml), one per tile
-// position plus `cycle-wide`, so a user rebinds one with dconf or gsettings
-// and never edits this file. The grid and the position names are the ones
-// rules.json and wctl use, from rules-format.js.
+// position plus `cycle-wide` and `apply-rules`, so a user rebinds one with
+// dconf or gsettings and never edits this file. The grid and the position
+// names are the ones rules.json and wctl use, from rules-format.js.
 
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
@@ -16,8 +17,8 @@ import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
 
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
-// the schema: GSettings aborts the shell on a key it does not know, which the
-// registration check in _add cannot detect.
+// the schema: GSettings aborts the shell on a key it does not know, so _add
+// refuses one that a stale compiled schema from an older install lacks.
 const TILE_BINDINGS = {
     'tile-top-left': 'top-left',
     'tile-top-center': 'top-center',
@@ -30,9 +31,20 @@ const TILE_BINDINGS = {
     'tile-bottom-right': 'bottom-right',
 };
 const CYCLE_WIDE_BINDING = 'cycle-wide';
+const APPLY_RULES_BINDING = 'apply-rules';
+
+// PER_WINDOW: mutter hands the focused window to the handler and does not call
+// it when there is none -- the flags its own window shortcuts (maximize,
+// minimize, close) carry. IGNORE_AUTOREPEAT: holding the key must not queue a
+// burst of move-resize requests.
+const WINDOW_FLAGS = Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNORE_AUTOREPEAT;
+// apply-rules acts on every open window, so it needs no focused window.
+const GLOBAL_FLAGS = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT;
 
 export class WindowKeybindings {
-    constructor() {
+    // `applyRules()` applies the rules.json rules again to every open window.
+    constructor(applyRules) {
+        this._applyRules = applyRules;
         this._names = [];
         this._pending = new Map();        // Meta.Window -> UnmaximizeWait
     }
@@ -42,11 +54,12 @@ export class WindowKeybindings {
     enable(settings) {
         const handlers = [
             ...Object.entries(TILE_BINDINGS).map(([name, position]) =>
-                [name, (display, win) => this._tile(name, win, position)]),
-            [CYCLE_WIDE_BINDING, (display, win) => this._cycleWide(win)],
+                [name, WINDOW_FLAGS, (display, win) => this._tile(name, win, position)]),
+            [CYCLE_WIDE_BINDING, WINDOW_FLAGS, (display, win) => this._cycleWide(win)],
+            [APPLY_RULES_BINDING, GLOBAL_FLAGS, () => this._applyRules()],
         ];
-        for (const [name, handler] of handlers) {
-            if (!this._add(name, settings, handler)) {
+        for (const [name, flags, handler] of handlers) {
+            if (!this._add(name, settings, flags, handler)) {
                 this.disable();
                 console.warn(`[Window Control] cannot register the ${name} shortcut; keyboard shortcuts disabled`);
                 return;
@@ -69,16 +82,12 @@ export class WindowKeybindings {
         return this._names.length > 0;
     }
 
-    _add(name, settings, handler) {
-        // PER_WINDOW: mutter hands the focused window to the handler and does
-        // not call it when there is none -- the flags its own window shortcuts
-        // (maximize, minimize, close) carry. IGNORE_AUTOREPEAT: holding the key
-        // must not queue a burst of move-resize requests. NORMAL: a shortcut
-        // that moves a window has no meaning in the overview or on the lock
-        // screen.
-        const action = Main.wm.addKeybinding(name, settings,
-            Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
-            Shell.ActionMode.NORMAL, handler);
+    _add(name, settings, flags, handler) {
+        if (!settings.settings_schema.has_key(name))
+            return false;
+        // NORMAL: a shortcut that moves a window has no meaning in the overview
+        // or on the lock screen.
+        const action = Main.wm.addKeybinding(name, settings, flags, Shell.ActionMode.NORMAL, handler);
         if (action === Meta.KeyBindingAction.NONE)
             return false;
         this._names.push(name);

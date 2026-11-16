@@ -333,6 +333,10 @@ call is applied as saved. A call still waiting at `disable()` raises
 `Disabled`. A save whose file event has not reached the shell when the call
 arrives is not waited for.
 
+The `apply-rules` shortcut (`Super+Ctrl+KP_Multiply` by default) runs the same
+steps for every window and sends no reply. A press still waiting at `disable()`
+is dropped instead of raising `Disabled`.
+
 For each window, in this order:
 
 1. A window `_tracked` holds is skipped: its own apply, grace period or

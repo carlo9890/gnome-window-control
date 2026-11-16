@@ -504,6 +504,24 @@ export class WindowControlService {
         });
     }
 
+    // ApplyRules(0) for the apply-rules shortcut, which has no caller to answer.
+    applyRulesToAll() {
+        console.debug('[Window Control] apply-rules shortcut pressed');
+        this.whenRulesLoaded(loaded => {
+            if (!loaded) {
+                console.debug('[Window Control] apply-rules shortcut: disabled before the rules were read');
+                return;
+            }
+            // A throw would end the loop that runs the other callbacks waiting
+            // for the same read, a pending ApplyRules call among them.
+            try {
+                this.applyRules(null, win => this._isUnshown(win));
+            } catch (e) {
+                console.error(`[Window Control] apply-rules shortcut error: ${e.message}`);
+            }
+        });
+    }
+
     GetGeometry(windowId) {
         console.debug(`[Window Control] GetGeometry(${windowId}) called`);
         const win = this._findWindowById(windowId);

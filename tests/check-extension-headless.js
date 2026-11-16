@@ -50,6 +50,8 @@ function unknownSourceRemovals(from) {
 
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
+// A Gio.Settings whose schema has every key the shortcuts ask for.
+const SETTINGS = { settings_schema: { has_key: () => true } };
 
 // Nothing here may reach a real session bus or the user's rules.json. The
 // scratch dir is removed however the checks end; a throw still exits 1.
@@ -815,7 +817,7 @@ export const sessionMode = {
 
     {
         const keybindings = new WindowKeybindings();
-        keybindings.enable({});
+        keybindings.enable(SETTINGS);
         const win = createWindow({ id: 8, wmClass: 'K', maximizeFlags: Meta.MaximizeFlags.BOTH });
         win.map();
         keybindings._tile('tile-left', win, 'left');
@@ -851,7 +853,7 @@ export const sessionMode = {
         Main.wm.removeKeybinding = name => removed.push(name);
         const keybindings = new WindowKeybindings();
         try {
-            keybindings.enable({});
+            keybindings.enable(SETTINGS);
         } finally {
             Main.wm.addKeybinding = realAdd;
             Main.wm.removeKeybinding = realRemove;
@@ -859,6 +861,58 @@ export const sessionMode = {
         check('a failed registration serves no shortcut', !keybindings.registered);
         check('a failed registration removes the shortcuts added before it',
             JSON.stringify(removed) === JSON.stringify(added), `added ${added}, removed ${removed}`);
+    }
+
+    // -- WindowKeybindings: the apply-rules shortcut -----------------------------
+    //
+    // It acts on every open window, so mutter calls it without a focused window.
+
+    {
+        const realAdd = Main.wm.addKeybinding;
+        const registered = new Map();
+        Main.wm.addKeybinding = (name, settings, flags, mode, handler) => {
+            registered.set(name, { flags, handler });
+            return 1;
+        };
+        let applied = 0;
+        const keybindings = new WindowKeybindings(() => applied++);
+        try {
+            keybindings.enable(SETTINGS);
+        } finally {
+            Main.wm.addKeybinding = realAdd;
+        }
+        const binding = registered.get('apply-rules');
+        check('apply-rules is registered without PER_WINDOW', binding !== undefined &&
+            binding.flags === Meta.KeyBindingFlags.IGNORE_AUTOREPEAT, `flags ${binding?.flags}`);
+        binding?.handler(display, null);
+        check('the apply-rules handler applies the rules once', applied === 1, `${applied} apply(s)`);
+        check('the tile shortcuts keep PER_WINDOW',
+            (registered.get('tile-left')?.flags & Meta.KeyBindingFlags.PER_WINDOW) !== 0);
+        keybindings.disable();
+    }
+
+    // -- WindowKeybindings: a key the compiled schema lacks -----------------------
+    //
+    // A compiled schema left from an older install lacks the newer keys, and
+    // GSettings aborts the shell on a key it does not know, so such a key is
+    // never handed to addKeybinding.
+
+    {
+        const realAdd = Main.wm.addKeybinding;
+        const asked = [];
+        Main.wm.addKeybinding = name => {
+            asked.push(name);
+            return 1;
+        };
+        const keybindings = new WindowKeybindings(() => {});
+        try {
+            keybindings.enable({ settings_schema: { has_key: name => name !== 'apply-rules' } });
+        } finally {
+            Main.wm.addKeybinding = realAdd;
+        }
+        check('a key the schema lacks never reaches addKeybinding', !asked.includes('apply-rules'),
+            `asked ${asked}`);
+        check('a key the schema lacks serves no shortcut', !keybindings.registered);
     }
 
     // -- enable() when the D-Bus export fails -------------------------------------
@@ -869,7 +923,7 @@ export const sessionMode = {
     {
         const extension = new WindowControlExtension();
         extension.metadata = { name: 'Window Control', version: 1 };
-        extension.getSettings = () => ({});
+        extension.getSettings = () => SETTINGS;
         const realExport = WindowControlService.prototype.export;
         WindowControlService.prototype.export = function () {
             this._dbusImpl = {
@@ -903,7 +957,7 @@ export const sessionMode = {
     {
         const extension = new WindowControlExtension();
         extension.metadata = { name: 'Window Control', version: 1 };
-        extension.getSettings = () => ({});
+        extension.getSettings = () => SETTINGS;
         const realExport = WindowControlService.prototype.export;
         WindowControlService.prototype.export = function () {
             this._dbusImpl = { export() {}, unexport() {} };
@@ -913,10 +967,12 @@ export const sessionMode = {
         const realRemove = Main.wm.removeKeybinding;
         let bound = [];
         let refuse = false;
-        Main.wm.addKeybinding = name => {
+        const boundHandlers = new Map();
+        Main.wm.addKeybinding = (name, settings, flags, mode, handler) => {
             if (refuse)
                 return Meta.KeyBindingAction.NONE;
             bound.push(name);
+            boundHandlers.set(name, handler);
             return 1;
         };
         Main.wm.removeKeybinding = name => {
@@ -937,21 +993,27 @@ export const sessionMode = {
             check('ApplyRules answers once the read landed', showReply(wired) === '{"value":[0]}',
                 showReply(wired));
             check('enable() while unlocked serves the shortcuts',
-                adds() === 10 && service.keybindingsServed, `${adds()} bound`);
+                adds() === 11 && service.keybindingsServed, `${adds()} bound`);
+            let pressed = 0;
+            service.applyRulesToAll = () => pressed++;
+            boundHandlers.get('apply-rules')?.(display, null);
+            delete service.applyRulesToAll;
+            check('the apply-rules press reaches the service through the extension wiring', pressed === 1,
+                `${pressed} call(s)`);
             Main.sessionMode.setLocked(true);
             check('the lock removes every shortcut', adds() === 0, `${adds()} bound`);
             check('the lock keeps the keybindings capability', service.keybindingsServed);
             check('the lock keeps the service', extension._service === service && service._dbusImpl !== null);
             Main.sessionMode.setLocked(false);
             check('the unlock registers each shortcut once',
-                adds() === 10 && new Set(bound).size === 10, `${adds()} bound`);
+                adds() === 11 && new Set(bound).size === 11, `${adds()} bound`);
             Main.sessionMode.setLocked(true);
             extension.disable();
             extension.enable();
             check('enable() while locked registers no shortcut', adds() === 0, `${adds()} bound`);
             Main.sessionMode.setLocked(false);
             check('the unlock after enable() while locked serves the shortcuts',
-                adds() === 10 && extension._service.keybindingsServed, `${adds()} bound`);
+                adds() === 11 && extension._service.keybindingsServed, `${adds()} bound`);
             extension.disable();
             check('disable() leaves no sessionMode handler', Main.sessionMode.handlerCount() === 0,
                 `${Main.sessionMode.handlerCount()} handler(s)`);
@@ -1602,6 +1664,16 @@ export const sessionMode = {
         check('ApplyRules(id) raises NotFound for an id no window has', missing.replies === 1 &&
             missing.reply.error === 'org.gnome.Shell.Extensions.WindowControl.NotFound', showReply(missing));
 
+        // The apply-rules shortcut applies the rules as ApplyRules(0) does.
+        placed.moves.length = 0;
+        hidden.moves.length = 0;
+        quake.moves.length = 0;
+        service.applyRulesToAll();
+        check('applyRulesToAll places the shown, the minimized and the overlay window',
+            JSON.stringify(placed.moves) === LEFT && JSON.stringify(hidden.moves) === LEFT &&
+            JSON.stringify(quake.moves) === RIGHT,
+            `${JSON.stringify(placed.moves)} ${JSON.stringify(hidden.moves)} ${JSON.stringify(quake.moves)}`);
+
         // A file saved just before the call is applied as saved: the call
         // waits for the reload, and one pending at disable() gets Disabled.
         write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
@@ -1616,13 +1688,33 @@ export const sessionMode = {
         await sleep(400);
         check('ApplyRules applies the rules as saved', showReply(afterSave) === '{"value":[1]}' &&
             JSON.stringify(placed.moves) === RIGHT, `${showReply(afterSave)} ${JSON.stringify(placed.moves)}`);
+        write(`${SCRATCH}/config/gnome-window-control/rules.json`, JSON.stringify([
+            { match: { class: 'term' }, tile: 'left' },
+        ]));
+        for (let waited = 0; waited < 1000 && !rules._reloadId; waited += 5)
+            await sleep(5);
+        placed.moves.length = 0;
+        service.applyRulesToAll();
+        check('applyRulesToAll waits for a reload that is due', placed.moves.length === 0,
+            JSON.stringify(placed.moves));
+        await sleep(400);
+        check('applyRulesToAll applies the rules as saved', JSON.stringify(placed.moves) === LEFT,
+            JSON.stringify(placed.moves));
         write(`${SCRATCH}/config/gnome-window-control/rules.json`, '[]');
         for (let waited = 0; waited < 1000 && !rules._reloadId; waited += 5)
             await sleep(5);
         const pending = invocation();
         service.ApplyRulesAsync([0], pending);
+        let applies = 0;
+        const realApply = service.applyRules;
+        service.applyRules = (win, isUnshown) => {
+            applies++;
+            return realApply(win, isUnshown);
+        };
+        service.applyRulesToAll();
 
         rules.disable();
+        check('an applyRulesToAll pending at disable() applies nothing', applies === 0, `${applies} apply(s)`);
         check('an ApplyRules pending at disable() gets Disabled', pending.replies === 1 &&
             pending.reply.error === DBUS_ERROR_DISABLED, showReply(pending));
         service.unexport();

@@ -17,7 +17,8 @@ One GNOME Shell extension, three ways to use it:
 - **On window creation** - rules in `rules.json` place a matching window the
   moment it opens. See [Automatic window placement](#automatic-window-placement).
 - **From the keyboard** - `Super+Ctrl` plus a numpad key tiles the focused
-  window. See [Keyboard shortcuts](#keyboard-shortcuts).
+  window, and the numpad `*` applies the rules again. See
+  [Keyboard shortcuts](#keyboard-shortcuts).
 
 ```bash
 wctl list                                  # every window, with ID, class and title
@@ -490,6 +491,10 @@ wctl rules apply             # every open window
 wctl rules apply -c kitty    # one window
 ```
 
+`Super+Ctrl+KP_Multiply` applies the rules to every open window from the
+keyboard, without the file check and the count (see
+[Keyboard shortcuts](#keyboard-shortcuts)).
+
 The extension applies the rules it has loaded again, as it does to a new
 window: the first matching rule wins, and `min_width` tests the monitor the
 window is on now. Use it after you moved windows by hand, or after you docked
@@ -532,6 +537,12 @@ The extension tiles the focused window from the keyboard, to the same 4x2 grid
 columns of four; press it again on the same window and it goes `wide-left`.
 A maximized window is unmaximized first; a fullscreen one is left alone.
 
+`Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
+every open window, as `wctl rules apply` does ([Resetting windows to their
+rules](#resetting-windows-to-their-rules)). It does not check the file and
+prints no count: a file with an error moves nothing, and only the journal
+says why.
+
 Every shortcut is a GSettings key, so you change one without editing anything:
 
 ```bash
@@ -543,7 +554,8 @@ gsettings --schemadir $D set $S cycle-wide "[]"            # unbind one
 gsettings --schemadir $D reset-recursively $S              # back to the defaults
 ```
 
-The keys are `tile-<position>` for the nine positions and `cycle-wide`. Each
+The keys are `tile-<position>` for the nine positions, `cycle-wide` and
+`apply-rules`. Each
 holds a list of accelerators in GTK's `<Super><Control>KP_Home` notation, so one
 key can carry several combinations. Pick a chord nothing else binds: when two
 bindings share one, mutter gives it to either at random, and the shortcut then
