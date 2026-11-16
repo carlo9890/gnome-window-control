@@ -9,6 +9,7 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 |-------|-------|------------------|---------|
 | Crate tests (CI gate) | `cli/src/**` + `cli/tests/cli.rs` | No — headless | `mise run ci` (`mise run test` is the inner-loop subset) |
 | Rules grammar (CI gate) | `tests/check-rules-format.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js` |
+| Preferences logic (CI gate) | `tests/check-prefs.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js` |
 | Extension against fake windows (CI gate) | `tests/check-extension-headless.js` | No — headless, needs the mutter typelib | `dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' \| sort -V \| tail -1) && GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
 | Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
@@ -107,11 +108,13 @@ dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) 
 With several mutter typelibs installed, this picks the newest one; with none,
 it stops with `no Meta-*.typelib installed`.
 
-Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `overlay.js` and
-`keybindings.js` against fake windows and a fake display that count their signal handlers. No
+Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `overlay.js`,
+`keybindings.js` and `indicator.js` against fake windows and a fake display that count their signal handlers. No
 GNOME session, no D-Bus: the check copies the extension files into a temporary
-directory and points the shell-only imports (`ui/main.js`,
-`extensions/extension.js`, `gi://Shell`) at stubs written there. It needs the
+directory and points the shell-only imports (`ui/main.js`, `ui/panelMenu.js`,
+`ui/popupMenu.js`, `misc/config.js`, `extensions/extension.js`, `gi://Shell`,
+`gi://St`) at stubs
+written there. It needs the
 mutter typelib (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package
 `gir1.2-mutter-14`), which the extension job in `.github/workflows/build.yml`
 installs.
@@ -207,17 +210,18 @@ network are needed.
 
 ## Minimum checks before a PR
 
-| Action | `mise run ci` | Rules grammar | Fake windows | Query | Modification |
-|--------|---------------|---------------|--------------|-------|--------------|
-| Before commit | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
-| Before push | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
-| Before release | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** |
+| Action | `mise run ci` | Rules grammar | Preferences | Fake windows | Query | Modification |
+|--------|---------------|---------------|-------------|--------------|-------|--------------|
+| Before commit | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
+| Before push | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
+| Before release | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** |
 
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
-`tests/vectors/`. The fake-windows column applies to any change to
-`extension.js`, `dbus-service.js`, `rules.js`, `overlay.js`, `keybindings.js`
-or `window-helpers.js`. Both are headless and take seconds, so there is no reason
+`tests/vectors/`. The preferences column applies to any change to `prefs.js`,
+`prefs/` or the schema. The fake-windows column applies to any change to
+`extension.js`, `dbus-service.js`, `rules.js`, `overlay.js`, `keybindings.js`,
+`indicator.js` or `window-helpers.js`. All three are headless and take seconds, so there is no reason
 to skip them. The query column applies to any change under
 `window-control@carlo9890.github.io/`, `cli/` or `tests/`. It reads the
 extension loaded in the real session and starts no shell. For a JavaScript

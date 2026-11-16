@@ -20,6 +20,10 @@ One GNOME Shell extension, three ways to use it:
   window, and the numpad `*` applies the rules again. See
   [Keyboard shortcuts](#keyboard-shortcuts).
 
+A preferences window rebinds the shortcuts and edits `rules.json` with a
+check as you type, and an optional top-bar icon applies the rules again. See
+[Preferences window and top-bar icon](#preferences-window-and-top-bar-icon).
+
 ```bash
 wctl list                                  # every window, with ID, class and title
 wctl tile -c kitty left                    # tile the kitty window to the left column
@@ -268,7 +272,9 @@ The extension can place a window the moment it is shown, so it opens where you
 want it without a `wctl` call. Rules live in
 `~/.config/gnome-window-control/rules.json`, a JSON array read at enable and
 re-read whenever the file changes (no restart needed). The file is optional; with
-no file, nothing happens.
+no file, nothing happens. Edit it with any text editor, with
+[`wctl rules`](#managing-rules-from-the-command-line), or on the Rules page of
+the [preferences window](#preferences-window-and-top-bar-icon).
 
 Each rule names the windows it matches and one placement, in the same vocabulary
 as the `wctl` commands:
@@ -540,10 +546,12 @@ A maximized window is unmaximized first; a fullscreen one is left alone.
 `Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
 every open window, as `wctl rules apply` does ([Resetting windows to their
 rules](#resetting-windows-to-their-rules)). It does not check the file and
-prints no count: a file with an error moves nothing, and only the journal
-says why.
+prints no count: a file with an error moves nothing, and the journal and the
+Rules page of the preferences window say why.
 
-Every shortcut is a GSettings key, so you change one without editing anything:
+Change a shortcut on the Shortcuts page of the
+[preferences window](#preferences-window-and-top-bar-icon). Every shortcut is
+also a GSettings key, so a script can change one:
 
 ```bash
 S=org.gnome.shell.extensions.window-control
@@ -568,6 +576,34 @@ not with the system.
 
 `wctl version --json` lists `keybindings` under `capabilities` when the loaded
 extension serves the shortcuts.
+
+## Preferences window and top-bar icon
+
+Open the preferences window from the Extensions app, or with:
+
+```bash
+gnome-extensions prefs window-control@carlo9890.github.io
+```
+
+- **General** turns the top-bar icon on or off. The icon is off by default.
+  Its menu has **Apply Rules Again**, which does what the numpad `*` shortcut
+  does, and **Settings**, which opens the preferences window.
+- **Shortcuts** has one row per shortcut. Click a row and press the new key
+  combination: Backspace disables the shortcut, and Esc keeps the old one. The
+  arrow button resets a row to its default. A combination that another
+  shortcut of this extension holds is refused, pressed or restored by a reset.
+  A key without Super, Ctrl or Alt is refused, because GNOME Shell would take
+  it from every app.
+- **Rules** is a text editor for `rules.json`. It checks the text as you type,
+  with the same validation the extension uses, and underlines the line of the
+  first error: for an error in a rule, the line where that rule starts. **Save** is available only for a valid file, and the
+  extension reads the saved file at once. **Apply** applies the saved rules to
+  every open window, as `wctl rules apply` does. When another program changes
+  the file while you have changes that are not saved, the page offers to load
+  the new version.
+
+The extension only reads `rules.json`. The preferences window writes it when
+you click **Save**.
 
 ## D-Bus Interface
 

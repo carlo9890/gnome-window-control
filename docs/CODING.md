@@ -41,6 +41,11 @@ If it fails, the code has a syntax error and must not be committed.
   the body's `GLib.Variant` (an empty reply for none), a `NamedError` by its
   name, and any other throw with `Failed`. Before GNOME 50, GJS sends no reply
   for a throw from an `...Async` handler.
+- Two processes load the code. `extension.js` and the modules it imports run
+  in GNOME Shell and never import `Gtk`, `Gdk` or `Adw`. `prefs.js` and
+  `prefs/` run in the preferences process and never import `Meta`, `St`,
+  `Clutter` or `Shell`. A module that both load (`rules-format.js`) imports
+  none of them. A module that only `prefs.js` loads goes in `prefs/`.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
 - `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
