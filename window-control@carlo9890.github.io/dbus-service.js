@@ -85,7 +85,9 @@ const WINDOW_TYPE_NAMES = {
 };
 
 export class WindowControlService {
-    constructor(metadata) {
+    // `placer` is the WindowPlacer every frame request goes through.
+    constructor(metadata, placer) {
+        this._placer = placer;
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
             DBUS_INTERFACE_INFO,
             this
@@ -442,18 +444,24 @@ export class WindowControlService {
         return [0, '', ''];
     }
 
+    // The three geometry methods place through the WindowPlacer: a call made
+    // while a shortcut or a rule still waits for the window's unmaximize
+    // replaces that placement, rather than being overwritten when it lands.
+    // A window maximized now is refused (_geometryTarget), not restored.
+    //
     // Raises instead of returning a flag; see the ERRORS block in
     // dbus-interface.js.
     MoveAsync([windowId, x, y], invocation) {
         console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         this._namedErrorCall(invocation, 'Move', () => {
             const win = this._geometryTarget(windowId, 'Move');
-            win.move_frame(true, x, y);
+            this._placer.place(win, () => win.move_frame(true, x, y));
             console.debug(`[Window Control] Move(${windowId}) -> ok`);
         });
     }
 
-    // Keeps the position. Raises on failure.
+    // Keeps the position the frame has when the request runs. Raises on
+    // failure.
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'Resize', () => {
@@ -462,8 +470,10 @@ export class WindowControlService {
                     'Resize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'Resize');
-            const rect = win.get_frame_rect();
-            win.move_resize_frame(true, rect.x, rect.y, width, height);
+            this._placer.place(win, () => {
+                const rect = win.get_frame_rect();
+                win.move_resize_frame(true, rect.x, rect.y, width, height);
+            });
             console.debug(`[Window Control] Resize(${windowId}) -> ok`);
         });
     }
@@ -478,7 +488,7 @@ export class WindowControlService {
                     'MoveResize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'MoveResize');
-            moveResizeFrame(win, { x, y, width, height });
+            this._placer.place(win, () => moveResizeFrame(win, { x, y, width, height }));
             console.debug(`[Window Control] MoveResize(${windowId}) -> ok`);
         });
     }

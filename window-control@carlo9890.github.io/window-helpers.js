@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 // Helpers shared by the D-Bus service, the window rules, the overlay windows
 // and the keyboard shortcuts: the maximize API that changed in GNOME 49, a
-// minimize without the animation, the workarea a window resolves against, and
-// the wait for an unmaximize to land. Everything here needs Meta; the
-// Meta-free selector grammar is in rules-format.js.
+// minimize without the animation, the workarea a window resolves against, the
+// wait for an unmaximize to land, and the placer every frame request goes
+// through. Everything here needs Meta; the Meta-free selector grammar is in
+// rules-format.js.
 
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -154,5 +155,47 @@ export class UnmaximizeWait {
             this._settled(true);
             return GLib.SOURCE_REMOVE;
         });
+    }
+}
+
+// The one owner of every frame request: the shortcuts, the rules and the
+// D-Bus geometry methods all place through it, so a window has at most one
+// placement pending and the newest request wins.
+//
+// A maximized window is restored first, and its request runs once the
+// restore has landed (see UnmaximizeWait). A request made while that restore
+// is still pending replaces the pending one: run at once, it would be
+// overwritten by the restored size, and the older request would then land
+// after it.
+export class WindowPlacer {
+    constructor() {
+        this._pending = new Map();        // Meta.Window -> { wait, request }
+    }
+
+    // Run `request()` now, or once the window's restore has landed.
+    place(win, request) {
+        const pending = this._pending.get(win);
+        if (pending) {
+            pending.request = request;
+            return;
+        }
+        if (maximizeFlags(win) === 0) {
+            request();
+            return;
+        }
+        const entry = { wait: null, request };
+        entry.wait = new UnmaximizeWait(win, landed => {
+            this._pending.delete(win);
+            if (landed)
+                entry.request();
+        });
+        this._pending.set(win, entry);
+    }
+
+    // Drop every pending request, without running it.
+    destroy() {
+        for (const { wait } of this._pending.values())
+            wait.destroy();
+        this._pending.clear();
     }
 }

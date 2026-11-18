@@ -511,7 +511,9 @@ window: the first matching rule wins, and `min_width` tests the monitor the
 window is on now. Use it after you moved windows by hand, or after you docked
 or undocked a laptop.
 
-- A maximized window is restored first, then placed.
+- A maximized window is restored first, then placed. A shortcut or a geometry
+  command for the same window before the restore lands replaces this
+  placement: the newest request wins.
 - A minimized window is placed and stays minimized.
 - A fullscreen window gets its `workspace` and `monitor`, but no geometry.
 - A `workspace` that does not exist is skipped, so each apply does not add
@@ -546,7 +548,9 @@ The extension tiles the focused window from the keyboard, to the same 4x2 grid
 
 `Super+Ctrl+KP_Add` (the numpad `+`) tiles the window `wide-right`, three
 columns of four; press it again on the same window and it goes `wide-left`.
-A maximized window is unmaximized first; a fullscreen one is left alone.
+A maximized window is unmaximized first, then placed; a fullscreen one is left
+alone. A newer shortcut, rule apply or geometry command for the same window
+replaces a placement that still waits for the restore.
 
 `Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
 every open window, as `wctl rules apply` does ([Resetting windows to their

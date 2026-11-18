@@ -13,7 +13,7 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { nextWidePosition, tileRect } from './rules-format.js';
-import { UnmaximizeWait, maximizeFlags, moveResizeFrame, workareaOf } from './window-helpers.js';
+import { moveResizeFrame, workareaOf } from './window-helpers.js';
 
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
@@ -42,11 +42,12 @@ const WINDOW_FLAGS = Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNO
 const GLOBAL_FLAGS = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT;
 
 export class WindowKeybindings {
+    // `placer` is the WindowPlacer every frame request goes through.
     // `applyRules()` applies the rules.json rules again to every open window.
-    constructor(applyRules) {
+    constructor(placer, applyRules) {
+        this._placer = placer;
         this._applyRules = applyRules;
         this._names = [];
-        this._pending = new Map();        // Meta.Window -> UnmaximizeWait
     }
 
     // All or none: when one shortcut cannot be registered, the ones before it
@@ -72,9 +73,6 @@ export class WindowKeybindings {
         for (const name of this._names)
             Main.wm.removeKeybinding(name);
         this._names = [];
-        for (const wait of this._pending.values())
-            wait.destroy();
-        this._pending.clear();
     }
 
     // Whether the shortcuts are served: all of them, or none (see enable).
@@ -122,37 +120,14 @@ export class WindowKeybindings {
         return true;
     }
 
+    // The target is taken at the press, on the monitor the window is on then:
+    // a maximized window is placed only once its restore has landed (see
+    // WindowPlacer), and a later press replaces this one.
     _place(win, position, workarea) {
-        const id = win.get_id();
         const target = tileRect(position, workarea);
-        const request = () => {
+        this._placer.place(win, () => {
             moveResizeFrame(win, target);
-            console.debug(`[Window Control] shortcut -> ${id}: tile ${position}`);
-        };
-        // A maximized frame drops the request outright (see _frameRefusal in
-        // dbus-service.js), and a frame requested while an unmaximize is still
-        // in flight is overwritten by the restored size -- the restore an
-        // earlier press started included, although the flags already read as
-        // unmaximized then. Restore first and place once the restore has
-        // landed; a second press before then replaces the first press's
-        // target rather than racing it.
-        if (maximizeFlags(win) === 0 && !this._pending.has(win)) {
-            request();
-            return;
-        }
-        this._cancelPending(win);
-        this._pending.set(win, new UnmaximizeWait(win, landed => {
-            this._pending.delete(win);
-            if (landed)
-                request();
-        }));
-    }
-
-    _cancelPending(win) {
-        const wait = this._pending.get(win);
-        if (wait) {
-            wait.destroy();
-            this._pending.delete(win);
-        }
+            console.debug(`[Window Control] shortcut -> ${win.get_id()}: tile ${position}`);
+        });
     }
 }

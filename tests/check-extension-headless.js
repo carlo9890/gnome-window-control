@@ -331,6 +331,8 @@ export class PopupSeparatorMenuItem {}
             this.moves.push([x, y, width, height]);
             this.userOps = [...this.userOps ?? [], userOp];
         }
+
+        move_frame(userOp, x, y) { this.moves.push([x, y]); }
         change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
         move_to_monitor() {}
 
@@ -446,6 +448,8 @@ export class PopupSeparatorMenuItem {}
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowRules: WindowRules49 } = await import(`file://${EXT49}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
+    const { WindowPlacer } = await import(`file://${EXT}/window-helpers.js`);
+    const { WindowPlacer: WindowPlacer49 } = await import(`file://${EXT49}/window-helpers.js`);
     const Main = await import(`file://${EXT}/stub-main.js`);
 
     // Take Meta.is_wayland_compositor away, as mutter 50 has it, until
@@ -463,8 +467,8 @@ export class PopupSeparatorMenuItem {}
     }
 
     // An exported service, on a fake export: nothing here may reach a bus.
-    function startService() {
-        const service = new WindowControlService({ version: 0 });
+    function startService(placer = new WindowPlacer()) {
+        const service = new WindowControlService({ version: 0 }, placer);
         service._dbusImpl = { export() {}, unexport() {} };
         service.export();
         return service;
@@ -874,7 +878,8 @@ export class PopupSeparatorMenuItem {}
     // lands, rather than leaving the rule half applied.
 
     {
-        const rules = new WindowRules();
+        const placer = new WindowPlacer();
+        const rules = new WindowRules(placer);
         rules.enable();
         await sleep(300);
         rules._compile('[{"match":{"class":"max"},"tile":"left"}]');
@@ -882,7 +887,7 @@ export class PopupSeparatorMenuItem {}
         win.map();
         await sleep(100);
         check('a maximized window under a rule waits for its unmaximize',
-            rules._tracked.get(win)?.wait !== undefined && win.moves.length === 0, JSON.stringify(win.moves));
+            placer._pending.has(win) && win.moves.length === 0, JSON.stringify(win.moves));
         rules._compile('[]');
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
         check('a load to no rules lets the pending unmaximize wait place the window',
@@ -902,22 +907,24 @@ export class PopupSeparatorMenuItem {}
         windows.length = 0;
     }
 
-    // -- WindowKeybindings.disable() while an UnmaximizeWait is pending -----------
+    // -- WindowPlacer.destroy() while an UnmaximizeWait is pending ---------------
 
     {
-        const keybindings = new WindowKeybindings();
+        const placer = new WindowPlacer();
+        const keybindings = new WindowKeybindings(placer);
         keybindings.enable(SETTINGS);
         const win = createWindow({ id: 8, wmClass: 'K', maximizeFlags: Meta.MaximizeFlags.BOTH });
         win.map();
         keybindings._tile('tile-left', win, 'left');
-        const wait = keybindings._pending.get(win);
+        const wait = placer._pending.get(win)?.wait;
         check('a maximized window gets an UnmaximizeWait', wait !== undefined && win.handlerCount() > 0,
             `${win.handlerCount()} handler(s)`);
         const timeoutId = wait?._timeoutId ?? 0;
         keybindings.disable();
-        check('disable() leaves no handler on the window', win.handlerCount() === 0,
+        placer.destroy();
+        check('destroy() leaves no handler on the window', win.handlerCount() === 0,
             `${win.handlerCount()} handler(s)`);
-        check('disable() leaves no UnmaximizeWait timer', !sourceAlive(timeoutId), `source ${timeoutId}`);
+        check('destroy() leaves no UnmaximizeWait timer', !sourceAlive(timeoutId), `source ${timeoutId}`);
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
         check('a cancelled UnmaximizeWait never places the window', win.moves.length === 0,
             JSON.stringify(win.moves));
@@ -932,14 +939,15 @@ export class PopupSeparatorMenuItem {}
 
     {
         windows.length = 0;
-        const rules = new WindowRules();
+        const placer = new WindowPlacer();
+        const rules = new WindowRules(placer);
         rules.enable();
         await sleep(300);
         rules._compile('[{"match":{"class":"flag"},"tile":"right"}]');
-        const service = startService();
+        const service = startService(placer);
         service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
         service.whenRulesLoaded = callback => rules.whenLoaded(callback);
-        const keybindings = new WindowKeybindings(() => service.applyRulesToAll());
+        const keybindings = new WindowKeybindings(placer, () => service.applyRulesToAll());
         const win = createWindow({ id: 61, wmClass: 'flag' });
         win.map();
         await sleep(100);
@@ -952,6 +960,78 @@ export class PopupSeparatorMenuItem {}
             JSON.stringify(win.userOps) === '[false,false,false,true]', JSON.stringify(win.userOps));
         service.unexport();
         rules.disable();
+        placer.destroy();
+        windows.length = 0;
+    }
+
+    // -- WindowPlacer: one placement per window, the newest wins ----------------
+    //
+    // A shortcut, a rule and a D-Bus geometry call made while another of them
+    // still waits for the window's unmaximize replace that placement: only
+    // the newest lands, once, after the restore. Without a restore pending,
+    // a request runs at once.
+
+    {
+        windows.length = 0;
+        const placer = new WindowPlacer();
+        const rules = new WindowRules(placer);
+        rules.enable();
+        await sleep(300);
+        rules._compile('[{"match":{"class":"race"},"tile":"right"}]');
+        const service = startService(placer);
+        service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
+        service.whenRulesLoaded = callback => rules.whenLoaded(callback);
+        const keybindings = new WindowKeybindings(placer, () => service.applyRulesToAll());
+        const LEFT = '[[0,0,480,1080]]';
+        const RIGHT = '[[1440,0,480,1080]]';
+        const win = createWindow({ id: 60, wmClass: 'race' });
+        win.map();
+        await sleep(100);
+        const settle = async () => {
+            await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
+            const moves = JSON.stringify(win.moves);
+            win.moves.length = 0;
+            return moves;
+        };
+        const maximize = () => {
+            win.moves.length = 0;
+            win.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        };
+
+        maximize();
+        service.applyRulesToAll();
+        keybindings._tile('tile-left', win, 'left');
+        let moves = await settle();
+        check('a shortcut after apply-rules replaces the rule\'s pending placement', moves === LEFT, moves);
+
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.applyRulesToAll();
+        moves = await settle();
+        check('apply-rules after a shortcut replaces the shortcut\'s pending placement', moves === RIGHT, moves);
+
+        maximize();
+        const applied = invocation();
+        service.ApplyRulesAsync([60], applied);
+        const moved = invocation();
+        service.MoveResizeAsync([60, 100, 100, 700, 500], moved);
+        moves = await settle();
+        check('MoveResize after ApplyRules replaces the rule\'s pending placement',
+            moves === '[[100,100,700,500]]' && moved.reply?.value === null, `${moves} ${showReply(moved)}`);
+
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.MoveAsync([60, 5, 6], invocation());
+        moves = await settle();
+        check('Move after a shortcut replaces the shortcut\'s pending placement', moves === '[[5,6]]', moves);
+
+        keybindings._tile('tile-left', win, 'left');
+        check('a request with no restore pending runs at once', JSON.stringify(win.moves) === LEFT,
+            JSON.stringify(win.moves));
+
+        service.unexport();
+        rules.disable();
+        placer.destroy();
         windows.length = 0;
     }
 
@@ -971,7 +1051,7 @@ export class PopupSeparatorMenuItem {}
             return 1;
         };
         Main.wm.removeKeybinding = name => removed.push(name);
-        const keybindings = new WindowKeybindings();
+        const keybindings = new WindowKeybindings(new WindowPlacer());
         try {
             keybindings.enable(SETTINGS);
         } finally {
@@ -995,7 +1075,7 @@ export class PopupSeparatorMenuItem {}
             return 1;
         };
         let applied = 0;
-        const keybindings = new WindowKeybindings(() => applied++);
+        const keybindings = new WindowKeybindings(new WindowPlacer(), () => applied++);
         try {
             keybindings.enable(SETTINGS);
         } finally {
@@ -1024,7 +1104,7 @@ export class PopupSeparatorMenuItem {}
             asked.push(name);
             return 1;
         };
-        const keybindings = new WindowKeybindings(() => {});
+        const keybindings = new WindowKeybindings(new WindowPlacer(), () => {});
         try {
             keybindings.enable({ settings_schema: { has_key: name => name !== 'apply-rules' } });
         } finally {
@@ -1243,7 +1323,7 @@ export class PopupSeparatorMenuItem {}
         // runs at every enable() and a reload after every save and every
         // `wctl rules add`, so neither may leave a notice-level journal line
         // (REVIEWING.md).
-        const rules = new WindowRules();
+        const rules = new WindowRules(new WindowPlacer());
         const linesBeforeLoad = consoleLines.length;
         rules.enable();
         await sleep(300);
@@ -1319,7 +1399,7 @@ export class PopupSeparatorMenuItem {}
         Gio.File.prototype.monitor_directory = () => {
             throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_SUPPORTED, 'no watch here');
         };
-        const rules = new WindowRules();
+        const rules = new WindowRules(new WindowPlacer());
         const linesBeforeEnable = consoleLines.length;
         let error = null;
         try {
@@ -1379,7 +1459,7 @@ export class PopupSeparatorMenuItem {}
         pinned.map();
         const other = createWindow({ id: 22, wmClass: 'app' });
         other.map();
-        const rules = new WindowRules();
+        const rules = new WindowRules(new WindowPlacer());
         rules.enable();
         await sleep(300);
         const overlays = rules._overlays;
@@ -1623,7 +1703,7 @@ export class PopupSeparatorMenuItem {}
             { match: { class: 'docked', min_width: 3000 }, monitor: 1, tile: 'left' },
             { match: { class: 'docked' }, tile: 'right' },
         ]));
-        const rules = new WindowRules();
+        const rules = new WindowRules(new WindowPlacer());
         rules.enable();
         await sleep(300);
         const LEFT = '[[0,0,480,1080]]';
@@ -1685,7 +1765,7 @@ export class PopupSeparatorMenuItem {}
             { match: { class: 'pre', min_width: 3000 }, place: ['0', '0', '800', '600'] },
             { match: { class: 'pre' }, place: ['0', '0', '400', '300'] },
         ]));
-        const rules = new WindowRules();
+        const rules = new WindowRules(new WindowPlacer());
         rules.enable();
         await sleep(300);
         const configure = () => ({
@@ -1737,7 +1817,7 @@ export class PopupSeparatorMenuItem {}
         };
         Meta.is_wayland_compositor = () => true;
         monitors[0] = { x: 0, y: 0, width: 3840, height: 2160, scale: 2 };
-        const rules = new WindowRules49();
+        const rules = new WindowRules49(new WindowPlacer49());
         try {
             rules.enable();
             await sleep(300);
@@ -1778,10 +1858,11 @@ export class PopupSeparatorMenuItem {}
             { match: { class: 'quake' }, tile: 'right', overlay: true },
             { match: { class: 'far' }, workspace: 7 },
         ]));
-        const rules = new WindowRules();
+        const placer = new WindowPlacer();
+        const rules = new WindowRules(placer);
         rules.enable();
         await sleep(300);
-        const service = startService();
+        const service = startService(placer);
         service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
         service.whenRulesLoaded = callback => rules.whenLoaded(callback);
         const LEFT = '[[0,0,480,1080]]';
@@ -1825,19 +1906,19 @@ export class PopupSeparatorMenuItem {}
         check('ApplyRules places a minimized window and leaves it minimized',
             JSON.stringify(hidden.moves) === LEFT && hidden.minimized, JSON.stringify(hidden.moves));
         check('ApplyRules unmaximizes a maximized window before it places it',
-            maximized.maximizeFlags === 0 && maximized.moves.length === 0 && rules._tracked.has(maximized),
+            maximized.maximizeFlags === 0 && maximized.moves.length === 0 && placer._pending.has(maximized),
             JSON.stringify(maximized.moves));
         check('ApplyRules keeps an overlay rule an overlay', JSON.stringify(quake.moves) === RIGHT &&
             rules.isOverlay(quake), JSON.stringify(quake.moves));
         check('ApplyRules skips a window still in its grace period', evaluating.moves.length === 0);
         check('ApplyRules skips a window mutter has not shown', unshown.moves.length === 0);
         check('ApplyRules releases an overlay no rule makes one', !rules.isOverlay(loose));
-        check('ApplyRules skips a window waiting for its unmaximize',
-            rules._tracked.has(maximized) && rules.applyRules(null, win => service._isUnshown(win)) === 4 && maximized.moves.length === 0,
+        check('ApplyRules again replaces the placement waiting for the unmaximize',
+            rules.applyRules(null, win => service._isUnshown(win)) === 5 && maximized.moves.length === 0,
             JSON.stringify(maximized.moves));
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
-        check('ApplyRules places a maximized window once the unmaximize landed',
-            JSON.stringify(maximized.moves) === LEFT && !rules._tracked.has(maximized),
+        check('ApplyRules places a maximized window once, after the unmaximize landed',
+            JSON.stringify(maximized.moves) === LEFT && !placer._pending.has(maximized),
             JSON.stringify(maximized.moves));
 
         placed.moves.length = 0;

@@ -10,7 +10,7 @@ import Meta from 'gi://Meta';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
-import { UnmaximizeWait, looksUnmapped, maximizeFlags, moveResizeFrame, workareaOf } from './window-helpers.js';
+import { looksUnmapped, maximizeFlags, moveResizeFrame, workareaOf } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
@@ -38,7 +38,9 @@ const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
 const STAGE_ALWAYS_LOGICAL = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
 
 export class WindowRules {
-    constructor() {
+    // `placer` is the WindowPlacer every frame request goes through.
+    constructor(placer) {
+        this._placer = placer;
         this._rules = [];
         this._windowCreatedId = 0;
         this._tracked = new Map();
@@ -207,9 +209,11 @@ export class WindowRules {
     // window gets them once shown, and decide each one's overlay membership
     // as a load does. Returns how many windows a rule matched.
     //
-    // A tracked window is skipped: its own rule is still on the way, or its
-    // unmaximize is. So is a window `isUnshown` reports, which mutter has not
-    // shown yet: its initial placement would override the frame.
+    // A tracked window is skipped: its own rule is still on the way. So is a
+    // window `isUnshown` reports, which mutter has not shown yet: its initial
+    // placement would override the frame. A window still waiting for its
+    // unmaximize is placed again: the newer request replaces the pending one
+    // (see WindowPlacer).
     applyRules(only, isUnshown) {
         let applied = 0;
         for (const win of only ? [only] : global.display.list_all_windows()) {
@@ -238,10 +242,11 @@ export class WindowRules {
             global.display.disconnect(this._windowCreatedId);
             this._windowCreatedId = 0;
             // A load affects new windows only: a window whose rule matched
-            // already, with its apply queued or waiting for its unmaximize,
-            // keeps that rule. Only the windows still being evaluated stop.
+            // already, with its apply queued, keeps that rule, and so does one
+            // whose placement waits for its unmaximize (WindowPlacer). Only
+            // the windows still being evaluated stop.
             for (const [win, entry] of [...this._tracked]) {
-                if (!entry.wait && !entry.applyId)
+                if (!entry.applyId)
                     this._untrack(win);
             }
         }
@@ -279,7 +284,6 @@ export class WindowRules {
             win.disconnect(id);
         this._removeSource(entry.graceId);
         this._removeSource(entry.applyId);
-        entry.wait?.destroy();
         this._tracked.delete(win);
     }
 
@@ -469,24 +473,9 @@ export class WindowRules {
             console.debug(`[Window Control] rules[${index}] -> ${id}: fullscreen, geometry skipped`);
             return;
         }
-        if (maximizeFlags(win) === 0) {
-            this._placeFrame(win, rule, index, headStartMonitor);
-            return;
-        }
-        // A client that restores itself maximized, or one mutter
-        // auto-maximized for filling the screen, would have the request
-        // dropped outright (see _frameRefusal in dbus-service.js). The rule
-        // asked for a rectangle, so the rectangle wins -- once the restore
-        // has landed (see UnmaximizeWait). The window is tracked again until
-        // then so 'unmanaged' and disable() can still cancel it.
-        this._untrack(win);
-        const entry = { ids: [], graceId: 0, applyId: 0, shown: true, wait: null };
-        entry.wait = new UnmaximizeWait(win, landed => {
-            this._tracked.delete(win);
-            if (landed)
-                this._placeFrame(win, rule, index, headStartMonitor);
-        });
-        this._tracked.set(win, entry);
+        // A maximized window is restored first (see WindowPlacer); the frame
+        // resolves once that has landed, against the window as it is then.
+        this._placer.place(win, () => this._placeFrame(win, rule, index, headStartMonitor));
     }
 
     _placeFrame(win, rule, index, headStartMonitor) {
