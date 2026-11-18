@@ -13,7 +13,7 @@
 //
 // The extension files are copied into a temporary directory, where the
 // shell-only imports (ui/main.js, extensions/extension.js, gi://Shell, gi://St,
-// ui/panelMenu.js, ui/popupMenu.js) are
+// ui/panelMenu.js, ui/popupMenu.js, misc/config.js) are
 // pointed at stubs written next to them. Every other line is the shipped code.
 //
 // Exits 0 when every check passes, 1 when any fails.
