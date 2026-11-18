@@ -13,7 +13,7 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { nextWidePosition, tileRect } from './rules-format.js';
-import { UnmaximizeWait, maximizeFlags, workareaOf } from './window-helpers.js';
+import { UnmaximizeWait, maximizeFlags, moveResizeFrame, workareaOf } from './window-helpers.js';
 
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
@@ -126,7 +126,7 @@ export class WindowKeybindings {
         const id = win.get_id();
         const target = tileRect(position, workarea);
         const request = () => {
-            win.move_resize_frame(true, target.x, target.y, target.width, target.height);
+            moveResizeFrame(win, target);
             console.debug(`[Window Control] shortcut -> ${id}: tile ${position}`);
         };
         // A maximized frame drops the request outright (see _frameRefusal in

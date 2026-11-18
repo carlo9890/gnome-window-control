@@ -212,6 +212,11 @@ mutter still clamps to size hints, and a client that quantises its own size (a
 terminal, to whole cells) settles a few pixels off, so comparing against it needs
 a tolerance.
 
+A window with a minimum size above the rectangle, such as a text editor in a
+narrow tile, grows to that minimum at the position asked for. `move-resize`,
+`place` and `tile` keep the frame on the screen; `move` can put a window partly
+off it.
+
 #### Waiting for the frame to settle
 
 A geometry request is applied asynchronously, and a client may resize itself once

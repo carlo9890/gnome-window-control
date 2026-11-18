@@ -10,7 +10,7 @@ import Meta from 'gi://Meta';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
-import { UnmaximizeWait, looksUnmapped, maximizeFlags, workareaOf } from './window-helpers.js';
+import { UnmaximizeWait, looksUnmapped, maximizeFlags, moveResizeFrame, workareaOf } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
@@ -497,7 +497,7 @@ export class WindowRules {
             console.debug(`[Window Control] rules[${index}] -> ${id}: resolves to nothing on this workarea, skipped`);
             return;
         }
-        win.move_resize_frame(true, target.x, target.y, target.width, target.height);
+        moveResizeFrame(win, target);
         console.debug(`[Window Control] rules[${index}] -> ${id}: ${rule.geometry.kind} applied`);
     }
 

@@ -51,16 +51,18 @@ assert_within "$height" 600 "$GEOM_TOLERANCE" "resize: window height is 600"
 
 # Test: move-resize
 info "Testing: move-resize"
-run_wctl move-resize "$TEST_WINDOW_ID" 200 200 900 700
+# The rectangle fits a 1280x800 screen: move-resize keeps the frame on the
+# screen, so a larger one would move up on a small screen.
+run_wctl move-resize "$TEST_WINDOW_ID" 200 150 900 500
 wait_for_change
 x=$(get_window_field '.frame_rect.x')
 y=$(get_window_field '.frame_rect.y')
 width=$(get_window_field '.frame_rect.width')
 height=$(get_window_field '.frame_rect.height')
 assert_within "$x" 200 "$GEOM_TOLERANCE" "move-resize: window x is at 200"
-assert_within "$y" 200 "$GEOM_TOLERANCE" "move-resize: window y is at 200"
+assert_within "$y" 150 "$GEOM_TOLERANCE" "move-resize: window y is at 150"
 assert_within "$width" 900 "$GEOM_TOLERANCE" "move-resize: window width is 900"
-assert_within "$height" 700 "$GEOM_TOLERANCE" "move-resize: window height is 700"
+assert_within "$height" 500 "$GEOM_TOLERANCE" "move-resize: window height is 500"
 
 # Test: place
 info "Testing: place"
@@ -225,6 +227,16 @@ else
                 ;;
         esac
     done
+
+    # move-resize past the bottom of the workarea: the frame stays on the screen.
+    info "Testing: move-resize keeps the frame on the screen"
+    run_wctl move-resize "$TEST_WINDOW_ID" "$tc_wa_x" $((tc_wa_y + tc_wa_h - 100)) 400 300
+    wait_for_change
+    ky=$(get_window_field '.frame_rect.y')
+    kh=$(get_window_field '.frame_rect.height')
+    assert_within "$kh" 300 "$GEOM_TOLERANCE" "move-resize off the bottom: height is 300"
+    assert_within "$((ky + kh))" "$((tc_wa_y + tc_wa_h))" "$GEOM_TOLERANCE" \
+        "move-resize off the bottom: frame ends at the workarea bottom"
 fi
 
 echo ""

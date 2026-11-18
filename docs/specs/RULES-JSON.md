@@ -313,6 +313,11 @@ Action order within `_apply`:
    unmaximized first, and the frame is requested after the next `size-changed`
    or `UNMAXIMIZE_SETTLE_MS`, whichever comes first, because a frame requested
    while the unmaximize is in flight is overwritten by the restored size.
+   The frame is requested as the program, not as the user
+   (`move_resize_frame(false, ...)`). A window whose minimum size is above the
+   rectangle grows to that minimum at the rectangle's position, kept on the
+   screen. As a user operation, mutter would apply the minimum from the
+   frame's old position, and the window would not move at all.
 
 A window that matches nothing stays under evaluation for
 `LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID

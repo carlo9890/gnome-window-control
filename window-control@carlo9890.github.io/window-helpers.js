@@ -86,6 +86,15 @@ export function workareaOf(win, monitor = win.get_monitor()) {
     return workspace.get_work_area_for_monitor(monitor);
 }
 
+// Request a frame as the program, not as the user. For a user operation,
+// mutter applies a minimum size from the frame's old position, so a window
+// whose minimum is above the requested size keeps its old place and never
+// moves. As the program's request, the frame goes where it was asked, grown
+// to the minimum, and mutter keeps it on the screen.
+export function moveResizeFrame(win, { x, y, width, height }) {
+    win.move_resize_frame(false, x, y, width, height);
+}
+
 // How long to wait for an unmaximize to land before placing the frame anyway.
 // A client whose restored size equals its maximized one never reports a
 // size change, so the wait has to be bounded.

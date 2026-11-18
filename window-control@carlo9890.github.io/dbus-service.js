@@ -9,8 +9,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
-    isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, skipNextEffect,
-    unmaximizeWindow,
+    isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, moveResizeFrame,
+    skipNextEffect, unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once and kept for the life of the shell, never per enable(). GJS
@@ -468,7 +468,8 @@ export class WindowControlService {
         });
     }
 
-    // One request for both, so mutter applies them together. Raises on failure.
+    // One request for both, so mutter applies them together, as the program's
+    // request (see moveResizeFrame). Raises on failure.
     MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'MoveResize', () => {
@@ -477,7 +478,7 @@ export class WindowControlService {
                     'MoveResize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'MoveResize');
-            win.move_resize_frame(true, x, y, width, height);
+            moveResizeFrame(win, { x, y, width, height });
             console.debug(`[Window Control] MoveResize(${windowId}) -> ok`);
         });
     }

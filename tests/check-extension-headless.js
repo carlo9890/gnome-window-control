@@ -327,7 +327,10 @@ export class PopupSeparatorMenuItem {}
             return false;
         }
         get_frame_rect() { return { x: 10, y: 10, width: 400, height: 300 }; }
-        move_resize_frame(userOp, x, y, width, height) { this.moves.push([x, y, width, height]); }
+        move_resize_frame(userOp, x, y, width, height) {
+            this.moves.push([x, y, width, height]);
+            this.userOps = [...this.userOps ?? [], userOp];
+        }
         change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
         move_to_monitor() {}
 
@@ -918,6 +921,37 @@ export class PopupSeparatorMenuItem {}
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
         check('a cancelled UnmaximizeWait never places the window', win.moves.length === 0,
             JSON.stringify(win.moves));
+        windows.length = 0;
+    }
+
+    // -- Frame requests as the program, not as the user ---------------------------
+    //
+    // Mutter applies a minimum size from the old position of a user operation,
+    // so a narrow tile would not move. Resize keeps its position, so it stays
+    // a user operation.
+
+    {
+        windows.length = 0;
+        const rules = new WindowRules();
+        rules.enable();
+        await sleep(300);
+        rules._compile('[{"match":{"class":"flag"},"tile":"right"}]');
+        const service = startService();
+        service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
+        service.whenRulesLoaded = callback => rules.whenLoaded(callback);
+        const keybindings = new WindowKeybindings(() => service.applyRulesToAll());
+        const win = createWindow({ id: 61, wmClass: 'flag' });
+        win.map();
+        await sleep(100);
+        win.userOps = [];
+        keybindings._tile('tile-left', win, 'left');
+        service.applyRulesToAll();
+        service.MoveResizeAsync([61, 0, 0, 300, 300], invocation());
+        service.ResizeAsync([61, 300, 300], invocation());
+        check('the shortcut, the rule and MoveResize request the frame as the program, Resize as the user',
+            JSON.stringify(win.userOps) === '[false,false,false,true]', JSON.stringify(win.userOps));
+        service.unexport();
+        rules.disable();
         windows.length = 0;
     }
 
