@@ -85,7 +85,7 @@ const WINDOW_TYPE_NAMES = {
 };
 
 export class WindowControlService {
-    // `placer` is the WindowPlacer every frame request goes through.
+    // `placer`: the WindowPlacer every position or size request goes through.
     constructor(metadata, placer) {
         this._placer = placer;
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(

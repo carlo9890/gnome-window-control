@@ -38,7 +38,7 @@ const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
 const STAGE_ALWAYS_LOGICAL = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
 
 export class WindowRules {
-    // `placer` is the WindowPlacer every frame request goes through.
+    // `placer`: the WindowPlacer every position or size request goes through.
     constructor(placer) {
         this._placer = placer;
         this._rules = [];
