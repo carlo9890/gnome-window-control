@@ -246,6 +246,43 @@ else
 fi
 
 echo ""
+echo "--- Rules Tests ---"
+
+# wctl rules apply puts a window moved by hand back on its rule. The rule goes
+# into the rules.json the shell reads, so the test runs only where that file is
+# scratch: a headless shell, whose start script prints HEADLESS_SCRATCH.
+rules_file="${HEADLESS_SCRATCH:-}/config/gnome-window-control/rules.json"
+if [[ -z "${HEADLESS_SCRATCH:-}" ]]; then
+    skip "rules apply: HEADLESS_SCRATCH not set (a headless shell only)"
+elif ! extension_reports rules-apply; then
+    skip "rules apply: the loaded extension does not report rules-apply"
+elif [[ -z "$tc_wa" ]]; then
+    skip "rules apply: could not read workarea"
+elif [[ -e "$rules_file" ]]; then
+    skip "rules apply: $rules_file exists already"
+else
+    # The later tests start from the frame the window has now.
+    read -r rx ry rw rh <<< "$("$WCTL" info "$TEST_WINDOW_ID" --json \
+        | jq -r '"\(.frame_rect.x) \(.frame_rect.y) \(.frame_rect.width) \(.frame_rect.height)"')"
+    mkdir -p "$(dirname "$rules_file")"
+    printf '[{"match":{"title":"%s"},"tile":"right"}]\n' "$TEST_WINDOW_TITLE" > "$rules_file"
+    # The extension reads the file again after a short debounce.
+    sleep 1
+    run_wctl move-resize "$TEST_WINDOW_ID" "$tc_wa_x" "$tc_wa_y" 400 300
+    wait_for_change
+    info "Testing: rules apply"
+    XDG_CONFIG_HOME="$HEADLESS_SCRATCH/config" run_wctl rules apply
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "rules apply: exits 0"
+    assert_contains "$WCTL_OUTPUT" "Applied the rules to 1 window" "rules apply: one window matched"
+    wait_for_change
+    assert_tile_frame "$TEST_WINDOW_ID" right "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h" "rules apply"
+    rm -f "$rules_file"
+    sleep 1
+    run_wctl move-resize "$TEST_WINDOW_ID" "$rx" "$ry" "$rw" "$rh"
+    wait_for_change
+fi
+
+echo ""
 echo "--- Minimize/Maximize Tests ---"
 
 # Test: minimize
