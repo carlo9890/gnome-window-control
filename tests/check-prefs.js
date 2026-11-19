@@ -16,7 +16,8 @@ import { ROOT, check, report } from './check-helper.js';
 
 const PREFS = `${ROOT}/window-control@carlo9890.github.io/prefs`;
 const { SHORTCUT_GROUPS, needsModifier } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
-const { checkRules, dropInNames, elementOffsets, ruleSummary } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
+const { checkRules, elementOffsets, ruleSummary } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
+const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-format.js`, null));
 
 // -- the shortcut list holds every shortcut key of the schema, once ----------
 

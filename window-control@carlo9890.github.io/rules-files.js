@@ -4,7 +4,7 @@
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import { isDropInName } from './rules-format.js';
+import { dropInNames } from './rules-format.js';
 
 export const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 export const RULES_FILE = 'rules.json';
@@ -24,7 +24,7 @@ export async function readRuleFiles(cancellable) {
     const main = await readFile(RULES_FILE, cancellable);
     if (main !== null)
         files.push({ label: RULES_FILE, text: main });
-    for (const name of await dropInNames(cancellable)) {
+    for (const name of await listDropIns(cancellable)) {
         const label = `${DROPIN_DIR}/${name}`;
         const text = await readFile(label, cancellable);
         if (text !== null)
@@ -59,7 +59,7 @@ async function readFile(label, cancellable) {
 
 // The drop-in names in rules.d, sorted. The type is the one of a link's
 // target, so a FIFO behind a link is skipped too.
-async function dropInNames(cancellable) {
+async function listDropIns(cancellable) {
     try {
         const dir = Gio.File.new_for_path(DROPIN_PATH);
         const enumerator = await dir.enumerate_children_async('standard::name,standard::type',
@@ -71,7 +71,7 @@ async function dropInNames(cancellable) {
                 if (infos.length === 0)
                     break;
                 for (const info of infos) {
-                    if (info.get_file_type() === Gio.FileType.REGULAR && isDropInName(info.get_name()))
+                    if (info.get_file_type() === Gio.FileType.REGULAR)
                         names.push(info.get_name());
                 }
             }
@@ -80,7 +80,7 @@ async function dropInNames(cancellable) {
             // release the folder.
             await enumerator.close_async(GLib.PRIORITY_DEFAULT, null);
         }
-        return names.sort();
+        return dropInNames(names);
     } catch (e) {
         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
             console.debug(`[Window Control] no ${DROPIN_DIR}`);

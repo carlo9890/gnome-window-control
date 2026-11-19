@@ -10,11 +10,10 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
-import { checkRules, dropInNames, ruleSummary, rulesLabel } from './rules-check.js';
+import { dropInNames } from '../rules-format.js';
+import { CONFIG_DIR, DROPIN_DIR, RULES_FILE } from '../rules-files.js';
+import { checkRules, ruleSummary, rulesLabel } from './rules-check.js';
 
-const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
-const RULES_FILE = 'rules.json';
-const DROPIN_DIR = 'rules.d';
 const CHECK_DELAY_MS = 300;
 // An editor's save raises several events; read the file once they stop.
 const DISK_DEBOUNCE_MS = 100;
