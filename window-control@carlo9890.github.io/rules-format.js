@@ -297,6 +297,18 @@ export function compileRule(rule, index) {
     return { predicates, minWidth, geometry, workspace, monitor, overlay };
 }
 
+// A name in rules.d that is loaded as a rules file. ASCII only, so the
+// default sort of the names is byte order, as in wctl.
+export function isDropInName(name) {
+    return /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(name);
+}
+
+// The names of the regular files in rules.d that load, in load order. The
+// caller drops what is not a regular file first.
+export function dropInNames(regularFileNames) {
+    return regularFileNames.filter(isDropInName).sort();
+}
+
 // Parse and validate the whole file. Throws on the first problem: a file with
 // one bad rule loads no rules at all, so a typo cannot silently drop one rule
 // while the rest keep working.

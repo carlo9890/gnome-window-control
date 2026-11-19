@@ -84,8 +84,9 @@ with only the `gjs` package.
 so `wctl rules check` and the extension cannot disagree about whether a file is
 valid, about the message text or about a rectangle. The GJS check reads every
 group; in `cli/src/rules.rs`, `rules_spec_vectors` reads `validation`,
-`geometry_vectors` reads `geometry`, `match_vectors` reads `match.cases`, and
-`min_width_vectors` reads `match.min_width`.
+`geometry_vectors` reads `geometry`, `match_vectors` reads `match.cases`,
+`min_width_vectors` reads `match.min_width`, and `dropin_vectors` reads
+`dropins`.
 Two parts are read by the GJS check only, because `rules.json` has no `pid` key
 and the CLI builds no predicate from a bare kind: the `pid` cases and
 `match.no_predicate`. A new group gets a reader on each side in the same commit:
@@ -108,7 +109,7 @@ dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) 
 With several mutter typelibs installed, this picks the newest one; with none,
 it stops with `no Meta-*.typelib installed`.
 
-Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `overlay.js`,
+Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `rules-files.js`, `overlay.js`,
 `keybindings.js` and `indicator.js` against fake windows and a fake display that count their signal handlers. No
 GNOME session, no D-Bus: the check copies the extension files into a temporary
 directory and points the shell-only imports (`ui/main.js`, `ui/panelMenu.js`,
@@ -222,8 +223,8 @@ The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
 `tests/vectors/`. The preferences column applies to any change to `prefs.js`,
 `prefs/` or the schema. The fake-windows column applies to any change to
-`extension.js`, `dbus-service.js`, `rules.js`, `overlay.js`, `keybindings.js`,
-`indicator.js` or `window-helpers.js`. All three are headless and take seconds, so there is no reason
+`extension.js`, `dbus-service.js`, `rules.js`, `rules-files.js`, `overlay.js`,
+`keybindings.js`, `indicator.js` or `window-helpers.js`. All three are headless and take seconds, so there is no reason
 to skip them. The query column applies to any change under
 `window-control@carlo9890.github.io/`, `cli/` or `tests/`. It reads the
 extension loaded in the real session and starts no shell. For a JavaScript

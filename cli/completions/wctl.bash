@@ -89,7 +89,7 @@ _wctl() {
             elif [[ $subcommand == apply ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $subcommand == path ]]; then
-                COMPREPLY=($(compgen -W "--file" -- "$cur"))
+                COMPREPLY=($(compgen -W "--file --dir" -- "$cur"))
             else
                 COMPREPLY=($(compgen -W "--file --json" -- "$cur"))
             fi

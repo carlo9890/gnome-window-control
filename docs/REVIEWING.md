@@ -59,7 +59,7 @@ the correct form.
   Flag a new file without them; no gate catches a missing header.
 - **Log levels**: per-call handler logging uses `console.debug()`; `console.log()`
   appears only in the enable/disable lifecycle; `console.warn()` appears only
-  where the extension turns a feature off and keeps running: a `rules.json` that
+  where the extension turns a feature off and keeps running: a rules file that
   fails validation (`WindowRules._compile`, see
   [RULES-JSON.md](specs/RULES-JSON.md)) and a shortcut that cannot be registered
   (`WindowKeybindings.enable`); `console.error()` appears ONLY in a catch block.
@@ -87,8 +87,8 @@ the correct form.
   - extension code, in any module, that reads pixels, injects input or ends
     a window's client by any means (`kill()`, a signal to its PID);
   - a D-Bus method, new or changed, that lays out windows. `ApplyRules` is
-    the approved exception (PR #86): it applies the user's own rules.json
-    through `_apply` in `rules.js` and adds no layout of its own;
+    the approved exception (PR #86): it applies the loaded rules files
+    (`rules.json` and `rules.d`) through `_apply` in `rules.js` and adds no layout of its own;
   - a new property in the `ListDetailed` window document, or window data
     that any other method returns and `ListDetailed` does not hold;
   - any other D-Bus addition that does not act on a window's geometry,

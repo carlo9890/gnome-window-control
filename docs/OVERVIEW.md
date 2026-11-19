@@ -11,7 +11,8 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── extension.js           enable()/disable(): starts and stops the three parts below and the WindowPlacer they share
 ├── dbus-service.js        D-Bus service + method handlers (WindowControlService)
 ├── dbus-interface.js      D-Bus interface XML (imported by dbus-service.js)
-├── rules.js               WindowRules: rules.json auto-placement (no D-Bus)
+├── rules.js               WindowRules: rules.json and rules.d auto-placement (no D-Bus)
+├── rules-files.js         reads rules.json and the rules.d drop-ins, asynchronously (owned by WindowRules)
 ├── overlay.js             WindowOverlays: what an overlay rule does while a window is one (owned by WindowRules)
 ├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
 ├── keybindings.js         WindowKeybindings: the tile and apply-rules shortcuts (no D-Bus)
@@ -59,7 +60,7 @@ README.md                  user docs; the D-Bus method table
   `org.gnome.Shell.Extensions.WindowControl`. Who can call it is in
   README.md's "Security model".
 - **The D-Bus surface is fixed in scope**: it offers no layout, except
-  `ApplyRules`, which applies the user's rules.json again; what it must not
+  `ApplyRules`, which applies the rules files again; what it must not
   grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
 - `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
@@ -88,7 +89,9 @@ README.md                  user docs; the D-Bus method table
   shown — `_isUnshown` and `_evaluateWindow` in `dbus-service.js` say why, and
   the `disable()` teardown rule is in [CODING.md](CODING.md#javascript-the-extension).
 - **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
-  service: it reads `~/.config/gnome-window-control/rules.json`, watches
+  service: it reads `~/.config/gnome-window-control/rules.json`, then the
+  drop-in files in `rules.d/` that other programs own (the order and the
+  per-file loading are in the spec), watches
   `window-created`, and places a matching window once mutter has shown it. It
   makes no D-Bus call; `ApplyRules` in `dbus-service.js` calls its
   `applyRules` to place the open windows again. The GNOME-49 maximize API detection is shared with
@@ -129,7 +132,8 @@ README.md                  user docs; the D-Bus method table
   XML only: every install path but a plain copy compiles it, and `build.sh
   install` compiles it for that one.
 - **The preferences window** (`prefs.js`, `prefs/`) runs in its own process,
-  not in GNOME Shell. It writes the schema keys and `rules.json`; the
+  not in GNOME Shell. It writes the schema keys and `rules.json`, and only
+  lists the `rules.d` files; the
   extension only reads them. The Rules page validates with `rules-format.js`
   (through `prefs/rules-check.js`) and applies the rules with the
   `ApplyRules(0)` D-Bus call. `indicator.js` is the top-bar icon that the
