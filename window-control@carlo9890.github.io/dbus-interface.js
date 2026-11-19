@@ -124,8 +124,10 @@ export const DBUS_INTERFACE_XML = `
     <!--
       Applies the loaded rules.json rules again, as a new window gets them
       once shown: window_id 0 means every open window, any other id that one
-      window. applied is the number of windows a rule matched. A window whose
-      own first placement is still pending is skipped. A rules.json change
+      window. applied is the number of windows a rule matched. A window not
+      yet shown, or whose own first rule apply is still queued, is skipped. A
+      window whose placement waits for its unmaximize is placed again: the
+      newer placement replaces the pending one. A rules.json change
       that is still being read is waited for, so the rules applied are the
       ones saved.
     -->

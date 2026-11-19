@@ -322,7 +322,8 @@ Action order within `_apply`:
    - The frame is requested as the program, not as the user
      (`move_resize_frame(false, ...)`). A window whose minimum size is above
      the rectangle grows to that minimum at the rectangle's position, kept on
-     the screen. As a user operation, mutter would apply the minimum from the
+     the screen while mutter's `require_fully_onscreen` holds (it does not
+     once the window is partly off the screen). As a user operation, mutter would apply the minimum from the
      frame's old position, and the window would not move at all.
 
 A window that matches nothing stays under evaluation for

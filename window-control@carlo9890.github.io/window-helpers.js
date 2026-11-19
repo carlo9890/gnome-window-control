@@ -91,7 +91,8 @@ export function workareaOf(win, monitor = win.get_monitor()) {
 // mutter applies a minimum size from the frame's old position, so a window
 // whose minimum is above the requested size keeps its old place and never
 // moves. As the program's request, the frame goes where it was asked, grown
-// to the minimum, and mutter keeps it on the screen.
+// to the minimum, and mutter keeps it on the screen (unless the window is
+// partly off the screen already: require_fully_onscreen is then unset).
 export function moveResizeFrame(win, { x, y, width, height }) {
     win.move_resize_frame(false, x, y, width, height);
 }

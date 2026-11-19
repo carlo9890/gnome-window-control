@@ -332,7 +332,10 @@ export class PopupSeparatorMenuItem {}
             this.userOps = [...this.userOps ?? [], userOp];
         }
 
-        move_frame(userOp, x, y) { this.moves.push([x, y]); }
+        move_frame(userOp, x, y) {
+            this.moves.push([x, y]);
+            this.userOps = [...this.userOps ?? [], userOp];
+        }
         change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
         move_to_monitor() {}
 
@@ -956,8 +959,9 @@ export class PopupSeparatorMenuItem {}
         service.applyRulesToAll();
         service.MoveResizeAsync([61, 0, 0, 300, 300], invocation());
         service.ResizeAsync([61, 300, 300], invocation());
-        check('the shortcut, the rule and MoveResize request the frame as the program, Resize as the user',
-            JSON.stringify(win.userOps) === '[false,false,false,true]', JSON.stringify(win.userOps));
+        service.MoveAsync([61, 10, 10], invocation());
+        check('the shortcut, the rule and MoveResize request the frame as the program, Resize and Move as the user',
+            JSON.stringify(win.userOps) === '[false,false,false,true,true]', JSON.stringify(win.userOps));
         service.unexport();
         rules.disable();
         placer.destroy();
