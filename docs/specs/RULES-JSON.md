@@ -309,10 +309,22 @@ Action order within `_apply`:
 3. `monitor` — when the index is not below `get_n_monitors()`, the rest of
    the rule (the monitor move and the geometry) is skipped with a debug line.
    The workspace step has already run.
-4. Geometry — skipped when the window is fullscreen. A maximized window is
-   unmaximized first, and the frame is requested after the next `size-changed`
-   or `UNMAXIMIZE_SETTLE_MS`, whichever comes first, because a frame requested
-   while the unmaximize is in flight is overwritten by the restored size.
+4. Geometry — skipped when the window is fullscreen. The frame is requested
+   through the `WindowPlacer` (`window-helpers.js`) that the keyboard shortcuts
+   and the D-Bus geometry methods share:
+   - A maximized window is unmaximized first, and the frame is requested after
+     the next `size-changed` or `UNMAXIMIZE_SETTLE_MS`, whichever comes first,
+     because a frame requested while the unmaximize is in flight is
+     overwritten by the restored size. The rectangle resolves then, against
+     the window as it is after the restore.
+   - A shortcut, an apply, or a `Move`, `Resize` or `MoveResize` call for the
+     same window before then replaces this request: only the newest one runs.
+   - The frame is requested as the program, not as the user
+     (`move_resize_frame(false, ...)`). A window whose minimum size is above
+     the rectangle grows to that minimum at the rectangle's position, kept on
+     the screen while mutter's `require_fully_onscreen` holds (it does not
+     once the window is partly off the screen). As a user operation, mutter would apply the minimum from the
+     frame's old position, and the window would not move at all.
 
 A window that matches nothing stays under evaluation for
 `LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID
@@ -340,8 +352,9 @@ raising `Disabled`.
 
 For each window, in this order:
 
-1. A window `_tracked` holds is skipped: its own apply, grace period or
-   unmaximize wait is still running.
+1. A window `_tracked` holds is skipped: its own apply or grace period is
+   still running. A window whose placement waits for its unmaximize is not
+   tracked: the new apply replaces that placement (step 4 above).
 2. A window that has not been shown is skipped: mutter's initial placement
    would override the frame. `ApplyRules` decides this with the service's
    own record of first shows (`_isUnshown`).
@@ -487,7 +500,7 @@ Defined at the top of the file named; change them there, not here.
 | `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title | `rules.js` |
 | `RELOAD_DEBOUNCE_MS` | 100 | one reload per save | `rules.js` |
 | `FOCUS_LOSS_GRACE_MS` | 250 | a focus that comes straight back, as wl-copy and wl-paste hand it | `overlay.js` |
-| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`, shared with the keyboard shortcuts) |
+| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`, through the `WindowPlacer` that the keyboard shortcuts and the D-Bus geometry methods share) |
 
 ## Extending the format
 

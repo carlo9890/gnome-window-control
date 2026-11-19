@@ -9,21 +9,25 @@ import { DBUS_OBJECT_PATH, WindowControlService } from './dbus-service.js';
 import { WindowRules } from './rules.js';
 import { WindowKeybindings } from './keybindings.js';
 import { WindowControlIndicator } from './indicator.js';
+import { WindowPlacer } from './window-helpers.js';
 
 const SHOW_INDICATOR_KEY = 'show-indicator';
 
 export default class WindowControlExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
-        this._service = new WindowControlService(this.metadata);
-        this._rules = new WindowRules();
+        // One placer for the D-Bus methods, the rules and the shortcuts, so
+        // the newest request for a window wins whichever of them made it.
+        this._placer = new WindowPlacer();
+        this._service = new WindowControlService(this.metadata, this._placer);
+        this._rules = new WindowRules(this._placer);
         this._service.isOverlay = win => this._rules.isOverlay(win);
         this._service.applyRules = (win, isUnshown) => this._rules.applyRules(win, isUnshown);
         this._service.whenRulesLoaded = callback => this._rules.whenLoaded(callback);
         this._service.export();
         console.log(`[${this.metadata.name}] D-Bus service registered at ${DBUS_OBJECT_PATH}`);
         this._rules.enable();
-        this._keybindings = new WindowKeybindings(() => this._service.applyRulesToAll());
+        this._keybindings = new WindowKeybindings(this._placer, () => this._service.applyRulesToAll());
         this._keybindingsFailed = false;
         this._indicator = null;
         this._indicatorSettingId = this._settings.connect(`changed::${SHOW_INDICATOR_KEY}`,
@@ -55,6 +59,8 @@ export default class WindowControlExtension extends Extension {
         this._rules = null;
         this._service.unexport();
         this._service = null;
+        this._placer.destroy();
+        this._placer = null;
         this._settings = null;
         console.log(`[${this.metadata.name}] D-Bus service unregistered`);
     }
