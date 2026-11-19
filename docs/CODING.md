@@ -48,9 +48,14 @@ If it fails, the code has a syntax error and must not be committed.
   none of them. A module that only `prefs.js` loads goes in `prefs/`.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
-- Every frame request from a D-Bus handler, a rule or a shortcut goes through
-  `WindowPlacer.place` (`window-helpers.js`), so a request made while a restore
-  is pending does not land under the restored size. A request that moves and
+- Every frame request (a position or a size) for a shown window, from a D-Bus
+  geometry method, a rule or a shortcut, goes through `WindowPlacer.place`
+  (`window-helpers.js`), so a request made while a restore is pending does
+  not land under the restored size. Three kinds stay outside it: a move to a
+  monitor (`MoveToMonitor`, a rule's `monitor`), which calls
+  `move_to_monitor()` at once; the maximize and fullscreen methods, which set
+  a state; and the initial configuration (`_preplace` in `rules.js`), which
+  must set the frame inside the `configure` emission. A request that moves and
   resizes calls `moveResizeFrame`: as a user operation, mutter would keep a
   window whose minimum size is above the rectangle at its old place.
 - `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects

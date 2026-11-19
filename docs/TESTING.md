@@ -153,6 +153,8 @@ If the extension is not running the suites self-skip and the runner reports
 `WCTL_TEST_SETTLE` sets the settle wait before asserting (default 0.5 s); a
 nested session needs `WCTL_TEST_SETTLE=1.5`. The multi-monitor cases skip unless
 the session has two monitors (see [RUNNING.md](RUNNING.md) for faking one).
+The `rules apply` case skips unless `HEADLESS_SCRATCH` is set: it writes a rule
+into that headless shell's scratch `rules.json` (see [RUNNING.md](RUNNING.md)).
 
 Assertions record a failure and return 0 (`tests/test-helper.sh`) — read the
 suite summary, never an assertion's exit status.

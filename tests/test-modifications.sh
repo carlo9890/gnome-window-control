@@ -246,6 +246,59 @@ else
 fi
 
 echo ""
+echo "--- Rules Tests ---"
+
+# wctl rules apply puts a window moved by hand back on its rule. The rule goes
+# into the rules.json the shell reads, so the case runs only where the shell on
+# this bus reads its config from HEADLESS_SCRATCH: a headless shell from
+# scripts/start-headless.sh. It applies to the test window only.
+rules_file="${HEADLESS_SCRATCH:-}/config/gnome-window-control/rules.json"
+shell_pid=$(gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+    --method org.freedesktop.DBus.GetConnectionUnixProcessID org.gnome.Shell 2>/dev/null \
+    | sed -n 's/^(uint32 \([0-9]*\),)$/\1/p') || true
+shell_config=$(tr '\0' '\n' < "/proc/${shell_pid:-0}/environ" 2>/dev/null \
+    | sed -n 's/^XDG_CONFIG_HOME=//p') || true
+if [[ -z "${HEADLESS_SCRATCH:-}" ]]; then
+    skip "rules apply: HEADLESS_SCRATCH not set (a headless shell only)"
+elif [[ "$shell_config" != "$HEADLESS_SCRATCH/config" ]]; then
+    skip "rules apply: the shell on this bus does not read $HEADLESS_SCRATCH/config"
+elif ! extension_reports rules-apply; then
+    skip "rules apply: the loaded extension does not report rules-apply"
+elif [[ -z "$tc_wa" ]]; then
+    skip "rules apply: could not read workarea"
+elif [[ -e "$rules_file" ]]; then
+    skip "rules apply: $rules_file exists already"
+else
+    # The later tests start from the frame the window has now.
+    read -r rx ry rw rh <<< "$("$WCTL" info "$TEST_WINDOW_ID" --json \
+        | jq -r '"\(.frame_rect.x) \(.frame_rect.y) \(.frame_rect.width) \(.frame_rect.height)"')"
+    mkdir -p "$(dirname "$rules_file")"
+    trap 'rm -f "$rules_file"; cleanup_test_window' EXIT
+    printf '[{"match":{"title":"%s"},"tile":"right"}]\n' "$TEST_WINDOW_TITLE" > "$rules_file"
+    # The extension reads the file again after a short debounce.
+    sleep 1
+    run_wctl move-resize "$TEST_WINDOW_ID" "$tc_wa_x" "$tc_wa_y" 400 300
+    wait_for_change
+    info "Testing: rules apply"
+    XDG_CONFIG_HOME="$HEADLESS_SCRATCH/config" run_wctl rules apply "$TEST_WINDOW_ID"
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "rules apply: exits 0"
+    assert_contains "$WCTL_OUTPUT" "Applied a rule to window $TEST_WINDOW_ID" "rules apply: the rule matched"
+    # A frame request can stay pending in a headless shell until a read wakes it.
+    read -r exp_x _ <<< "$(resolve_tile_geometry right "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h")"
+    for _ in $(seq 1 50); do
+        x=$(get_window_field '.frame_rect.x') || true
+        within_tolerance "$x" "$exp_x" "$GEOM_TOLERANCE" && break
+        sleep 0.1
+    done
+    assert_tile_frame "$TEST_WINDOW_ID" right "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h" "rules apply"
+    rm -f "$rules_file"
+    trap cleanup_test_window EXIT
+    sleep 1
+    run_wctl move-resize "$TEST_WINDOW_ID" "$rx" "$ry" "$rw" "$rh"
+    wait_for_change
+fi
+
+echo ""
 echo "--- Minimize/Maximize Tests ---"
 
 # Test: minimize

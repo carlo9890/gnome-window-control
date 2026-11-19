@@ -3,8 +3,8 @@
 // Helpers shared by the D-Bus service, the window rules, the overlay windows
 // and the keyboard shortcuts: the maximize API that changed in GNOME 49, a
 // minimize without the animation, the workarea a window resolves against, the
-// wait for an unmaximize to land, and the placer every frame request goes
-// through. Everything here needs Meta; the Meta-free selector grammar is in
+// wait for an unmaximize to land, and the placer the frame requests of a
+// shown window go through. Everything here needs Meta; the Meta-free selector grammar is in
 // rules-format.js.
 
 import GLib from 'gi://GLib';
@@ -173,9 +173,11 @@ export class UnmaximizeWait {
     }
 }
 
-// The one owner of every frame request: the shortcuts, the rules and the
-// D-Bus geometry methods all place through it, so a window has at most one
-// placement pending and the newest request wins.
+// The one owner of the frame requests of a shown window: the shortcuts, a
+// rule's geometry and the D-Bus geometry methods all place through it, so a
+// window has at most one placement pending and the newest request wins.
+// MoveToMonitor and a rule's `monitor` call move_to_monitor() outside it; a
+// frame on another monitor goes there inside it (moveResizeFrame).
 //
 // A maximized window is restored first, and its request runs once the
 // restore has landed (see UnmaximizeWait). A request made while that restore

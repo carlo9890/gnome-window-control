@@ -145,7 +145,9 @@ copy or the user's `rules.json`. Nothing appears on the real screen. Starting
 it needs consent under hard rule 1 like any other shell.
 
 The script prints the variables a second terminal needs. Export the bus
-address and `WAYLAND_DISPLAY` from its output, then enable the extension over
+address, `WAYLAND_DISPLAY` and `HEADLESS_SCRATCH` from its output (without
+`HEADLESS_SCRATCH`, the modification suite skips its `rules apply` check,
+which writes a rule into the scratch `rules.json`), then enable the extension over
 D-Bus and close the overview as for a nested session. Clients (`kitty`) connect
 to the printed display; run the suites with `WCTL_TEST_SETTLE=1.5`. The
 read-only query suites need at least one window open, so spawn one first.
