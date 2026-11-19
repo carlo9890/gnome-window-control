@@ -337,7 +337,10 @@ export class PopupSeparatorMenuItem {}
             this.userOps = [...this.userOps ?? [], userOp];
         }
         change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
-        move_to_monitor(index) { this.monitorMoves = [...this.monitorMoves ?? [], index]; }
+        move_to_monitor(index) {
+            this.monitorMoves = [...this.monitorMoves ?? [], index];
+            this.monitor = index;
+        }
 
         map() {
             this.hidden = false;
@@ -990,6 +993,27 @@ export class PopupSeparatorMenuItem {}
         service.MoveResizeAsync([61, -3000, 100, 800, 600], invocation());
         check('MoveResize to a rectangle on no monitor does not move the window to the primary first',
             win.monitorMoves === undefined, JSON.stringify(win.monitorMoves));
+
+        win.monitor = 0;
+        win.moves = [];
+        const workareaFor = workspace.get_work_area_for_monitor;
+        workspace.get_work_area_for_monitor = index => ({ ...monitors[index] });
+        rules._compile('[{"match":{"class":"flag"},"monitor":1,"tile":"right"}]');
+        service.applyRulesToAll();
+        await sleep(100);
+        check("a rule's monitor moves the window there once, and its frame lands on that monitor",
+            JSON.stringify(win.monitorMoves) === '[1]' && JSON.stringify(win.moves) === '[[3360,0,480,1080]]',
+            `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${JSON.stringify(win.moves)}`);
+        win.monitor = 0;
+        win.monitorMoves = undefined;
+        win.moves = [];
+        rules._compile('[{"match":{"class":"flag"},"monitor":1}]');
+        service.applyRulesToAll();
+        await sleep(100);
+        check("a rule's monitor with no geometry moves the window to that monitor",
+            JSON.stringify(win.monitorMoves) === '[1]' && win.moves.length === 0,
+            `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${JSON.stringify(win.moves)}`);
+        workspace.get_work_area_for_monitor = workareaFor;
         win.monitor = 0;
         monitors.pop();
         service.unexport();

@@ -308,7 +308,8 @@ Action order within `_apply`:
    index 2).
 3. `monitor` — when the index is not below `get_n_monitors()`, the rest of
    the rule (the monitor move and the geometry) is skipped with a debug line.
-   The workspace step has already run.
+   The workspace step has already run. Else `move_to_monitor(index)` moves
+   the window at once: this move does not wait in the `WindowPlacer`.
 4. Geometry — skipped when the window is fullscreen. The frame is requested
    through the `WindowPlacer` (`window-helpers.js`) that the keyboard shortcuts
    and the D-Bus geometry methods share:
@@ -325,6 +326,11 @@ Action order within `_apply`:
      the screen while mutter's `require_fully_onscreen` holds (it does not
      once the window is partly off the screen). As a user operation, mutter would apply the minimum from the
      frame's old position, and the window would not move at all.
+   - A rectangle that overlaps a monitor other than the window's own moves
+     the window there with `move_to_monitor()` first. Only that call or a
+     user operation makes mutter record the monitor it puts the window back
+     on after a monitor change. A rectangle on no monitor moves the window to
+     no monitor.
 
 A window that matches nothing stays under evaluation for
 `LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID
