@@ -90,11 +90,12 @@ const { checkRules, dropInNames, elementOffsets, ruleSummary } = await import(GL
 // -- the capture refuses a key without a modifier other than Shift ------------
 
 {
-    // The Gdk.ModifierType bits: SHIFT 1, CONTROL 4, ALT (MOD1) 8, SUPER 1 << 26.
-    const SHIFT = 1, CONTROL = 4, ALT = 8, SUPER = 1 << 26;
+    // The Gdk.ModifierType bits: SHIFT 1, CONTROL 4, ALT (MOD1) 8, SUPER 1 << 26,
+    // HYPER 1 << 27, META 1 << 28.
+    const SHIFT = 1, CONTROL = 4, ALT = 8, SUPER = 1 << 26, HYPER = 1 << 27, META = 1 << 28;
     check('a plain key needs a modifier', needsModifier(0, SHIFT));
     check('Shift alone is not enough', needsModifier(SHIFT, SHIFT));
-    check('Super, Ctrl or Alt is enough', [SUPER, CONTROL, ALT, CONTROL | SHIFT]
+    check('any modifier other than Shift is enough', [SUPER, CONTROL, ALT, HYPER, META, CONTROL | SHIFT]
         .every(mods => !needsModifier(mods, SHIFT)));
 }
 

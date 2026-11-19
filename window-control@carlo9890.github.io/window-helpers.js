@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 // Helpers shared by the D-Bus service, the window rules, the overlay windows
 // and the keyboard shortcuts: the maximize API that changed in GNOME 49, a
-// minimize without the animation, the workarea a window resolves against, and
-// the wait for an unmaximize to land. Everything here needs Meta; the
-// Meta-free selector grammar is in rules-format.js.
+// minimize without the animation, the workarea a window resolves against, the
+// wait for an unmaximize to land, and the placer every frame request goes
+// through. Everything here needs Meta; the Meta-free selector grammar is in
+// rules-format.js.
 
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import Mtk from 'gi://Mtk';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
@@ -86,6 +88,29 @@ export function workareaOf(win, monitor = win.get_monitor()) {
     return workspace.get_work_area_for_monitor(monitor);
 }
 
+// Request a frame as the program, not as the user. For a user operation,
+// mutter applies a minimum size from the frame's old position, so a window
+// whose minimum is above the requested size keeps its old place and never
+// moves. As the program's request, the frame goes where it was asked, grown
+// to the minimum, and mutter keeps it on the screen (unless the window is
+// partly off the screen already: require_fully_onscreen is then unset).
+//
+// Only a user operation or move_to_monitor() makes mutter record a new
+// preferred monitor, the one it puts the window back on after a monitor
+// change. So a frame on another monitor goes there with move_to_monitor()
+// first, which is a program request too. For a rectangle on no monitor,
+// mutter names the primary one, so only a monitor the rectangle overlaps
+// counts.
+export function moveResizeFrame(win, { x, y, width, height }) {
+    const monitor = global.display.get_monitor_index_for_rect(
+        new Mtk.Rectangle({ x, y, width, height }));
+    const m = global.display.get_monitor_geometry(monitor);
+    const overlaps = x < m.x + m.width && m.x < x + width && y < m.y + m.height && m.y < y + height;
+    if (overlaps && monitor !== win.get_monitor())
+        win.move_to_monitor(monitor);
+    win.move_resize_frame(false, x, y, width, height);
+}
+
 // How long to wait for an unmaximize to land before placing the frame anyway.
 // A client whose restored size equals its maximized one never reports a
 // size change, so the wait has to be bounded.
@@ -145,5 +170,51 @@ export class UnmaximizeWait {
             this._settled(true);
             return GLib.SOURCE_REMOVE;
         });
+    }
+}
+
+// The one owner of every frame request: the shortcuts, the rules and the
+// D-Bus geometry methods all place through it, so a window has at most one
+// placement pending and the newest request wins.
+//
+// A maximized window is restored first, and its request runs once the
+// restore has landed (see UnmaximizeWait). A request made while that restore
+// is still pending replaces the pending one: run at once, it would be
+// overwritten by the restored size, and the older request would then land
+// after it.
+export class WindowPlacer {
+    constructor() {
+        this._pending = new Map();        // Meta.Window -> { wait, request }
+    }
+
+    // Run `request()` now, or once the window's restore has landed.
+    place(win, request) {
+        const pending = this._pending.get(win);
+        if (pending && maximizeFlags(win) === 0) {
+            pending.request = request;
+            return;
+        }
+        // Maximized again while its restore was pending: that restore is
+        // spent, so restore again.
+        pending?.wait.destroy();
+        if (maximizeFlags(win) === 0) {
+            request();
+            return;
+        }
+        const entry = { wait: null, request };
+        entry.wait = new UnmaximizeWait(win, landed => {
+            this._pending.delete(win);
+            // Maximized again since: that maximize is the newest request.
+            if (landed && maximizeFlags(win) === 0)
+                entry.request();
+        });
+        this._pending.set(win, entry);
+    }
+
+    // Drop every pending request, without running it.
+    destroy() {
+        for (const { wait } of this._pending.values())
+            wait.destroy();
+        this._pending.clear();
     }
 }

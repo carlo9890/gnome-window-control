@@ -112,7 +112,13 @@ export const DBUS_INTERFACE_XML = `
       <arg type="i" direction="in" name="height"/>
     </method>
 
-    <!-- Moves and resizes in one request. -->
+    <!--
+      Moves and resizes in one request, as the program: a window whose
+      minimum size is above the rectangle grows to it at that position, and
+      the frame stays on the screen unless the window is already partly off
+      it. A rectangle on another monitor makes that the window's preferred
+      monitor.
+    -->
     <method name="MoveResize">
       <arg type="t" direction="in" name="window_id"/>
       <arg type="i" direction="in" name="x"/>
@@ -124,8 +130,11 @@ export const DBUS_INTERFACE_XML = `
     <!--
       Applies the loaded rules.json rules again, as a new window gets them
       once shown: window_id 0 means every open window, any other id that one
-      window. applied is the number of windows a rule matched. A window whose
-      own first placement is still pending is skipped. A rules.json change
+      window. applied is the number of windows a rule matched. A window not
+      yet shown, whose own first rule apply is still queued, or that is still
+      in its late-identity grace period, is skipped. A
+      window whose placement waits for its unmaximize is placed again: the
+      newer placement replaces the pending one. A rules.json change
       that is still being read is waited for, so the rules applied are the
       ones saved.
     -->

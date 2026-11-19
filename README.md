@@ -212,6 +212,11 @@ mutter still clamps to size hints, and a client that quantises its own size (a
 terminal, to whole cells) settles a few pixels off, so comparing against it needs
 a tolerance.
 
+A window with a minimum size above the rectangle, such as a text editor in a
+narrow tile, grows to that minimum at the position asked for. `move-resize`,
+`place` and `tile` keep the frame on the screen, unless the window was already
+partly off it; `move` can put a window partly off it.
+
 #### Waiting for the frame to settle
 
 A geometry request is applied asynchronously, and a client may resize itself once
@@ -555,7 +560,9 @@ window: the first matching rule wins, and `min_width` tests the monitor the
 window is on now. Use it after you moved windows by hand, or after you docked
 or undocked a laptop.
 
-- A maximized window is restored first, then placed.
+- A maximized window is restored first, then placed. A shortcut or a geometry
+  command for the same window before the restore lands replaces this
+  placement: the newest request wins.
 - A minimized window is placed and stays minimized.
 - A fullscreen window gets its `workspace` and `monitor`, but no geometry.
 - A `workspace` that does not exist is skipped, so each apply does not add
@@ -590,7 +597,10 @@ The extension tiles the focused window from the keyboard, to the same 4x2 grid
 
 `Super+Ctrl+KP_Add` (the numpad `+`) tiles the window `wide-right`, three
 columns of four; press it again on the same window and it goes `wide-left`.
-A maximized window is unmaximized first; a fullscreen one is left alone.
+A maximized window is unmaximized first, then placed; a fullscreen one is left
+alone. A newer shortcut, rule apply, `move`, `resize`, `move-resize`, `place`,
+`tile` or `center` for the same window replaces a placement that still waits
+for the restore.
 
 `Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
 every open window, as `wctl rules apply` does ([Resetting windows to their
@@ -641,8 +651,8 @@ gnome-extensions prefs window-control@carlo9890.github.io
   combination: Backspace disables the shortcut, and Esc keeps the old one. The
   arrow button resets a row to its default. A combination that another
   shortcut of this extension holds is refused, pressed or restored by a reset.
-  A key without Super, Ctrl or Alt is refused, because GNOME Shell would take
-  it from every app.
+  A key without a modifier other than Shift, such as Super, Ctrl or Alt, is
+  refused, because GNOME Shell would take it from every app.
 - **Rules** is a text editor for `rules.json`. It checks the text as you type,
   with the same validation the extension uses, and underlines the line of the
   first error: for an error in a rule, the line where that rule starts. **Save** is available only for a valid file, and the

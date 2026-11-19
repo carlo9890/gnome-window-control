@@ -48,6 +48,11 @@ If it fails, the code has a syntax error and must not be committed.
   none of them. A module that only `prefs.js` loads goes in `prefs/`.
 - Simple "find window by id, do one action, return bool" handlers go through
   the shared `_actOnWindow(windowId, label, action)` helper.
+- Every frame request from a D-Bus handler, a rule or a shortcut goes through
+  `WindowPlacer.place` (`window-helpers.js`), so a request made while a restore
+  is pending does not land under the restored size. A request that moves and
+  resizes calls `moveResizeFrame`: as a user operation, mutter would keep a
+  window whose minimum size is above the rectangle at its old place.
 - `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
   an upload that does not ([RELEASING.md](RELEASING.md#constraints-the-review-enforces)).
   That covers every signal handler, GLib source, bus-name watch, file monitor,
