@@ -209,7 +209,8 @@ export class WindowRules {
     // window gets them once shown, and decide each one's overlay membership
     // as a load does. Returns how many windows a rule matched.
     //
-    // A tracked window is skipped: its own rule is still on the way. So is a
+    // A tracked window is skipped: its own rule is still on the way, or it
+    // is still in its late-identity grace period. So is a
     // window `isUnshown` reports, which mutter has not shown yet: its initial
     // placement would override the frame. A window still waiting for its
     // unmaximize is placed again: the newer request replaces the pending one

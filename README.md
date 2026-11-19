@@ -549,9 +549,9 @@ The extension tiles the focused window from the keyboard, to the same 4x2 grid
 `Super+Ctrl+KP_Add` (the numpad `+`) tiles the window `wide-right`, three
 columns of four; press it again on the same window and it goes `wide-left`.
 A maximized window is unmaximized first, then placed; a fullscreen one is left
-alone. A newer shortcut, rule apply, `move`, `resize`, `move-resize`, `place`
-or `tile` for the same window replaces a placement that still waits for the
-restore.
+alone. A newer shortcut, rule apply, `move`, `resize`, `move-resize`, `place`,
+`tile` or `center` for the same window replaces a placement that still waits
+for the restore.
 
 `Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
 every open window, as `wctl rules apply` does ([Resetting windows to their
