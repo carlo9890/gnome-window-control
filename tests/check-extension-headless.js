@@ -1214,10 +1214,25 @@ export class PopupSeparatorMenuItem {}
             Main.sessionMode.setLocked(false);
             check('the unlock after enable() while locked serves the shortcuts',
                 adds() === 11 && extension._service.keybindingsServed, `${adds()} bound`);
+            // A shortcut on a maximized window leaves a placement pending
+            // until the unmaximize lands; disable() must cancel it.
+            const maximized = createWindow({ id: 90, wmClass: 'K', maximizeFlags: Meta.MaximizeFlags.BOTH });
+            maximized.map();
+            extension._keybindings._tile('tile-left', maximized, 'left');
+            const pendingTimer = extension._placer._pending.get(maximized)?.wait?._timeoutId ?? 0;
+            check('a shortcut on a maximized window leaves a placement pending', pendingTimer !== 0,
+                `source ${pendingTimer}`);
             extension.disable();
             check('disable() leaves no sessionMode handler', Main.sessionMode.handlerCount() === 0,
                 `${Main.sessionMode.handlerCount()} handler(s)`);
             check('disable() leaves no shortcut', adds() === 0, `${adds()} bound`);
+            check('disable() leaves no handler on a window with a pending placement',
+                maximized.handlerCount() === 0, `${maximized.handlerCount()} handler(s)`);
+            check('disable() leaves no UnmaximizeWait timer', !sourceAlive(pendingTimer), `source ${pendingTimer}`);
+            await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
+            check('a placement cancelled by disable() never lands', maximized.moves.length === 0,
+                JSON.stringify(maximized.moves));
+            windows.length = 0;
 
             refuse = true;
             extension.enable();
