@@ -375,11 +375,12 @@ Action order within `_apply`:
      the screen while mutter's `require_fully_onscreen` holds (it does not
      once the window is partly off the screen). As a user operation, mutter would apply the minimum from the
      frame's old position, and the window would not move at all.
-   - A rectangle that overlaps a monitor other than the window's own moves
-     the window there with `move_to_monitor()` first. Only that call or a
-     user operation makes mutter record the monitor it puts the window back
-     on after a monitor change. A rectangle on no monitor moves the window to
-     no monitor.
+   - A rectangle whose largest overlap is with a monitor other than the
+     window's own moves the window there with `move_to_monitor()` first. Only
+     that call or a user operation makes mutter record the monitor it puts
+     the window back on after a monitor change. For a rectangle on no
+     monitor, `move_to_monitor()` is not called: mutter would name the
+     primary monitor.
 
 A window that matches nothing stays under evaluation for
 `LATE_IDENTITY_GRACE_MS` after being shown, because a Wayland client's app ID

@@ -41,7 +41,7 @@ function ruleName(rule) {
 }
 
 export class WindowRules {
-    // `placer`: the WindowPlacer every position or size request goes through.
+    // `placer`: the WindowPlacer the frame requests go through.
     constructor(placer) {
         this._placer = placer;
         this._rules = [];

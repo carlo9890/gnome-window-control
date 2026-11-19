@@ -96,14 +96,13 @@ README.md                  user docs; the D-Bus method table
   makes no D-Bus call; `ApplyRules` in `dbus-service.js` calls its
   `applyRules` to place the open windows again. The GNOME-49 maximize API detection is shared with
   `dbus-service.js` through `window-helpers.js`.
-- **Every position or size request goes through one `WindowPlacer`**
+- **The frame requests of a shown window go through one `WindowPlacer`**
   (`window-helpers.js`): the shortcuts, a rule's geometry and the `Move`,
   `Resize` and `MoveResize` handlers. A window has at most one placement
-  pending, and the newest of these requests wins. Two requests stay outside
-  it: a move to a monitor (`MoveToMonitor`, a rule's `monitor`) runs at once,
-  and a rule's first apply reaches the placer only after the window is shown
-  and an idle callback has run, so a frame requested in that wait lands first
-  and the rule's frame then replaces it. A
+  pending, and the newest of these requests wins. A move to a monitor
+  (`MoveToMonitor`, a rule's `monitor`) runs at once, outside it. A rule's
+  first apply enters it only after the waits in
+  [RULES-JSON.md](specs/RULES-JSON.md#matching-and-application). A
   maximized window is restored first and placed once the restore has landed
   (`UnmaximizeWait`). `moveResizeFrame` requests a frame as the program, not
   as the user, so a window whose minimum size is above its tile still moves.
