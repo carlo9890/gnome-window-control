@@ -1025,6 +1025,14 @@ export class PopupSeparatorMenuItem {}
         moves = await settle();
         check('Move after a shortcut replaces the shortcut\'s pending placement', moves === '[[5,6]]', moves);
 
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        win.maximizeFlags = Meta.MaximizeFlags.BOTH;   // maximized again before the restore landed
+        keybindings._tile('tile-right', win, 'right');
+        moves = await settle();
+        check('a window maximized again while its restore is pending is restored again',
+            win.maximizeFlags === 0 && moves === RIGHT, `flags ${win.maximizeFlags}, ${moves}`);
+
         keybindings._tile('tile-left', win, 'left');
         check('a request with no restore pending runs at once', JSON.stringify(win.moves) === LEFT,
             JSON.stringify(win.moves));

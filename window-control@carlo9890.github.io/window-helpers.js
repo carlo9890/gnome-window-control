@@ -175,10 +175,13 @@ export class WindowPlacer {
     // Run `request()` now, or once the window's restore has landed.
     place(win, request) {
         const pending = this._pending.get(win);
-        if (pending) {
+        if (pending && maximizeFlags(win) === 0) {
             pending.request = request;
             return;
         }
+        // Maximized again while its restore was pending: that restore is
+        // spent, so restore again.
+        pending?.wait.destroy();
         if (maximizeFlags(win) === 0) {
             request();
             return;
