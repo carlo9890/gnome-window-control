@@ -210,7 +210,7 @@ export class WindowControlService {
     // The three geometry methods and ApplyRules are async (GJS convention:
     // <Method>Async(params, invocation)) so they can answer here rather than
     // by throwing. GJS logs a throw from a synchronous handler as a warning,
-    // one per ordinary refusal. Only ApplyRules waits, for a rules.json read
+    // one per ordinary refusal. Only ApplyRules waits, for a rules file read
     // in flight.
     _namedErrorCall(invocation, label, body) {
         try {

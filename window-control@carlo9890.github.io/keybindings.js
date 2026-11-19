@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 // Keyboard shortcuts: tile the focused window to a grid position, the way a
-// `wctl tile focused <position>` would, and apply the rules.json rules again,
+// `wctl tile focused <position>` would, and apply the rules again,
 // the way `wctl rules apply` would, without a process spawn per key.
 //
 // The shortcuts are GSettings keys (schemas/*.gschema.xml), one per tile
@@ -43,7 +43,7 @@ const GLOBAL_FLAGS = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT;
 
 export class WindowKeybindings {
     // `placer` is the WindowPlacer every frame request goes through.
-    // `applyRules()` applies the rules.json rules again to every open window.
+    // `applyRules()` applies the rules again to every open window.
     constructor(placer, applyRules) {
         this._placer = placer;
         this._applyRules = applyRules;
