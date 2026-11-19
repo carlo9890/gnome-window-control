@@ -12,6 +12,7 @@ export const DROPIN_DIR = 'rules.d';
 export const DROPIN_PATH = GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]);
 
 Gio._promisify(Gio.File.prototype, 'load_contents_async');
+Gio._promisify(Gio.File.prototype, 'query_info_async');
 Gio._promisify(Gio.File.prototype, 'enumerate_children_async');
 Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async');
 Gio._promisify(Gio.FileEnumerator.prototype, 'close_async');
@@ -33,9 +34,15 @@ export async function readRuleFiles(cancellable) {
 }
 
 // The text of a file under CONFIG_DIR, or null when there is none to read.
+// Only a regular file is opened: the read of a FIFO never finishes, and the
+// load would wait for it.
 async function readFile(label, cancellable) {
     try {
         const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, label]));
+        const info = await file.query_info_async('standard::type', Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT, cancellable);
+        if (info.get_file_type() !== Gio.FileType.REGULAR)
+            throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
         const [bytes] = await file.load_contents_async(cancellable);
         return new TextDecoder().decode(bytes);
     } catch (e) {

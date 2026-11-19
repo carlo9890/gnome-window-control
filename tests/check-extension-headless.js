@@ -2166,6 +2166,21 @@ export class PopupSeparatorMenuItem {}
         check('rules.d: a throw during a load still answers whenLoaded',
             answered === true && rules._loading === false, `answered ${answered}, loading ${rules._loading}`);
 
+        // A rules.json that is a FIFO is never opened, so it cannot hold up
+        // the drop-ins or ApplyRules.
+        const rulesJson = `${configDir}/rules.json`;
+        GLib.unlink(rulesJson);
+        GLib.spawn_command_line_sync(`mkfifo ${GLib.shell_quote(rulesJson)}`);
+        rules._load();
+        let fifoAnswered = null;
+        rules.whenLoaded(ok => (fifoAnswered = ok));
+        await sleep(200);
+        check('rules.d: a FIFO rules.json is skipped and the drop-ins load',
+            fifoAnswered === true &&
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]',
+            `answered ${fifoAnswered}, ${sourcesOf(rules)}`);
+        GLib.unlink(rulesJson);
+
         const monitors = [rules._fileMonitor, rules._dropInMonitor];
         const ids = [rules._fileMonitorId, rules._dropInMonitorId];
         rules.disable();
