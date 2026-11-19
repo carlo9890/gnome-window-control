@@ -8,8 +8,8 @@ Two implementations follow it, and they are pinned to each other:
 
 | Implementation | Where | Pinned by |
 |---|---|---|
-| The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`, `resolvePlaceRect`, `tileRect`, `centerRect`) | `tests/check-rules-format.js` |
-| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors`, `match_vectors` and `min_width_vectors` tests in that file |
+| The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`, `resolvePlaceRect`, `tileRect`, `centerRect`, `isDropInName`) | `tests/check-rules-format.js` |
+| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors`, `match_vectors`, `min_width_vectors` and `dropin_vectors` tests in that file |
 
 Both read the same cases from `tests/vectors/rules-spec.json`. Change this file,
 both implementations and the vectors in **one commit**: a message or a formula
@@ -243,7 +243,9 @@ wctl rules check [--file PATH] [--json]
 ```
 
 It exits 0 when the shell would load the file and 1 when it would not, printing
-the same message text. `cli/src/rules.rs` is what produces it.
+the same message text. `cli/src/rules.rs` is what produces it. Without
+`--file` it checks `rules.json` and every drop-in file, reports each one, and
+exits 1 when any one is refused, although the shell still loads the others.
 
 `compileRules` parses and validates one whole file before any rule of it takes
 effect. The first problem throws and **no rule from that file is applied** — a
