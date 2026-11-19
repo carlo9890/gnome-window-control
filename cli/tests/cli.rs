@@ -1688,3 +1688,688 @@ fn bash_completion_offers_what_each_position_accepts() {
     let offered = bash_completions(&["wctl", "minimize", "--no-animation", ""]);
     assert!(offered.iter().any(|word| word == "focused"), "{offered:?}");
 }
+
+/// `wctl` with XDG_CONFIG_HOME at `config`, so the default rules file and
+/// rules.d are the test's own: stdout, stderr, exit code.
+fn wctl_config(config: &Path, args: &[&str]) -> (String, String, i32) {
+    let output = Command::new(cargo_bin("wctl"))
+        .args(args)
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .env("XDG_CONFIG_HOME", config)
+        .env_remove("WCTL_TIMEOUT")
+        .output()
+        .expect("wctl runs");
+    (
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// A config folder with rules.json and the given rules.d files.
+fn rules_config(tag: &str, user: &str, drop_ins: &[(&str, &str)]) -> std::path::PathBuf {
+    let config = std::env::temp_dir().join(format!("wctl-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&config).ok();
+    let folder = config.join("gnome-window-control");
+    std::fs::create_dir_all(folder.join("rules.d")).expect("temp dir");
+    std::fs::write(folder.join("rules.json"), user).expect("write rules.json");
+    for (name, body) in drop_ins {
+        std::fs::write(folder.join("rules.d").join(name), body).expect("write drop-in");
+    }
+    config
+}
+
+/// Without a drop-in file, `rules check` prints what it printed before
+/// rules.d existed, byte for byte. Names the extension skips, a directory
+/// named like a drop-in and a FIFO are no drop-in files.
+#[test]
+fn rules_check_without_drop_ins_reads_as_before() {
+    let config = rules_config(
+        "rules-no-dropins",
+        r#"[{"match":{"class":"kitty"},"tile":"left"},{"match":{"class":"foot"},"tile":"right"}]"#,
+        &[],
+    );
+    let folder = config.join("gnome-window-control");
+    let user = folder.join("rules.json").display().to_string();
+    let text = format!("{user}: 2 rules, valid\n");
+    let json = format!(r#"{{"path":"{user}","exists":true,"valid":true,"rules":2}}"#) + "\n";
+
+    let check_reads_as_before = |when: &str| {
+        assert_eq!(
+            wctl_config(&config, &["rules", "check"]),
+            (text.clone(), String::new(), 0),
+            "{when}"
+        );
+        assert_eq!(
+            wctl_config(&config, &["rules", "check", "--json"]),
+            (json.clone(), String::new(), 0),
+            "{when}"
+        );
+    };
+    check_reads_as_before("an empty rules.d");
+
+    let skipped = r#"[{"match":{"class":"a"},"tile":"middle"}]"#;
+    let drop_ins = folder.join("rules.d");
+    for name in [".tool.json.123", "tool.json~", "tool.json.off", "notes.txt"] {
+        std::fs::write(drop_ins.join(name), skipped).expect("write skipped file");
+    }
+    std::fs::create_dir(drop_ins.join("folder.json")).expect("directory");
+    let status = Command::new("mkfifo")
+        .arg(drop_ins.join("pipe.json"))
+        .status()
+        .expect("mkfifo runs");
+    assert!(status.success());
+    check_reads_as_before("only names the extension skips");
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// Every file is reported, a broken drop-in by its path, and the exit code
+/// says whether any file is broken. A rule of an earlier file that shadows a
+/// later file's rule is a warning, not a failure.
+#[test]
+fn rules_check_reports_every_drop_in() {
+    let config = rules_config(
+        "rules-check-dropins",
+        r#"[{"match":{"class":"kitty"},"tile":"left"}]"#,
+        &[
+            ("a.json", r#"[{"match":{"class":"kitty"},"tile":"right"}]"#),
+            ("b.json", r#"[{"match":{"class":"foot"},"tile":"middle"}]"#),
+            ("c.json", r#"[{"match":{"class":"mpv"},"tile":"center"}]"#),
+        ],
+    );
+    let folder = config.join("gnome-window-control");
+    let path = |name: &str| folder.join(name).display().to_string();
+
+    let (out, err, code) = wctl_config(&config, &["rules", "check"]);
+    assert_eq!(code, 1, "stdout: {out} stderr: {err}");
+    assert_eq!(
+        out,
+        format!(
+            "{}: 1 rule, valid\n{}: 1 rule, valid\n{}: 1 rule, valid\n",
+            path("rules.json"),
+            path("rules.d/a.json"),
+            path("rules.d/c.json")
+        )
+    );
+    assert!(
+        err.contains(&format!(
+            "Error: {}: rules[0].tile: must be one of",
+            path("rules.d/b.json")
+        )),
+        "stderr: {err}"
+    );
+    assert!(
+        err.contains(
+            "Warning: rule 0 of rules.json already matches every window rule 0 of \
+             rules.d/a.json would"
+        ),
+        "stderr: {err}"
+    );
+
+    let (out, _, code) = wctl_config(&config, &["rules", "check", "--json"]);
+    assert_eq!(code, 1, "stdout: {out}");
+    let report: serde_json::Value = serde_json::from_str(&out).expect("one JSON document");
+    // The top-level fields are rules.json's own, which is valid.
+    assert_eq!(report["path"], path("rules.json"));
+    assert_eq!(report["valid"], true);
+    assert_eq!(report["rules"], 1);
+    assert!(report.get("error").is_none(), "report: {report}");
+    let drop_ins = report["dropins"].as_array().expect("dropins");
+    assert_eq!(drop_ins.len(), 3);
+    assert_eq!(drop_ins[0]["path"], path("rules.d/a.json"));
+    assert_eq!(drop_ins[0]["valid"], true);
+    assert_eq!(drop_ins[0]["rules"], 1);
+    assert_eq!(drop_ins[1]["valid"], false);
+    assert!(drop_ins[1]["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("rules[0].tile: must be one of")));
+
+    // Without the broken file every file is valid.
+    std::fs::remove_file(folder.join("rules.d/b.json")).expect("remove");
+    let (out, _, code) = wctl_config(&config, &["rules", "check", "--json"]);
+    assert_eq!(code, 0, "stdout: {out}");
+    let report: serde_json::Value = serde_json::from_str(&out).expect("one JSON document");
+    assert_eq!(report["valid"], true);
+    assert_eq!(report["dropins"].as_array().map(Vec::len), Some(2));
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// The table holds every file with its SOURCE and the index within that
+/// file. `--json` stays rules.json alone, and `--file` one file.
+#[test]
+fn rules_list_merges_the_drop_ins() {
+    let user = r#"[{"match":{"class":"kitty"},"tile":"left"}]"#;
+    let config = rules_config(
+        "rules-list-dropins",
+        user,
+        &[
+            (
+                "a.json",
+                r#"[{"match":{"class":"foot"},"tile":"right"},{"match":{"class":"mpv"},"center":"both"}]"#,
+            ),
+            ("broken.json", "[{"),
+        ],
+    );
+    let folder = config.join("gnome-window-control");
+
+    let (out, err, code) = wctl_config(&config, &["rules", "list"]);
+    assert_eq!(code, 0, "stderr: {err}");
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 4, "printed: {out}");
+    assert!(lines[0].starts_with("SOURCE  "), "printed: {out}");
+    let cells = |line: &str| {
+        line.split_whitespace()
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    assert_eq!(cells(lines[1]), "rules.json 0 class=kitty");
+    assert_eq!(cells(lines[2]), "rules.d/a.json 0 class=foot");
+    assert_eq!(cells(lines[3]), "rules.d/a.json 1 class=mpv");
+    assert!(
+        err.contains(&format!(
+            "Warning: {}: not valid JSON",
+            folder.join("rules.d/broken.json").display()
+        )),
+        "stderr: {err}"
+    );
+
+    let (out, err, code) = wctl_config(&config, &["rules", "list", "--json"]);
+    assert_eq!((code, err.as_str()), (0, ""));
+    let listed: serde_json::Value = serde_json::from_str(&out).expect("JSON");
+    assert_eq!(
+        listed,
+        serde_json::from_str::<serde_json::Value>(user).unwrap()
+    );
+
+    let path = folder.join("rules.json").display().to_string();
+    let (out, _, _) = wctl_config(&config, &["rules", "list", "--file", &path]);
+    assert!(out.starts_with("INDEX "), "printed: {out}");
+    assert_eq!(out.lines().count(), 2, "printed: {out}");
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+#[test]
+fn rules_path_dir_prints_the_drop_in_folder() {
+    let config = rules_config("rules-path-dir", "[]", &[]);
+    let (out, _, code) = wctl_config(&config, &["rules", "path", "--dir"]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        out,
+        format!(
+            "{}\n",
+            config.join("gnome-window-control/rules.d").display()
+        )
+    );
+    let (_, err, code) = wctl_config(&config, &["rules", "path", "--dir", "--file", "x.json"]);
+    assert_eq!(code, 1);
+    assert!(
+        err.contains("Option --dir cannot be used with --file"),
+        "stderr: {err}"
+    );
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// `add --file` into rules.d creates the folder, sees the rules of the files
+/// loaded before it, and leaves no temporary file there. `remove` counts in
+/// the one file.
+#[test]
+fn rules_add_and_remove_into_rules_d() {
+    let config = std::env::temp_dir().join(format!("wctl-rules-add-dropin-{}", std::process::id()));
+    std::fs::remove_dir_all(&config).ok();
+    let folder = config.join("gnome-window-control");
+    std::fs::create_dir_all(&folder).expect("temp dir");
+    std::fs::write(
+        folder.join("rules.json"),
+        r#"[{"match":{"class":"kitty"},"tile":"right"}]"#,
+    )
+    .expect("write rules.json");
+    let drop_ins = folder.join("rules.d");
+    let tool = drop_ins.join("tool.json").display().to_string();
+
+    let (out, err, code) = wctl_config(
+        &config,
+        &[
+            "rules", "add", "--file", &tool, "-c", "kitty", "tile", "left",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, format!("Added rule 0 to {tool}\n"));
+    assert!(
+        err.contains("Warning: rule 0 of rules.json already matches every window this rule would"),
+        "stderr: {err}"
+    );
+
+    let (_, err, _) = wctl_config(
+        &config,
+        &[
+            "rules", "add", "--file", &tool, "-c", "foot", "tile", "left",
+        ],
+    );
+    assert_eq!(err, "");
+
+    // A rule added to rules.json comes first, so it can shadow a drop-in's.
+    let (_, err, code) = wctl_config(&config, &["rules", "add", "-c", "foot", "tile", "right"]);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(
+        err.contains("Warning: this rule matches every window rule 1 of rules.d/tool.json would"),
+        "stderr: {err}"
+    );
+
+    let (out, _, code) = wctl_config(&config, &["rules", "remove", "--file", &tool, "0"]);
+    assert_eq!(code, 0);
+    assert_eq!(out, format!("Removed rule 0 from {tool}\n"));
+    let (out, _, _) = wctl_config(&config, &["rules", "list"]);
+    let rows: Vec<String> = out
+        .lines()
+        .skip(1)
+        .map(|line| {
+            line.split_whitespace()
+                .take(3)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "rules.json 0 class=kitty",
+            "rules.json 1 class=foot",
+            "rules.d/tool.json 0 class=foot"
+        ]
+    );
+
+    let left: Vec<_> = std::fs::read_dir(&drop_ins)
+        .expect("rules.d")
+        .map(|entry| entry.expect("entry").file_name())
+        .collect();
+    assert_eq!(left, ["tool.json"]);
+
+    // A name the extension skips is written, with a warning.
+    let off = drop_ins.join("tool.json.off").display().to_string();
+    let (_, err, code) = wctl_config(
+        &config,
+        &["rules", "add", "--file", &off, "-c", "mpv", "tile", "left"],
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(
+        err.contains("The extension does not read tool.json.off in rules.d"),
+        "stderr: {err}"
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rules.d that cannot be listed is a warning, and rules.json is still
+/// checked as before: the extension still loads it then.
+#[test]
+fn rules_check_warns_when_rules_d_cannot_be_listed() {
+    let config = rules_config(
+        "rules-d-not-a-folder",
+        r#"[{"match":{"class":"kitty"},"tile":"left"}]"#,
+        &[],
+    );
+    let folder = config.join("gnome-window-control");
+    std::fs::remove_dir(folder.join("rules.d")).expect("remove rules.d");
+    std::fs::write(folder.join("rules.d"), "").expect("a file named rules.d");
+
+    let (out, err, code) = wctl_config(&config, &["rules", "check"]);
+    assert_eq!(
+        (out, code),
+        (
+            format!("{}: 1 rule, valid\n", folder.join("rules.json").display()),
+            0
+        )
+    );
+    assert!(
+        err.starts_with(&format!(
+            "Warning: Cannot read {}",
+            folder.join("rules.d").display()
+        )),
+        "stderr: {err}"
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A relative `--file` into a rules.d that does not exist yet is a drop-in
+/// file too, so rules.json is checked for a rule that shadows the new one.
+#[test]
+fn rules_add_relative_file_into_a_missing_rules_d() {
+    let config =
+        std::env::temp_dir().join(format!("wctl-rules-add-relative-{}", std::process::id()));
+    std::fs::remove_dir_all(&config).ok();
+    let folder = config.join("gnome-window-control");
+    std::fs::create_dir_all(&folder).expect("temp dir");
+    std::fs::write(
+        folder.join("rules.json"),
+        r#"[{"match":{"class":"kitty"},"tile":"right"}]"#,
+    )
+    .expect("write rules.json");
+
+    let output = Command::new(cargo_bin("wctl"))
+        .args([
+            "rules",
+            "add",
+            "--file",
+            "rules.d/tool.json",
+            "-c",
+            "kitty",
+            "tile",
+            "left",
+        ])
+        .current_dir(&folder)
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .env("XDG_CONFIG_HOME", &config)
+        .env_remove("WCTL_TIMEOUT")
+        .output()
+        .expect("wctl runs");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "stderr: {err}");
+    assert!(
+        err.contains("Warning: rule 0 of rules.json already matches every window this rule would"),
+        "stderr: {err}"
+    );
+    assert!(folder.join("rules.d/tool.json").is_file());
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+const BROKEN_TILE: &str = r#"[{"match":{"class":"a"},"tile":"middle"}]"#;
+
+/// A broken rules.json beside a drop-in file is skipped with a warning, as
+/// the extension skips it, and the drop-in still loads. Without a drop-in it
+/// is the error it was before rules.d existed.
+#[test]
+fn rules_list_skips_a_broken_rules_json_beside_a_drop_in() {
+    let config = rules_config(
+        "rules-list-broken-user",
+        BROKEN_TILE,
+        &[("a.json", r#"[{"match":{"class":"foot"},"tile":"right"}]"#)],
+    );
+    let folder = config.join("gnome-window-control");
+    let user = folder.join("rules.json").display().to_string();
+
+    let (out, err, code) = wctl_config(&config, &["rules", "list"]);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(
+        err.starts_with(&format!("Warning: {user}: rules[0].tile: must be one of")),
+        "stderr: {err}"
+    );
+    let rows: Vec<String> = out
+        .lines()
+        .skip(1)
+        .map(|line| {
+            line.split_whitespace()
+                .take(3)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect();
+    assert_eq!(rows, ["rules.d/a.json 0 class=foot"], "printed: {out}");
+
+    // test and apply skip it too and go on to the bus.
+    for args in [&["rules", "test", "-c", "foot"][..], &["rules", "apply"]] {
+        let (_, err, code) = wctl_config(&config, args);
+        assert_ne!(code, 0);
+        assert!(
+            err.starts_with(&format!("Warning: {user}: rules[0].tile: must be one of")),
+            "{args:?} stderr: {err}"
+        );
+        assert!(err.contains("connect"), "{args:?} stderr: {err}");
+    }
+
+    std::fs::remove_file(folder.join("rules.d/a.json")).expect("remove");
+    let (out, err, code) = wctl_config(&config, &["rules", "list"]);
+    assert_eq!((out.as_str(), code), ("", 1));
+    assert!(
+        err.starts_with("Error: rules[0].tile: must be one of"),
+        "stderr: {err}"
+    );
+    for args in [&["rules", "test", "-c", "foot"][..], &["rules", "apply"]] {
+        let (_, err, code) = wctl_config(&config, args);
+        assert_eq!(code, 1, "{args:?} stderr: {err}");
+        assert!(
+            err.starts_with("Error: rules[0].tile: must be one of"),
+            "{args:?} stderr: {err}"
+        );
+        assert!(!err.contains("connect"), "{args:?} stderr: {err}");
+    }
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// Beside a drop-in file, a broken rules.json is named by its path like a
+/// broken drop-in, and `--json` reports it in the top-level fields alone.
+#[test]
+fn rules_check_names_a_broken_rules_json_beside_a_drop_in() {
+    let config = rules_config(
+        "rules-check-broken-user",
+        BROKEN_TILE,
+        &[("a.json", r#"[{"match":{"class":"foot"},"tile":"right"}]"#)],
+    );
+    let folder = config.join("gnome-window-control");
+    let path = |name: &str| folder.join(name).display().to_string();
+
+    let (out, err, code) = wctl_config(&config, &["rules", "check"]);
+    assert_eq!(code, 1, "stdout: {out} stderr: {err}");
+    assert_eq!(out, format!("{}: 1 rule, valid\n", path("rules.d/a.json")));
+    assert!(
+        err.starts_with(&format!(
+            "Error: {}: rules[0].tile: must be one of",
+            path("rules.json")
+        )),
+        "stderr: {err}"
+    );
+
+    let (out, _, code) = wctl_config(&config, &["rules", "check", "--json"]);
+    assert_eq!(code, 1, "stdout: {out}");
+    let report: serde_json::Value = serde_json::from_str(&out).expect("one JSON document");
+    assert_eq!(report["path"], path("rules.json"));
+    assert_eq!(report["exists"], true);
+    assert_eq!(report["valid"], false);
+    assert!(report["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("rules[0].tile: must be one of")));
+    assert_eq!(
+        report["dropins"],
+        serde_json::json!([{"path": path("rules.d/a.json"), "valid": true, "rules": 1}])
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// Beside a drop-in file, a missing rules.json is only that: the drop-in
+/// rules are loaded. Without one it reads as before.
+#[test]
+fn rules_check_without_rules_json_beside_a_drop_in() {
+    let config = rules_config(
+        "rules-check-no-user",
+        "[]",
+        &[("a.json", r#"[{"match":{"class":"foot"},"tile":"right"}]"#)],
+    );
+    let folder = config.join("gnome-window-control");
+    let user = folder.join("rules.json");
+    std::fs::remove_file(&user).expect("remove rules.json");
+
+    let (out, err, code) = wctl_config(&config, &["rules", "check"]);
+    assert_eq!(
+        (out, err.as_str(), code),
+        (
+            format!(
+                "No rules file at {}\n{}: 1 rule, valid\n",
+                user.display(),
+                folder.join("rules.d/a.json").display()
+            ),
+            "",
+            0
+        )
+    );
+
+    std::fs::remove_file(folder.join("rules.d/a.json")).expect("remove");
+    let (out, _, code) = wctl_config(&config, &["rules", "check"]);
+    assert_eq!(
+        (out, code),
+        (
+            format!("No rules file at {}; no rules are loaded\n", user.display()),
+            0
+        )
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// `add --file` that names the default rules.json is an add to rules.json,
+/// so a drop-in rule the new rule shadows is a warning.
+#[test]
+fn rules_add_file_naming_rules_json_sees_the_drop_ins() {
+    let config = rules_config(
+        "rules-add-file-user",
+        "[]",
+        &[("a.json", r#"[{"match":{"class":"foot"},"tile":"right"}]"#)],
+    );
+    let user = config
+        .join("gnome-window-control/rules.json")
+        .display()
+        .to_string();
+
+    let (out, err, code) = wctl_config(
+        &config,
+        &[
+            "rules", "add", "--file", &user, "-c", "foot", "tile", "left",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, format!("Added rule 0 to {user}\n"));
+    assert!(
+        err.contains("Warning: this rule matches every window rule 0 of rules.d/a.json would"),
+        "stderr: {err}"
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rules.json that is no regular file, as a FIFO, is refused before it is
+/// opened: a read of a FIFO does not finish.
+#[test]
+fn rules_refuse_a_fifo_rules_json() {
+    let config = rules_config("rules-fifo-user", "[]", &[]);
+    let user = config.join("gnome-window-control/rules.json");
+    std::fs::remove_file(&user).expect("remove rules.json");
+    if !Command::new("mkfifo")
+        .arg(&user)
+        .status()
+        .is_ok_and(|status| status.success())
+    {
+        eprintln!("skipped: mkfifo is not available");
+        std::fs::remove_dir_all(&config).ok();
+        return;
+    }
+    let message = format!(
+        "Error: Cannot read {}: not a regular file\n",
+        user.display()
+    );
+    let fifo = user.display().to_string();
+    for args in [
+        &["rules", "check"][..],
+        &["rules", "list"],
+        &["rules", "check", "--file", &fifo],
+        &["rules", "add", "-c", "kitty", "tile", "left"],
+    ] {
+        let (out, err, code) = wctl_config(&config, args);
+        assert_eq!(
+            (out.as_str(), err.as_str(), code),
+            ("", message.as_str(), 1),
+            "{args:?}"
+        );
+    }
+
+    // Another FIFO is a pipe the caller fills, as `--file <(...)` is.
+    let pipe = config.join("piped.json");
+    assert!(Command::new("mkfifo")
+        .arg(&pipe)
+        .status()
+        .is_ok_and(|status| status.success()));
+    let writer = {
+        let pipe = pipe.clone();
+        std::thread::spawn(move || std::fs::write(pipe, "[]"))
+    };
+    let (out, err, code) = wctl_config(
+        &config,
+        &["rules", "check", "--file", &pipe.display().to_string()],
+    );
+    writer.join().unwrap().expect("write the pipe");
+    assert_eq!(
+        (out, err.as_str(), code),
+        (format!("{}: 0 rules, valid\n", pipe.display()), "", 0)
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rules.json linked into a dotfiles repository is rules.json when
+/// `--file` names the link target, so a drop-in rule the new rule shadows is
+/// a warning.
+#[test]
+fn rules_add_file_naming_the_rules_json_link_target_sees_the_drop_ins() {
+    let config = rules_config(
+        "rules-add-link-target",
+        "[]",
+        &[("a.json", r#"[{"match":{"class":"foot"},"tile":"right"}]"#)],
+    );
+    let user = config.join("gnome-window-control/rules.json");
+    let target = config.join("dotfiles.json");
+    std::fs::rename(&user, &target).expect("move rules.json");
+    std::os::unix::fs::symlink(&target, &user).expect("symlink");
+    let target = target.display().to_string();
+
+    let (out, err, code) = wctl_config(
+        &config,
+        &[
+            "rules", "add", "--file", &target, "-c", "foot", "tile", "left",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, format!("Added rule 0 to {target}\n"));
+    assert!(
+        err.contains("Warning: this rule matches every window rule 0 of rules.d/a.json would"),
+        "stderr: {err}"
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rule with a newer key added to a drop-in earns no refused-key text. With
+/// no bus, no capability warning is printed either; `write_warnings` in
+/// commands/rules.rs pins the warnings of a shell that answers.
+#[test]
+fn rules_add_into_rules_d_prints_no_refused_key_text() {
+    let config = rules_config("rules-add-dropin-newer-key", "[]", &[]);
+    let tool = config
+        .join("gnome-window-control/rules.d/tool.json")
+        .display()
+        .to_string();
+
+    let (out, err, code) = wctl_config(
+        &config,
+        &[
+            "rules",
+            "add",
+            "--file",
+            &tool,
+            "--class-prefix",
+            "chrome-",
+            "tile",
+            "left",
+            "--overlay",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, format!("Added rule 0 to {tool}\n"));
+    assert_eq!(err, "");
+
+    std::fs::remove_dir_all(&config).ok();
+}

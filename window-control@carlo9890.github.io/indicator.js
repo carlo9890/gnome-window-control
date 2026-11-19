@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 // The top-bar icon, shown when the show-indicator setting is on. Its menu
-// applies the rules.json rules again and opens the preferences window.
+// applies the rules again and opens the preferences window.
 
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';

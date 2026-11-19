@@ -92,7 +92,7 @@ export const DBUS_INTERFACE_XML = `
             WaitForGeometry: the frame did not settle within timeout_ms
         org.gnome.Shell.Extensions.WindowControl.Disabled
             the extension was disabled while a wait, or an ApplyRules waiting
-            for rules.json, was pending
+            for the rules files, was pending
         org.freedesktop.DBus.Error.InvalidArgs
             a non-positive size or wait time, timeout_ms below quiet_ms, or
             an invalid wait selector
@@ -128,13 +128,13 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      Applies the loaded rules.json rules again, as a new window gets them
+      Applies the loaded rules (rules.json and rules.d) again, as a new window gets them
       once shown: window_id 0 means every open window, any other id that one
       window. applied is the number of windows a rule matched. A window not
       yet shown, whose own first rule apply is still queued, or that is still
       in its late-identity grace period, is skipped. A
       window whose placement waits for its unmaximize is placed again: the
-      newer placement replaces the pending one. A rules.json change
+      newer placement replaces the pending one. A rules file change
       that is still being read is waited for, so the rules applied are the
       ones saved.
     -->

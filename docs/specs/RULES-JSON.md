@@ -8,8 +8,8 @@ Two implementations follow it, and they are pinned to each other:
 
 | Implementation | Where | Pinned by |
 |---|---|---|
-| The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`, `resolvePlaceRect`, `tileRect`, `centerRect`) | `tests/check-rules-format.js` |
-| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors`, `match_vectors` and `min_width_vectors` tests in that file |
+| The extension's grammar | `window-control@carlo9890.github.io/rules-format.js` (`compileRules`, `compileRule`, `matchPredicate`, `resolvePlaceRect`, `tileRect`, `centerRect`, `isDropInName`) | `tests/check-rules-format.js` |
+| `wctl rules` | `cli/src/rules.rs` | the `rules_spec_vectors`, `geometry_vectors`, `match_vectors`, `min_width_vectors` and `dropin_vectors` tests in that file |
 
 Both read the same cases from `tests/vectors/rules-spec.json`. Change this file,
 both implementations and the vectors in **one commit**: a message or a formula
@@ -19,15 +19,56 @@ The window-touching half — when a rule is applied and what it does to a window
 — is `rules.js`, what an overlay is while it is one is `overlay.js`, and the
 GNOME 49 maximize API is `window-helpers.js`.
 
-## File
+## Files
+
+The rules come from one or more files. Every file has the format of the
+[Document](#document) below.
 
 | Property | Value |
 |---|---|
-| Path | `$XDG_CONFIG_HOME/gnome-window-control/rules.json`, `~/.config` when unset (`CONFIG_DIR`) |
+| User file | `$XDG_CONFIG_HOME/gnome-window-control/rules.json`, `~/.config` when unset (`CONFIG_DIR`) |
+| Drop-in folder | `CONFIG_DIR/rules.d/`. A tool that adds rules owns one file in it, for example `rules.d/revier.json`. |
 | Encoding | UTF-8, parsed with `JSON.parse` — no comments, no trailing commas |
-| Required | No. An absent file means no rules. |
+| Required | No. An absent file or folder means no rules from it. |
 
-The extension creates the directory at `enable()` and never writes the file.
+The extension creates `CONFIG_DIR` at `enable()`. It does not create
+`rules.d`, and it never writes a file. `wctl rules add --file` creates a
+missing `rules.d`.
+
+### Drop-in files
+
+A name in `rules.d` is a drop-in file when it matches
+`^[A-Za-z0-9][A-Za-z0-9._-]*\.json$` (`isDropInName`, `is_drop_in_name`)
+and the entry is a regular file after symlinks are followed. Any other entry
+is skipped without a message. The pattern skips the temporary files a writer
+renames into place (they start with `.`), editor backups (`revier.json~`) and
+a file turned off by a rename (`revier.json.off`). A FIFO is skipped before it
+is opened, because a read of a FIFO does not finish.
+
+`rules.d` is not read recursively.
+
+A writer writes a drop-in to a temporary name that starts with `.` in
+`rules.d`, then renames it to its final name, so a reload never reads half a
+file.
+
+### Order
+
+The rule list is `rules.json`, then each drop-in file in byte order of its
+name. Names are ASCII, so byte order is the default string sort on both sides:
+`10-a.json` is before `9-b.json`, `B.json` before `a.json`, and `a-b.json`
+before `a.json`. The first match wins
+([Matching and application](#matching-and-application)), so a rule in
+`rules.json` wins over a drop-in rule for the same window. This is the
+intended order: the user overrides a tool's rule in `rules.json` and never
+edits the tool's file.
+
+A file's rules stay together and in file order, so a `min_width` fallback
+chain in one file stays one chain.
+
+### Source label
+
+A message about a rule names its file by a source label: `rules.json`, or
+`rules.d/<name>` for a drop-in. `INDEX` and `rules[N]` count within one file.
 
 ## Document
 
@@ -202,12 +243,19 @@ wctl rules check [--file PATH] [--json]
 ```
 
 It exits 0 when the shell would load the file and 1 when it would not, printing
-the same message text. `cli/src/rules.rs` is what produces it.
+the same message text. `cli/src/rules.rs` is what produces it. Without
+`--file` it checks `rules.json` and every drop-in file, reports each one, and
+exits 1 when any one is refused, although the shell still loads the others.
 
-`compileRules` parses and validates the whole file before any rule takes
-effect. The first problem throws and **no rule from the file is applied** — a
-typo never leaves some rules live and others not. `WindowRules._compile` logs
-the message at warning level and runs with zero rules until the file changes.
+`compileRules` parses and validates one whole file before any rule of it takes
+effect. The first problem throws and **no rule from that file is applied** — a
+typo never leaves some rules of a file live and others not. The other files
+still load. `WindowRules` logs the message at warning level, as
+`<source label>: <message>; the rules of that file are off`, and runs without
+that file's rules until a file changes.
+
+A broken `rules.json` lets a drop-in rule win where a `rules.json` rule would
+have won. A broken drop-in releases the overlays its rules made, at that load.
 
 Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
@@ -270,7 +318,8 @@ on a real workarea is skipped at apply time instead.
 ## Matching and application
 
 The first rule whose every predicate matches, and whose `min_width` the
-tested monitor fits ([min_width](#min_width)), wins, in file order. Later
+tested monitor fits ([min_width](#min_width)), wins, in the [order](#order) of
+the files and of the rules in each file. Later
 matching rules are ignored. `wctl rules test <WINDOW>` reports which rule wins
 for a live window, which later ones it shadows, and the rectangle the action
 resolves to, without moving anything.
@@ -468,14 +517,20 @@ overview handlers are connected only while there is an overlay.
 
 ## Reload
 
-A `Gio.FileMonitor` on the directory, not the file, so an editor that saves by
-rename is still seen. Events are debounced by `RELOAD_DEBOUNCE_MS` into one
-reload. A reload replaces the whole rule set and affects windows created
+A `Gio.FileMonitor` on `CONFIG_DIR`, not on `rules.json`, so an editor that
+saves by rename is still seen, and a second one on `rules.d`. An event for the
+name `rules.json` or for any name in `rules.d` schedules a reload. An event for
+the name `rules.d` in `CONFIG_DIR` (the folder is created, deleted, renamed or
+a symlink to it is changed) replaces the `rules.d` monitor and schedules a
+reload, so a `rules.d` created after `enable()` is watched. Events are
+debounced by `RELOAD_DEBOUNCE_MS` into one reload. A reload reads every file
+again and replaces the whole rule set once, after the last read has landed. It
+affects windows created
 afterwards; which open windows are overlays is decided again at each load
 ([Overlay windows](#overlay-windows)). No restart is needed.
 
-When `rules.json` is a symlink, an edit to its target is not seen: it raises no
-event on the config directory. `touch -h ~/.config/gnome-window-control/rules.json`
+When `rules.json` or a drop-in file is a symlink, an edit to its target is not
+seen: it raises no event on the watched folder. `touch -h ~/.config/gnome-window-control/rules.json`
 raises one and reloads the file; disabling and enabling the extension reads it
 again too.
 
@@ -484,9 +539,11 @@ so the rule set changes when the read lands: a window created between
 `enable()` and the first read landing is not placed. A newer read and
 `disable()` cancel the one in flight, and a cancelled read changes nothing.
 
-A file that is absent, that cannot be read, or that does not validate leaves
-zero rules loaded until the file changes. A directory that cannot be watched
-is logged, and the file is then read once, at `enable()`.
+A file that is absent, that cannot be read, or that does not validate adds no
+rules until a file changes; the other files still load. A `rules.d` that
+cannot be listed is logged, and `rules.json` still loads. A folder that cannot
+be watched is logged, and its files are then read only at `enable()` and at a
+reload that the other monitor starts.
 
 `window-created` is connected only while at least one rule is loaded, so an
 absent or empty file costs nothing per window.
@@ -547,4 +604,6 @@ one without it refuses a file that carries either key. An extension that knows
 `class_prefix` MUST report `rules-class-prefix`, one that knows `overlay`
 MUST report `rules-overlay`, and one that knows `min_width` MUST report
 `rules-min-width`, for the same reason. An extension that serves `ApplyRules`
-MUST report `rules-apply`.
+MUST report `rules-apply`. An extension that reads `rules.d` MUST report
+`rules-dropin`: one without it ignores the folder and gives no error, so a
+tool that writes a drop-in checks this name first.

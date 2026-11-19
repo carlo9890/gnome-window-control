@@ -20,6 +20,7 @@
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 
 import { ROOT, check, report } from './check-helper.js';
@@ -118,7 +119,7 @@ try {
     const EXT = `${SCRATCH}/ext`;
     GLib.mkdir_with_parents(EXT, 0o755);
     for (const name of ['dbus-interface.js', 'dbus-service.js', 'extension.js', 'indicator.js', 'keybindings.js',
-        'overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js']) {
+        'overlay.js', 'rules-files.js', 'rules-format.js', 'rules.js', 'window-helpers.js']) {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
@@ -234,7 +235,7 @@ export class PopupSeparatorMenuItem {}
     // branch below mutter 50.
     const EXT49 = `${SCRATCH}/ext49`;
     GLib.mkdir_with_parents(EXT49, 0o755);
-    for (const name of ['overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js',
+    for (const name of ['overlay.js', 'rules-files.js', 'rules-format.js', 'rules.js', 'window-helpers.js',
         'stub-main.js', 'stub-shell.js'])
         write(`${EXT49}/${name}`, read(`${EXT}/${name}`));
     write(`${EXT49}/stub-config.js`, "export const PACKAGE_VERSION = '49.2';\n");
@@ -897,23 +898,23 @@ export class PopupSeparatorMenuItem {}
         const rules = new WindowRules(placer);
         rules.enable();
         await sleep(300);
-        rules._compile('[{"match":{"class":"max"},"tile":"left"}]');
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"max"},"tile":"left"}]' }]);
         const win = createWindow({ id: 31, wmClass: 'max', maximizeFlags: Meta.MaximizeFlags.BOTH });
         win.map();
         await sleep(100);
         check('a maximized window under a rule waits for its unmaximize',
             placer._pending.has(win) && win.moves.length === 0, JSON.stringify(win.moves));
-        rules._compile('[]');
+        rules._compile([{ label: 'rules.json', text: '[]' }]);
         await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
         check('a load to no rules lets the pending unmaximize wait place the window',
             JSON.stringify(win.moves) === '[[0,0,480,1080]]' && !rules._tracked.has(win),
             JSON.stringify(win.moves));
 
         // The same for a window whose apply is queued for the next idle.
-        rules._compile('[{"match":{"class":"max"},"tile":"left"}]');
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"max"},"tile":"left"}]' }]);
         const queued = createWindow({ id: 36, wmClass: 'max' });
         queued.map();
-        rules._compile('[]');
+        rules._compile([{ label: 'rules.json', text: '[]' }]);
         await sleep(100);
         check('a load to no rules lets a queued apply place the window',
             JSON.stringify(queued.moves) === '[[0,0,480,1080]]' && !rules._tracked.has(queued),
@@ -958,7 +959,7 @@ export class PopupSeparatorMenuItem {}
         const rules = new WindowRules(placer);
         rules.enable();
         await sleep(300);
-        rules._compile('[{"match":{"class":"flag"},"tile":"right"}]');
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"flag"},"tile":"right"}]' }]);
         const service = startService(placer);
         service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
         service.whenRulesLoaded = callback => rules.whenLoaded(callback);
@@ -1011,7 +1012,7 @@ export class PopupSeparatorMenuItem {}
         const rules = new WindowRules(placer);
         rules.enable();
         await sleep(300);
-        rules._compile('[{"match":{"class":"race"},"tile":"right"}]');
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"tile":"right"}]' }]);
         const service = startService(placer);
         service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
         service.whenRulesLoaded = callback => rules.whenLoaded(callback);
@@ -1396,10 +1397,10 @@ export class PopupSeparatorMenuItem {}
         await sleep(300);
         check('rules.json is loaded', rules._rules.length === 1, `${rules._rules.length} rule(s)`);
         const loads = consoleLines.slice(linesBeforeLoad).map(line => line.message)
-            .filter(message => message.includes('window rules off') || message.includes('rule(s) loaded'));
-        check('the load found no file and the reload found the rule', loads.length === 2 &&
-            loads[0].includes('no rules.json') && loads[1].includes('1 rule(s) loaded'),
-            JSON.stringify(loads));
+            .filter(message => message.includes('no rules.json') || message.includes('rule(s) loaded'));
+        check('the load found no file and the reload found the rule', loads.length === 3 &&
+            loads[0].includes('no rules.json') && loads[1].includes('0 rule(s) loaded') &&
+            loads[2].includes('1 rule(s) loaded'), JSON.stringify(loads));
         check('loading and reloading rules.json log nothing at notice level',
             noticesSince(linesBeforeLoad).length === 0, JSON.stringify(noticesSince(linesBeforeLoad)));
         const early = createWindow({ id: 4, wmClass: 'app', type: Meta.WindowType.MODAL_DIALOG });
@@ -1622,11 +1623,11 @@ export class PopupSeparatorMenuItem {}
         const late = createWindow({ id: 26, wmClass: 'term' });
         late.connect('notify::skip-taskbar', () => notifies.push(late.skip_taskbar === true));
         late.map();
-        rules._compile('[{"match":{"class":"app"},"tile":"left"}]');
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"app"},"tile":"left"}]' }]);
         await sleep(100);
         check('a load between the match and the apply makes no overlay from the rule it dropped',
             !overlays._windows.has(late) && !late.above);
-        rules._compile(OVERLAY_RULES);
+        rules._compile([{ label: 'rules.json', text: OVERLAY_RULES }]);
         check('both JS names of skip-taskbar read true on an overlay',
             late.skip_taskbar === true && late.skipTaskbar === true);
         check('becoming an overlay emits no notify::skip-taskbar', notifies.length === 0,
@@ -1634,18 +1635,18 @@ export class PopupSeparatorMenuItem {}
         late.make_above();
         late.unmake_above();
         late.make_above();
-        rules._compile('[{"match":{"class":"app"},"tile":"left"}]');
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"app"},"tile":"left"}]' }]);
         check('a release emits no notify::skip-taskbar and removes both overrides', notifies.length === 0 &&
             !Object.hasOwn(late, 'skip_taskbar') && !Object.hasOwn(late, 'skipTaskbar'),
             JSON.stringify(notifies));
         check('a release keeps an above the user set again after the overlay set its own', late.above);
-        rules._compile(OVERLAY_RULES);
+        rules._compile([{ label: 'rules.json', text: OVERLAY_RULES }]);
 
         // A load while a matching window is not shown yet: it becomes an
         // overlay when its rule is applied, not before, so no focus change can
         // minimize a window that was never on screen.
         const launching = createWindow({ id: 27, wmClass: 'term' });
-        rules._compile(OVERLAY_RULES);
+        rules._compile([{ label: 'rules.json', text: OVERLAY_RULES }]);
         focus(other);
         await sleep(400);
         check('a load makes no overlay of a window mutter has not shown',
@@ -1657,15 +1658,15 @@ export class PopupSeparatorMenuItem {}
 
         // The same for a window created while no rule watched for new ones,
         // so nothing recorded its map: its state shows it is not shown yet.
-        rules._compile('[]');
+        rules._compile([{ label: 'rules.json', text: '[]' }]);
         const untracked = createWindow({ id: 35, wmClass: 'term' });
-        rules._compile(OVERLAY_RULES);
+        rules._compile([{ label: 'rules.json', text: OVERLAY_RULES }]);
         focus(other);
         await sleep(400);
         check('a load makes no overlay of an untracked window mutter has not shown',
             !rules._tracked.has(untracked) && !overlays._windows.has(untracked) && !untracked.minimized);
         untracked.map();
-        rules._compile(OVERLAY_RULES);
+        rules._compile([{ label: 'rules.json', text: OVERLAY_RULES }]);
         check('that window becomes an overlay at the next load once shown', isOverlay(untracked));
         untracked.emit('unmanaged');
 
@@ -2059,6 +2060,153 @@ export class PopupSeparatorMenuItem {}
         check('ApplyRules leaves no handler behind after disable()',
             display.handlerCount() === 0 && maximized.handlerCount() === 0 && rules._sourceIds.size === 0,
             `display ${display.handlerCount()}, window ${maximized.handlerCount()}`);
+    }
+
+    // -- WindowRules: the rules.d drop-in files ---------------------------------
+    //
+    // The rule list is rules.json, then each drop-in in name order, so
+    // rules.json wins a match. A name the pattern refuses and an entry that is
+    // not a regular file are skipped; a file that does not validate drops its
+    // own rules only. A rules.d created after enable() is watched, and
+    // disable() releases both monitors (RULES-JSON.md).
+
+    {
+        windows.length = 0;
+        const configDir = `${SCRATCH}/config/gnome-window-control`;
+        const dropIns = `${configDir}/rules.d`;
+        const LEFT = '[[0,0,480,1080]]';
+        const sourcesOf = rules => JSON.stringify(rules._rules.map(rule => `${rule.source}#${rule.index}`));
+        const warningsSince = from => consoleLines.slice(from)
+            .filter(line => line.level === GLib.LogLevelFlags.LEVEL_WARNING).map(line => line.message);
+        write(`${configDir}/rules.json`, '[{"match":{"class":"app"},"tile":"left"}]');
+        const rules = new WindowRules(new WindowPlacer());
+        rules.enable();
+        await sleep(300);
+        check('rules.d: no folder means no monitor and no error', rules._dropInMonitor === null &&
+            sourcesOf(rules) === '["rules.json#0"]', sourcesOf(rules));
+
+        GLib.mkdir_with_parents(dropIns, 0o755);
+        await sleep(300);
+        check('rules.d: a folder created after enable() is watched', rules._dropInMonitor !== null,
+            `${rules._dropInMonitor}`);
+        const SKIPPED = '[{"match":{"class":"skipped"},"tile":"left"}]';
+        for (const name of ['.b.json.tmp', '.hidden.json', 'c.json~', 'c.json.off', 'c.txt'])
+            write(`${dropIns}/${name}`, SKIPPED);
+        GLib.mkdir_with_parents(`${dropIns}/d.json`, 0o755);
+        write(`${dropIns}/b.json`, '[{"match":{"class":"app"},"tile":"right"},{"match":{"class":"b"},"tile":"right"}]');
+        write(`${dropIns}/a.json`, '[{"match":{"class":"b"},"tile":"left"}]');
+        await sleep(300);
+        check('rules.d: a drop-in edit reloads rules.json, then the drop-ins in name order, and nothing else',
+            sourcesOf(rules) === '["rules.json#0","rules.d/a.json#0","rules.d/b.json#0","rules.d/b.json#1"]',
+            sourcesOf(rules));
+        const linesBeforeApply = consoleLines.length;
+        const app = createWindow({ id: 60, wmClass: 'app' });
+        const b = createWindow({ id: 61, wmClass: 'b' });
+        app.map();
+        b.map();
+        await sleep(100);
+        check('rules.d: a rules.json rule wins over a drop-in rule', JSON.stringify(app.moves) === LEFT,
+            JSON.stringify(app.moves));
+        check('rules.d: an earlier drop-in wins over a later one', JSON.stringify(b.moves) === LEFT,
+            JSON.stringify(b.moves));
+        const named = consoleLines.slice(linesBeforeApply)
+            .some(line => line.message === '[Window Control] rules.d/a.json rules[0] -> 61: tile applied');
+        check('rules.d: an apply names the file and the index in it', named);
+
+        const linesBeforeBroken = consoleLines.length;
+        write(`${dropIns}/a.json`, '[{"match":{"class":"b"},"tile":"nowhere"}]');
+        await sleep(300);
+        check('rules.d: a broken drop-in drops its own rules only',
+            sourcesOf(rules) === '["rules.json#0","rules.d/b.json#0","rules.d/b.json#1"]', sourcesOf(rules));
+        const dropInWarnings = warningsSince(linesBeforeBroken);
+        check('rules.d: the warning names the drop-in', dropInWarnings.length === 1 &&
+            dropInWarnings[0].startsWith('[Window Control] rules.d/a.json: rules[0].tile: ') &&
+            dropInWarnings[0].endsWith('; the rules of that file are off'), JSON.stringify(dropInWarnings));
+
+        const linesBeforeMainBroken = consoleLines.length;
+        write(`${dropIns}/a.json`, '[]');
+        write(`${configDir}/rules.json`, 'not json');
+        await sleep(300);
+        check('rules.d: a broken rules.json does not stop the drop-ins',
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1"]', sourcesOf(rules));
+        const mainWarnings = warningsSince(linesBeforeMainBroken);
+        check('rules.d: the warning names rules.json', mainWarnings.length === 1 &&
+            mainWarnings[0].startsWith('[Window Control] rules.json: ') &&
+            mainWarnings[0].endsWith('; the rules of that file are off'), JSON.stringify(mainWarnings));
+
+        // A read of a FIFO never finishes, so the load would never land.
+        GLib.spawn_command_line_sync(`mkfifo ${GLib.shell_quote(`${dropIns}/e.json`)}`);
+        Gio.File.new_for_path(`${dropIns}/f.json`).make_symbolic_link('e.json', null);
+        write(`${configDir}/g-target.json`, '[{"match":{"class":"g"},"tile":"left"}]');
+        Gio.File.new_for_path(`${dropIns}/g.json`).make_symbolic_link('../g-target.json', null);
+        await sleep(300);
+        check('rules.d: a FIFO is skipped, behind a link too, and a link to a file is followed',
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]', sourcesOf(rules));
+
+        const linesBeforeReloads = consoleLines.length;
+        rules._load();
+        rules._load();
+        let landed = null;
+        rules.whenLoaded(() => (landed = sourcesOf(rules)));
+        await sleep(200);
+        const loadLines = consoleLines.slice(linesBeforeReloads).filter(line => line.message.includes('rule(s) loaded'));
+        check('rules.d: a cancelled load changes nothing', loadLines.length === 1, JSON.stringify(loadLines));
+        check('rules.d: whenLoaded waits for the drop-ins too',
+            landed === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]', `${landed}`);
+
+        const syncOverlays = rules._syncOverlays;
+        rules._syncOverlays = () => {
+            rules._syncOverlays = syncOverlays;
+            throw new Error('a throw while the rules are applied');
+        };
+        rules._load();
+        let answered = null;
+        rules.whenLoaded(ok => (answered = ok));
+        await sleep(200);
+        check('rules.d: a throw during a load still answers whenLoaded',
+            answered === true && rules._loading === false, `answered ${answered}, loading ${rules._loading}`);
+
+        // A rules.json that is a FIFO is never opened, so it cannot hold up
+        // the drop-ins or ApplyRules.
+        const rulesJson = `${configDir}/rules.json`;
+        GLib.unlink(rulesJson);
+        GLib.spawn_command_line_sync(`mkfifo ${GLib.shell_quote(rulesJson)}`);
+        rules._load();
+        let fifoAnswered = null;
+        rules.whenLoaded(ok => (fifoAnswered = ok));
+        await sleep(200);
+        check('rules.d: a FIFO rules.json is skipped and the drop-ins load',
+            fifoAnswered === true &&
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]',
+            `answered ${fifoAnswered}, ${sourcesOf(rules)}`);
+        GLib.unlink(rulesJson);
+
+        const monitors = [rules._fileMonitor, rules._dropInMonitor];
+        const ids = [rules._fileMonitorId, rules._dropInMonitorId];
+        rules.disable();
+        check('rules.d: disable() cancels both monitors and disconnects their handlers',
+            rules._fileMonitor === null && rules._dropInMonitor === null &&
+            monitors.every((monitor, i) => monitor.is_cancelled() &&
+                !GObject.signal_handler_is_connected(monitor, ids[i])));
+        check('rules.d: disable() leaves no handler on the display and no source',
+            display.handlerCount() === 0 && rules._sourceIds.size === 0,
+            `${display.handlerCount()} handler(s), tracked ${[...rules._sourceIds]}`);
+        GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(dropIns)} ${GLib.shell_quote(`${configDir}/g-target.json`)}`);
+        // The block broke rules.json on purpose; the next block starts valid.
+        write(`${configDir}/rules.json`, '[]');
+        windows.length = 0;
+    }
+
+    // -- GetCapabilities: rules-dropin ------------------------------------------
+    //
+    // A tool that writes a drop-in checks this name first.
+
+    {
+        const service = startService();
+        const capabilities = service.GetCapabilities();
+        check('GetCapabilities reports rules-dropin', capabilities.includes('rules-dropin'),
+            JSON.stringify(capabilities));
+        service.unexport();
     }
 } finally {
     GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);

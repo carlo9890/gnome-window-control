@@ -6,6 +6,16 @@
 
 import { compileRules } from '../rules-format.js';
 
+export function rulesLabel(count) {
+    return count === 1 ? '1 rule' : `${count} rules`;
+}
+
+// The subtitle of a drop-in file's row.
+export function ruleSummary(text) {
+    const result = checkRules(text);
+    return result.ok ? rulesLabel(result.count) : result.message;
+}
+
 // { ok: true, count } or { ok: false, message, line }, with `line` 1-based, or
 // null when the message names no place in the text.
 export function checkRules(text) {

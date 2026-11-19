@@ -906,5 +906,37 @@
       { "name": "a narrower monitor does not fit", "min_width": 3000, "monitor_width": 2999, "fits": false },
       { "name": "a missing monitor does not fit", "min_width": 3000, "monitor_width": null, "fits": false }
     ]
+  },
+  "dropins": {
+    "comment": [
+      "Which names in rules.d are drop-in files (isDropInName, is_drop_in_name),",
+      "and the order they load in: byte order, which the names being ASCII makes",
+      "the default string sort on both sides."
+    ],
+    "names": [
+      { "name": "revier.json", "loaded": true },
+      { "name": "50-revier.json", "loaded": true },
+      { "name": "A_b-c.d.json", "loaded": true },
+      { "name": "rules.json", "loaded": true },
+      { "name": ".revier.json", "loaded": false },
+      { "name": ".#revier.json", "loaded": false },
+      { "name": ".rules.json.1234", "loaded": false },
+      { "name": ".rules.json.link.1234", "loaded": false },
+      { "name": ".goutputstream-AB12", "loaded": false },
+      { "name": "revier.json~", "loaded": false },
+      { "name": "revier.json.off", "loaded": false },
+      { "name": "revier.json.swp", "loaded": false },
+      { "name": "revier.JSON", "loaded": false },
+      { "name": ".json", "loaded": false },
+      { "name": "-a.json", "loaded": false },
+      { "name": "_a.json", "loaded": false },
+      { "name": "rév.json", "loaded": false },
+      { "name": "a b.json", "loaded": false },
+      { "name": "", "loaded": false }
+    ],
+    "order": {
+      "input": ["a.json", "9-b.json", "a_b.json", "B.json", "10-a.json", "a-b.json"],
+      "output": ["10-a.json", "9-b.json", "B.json", "a-b.json", "a.json", "a_b.json"]
+    }
   }
 }

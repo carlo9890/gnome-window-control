@@ -16,7 +16,8 @@ import { ROOT, check, report } from './check-helper.js';
 
 const PREFS = `${ROOT}/window-control@carlo9890.github.io/prefs`;
 const { SHORTCUT_GROUPS, needsModifier } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
-const { checkRules, elementOffsets } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
+const { checkRules, elementOffsets, ruleSummary } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
+const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-format.js`, null));
 
 // -- the shortcut list holds every shortcut key of the schema, once ----------
 
@@ -55,6 +56,24 @@ const { checkRules, elementOffsets } = await import(GLib.filename_to_uri(`${PREF
     check('an error with no place in the text has no line',
         !top.ok && top.line === null && top.message === 'the top-level value must be an array of rules',
         JSON.stringify(top));
+}
+
+// -- the drop-in list: which names, in which order, and each file's summary --
+
+{
+    const names = dropInNames(['b.json', '.b.json.tmp', 'a.json~', '10-a.json', 'B.json', 'a.json.off',
+        '9-b.json', 'a-b.json', 'a.json', 'notes.txt']);
+    check('dropInNames keeps the drop-in names in byte order',
+        JSON.stringify(names) === JSON.stringify(['10-a.json', '9-b.json', 'B.json', 'a-b.json', 'a.json', 'b.json']),
+        JSON.stringify(names));
+    check('a valid drop-in counts its rules',
+        ruleSummary('[{"match":{"class":"a"},"tile":"left"},{"match":{"class":"b"},"tile":"right"}]') === '2 rules');
+    check('a drop-in with one rule says rule', ruleSummary('[{"match":{"class":"a"},"tile":"left"}]') === '1 rule');
+    check('an empty array has 0 rules', ruleSummary('[]') === '0 rules');
+    const invalid = ruleSummary('[{"match":{"class":"a"},"tile":"middle"}]');
+    check('an invalid drop-in shows the grammar message', invalid.startsWith('rules[0].tile: must be one of'), invalid);
+    const empty = ruleSummary('');
+    check('an empty file shows the parse error', empty === checkRules('').message && empty !== '', empty);
 }
 
 // -- elementOffsets skips brackets and commas inside strings and nesting ------

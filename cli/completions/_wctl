@@ -232,7 +232,8 @@ _wctl() {
                                 '2:window:_wctl_window_ids'
                             ;;
                         path)
-                            _arguments "${rules_args[@]}"
+                            _arguments "${rules_args[@]}" \
+                                '(--file)--dir[Print the rules.d folder]'
                             ;;
                         list|check)
                             _arguments "${rules_args[@]}" '--json[Output as JSON]'
