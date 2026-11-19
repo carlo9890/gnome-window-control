@@ -1974,6 +1974,18 @@ export class PopupSeparatorMenuItem {}
         check('rules.d: whenLoaded waits for the drop-ins too',
             landed === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]', `${landed}`);
 
+        const syncOverlays = rules._syncOverlays;
+        rules._syncOverlays = () => {
+            rules._syncOverlays = syncOverlays;
+            throw new Error('a throw while the rules are applied');
+        };
+        rules._load();
+        let answered = null;
+        rules.whenLoaded(ok => (answered = ok));
+        await sleep(200);
+        check('rules.d: a throw during a load still answers whenLoaded',
+            answered === true && rules._loading === false, `answered ${answered}, loading ${rules._loading}`);
+
         const monitors = [rules._fileMonitor, rules._dropInMonitor];
         const ids = [rules._fileMonitorId, rules._dropInMonitorId];
         rules.disable();
@@ -1985,6 +1997,8 @@ export class PopupSeparatorMenuItem {}
             display.handlerCount() === 0 && rules._sourceIds.size === 0,
             `${display.handlerCount()} handler(s), tracked ${[...rules._sourceIds]}`);
         GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(dropIns)} ${GLib.shell_quote(`${configDir}/g-target.json`)}`);
+        // The block broke rules.json on purpose; the next block starts valid.
+        write(`${configDir}/rules.json`, '[]');
         windows.length = 0;
     }
 

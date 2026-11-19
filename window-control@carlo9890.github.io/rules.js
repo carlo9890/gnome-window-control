@@ -174,8 +174,13 @@ export class WindowRules {
         this._readFiles(cancellable).then(files => {
             if (cancellable.is_cancelled())
                 return;
-            this._compile(files);
-            this._finishLoad();
+            // A throw while the rules are applied must not leave ApplyRules
+            // waiting for a load that has ended.
+            try {
+                this._compile(files);
+            } finally {
+                this._finishLoad();
+            }
         });
     }
 
@@ -221,16 +226,21 @@ export class WindowRules {
             const enumerator = await dir.enumerate_children_async('standard::name,standard::type',
                 Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
             const names = [];
-            for (;;) {
-                const infos = await enumerator.next_files_async(32, GLib.PRIORITY_DEFAULT, cancellable);
-                if (infos.length === 0)
-                    break;
-                for (const info of infos) {
-                    if (info.get_file_type() === Gio.FileType.REGULAR && isDropInName(info.get_name()))
-                        names.push(info.get_name());
+            try {
+                for (;;) {
+                    const infos = await enumerator.next_files_async(32, GLib.PRIORITY_DEFAULT, cancellable);
+                    if (infos.length === 0)
+                        break;
+                    for (const info of infos) {
+                        if (info.get_file_type() === Gio.FileType.REGULAR && isDropInName(info.get_name()))
+                            names.push(info.get_name());
+                    }
                 }
+            } finally {
+                // Not with the load's cancellable: a cancelled load must still
+                // release the folder.
+                await enumerator.close_async(GLib.PRIORITY_DEFAULT, null);
             }
-            await enumerator.close_async(GLib.PRIORITY_DEFAULT, cancellable);
             return names.sort();
         } catch (e) {
             if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))

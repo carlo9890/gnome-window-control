@@ -169,8 +169,7 @@ export class RulesEditor {
             infos = [...this._dropInDir.enumerate_children('standard::name,standard::type',
                 Gio.FileQueryInfoFlags.NONE, null)];
         } catch (e) {
-            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND) ||
-                e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_DIRECTORY))
+            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
                 return [];
             return [[DROPIN_DIR, `Cannot read: ${e.message}`]];
         }

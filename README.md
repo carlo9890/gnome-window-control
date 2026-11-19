@@ -430,8 +430,11 @@ rules.d/revier.json  0      class=quake       place center top 100% 40%         
 ```
 
 `SOURCE` names the file, and `INDEX` counts within it: `remove` and
-`add --at` use that index, with `--file` for a drop-in file. `list --json` prints `rules.json` alone, and
-`--file` makes every subcommand act on that one file.
+`add --at` use that index, with `--file` for a drop-in file. A file that does
+not load is left out of the table with a warning, as the extension leaves it
+out; without a drop-in file, a broken `rules.json` is an error. `list --json`
+prints `rules.json` alone, and `--file` makes every subcommand act on that one
+file.
 
 A rule matches with `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`,
 `--title-prefix <TEXT>`, `--title-suffix <TEXT>` or `--class-prefix <TEXT>`
@@ -457,7 +460,8 @@ Rules are applied only by an extension that reports the `rules` capability
 (`wctl version --json` lists it). When the running shell has an older one
 loaded, `add` and `remove` still write the file but warn that no rule will be
 applied until you install the newer extension and restart the shell. With no
-shell running, and with `--file`, they say nothing.
+shell running, and with a `--file` the extension does not read, they say
+nothing.
 
 `title_prefix` and `title_suffix` need an extension that also reports
 `rules-title-affix`. An older one refuses a file that has either key and then
@@ -490,9 +494,11 @@ file: no D-Bus, and it works with the extension stopped or not installed.
 
 With drop-in files and no `--file`, it checks `rules.json` and each drop-in
 file, prints one line per valid file and an `Error:` line with the path per
-broken one, and exits 1 when any file is broken. It warns when a rule of an
-earlier file matches every window a rule of a later file would. `--json` adds
-a `dropins` array of `path`, `valid` and `rules` or `error`.
+broken one, and exits 1 when any file is broken. A missing `rules.json` reads
+`No rules file at <path>`. It warns when a rule of an earlier file matches
+every window a rule of a later file would. With `--json`, the top-level
+fields describe `rules.json` alone, and a `dropins` array holds each drop-in
+file's `path`, `valid` and `rules` or `error`.
 
 ### Why did a rule not fire?
 
@@ -527,9 +533,10 @@ extension refuses the whole file.
 Without `--file` it tests the rules of every file the extension loads. A
 drop-in rule reads `Matched rule 0 of rules.d/revier.json: ...`, and `--json`
 adds `matched_source` and `shadowed_sources`, the source of `matched` and of
-each `shadowed` index. A file the extension refuses is left out with a
-warning; only `rules.json` alone still exits 5. Against an extension that
-does not report `rules-dropin`, only `rules.json` takes part, with a warning.
+each `shadowed` index. A file that does not load is left out with a
+warning, as the extension leaves it out; without a drop-in file, a broken
+`rules.json` is still an error. Against an extension that does not report
+`rules-dropin`, only `rules.json` takes part, with a warning.
 `rules apply` checks the files the same way.
 
 ### Resetting windows to their rules
