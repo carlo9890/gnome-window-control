@@ -2251,3 +2251,125 @@ fn rules_add_file_naming_rules_json_sees_the_drop_ins() {
 
     std::fs::remove_dir_all(&config).ok();
 }
+
+/// A rules.json that is no regular file, as a FIFO, is refused before it is
+/// opened: a read of a FIFO does not finish.
+#[test]
+fn rules_refuse_a_fifo_rules_json() {
+    let config = rules_config("rules-fifo-user", "[]", &[]);
+    let user = config.join("gnome-window-control/rules.json");
+    std::fs::remove_file(&user).expect("remove rules.json");
+    if !Command::new("mkfifo")
+        .arg(&user)
+        .status()
+        .is_ok_and(|status| status.success())
+    {
+        eprintln!("skipped: mkfifo is not available");
+        std::fs::remove_dir_all(&config).ok();
+        return;
+    }
+    let message = format!(
+        "Error: Cannot read {}: not a regular file\n",
+        user.display()
+    );
+    let fifo = user.display().to_string();
+    for args in [
+        &["rules", "check"][..],
+        &["rules", "list"],
+        &["rules", "check", "--file", &fifo],
+        &["rules", "add", "-c", "kitty", "tile", "left"],
+    ] {
+        let (out, err, code) = wctl_config(&config, args);
+        assert_eq!(
+            (out.as_str(), err.as_str(), code),
+            ("", message.as_str(), 1),
+            "{args:?}"
+        );
+    }
+
+    // Another FIFO is a pipe the caller fills, as `--file <(...)` is.
+    let pipe = config.join("piped.json");
+    assert!(Command::new("mkfifo")
+        .arg(&pipe)
+        .status()
+        .is_ok_and(|status| status.success()));
+    let writer = {
+        let pipe = pipe.clone();
+        std::thread::spawn(move || std::fs::write(pipe, "[]"))
+    };
+    let (out, err, code) = wctl_config(
+        &config,
+        &["rules", "check", "--file", &pipe.display().to_string()],
+    );
+    writer.join().unwrap().expect("write the pipe");
+    assert_eq!(
+        (out, err.as_str(), code),
+        (format!("{}: 0 rules, valid\n", pipe.display()), "", 0)
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rules.json linked into a dotfiles repository is rules.json when
+/// `--file` names the link target, so a drop-in rule the new rule shadows is
+/// a warning.
+#[test]
+fn rules_add_file_naming_the_rules_json_link_target_sees_the_drop_ins() {
+    let config = rules_config(
+        "rules-add-link-target",
+        "[]",
+        &[("a.json", r#"[{"match":{"class":"foot"},"tile":"right"}]"#)],
+    );
+    let user = config.join("gnome-window-control/rules.json");
+    let target = config.join("dotfiles.json");
+    std::fs::rename(&user, &target).expect("move rules.json");
+    std::os::unix::fs::symlink(&target, &user).expect("symlink");
+    let target = target.display().to_string();
+
+    let (out, err, code) = wctl_config(
+        &config,
+        &[
+            "rules", "add", "--file", &target, "-c", "foot", "tile", "left",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, format!("Added rule 0 to {target}\n"));
+    assert!(
+        err.contains("Warning: this rule matches every window rule 0 of rules.d/a.json would"),
+        "stderr: {err}"
+    );
+
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rule with a newer key added to a drop-in earns no refused-key text. With
+/// no bus, no capability warning is printed either; `write_warnings` in
+/// commands/rules.rs pins the warnings of a shell that answers.
+#[test]
+fn rules_add_into_rules_d_prints_no_refused_key_text() {
+    let config = rules_config("rules-add-dropin-newer-key", "[]", &[]);
+    let tool = config
+        .join("gnome-window-control/rules.d/tool.json")
+        .display()
+        .to_string();
+
+    let (out, err, code) = wctl_config(
+        &config,
+        &[
+            "rules",
+            "add",
+            "--file",
+            &tool,
+            "--class-prefix",
+            "chrome-",
+            "tile",
+            "left",
+            "--overlay",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, format!("Added rule 0 to {tool}\n"));
+    assert_eq!(err, "");
+
+    std::fs::remove_dir_all(&config).ok();
+}

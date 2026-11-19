@@ -103,6 +103,9 @@ const NEWER_RULE_KEYS: [(&[&str], &str, &str); 1] = [(
 /// key the file holds. One unknown key turns every rule off, so this looks at
 /// the whole file.
 ///
+/// A drop-in gets no key warning: an extension that does not read rules.d
+/// ignores it whole, and one that does knows every key.
+///
 /// The file is valid either way and takes effect once the extension is updated,
 /// so writing it is not refused. Only a shell that answers warns: no shell at
 /// all is silent, because editing rules before a session exists is legitimate.
@@ -111,15 +114,23 @@ fn warn_if_unsupported(ctx: &Ctx, document: &[Value], is_drop_in: bool) {
     let Some(reported) = ctx.bus.reported_capabilities(CAPABILITY_PROBE) else {
         return;
     };
-    if !reported.iter().any(|name| name == RULES_CAPABILITY) {
-        eprintln!("Warning: {NO_RULES_SUPPORT}");
-    }
-    if is_drop_in && !reported.iter().any(|name| name == DROP_IN_CAPABILITY) {
-        eprintln!("Warning: {NO_DROP_IN_SUPPORT}");
-    }
-    for warning in refused_keys(&reported, document) {
+    for warning in write_warnings(&reported, document, is_drop_in) {
         eprintln!("Warning: {warning}");
     }
+}
+
+/// The warnings of `warn_if_unsupported`.
+fn write_warnings(reported: &[String], document: &[Value], is_drop_in: bool) -> Vec<&'static str> {
+    let mut warnings = Vec::new();
+    if !reported.iter().any(|name| name == RULES_CAPABILITY) {
+        warnings.push(NO_RULES_SUPPORT);
+    }
+    if !is_drop_in {
+        warnings.extend(refused_keys(reported, document));
+    } else if !reported.iter().any(|name| name == DROP_IN_CAPABILITY) {
+        warnings.push(NO_DROP_IN_SUPPORT);
+    }
+    warnings
 }
 
 /// The warning of each `NEWER_MATCH_KEYS` and `NEWER_RULE_KEYS` entry that the
@@ -259,6 +270,7 @@ fn drop_ins(folder: &Path) -> Result<Vec<Source>> {
 /// The rules of one file, under its source label.
 struct RuleFile {
     label: String,
+    path: PathBuf,
     raw: Vec<Value>,
     compiled: Vec<rules::Rule>,
 }
@@ -268,6 +280,7 @@ fn load_file(source: &Source, name_the_file: bool) -> Result<Option<RuleFile>> {
     Ok(
         read_rules(&source.path, name_the_file)?.map(|(raw, compiled)| RuleFile {
             label: source.label(),
+            path: source.path.clone(),
             raw,
             compiled,
         }),
@@ -300,44 +313,67 @@ fn load_order(user_file: &Path) -> Vec<(Source, Result<Option<RuleFile>>)> {
         .collect()
 }
 
+/// The files of the load order that load, and the failure of rules.json when
+/// it does not.
+struct LoadedFiles {
+    files: Vec<RuleFile>,
+    /// Kept for an extension that does not read rules.d: for it, rules.json
+    /// is the only file, and one that does not load is an error.
+    user_failure: Option<Fail>,
+}
+
 /// The files of the load order that load, for `list`, `test` and `apply`. One
 /// that does not is named in a warning and left out, as the extension leaves
 /// it out. rules.json without a drop-in file fails instead, as it did before
 /// rules.d existed. An absent file has no rules.
-fn loaded_files(user_file: &Path) -> Result<Vec<RuleFile>> {
+fn loaded_files(user_file: &Path) -> Result<LoadedFiles> {
     let order = load_order(user_file);
     let alone = order.len() == 1;
-    let mut files = Vec::new();
+    let mut loaded = LoadedFiles {
+        files: Vec::new(),
+        user_failure: None,
+    };
     for (source, rules) in order {
         match rules {
-            Ok(Some(file)) => files.push(file),
-            Ok(None) => files.push(RuleFile {
+            Ok(Some(file)) => loaded.files.push(file),
+            Ok(None) => loaded.files.push(RuleFile {
                 label: source.label(),
+                path: source.path,
                 raw: Vec::new(),
                 compiled: Vec::new(),
             }),
             Err(failure) if alone => return Err(failure),
-            Err(failure) => eprintln!("Warning: {failure}"),
+            Err(failure) => {
+                eprintln!("Warning: {failure}");
+                if source.name.is_none() {
+                    loaded.user_failure = Some(failure);
+                }
+            }
         }
     }
-    Ok(files)
+    Ok(loaded)
 }
 
 /// The files `list` and `test` read: the `--file` one alone, refused whole
 /// when it does not load, else the load order.
-fn files_of(file: Option<PathBuf>) -> Result<(PathBuf, Vec<RuleFile>)> {
+fn files_of(file: Option<PathBuf>) -> Result<(PathBuf, LoadedFiles)> {
     let Some(path) = file else {
         let path = default_path()?;
-        let files = loaded_files(&path)?;
-        return Ok((path, files));
+        let loaded = loaded_files(&path)?;
+        return Ok((path, loaded));
     };
     let (raw, compiled) = load(&path)?;
     let files = vec![RuleFile {
         label: USER_LABEL.to_string(),
+        path: path.clone(),
         raw,
         compiled,
     }];
-    Ok((path, files))
+    let loaded = LoadedFiles {
+        files,
+        user_failure: None,
+    };
+    Ok((path, loaded))
 }
 
 /// What reading the rules file produced.
@@ -349,7 +385,23 @@ enum Loaded {
     },
 }
 
+/// The extension's own rules.json is refused before it is opened when it is
+/// no regular file, as the extension skips it: a read of a FIFO does not
+/// finish while nothing writes to it. An explicit `--file` may be a pipe, as
+/// in `--file <(...)`. `metadata` follows a symlink.
 fn read_file(path: &Path) -> Result<Loaded> {
+    match std::fs::metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Loaded::Absent),
+        Ok(metadata)
+            if !metadata.is_file() && default_path().is_ok_and(|user_file| user_file == path) =>
+        {
+            return Err(Fail::error(format!(
+                "Cannot read {}: not a regular file",
+                path.display()
+            )))
+        }
+        _ => {}
+    }
     match std::fs::read_to_string(path) {
         Ok(text) => Ok(Loaded::Present { text }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Loaded::Absent),
@@ -718,7 +770,7 @@ fn list(args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    let (_, files) = files_of(file)?;
+    let (_, LoadedFiles { files, .. }) = files_of(file)?;
 
     // No file and no rules print nothing at all: a `wctl rules list | wc -l`
     // should say 0, not 1 for a header over an empty table.
@@ -935,6 +987,16 @@ impl Target {
         let Ok(user_file) = default_path() else {
             return Target::Other;
         };
+        // rules.json may be a link, say into a dotfiles repository, and
+        // `--file` may name the file it points to.
+        if let (Ok(file), Ok(user)) = (
+            std::fs::canonicalize(path),
+            std::fs::canonicalize(&user_file),
+        ) {
+            if file == user {
+                return Target::User;
+            }
+        }
         let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
             return Target::Other;
         };
@@ -1245,7 +1307,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
     // The files are read BEFORE the bus call: a broken rules file is the
     // user's problem to fix either way, and reporting it costs nothing.
-    let (path, files) = files_of(file)?;
+    let (path, loaded) = files_of(file)?;
 
     // A match reported against an extension that ignores the file would
     // explain a placement that never happens. This command needs the shell
@@ -1255,7 +1317,7 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if !capabilities.iter().any(|name| name == RULES_CAPABILITY) {
         return Err(Fail::error(NO_RULES_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
-    let files = files_the_extension_loads(&capabilities, files)?;
+    let files = files_the_extension_loads(&capabilities, loaded)?;
     let rules: Vec<(&str, usize, &rules::Rule)> = files
         .iter()
         .flat_map(|file| {
@@ -1359,6 +1421,12 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
     println!("{}", window_line(id, &wm_class, &title));
     if rules.is_empty() {
+        // rules.json is among the files unless it was left out: broken, or
+        // refused beside a drop-in.
+        if !files.iter().any(|file| file.label == USER_LABEL) {
+            println!("{}", no_rule_loaded_line(&path));
+            return Ok(());
+        }
         match read_file(&path)? {
             Loaded::Absent => println!("No rules file at {}", path.display()),
             Loaded::Present { .. } => println!("{}: no rules", path.display()),
@@ -1427,29 +1495,63 @@ fn rule_name(label: &str, index: usize) -> String {
     }
 }
 
+/// `test`'s line when no rule is loaded and rules.json was left out.
+fn no_rule_loaded_line(path: &Path) -> String {
+    format!("No rule is loaded from {} or rules.d", path.display())
+}
+
 /// The files whose rules the loaded extension applies, for `test` and
-/// `apply`.
-///
-/// An extension that reads rules.d knows every match key and rule key. An
-/// older one reads rules.json alone, and refuses it whole for one key it does
-/// not know, which leaves nothing to test or apply, so that fails.
+/// `apply`, with a warning for each one left out.
 fn files_the_extension_loads(
     capabilities: &[String],
-    mut files: Vec<RuleFile>,
+    loaded: LoadedFiles,
 ) -> Result<Vec<RuleFile>> {
-    if capabilities.iter().any(|name| name == DROP_IN_CAPABILITY) {
-        return Ok(files);
+    let (warnings, files) = extension_files(capabilities, loaded);
+    for warning in warnings {
+        eprintln!("Warning: {warning}");
     }
-    if files.iter().any(|file| file.label != USER_LABEL) {
-        eprintln!("Warning: {NO_DROP_IN_SUPPORT}");
-        files.retain(|file| file.label == USER_LABEL);
-    }
-    for file in &files {
-        if let Some(warning) = refused_keys(capabilities, &file.raw).first() {
-            return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
+    files
+}
+
+/// The decision of `files_the_extension_loads`, and its warnings.
+///
+/// An extension that does not read rules.d reads rules.json alone, so a
+/// rules.json that does not load fails as it did before rules.d existed. The
+/// extension refuses a file whole for one key it does not know. A refused
+/// rules.json that is the only file leaves nothing to test or apply, so that
+/// fails; any other refused file is left out.
+fn extension_files(
+    capabilities: &[String],
+    loaded: LoadedFiles,
+) -> (Vec<String>, Result<Vec<RuleFile>>) {
+    let mut warnings = Vec::new();
+    let mut files = loaded.files;
+    if !capabilities.iter().any(|name| name == DROP_IN_CAPABILITY) {
+        if files.iter().any(|file| file.label != USER_LABEL) {
+            warnings.push(NO_DROP_IN_SUPPORT.to_string());
+            files.retain(|file| file.label == USER_LABEL);
+        }
+        if let Some(failure) = loaded.user_failure {
+            return (warnings, Err(failure));
         }
     }
-    Ok(files)
+    if let [only] = files.as_slice() {
+        if let (USER_LABEL, Some(warning)) = (
+            only.label.as_str(),
+            refused_keys(capabilities, &only.raw).first(),
+        ) {
+            let failure = Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION);
+            return (warnings, Err(failure));
+        }
+    }
+    files.retain(|file| match refused_keys(capabilities, &file.raw).first() {
+        Some(warning) => {
+            warnings.push(format!("{}: {warning}", file.path.display()));
+            false
+        }
+        None => true,
+    });
+    (warnings, Ok(files))
 }
 
 /// (index, logical width) of every monitor, what `min_width` is compared
@@ -1492,13 +1594,13 @@ fn apply(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         )?)
     };
 
-    let files = loaded_files(&default_path()?)?;
+    let loaded = loaded_files(&default_path()?)?;
 
     let capabilities = ctx.bus.get_capabilities()?;
     if !capabilities.iter().any(|name| name == APPLY_CAPABILITY) {
         return Err(Fail::error(NO_APPLY_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
-    files_the_extension_loads(&capabilities, files)?;
+    files_the_extension_loads(&capabilities, loaded)?;
 
     // ApplyRules reads 0 as every open window, so the window ID 0, which no
     // window has, must not reach it.
@@ -1760,6 +1862,7 @@ mod tests {
         let compiled = rules::compile_rules(&document).expect("a valid file");
         RuleFile {
             label: label.to_string(),
+            path: PathBuf::from(format!("/c/{label}")),
             raw: document.as_array().expect("an array").clone(),
             compiled,
         }
@@ -1798,6 +1901,151 @@ mod tests {
                 ("rules.json", 0, "rules.d/b.json", 0),
                 ("rules.d/a.json", 1, "rules.d/b.json", 1),
             ]
+        );
+    }
+
+    fn names(names: &[&str]) -> Vec<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    fn labels(files: &[RuleFile]) -> Vec<&str> {
+        files.iter().map(|file| file.label.as_str()).collect()
+    }
+
+    fn loaded(files: Vec<RuleFile>, user_failure: Option<&str>) -> LoadedFiles {
+        LoadedFiles {
+            files,
+            user_failure: user_failure.map(Fail::error),
+        }
+    }
+
+    fn plain_file() -> Value {
+        json!([{"match": {"class": "kitty"}, "tile": "left"}])
+    }
+
+    fn overlay_file() -> Value {
+        json!([{"match": {"class": "kitty"}, "tile": "left", "overlay": true}])
+    }
+
+    /// Without rules-dropin only rules.json counts, so a rules.json that did
+    /// not load is the error, although a drop-in loaded.
+    #[test]
+    fn extension_files_fail_on_a_broken_rules_json_without_rules_dropin() {
+        let (warnings, files) = extension_files(
+            &names(&["rules"]),
+            loaded(vec![file("rules.d/a.json", plain_file())], Some("broken")),
+        );
+        assert_eq!(warnings, [NO_DROP_IN_SUPPORT]);
+        let failure = files.err().expect("an error");
+        assert_eq!(
+            (failure.to_string(), failure.code()),
+            ("broken".to_string(), 1)
+        );
+
+        let (warnings, files) = extension_files(
+            &names(&["rules", "rules-dropin"]),
+            loaded(vec![file("rules.d/a.json", plain_file())], Some("broken")),
+        );
+        assert!(warnings.is_empty());
+        assert_eq!(labels(&files.expect("files")), ["rules.d/a.json"]);
+    }
+
+    /// The refused keys are checked with or without rules-dropin. A refused
+    /// rules.json alone fails; any other refused file is left out.
+    #[test]
+    fn extension_files_check_the_refused_keys_of_every_file() {
+        let (warnings, files) = extension_files(
+            &names(&["rules", "rules-dropin"]),
+            loaded(vec![file("rules.json", overlay_file())], None),
+        );
+        assert!(warnings.is_empty());
+        let failure = files.err().expect("an error");
+        assert_eq!(
+            (failure.to_string(), failure.code()),
+            (
+                NEWER_RULE_KEYS[0].2.to_string(),
+                crate::fail::EXIT_NO_EXTENSION
+            )
+        );
+
+        let (warnings, files) = extension_files(
+            &names(&["rules"]),
+            loaded(
+                vec![
+                    file("rules.json", overlay_file()),
+                    file("rules.d/a.json", plain_file()),
+                ],
+                None,
+            ),
+        );
+        assert_eq!(warnings, [NO_DROP_IN_SUPPORT]);
+        assert_eq!(
+            files.err().expect("an error").code(),
+            crate::fail::EXIT_NO_EXTENSION
+        );
+
+        let (warnings, files) = extension_files(
+            &names(&["rules", "rules-dropin"]),
+            loaded(
+                vec![
+                    file("rules.json", overlay_file()),
+                    file("rules.d/a.json", plain_file()),
+                    file("rules.d/b.json", overlay_file()),
+                ],
+                None,
+            ),
+        );
+        assert_eq!(
+            warnings,
+            [
+                format!("/c/rules.json: {}", NEWER_RULE_KEYS[0].2),
+                format!("/c/rules.d/b.json: {}", NEWER_RULE_KEYS[0].2),
+            ]
+        );
+        assert_eq!(labels(&files.expect("files")), ["rules.d/a.json"]);
+
+        let (warnings, files) = extension_files(
+            &names(&["rules", "rules-dropin", "rules-overlay"]),
+            loaded(
+                vec![
+                    file("rules.json", overlay_file()),
+                    file("rules.d/a.json", plain_file()),
+                ],
+                None,
+            ),
+        );
+        assert!(warnings.is_empty());
+        assert_eq!(
+            labels(&files.expect("files")),
+            ["rules.json", "rules.d/a.json"]
+        );
+    }
+
+    /// A drop-in gets no refused-key warning; rules.json gets no rules.d one.
+    #[test]
+    fn write_warnings_name_refused_keys_for_rules_json_only() {
+        let document = overlay_file();
+        let document = document.as_array().expect("an array");
+        assert_eq!(
+            write_warnings(&names(&["rules"]), document, false),
+            [NEWER_RULE_KEYS[0].2]
+        );
+        assert_eq!(
+            write_warnings(&names(&["rules"]), document, true),
+            [NO_DROP_IN_SUPPORT]
+        );
+        assert_eq!(
+            write_warnings(&names(&[]), document, true),
+            [NO_RULES_SUPPORT, NO_DROP_IN_SUPPORT]
+        );
+        assert!(write_warnings(&names(&["rules", "rules-dropin"]), document, true).is_empty());
+    }
+
+    #[test]
+    fn no_rule_loaded_line_names_both_places() {
+        assert_eq!(
+            no_rule_loaded_line(Path::new("/c/rules.json")),
+            "No rule is loaded from /c/rules.json or rules.d"
         );
     }
 

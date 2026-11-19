@@ -540,9 +540,11 @@ drop-in rule reads `Matched rule 0 of rules.d/revier.json: ...`, and `--json`
 adds `matched_source` and `shadowed_sources`, the source of `matched` and of
 each `shadowed` index. A file that does not load is left out with a
 warning, as the extension leaves it out; without a drop-in file, a broken
-`rules.json` is still an error. Against an extension that does not report
-`rules-dropin`, only `rules.json` takes part, with a warning.
-`rules apply` checks the files the same way.
+`rules.json` is still an error. A file the extension refuses for a key it does
+not know is left out with a warning too, except a refused `rules.json` that is
+the only file taking part: that still exits 5. Against an extension that does
+not report `rules-dropin`, only `rules.json` takes part, with a warning, and a
+broken `rules.json` is an error. `rules apply` checks the files the same way.
 
 ### Resetting windows to their rules
 
