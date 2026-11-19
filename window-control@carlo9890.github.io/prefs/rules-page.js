@@ -3,16 +3,18 @@
 // The Rules page: a text editor for rules.json. It checks the text as you
 // type with the extension's own grammar, saves only a valid file, and asks
 // the extension over D-Bus to apply the saved rules to the open windows.
+// The drop-in files in rules.d are listed below the editor, read only.
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
-import { checkRules } from './rules-check.js';
+import { checkRules, dropInNames, ruleSummary, rulesLabel } from './rules-check.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
+const DROPIN_DIR = 'rules.d';
 const CHECK_DELAY_MS = 300;
 // An editor's save raises several events; read the file once they stop.
 const DISK_DEBOUNCE_MS = 100;
@@ -34,6 +36,10 @@ export class RulesEditor {
     constructor(window) {
         this._window = window;
         this._file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
+        this._dropInDir = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]));
+        this._dropInRows = [];
+        this._dropInMonitor = null;
+        this._dropInMonitorId = 0;
         // The text on disk, '' for no file, and the text _load put in the
         // buffer: the two differ when the file is missing and the buffer
         // holds EXAMPLE.
@@ -47,9 +53,11 @@ export class RulesEditor {
 
         this.page = new Adw.PreferencesPage({ title: 'Rules', icon_name: 'document-edit-symbolic' });
         this.page.add(this._buildEditorGroup());
+        this.page.add(this._buildDropInGroup());
         this.page.add(this._buildApplyGroup());
 
         this._load();
+        this._loadDropIns();
         this._watch();
         window.connect('close-request', () => {
             this._destroy();
@@ -70,6 +78,7 @@ export class RulesEditor {
         this._monitor.disconnect(this._monitorId);
         this._monitor.cancel();
         this._monitor = null;
+        this._unwatchDropIns();
     }
 
     _buildEditorGroup() {
@@ -119,11 +128,21 @@ export class RulesEditor {
         return group;
     }
 
+    _buildDropInGroup() {
+        this._dropInGroup = new Adw.PreferencesGroup({
+            title: 'Rule Files from Other Programs',
+            description: GLib.markup_escape_text(
+                `In ${displayPath(this._dropInDir)}. A rule in ${RULES_FILE} wins over them. Read only here.`, -1),
+            visible: false,
+        });
+        return this._dropInGroup;
+    }
+
     _buildApplyGroup() {
         const group = new Adw.PreferencesGroup();
         this._applyRow = new Adw.ActionRow({
             title: 'Apply Rules Again',
-            subtitle: 'Place every open window by the saved rules, as a new window is placed',
+            subtitle: 'Place every open window by the saved rules of all files, as a new window is placed',
         });
         this._applyButton = new Gtk.Button({ label: 'Apply', valign: Gtk.Align.CENTER });
         this._applyButton.connect('clicked', () => this._apply());
@@ -141,6 +160,46 @@ export class RulesEditor {
                 return null;
             throw e;
         }
+    }
+
+    // [name, subtitle] per drop-in file. A missing rules.d has none.
+    _readDropIns() {
+        let infos;
+        try {
+            infos = [...this._dropInDir.enumerate_children('standard::name,standard::type',
+                Gio.FileQueryInfoFlags.NONE, null)];
+        } catch (e) {
+            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND) ||
+                e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_DIRECTORY))
+                return [];
+            return [[DROPIN_DIR, `Cannot read: ${e.message}`]];
+        }
+        // Following symlinks, as the extension does, so a FIFO is never opened.
+        const regular = infos.filter(info => info.get_file_type() === Gio.FileType.REGULAR)
+            .map(info => info.get_name());
+        return dropInNames(regular).map(name => {
+            try {
+                const [, bytes] = this._dropInDir.get_child(name).load_contents(null);
+                return [name, ruleSummary(new TextDecoder().decode(bytes))];
+            } catch (e) {
+                return [name, `Cannot read: ${e.message}`];
+            }
+        });
+    }
+
+    _loadDropIns() {
+        for (const row of this._dropInRows)
+            this._dropInGroup.remove(row);
+        this._dropInRows = this._readDropIns().map(([name, subtitle]) => {
+            const row = new Adw.ActionRow({
+                title: GLib.markup_escape_text(name, -1),
+                subtitle: GLib.markup_escape_text(subtitle, -1),
+                subtitle_selectable: true,
+            });
+            this._dropInGroup.add(row);
+            return row;
+        });
+        this._dropInGroup.visible = this._dropInRows.length > 0;
     }
 
     _load() {
@@ -200,6 +259,8 @@ export class RulesEditor {
 
     // The directory rather than the file, as the extension watches it: an
     // editor that saves by renaming a new file over the old one is seen too.
+    // rules.d gets a monitor of its own, made again when the folder itself
+    // changes, so one created later is watched too.
     _watch() {
         try {
             this._file.get_parent().make_directory_with_parents(null);
@@ -209,19 +270,47 @@ export class RulesEditor {
         }
         this._monitor = this._file.get_parent().monitor_directory(Gio.FileMonitorFlags.NONE, null);
         this._monitorId = this._monitor.connect('changed', (_monitor, file) => {
-            if (file.get_basename() !== RULES_FILE)
+            const name = file.get_basename();
+            if (name === DROPIN_DIR)
+                this._watchDropIns();
+            else if (name !== RULES_FILE)
                 return;
-            if (this._diskId)
-                GLib.source_remove(this._diskId);
-            this._diskId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DISK_DEBOUNCE_MS, () => {
-                this._diskId = 0;
-                this._onDiskChange();
-                return GLib.SOURCE_REMOVE;
-            });
+            this._scheduleDiskChange();
+        });
+        this._watchDropIns();
+    }
+
+    _watchDropIns() {
+        this._unwatchDropIns();
+        try {
+            this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch {
+            return;
+        }
+        this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleDiskChange());
+    }
+
+    _unwatchDropIns() {
+        if (!this._dropInMonitor)
+            return;
+        this._dropInMonitor.disconnect(this._dropInMonitorId);
+        this._dropInMonitor.cancel();
+        this._dropInMonitor = null;
+        this._dropInMonitorId = 0;
+    }
+
+    _scheduleDiskChange() {
+        if (this._diskId)
+            GLib.source_remove(this._diskId);
+        this._diskId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DISK_DEBOUNCE_MS, () => {
+            this._diskId = 0;
+            this._onDiskChange();
+            return GLib.SOURCE_REMOVE;
         });
     }
 
     _onDiskChange() {
+        this._loadDropIns();
         let text;
         try {
             text = this._readFile() ?? '';
@@ -272,7 +361,7 @@ export class RulesEditor {
             const { count } = this._result;
             this._statusIcon.icon_name = 'object-select-symbolic';
             this._statusIcon.css_classes = ['success'];
-            this._statusRow.title = count === 1 ? 'Valid, 1 rule' : `Valid, ${count} rules`;
+            this._statusRow.title = `Valid, ${rulesLabel(count)}`;
         } else {
             this._statusIcon.icon_name = 'dialog-error-symbolic';
             this._statusIcon.css_classes = ['error'];
@@ -304,8 +393,8 @@ export class RulesEditor {
         if (this._result.ok)
             this._statusRow.subtitle = modified ? 'Not saved' : '';
         this._applyRow.subtitle = modified
-            ? 'Save the changes first: this applies the saved file'
-            : 'Place every open window by the saved rules, as a new window is placed';
+            ? `Save the changes first: this applies the saved ${RULES_FILE} and the files in ${DROPIN_DIR}`
+            : 'Place every open window by the saved rules of all files, as a new window is placed';
     }
 
     _apply() {

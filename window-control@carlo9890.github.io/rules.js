@@ -1,19 +1,26 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
 // Window rules: place each new window by the rules in
-// ~/.config/gnome-window-control/rules.json, and keep the overlay rules on the
-// open windows. The grammar is in rules-format.js.
+// ~/.config/gnome-window-control/rules.json and rules.d/*.json, and keep the
+// overlay rules on the open windows. The grammar is in rules-format.js.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
-import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
+import { centerRect, compileRules, fitsMonitor, isDropInName, resolvePlaceRect, tileRect } from './rules-format.js';
 import { UnmaximizeWait, looksUnmapped, maximizeFlags, workareaOf } from './window-helpers.js';
 
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
 const RULES_FILE = 'rules.json';
+const DROPIN_DIR = 'rules.d';
+const DROPIN_PATH = GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]);
+
+Gio._promisify(Gio.File.prototype, 'load_contents_async');
+Gio._promisify(Gio.File.prototype, 'enumerate_children_async');
+Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async');
+Gio._promisify(Gio.FileEnumerator.prototype, 'close_async');
 
 // A Wayland client's app_id and first real title can land after the window is
 // shown, so a shown window that matched nothing yet stays under evaluation this
@@ -37,6 +44,11 @@ const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
 // no Meta.is_wayland_compositor().
 const STAGE_ALWAYS_LOGICAL = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
 
+// How a journal line names a rule: its file and its index in that file.
+function ruleName(rule) {
+    return `${rule.source} rules[${rule.index}]`;
+}
+
 export class WindowRules {
     constructor() {
         this._rules = [];
@@ -44,6 +56,8 @@ export class WindowRules {
         this._tracked = new Map();
         this._fileMonitor = null;
         this._fileMonitorId = 0;
+        this._dropInMonitor = null;
+        this._dropInMonitorId = 0;
         this._reloadId = 0;
         this._loadCancellable = null;
         // A read in flight, and what waits for it (whenLoaded).
@@ -77,10 +91,16 @@ export class WindowRules {
         }
         if (this._fileMonitor) {
             this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
-                if (file.get_basename() === RULES_FILE)
+                const name = file.get_basename();
+                // A rules.d created, deleted or replaced after enable() is
+                // another folder, so its monitor is made again.
+                if (name === DROPIN_DIR)
+                    this._watchDropIns();
+                if (name === RULES_FILE || name === DROPIN_DIR)
                     this._scheduleReload();
             });
         }
+        this._watchDropIns();
         this._load();
     }
 
@@ -101,12 +121,38 @@ export class WindowRules {
             this._fileMonitor = null;
             this._fileMonitorId = 0;
         }
+        this._unwatchDropIns();
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._overlays.destroy();
         this._overlays = null;
         this._rules = [];
         this._syncWatch();
+    }
+
+    // No rules.d means no monitor: the CONFIG_DIR monitor sees it created.
+    // monitor_directory() does not fail for a missing path, hence the check.
+    _watchDropIns() {
+        this._unwatchDropIns();
+        const dir = Gio.File.new_for_path(DROPIN_PATH);
+        if (dir.query_file_type(Gio.FileQueryInfoFlags.NONE, null) !== Gio.FileType.DIRECTORY)
+            return;
+        try {
+            this._dropInMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch (e) {
+            console.error(`[Window Control] cannot watch ${DROPIN_PATH}: ${e.message}`);
+            return;
+        }
+        this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleReload());
+    }
+
+    _unwatchDropIns() {
+        if (!this._dropInMonitor)
+            return;
+        this._dropInMonitor.disconnect(this._dropInMonitorId);
+        this._dropInMonitor.cancel();
+        this._dropInMonitor = null;
+        this._dropInMonitorId = 0;
     }
 
     _scheduleReload() {
@@ -119,36 +165,80 @@ export class WindowRules {
 
     // Asynchronous, so the read never blocks the compositor. A newer read
     // and disable() both cancel the one in flight, and a cancelled read changes
-    // nothing.
+    // nothing. The rule set is replaced once, after every file has been read.
     _load() {
         this._loadCancellable?.cancel();
         this._loading = true;
         const cancellable = new Gio.Cancellable();
         this._loadCancellable = cancellable;
-        const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
-        file.load_contents_async(cancellable, (source, result) => {
+        this._readFiles(cancellable).then(files => {
             if (cancellable.is_cancelled())
                 return;
-            let text;
-            try {
-                const [, bytes] = source.load_contents_finish(result);
-                text = new TextDecoder().decode(bytes);
-            } catch (e) {
-                // Rules the file no longer yields must not stay active, whatever
-                // the reason it cannot be read.
-                this._rules = [];
-                this._syncWatch();
-                this._syncOverlays();
-                if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-                    console.debug(`[Window Control] no ${RULES_FILE}; window rules off`);
-                else
-                    console.error(`[Window Control] ${RULES_FILE}: cannot read: ${e.message}; window rules off`);
-                this._finishLoad();
-                return;
-            }
-            this._compile(text);
+            this._compile(files);
             this._finishLoad();
         });
+    }
+
+    // [{label, text}] of every file that could be read: rules.json, then the
+    // drop-ins in name order.
+    async _readFiles(cancellable) {
+        const files = [];
+        const main = await this._readFile(RULES_FILE, cancellable);
+        if (main !== null)
+            files.push({ label: RULES_FILE, text: main });
+        for (const name of await this._dropInNames(cancellable)) {
+            const label = `${DROPIN_DIR}/${name}`;
+            const text = await this._readFile(label, cancellable);
+            if (text !== null)
+                files.push({ label, text });
+        }
+        return files;
+    }
+
+    // The text of a file under CONFIG_DIR, or null when there is none to read.
+    async _readFile(label, cancellable) {
+        try {
+            const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, label]));
+            const [bytes] = await file.load_contents_async(cancellable);
+            return new TextDecoder().decode(bytes);
+        } catch (e) {
+            // A drop-in deleted since the listing is simply gone.
+            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
+                if (label === RULES_FILE)
+                    console.debug(`[Window Control] no ${RULES_FILE}`);
+            } else if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
+                console.error(`[Window Control] ${label}: cannot read: ${e.message}; the rules of that file are off`);
+            }
+            return null;
+        }
+    }
+
+    // The drop-in names in rules.d, sorted. The type is the one of a link's
+    // target, so a FIFO behind a link is skipped too.
+    async _dropInNames(cancellable) {
+        try {
+            const dir = Gio.File.new_for_path(DROPIN_PATH);
+            const enumerator = await dir.enumerate_children_async('standard::name,standard::type',
+                Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
+            const names = [];
+            for (;;) {
+                const infos = await enumerator.next_files_async(32, GLib.PRIORITY_DEFAULT, cancellable);
+                if (infos.length === 0)
+                    break;
+                for (const info of infos) {
+                    if (info.get_file_type() === Gio.FileType.REGULAR && isDropInName(info.get_name()))
+                        names.push(info.get_name());
+                }
+            }
+            await enumerator.close_async(GLib.PRIORITY_DEFAULT, cancellable);
+            return names.sort();
+        } catch (e) {
+            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+                console.debug(`[Window Control] no ${DROPIN_DIR}`);
+            else if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                console.error(`[Window Control] ${DROPIN_DIR}: cannot list: ${e.message}; its rules are off`);
+            return [];
+        }
     }
 
     // Run `callback(true)` once no reload is due and no read is in flight, at
@@ -169,14 +259,17 @@ export class WindowRules {
             callback(true);
     }
 
-    _compile(text) {
-        try {
-            this._rules = compileRules(text);
-            console.debug(`[Window Control] ${RULES_FILE}: ${this._rules.length} rule(s) loaded`);
-        } catch (e) {
-            this._rules = [];
-            console.warn(`[Window Control] ${RULES_FILE}: ${e.message}; window rules off`);
-        }
+    // A file that does not validate adds no rules; the other files still do.
+    _compile(files) {
+        this._rules = files.flatMap(({ label, text }) => {
+            try {
+                return compileRules(text).map((rule, index) => Object.assign(rule, { source: label, index }));
+            } catch (e) {
+                console.warn(`[Window Control] ${label}: ${e.message}; the rules of that file are off`);
+                return [];
+            }
+        });
+        console.debug(`[Window Control] ${this._rules.length} rule(s) loaded`);
         this._syncWatch();
         this._syncOverlays();
     }
@@ -221,7 +314,7 @@ export class WindowRules {
                 this._overlays.remove(win);
             if (index < 0)
                 continue;
-            this._apply(win, rule, index, null, true);
+            this._apply(win, rule, null, true);
             applied++;
         }
         console.debug(`[Window Control] rules applied again to ${applied} window(s)`);
@@ -387,7 +480,7 @@ export class WindowRules {
         config.set_position(target.x, target.y);
         config.set_size(target.width, target.height);
         this._tracked.get(win).headStart = { rule, monitor };
-        console.debug(`[Window Control] rules[${index}] -> ${win.get_id()}: ${rule.geometry.kind} set before the first frame`);
+        console.debug(`[Window Control] ${ruleName(rule)} -> ${win.get_id()}: ${rule.geometry.kind} set before the first frame`);
     }
 
     _evaluate(win) {
@@ -423,7 +516,7 @@ export class WindowRules {
             entry.applyId = this._addIdle(() => {
                 entry.applyId = 0;
                 this._untrack(win);
-                this._apply(win, rule, index, headStartMonitor);
+                this._apply(win, rule, headStartMonitor);
             });
             return;
         }
@@ -442,7 +535,7 @@ export class WindowRules {
     // `again` is an apply to a window placed before (applyRules). With it, a
     // rule workspace that does not exist is skipped: mutter would append one
     // at each apply.
-    _apply(win, rule, index, headStartMonitor, again = false) {
+    _apply(win, rule, headStartMonitor, again = false) {
         const id = win.get_id();
         // A load between the match and this call has decided the open
         // windows already; a rule it dropped makes no overlay.
@@ -450,27 +543,27 @@ export class WindowRules {
             this._overlays.add(win);
         if (rule.workspace !== null) {
             if (again && rule.workspace >= global.workspace_manager.get_n_workspaces())
-                console.debug(`[Window Control] rules[${index}] -> ${id}: no such workspace, skipped`);
+                console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: no such workspace, skipped`);
             else
                 win.change_workspace_by_index(rule.workspace, true);
         }
         if (rule.monitor !== null) {
             if (rule.monitor >= global.display.get_n_monitors()) {
-                console.debug(`[Window Control] rules[${index}] -> ${id}: no such monitor, skipped`);
+                console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: no such monitor, skipped`);
                 return;
             }
             win.move_to_monitor(rule.monitor);
         }
         if (!rule.geometry) {
-            console.debug(`[Window Control] rules[${index}] -> ${id}: applied`);
+            console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: applied`);
             return;
         }
         if (win.is_fullscreen()) {
-            console.debug(`[Window Control] rules[${index}] -> ${id}: fullscreen, geometry skipped`);
+            console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: fullscreen, geometry skipped`);
             return;
         }
         if (maximizeFlags(win) === 0) {
-            this._placeFrame(win, rule, index, headStartMonitor);
+            this._placeFrame(win, rule, headStartMonitor);
             return;
         }
         // A client that restores itself maximized, or one mutter
@@ -484,21 +577,21 @@ export class WindowRules {
         entry.wait = new UnmaximizeWait(win, landed => {
             this._tracked.delete(win);
             if (landed)
-                this._placeFrame(win, rule, index, headStartMonitor);
+                this._placeFrame(win, rule, headStartMonitor);
         });
         this._tracked.set(win, entry);
     }
 
-    _placeFrame(win, rule, index, headStartMonitor) {
+    _placeFrame(win, rule, headStartMonitor) {
         const id = win.get_id();
         const workarea = workareaOf(win, rule.monitor ?? headStartMonitor ?? win.get_monitor());
         const target = this._resolve(rule.geometry, win, workarea);
         if (!target) {
-            console.debug(`[Window Control] rules[${index}] -> ${id}: resolves to nothing on this workarea, skipped`);
+            console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: resolves to nothing on this workarea, skipped`);
             return;
         }
         win.move_resize_frame(true, target.x, target.y, target.width, target.height);
-        console.debug(`[Window Control] rules[${index}] -> ${id}: ${rule.geometry.kind} applied`);
+        console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: ${rule.geometry.kind} applied`);
     }
 
     _resolve(geometry, win, workarea) {

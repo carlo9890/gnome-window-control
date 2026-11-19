@@ -103,10 +103,15 @@ PLACEMENT RULES:
     moment it appears. The extension re-reads the file on every change; no
     restart. Only rules test and rules apply need a running shell. Every
     subcommand but rules apply takes --file <PATH> to act on another file.
-    rules list [--json]     Show the rules in file order
-    rules path              Print the path of the rules file
+    The extension also reads each *.json file in rules.d next to rules.json
+    (a tool writes its own file there), after rules.json, in name order. The
+    first matching rule wins, so rules.json wins over a drop-in file. Without
+    --file, list, check, test and apply take every file.
+    rules list [--json]     Show the rules in load order, with the SOURCE
+                            file of each; --json prints rules.json only
+    rules path [--dir]      Print the path of the rules file, or of rules.d
     rules check [--json]
-                            Validate the file. Same verdict and same message
+                            Validate the files. Same verdict and same message
                             the extension would log, so a file this accepts
                             is a file the shell will load.
     rules add <MATCH> [ACTION] [--min-width <PX>] [--workspace <N>]

@@ -93,6 +93,20 @@ pub fn fits_monitor(min_width: Option<i64>, monitor_width: Option<i64>) -> bool 
     }
 }
 
+/// A name in rules.d that is loaded as a rules file. Mirrors isDropInName in
+/// rules-format.js. ASCII only, so sorting the names sorts them in the byte
+/// order the extension loads them in.
+pub fn is_drop_in_name(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".json") else {
+        return false;
+    };
+    let mut bytes = stem.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first.is_ascii_alphanumeric())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
 pub const CENTER_AXES: [&str; 3] = ["horizontal", "vertical", "both"];
 
 /// One `match` predicate: a selector kind and the value it compares against.
@@ -551,6 +565,32 @@ mod tests {
                 "min_width: {name}"
             );
         }
+    }
+
+    /// The drop-in names and their load order, against `is_drop_in_name` and
+    /// the default sort.
+    #[test]
+    fn dropin_vectors() {
+        let vectors = vectors();
+        for case in vectors["dropins"]["names"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            assert_eq!(
+                is_drop_in_name(name),
+                case["loaded"].as_bool().unwrap(),
+                "drop-in name: {name:?}"
+            );
+        }
+        let strings = |key: &str| -> Vec<String> {
+            vectors["dropins"]["order"][key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|name| name.as_str().unwrap().to_string())
+                .collect()
+        };
+        let mut sorted = strings("input");
+        sorted.sort();
+        assert_eq!(sorted, strings("output"));
     }
 
     #[test]

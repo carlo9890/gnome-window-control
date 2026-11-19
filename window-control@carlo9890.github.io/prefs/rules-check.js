@@ -4,7 +4,23 @@
 // line the first error is on, so the editor can mark it. Imports only
 // rules-format.js, which imports nothing.
 
-import { compileRules } from '../rules-format.js';
+import { compileRules, isDropInName } from '../rules-format.js';
+
+export function rulesLabel(count) {
+    return count === 1 ? '1 rule' : `${count} rules`;
+}
+
+// The subtitle of a drop-in file's row.
+export function ruleSummary(text) {
+    const result = checkRules(text);
+    return result.ok ? rulesLabel(result.count) : result.message;
+}
+
+// The entry names of rules.d that are drop-in files, in the order the
+// extension reads them. The caller drops what is not a regular file first.
+export function dropInNames(names) {
+    return names.filter(isDropInName).sort();
+}
 
 // { ok: true, count } or { ok: false, message, line }, with `line` 1-based, or
 // null when the message names no place in the text.

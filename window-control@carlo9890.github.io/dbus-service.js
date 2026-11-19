@@ -25,6 +25,7 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 // not be registered; a caller gates a newer feature on its name.
 const CAPABILITIES = [
     'rules', 'rules-title-affix', 'rules-class-prefix', 'rules-overlay', 'rules-min-width', 'rules-apply',
+    'rules-dropin',
     'keybindings',
     'no-animation', 'activate-no-animation',
 ];

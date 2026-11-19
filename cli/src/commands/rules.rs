@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-//! `wctl rules` -- the auto-placement rules file the extension reads.
+//! `wctl rules` -- the auto-placement rules files the extension reads:
+//! rules.json, then the drop-in files in rules.d.
 //!
-//! The file is local and so is the grammar (`crate::rules`), and the extension
-//! picks a change up on its own through the file monitor described in
+//! The files are local and so is the grammar (`crate::rules`), and the
+//! extension picks a change up on its own through the file monitor described in
 //! docs/specs/RULES-JSON.md. `check`, `list` and `path` never open the bus.
-//! `add` and `remove` open it only after the default file is written, to warn
-//! that the loaded extension does not report the `rules` capability. `test`
-//! opens it to resolve a live window, and refuses an extension without that
-//! capability or without the capability of a match key or a rule key the file
-//! holds. `apply` asks the extension to apply the rules it has loaded again.
+//! `add` and `remove` open it only after a file the extension reads is
+//! written, to warn that the loaded extension does not report the `rules`
+//! capability. `test` opens it to resolve a live window, and refuses an
+//! extension without that capability or without the capability of a match key
+//! or a rule key the file holds. `apply` asks the extension to apply the rules
+//! it has loaded again.
 //!
 //! `rules` is a single entry in `COMMANDS`, with the subcommand parsed here, so
 //! the flat dispatch inventory in main.rs stays flat and the cross-checks
@@ -36,6 +38,14 @@ const CAPABILITY_PROBE: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The capability an extension reports when it serves ApplyRules.
 const APPLY_CAPABILITY: &str = "rules-apply";
+
+/// The capability an extension reports when it reads rules.d.
+const DROP_IN_CAPABILITY: &str = "rules-dropin";
+
+const NO_DROP_IN_SUPPORT: &str =
+    "The extension GNOME Shell has loaded does not read rules.d, so only the \
+     rules in rules.json are applied. Install a newer extension, then restart \
+     the shell (log out and back in on Wayland).";
 
 const NO_APPLY_SUPPORT: &str =
     "The extension GNOME Shell has loaded cannot apply the rules again. Check \
@@ -97,12 +107,15 @@ const NEWER_RULE_KEYS: [(&[&str], &str, &str); 1] = [(
 /// so writing it is not refused. Only a shell that answers warns: no shell at
 /// all is silent, because editing rules before a session exists is legitimate.
 /// The shell is asked once, so a silent one costs one `CAPABILITY_PROBE`.
-fn warn_if_unsupported(ctx: &Ctx, document: &[Value]) {
+fn warn_if_unsupported(ctx: &Ctx, document: &[Value], is_drop_in: bool) {
     let Some(reported) = ctx.bus.reported_capabilities(CAPABILITY_PROBE) else {
         return;
     };
     if !reported.iter().any(|name| name == RULES_CAPABILITY) {
         eprintln!("Warning: {NO_RULES_SUPPORT}");
+    }
+    if is_drop_in && !reported.iter().any(|name| name == DROP_IN_CAPABILITY) {
+        eprintln!("Warning: {NO_DROP_IN_SUPPORT}");
     }
     for warning in refused_keys(&reported, document) {
         eprintln!("Warning: {warning}");
@@ -189,6 +202,98 @@ fn rules_path(file: Option<PathBuf>) -> Result<PathBuf> {
     file.map_or_else(default_path, Ok)
 }
 
+/// The drop-in folder beside `user_file`, the `default_path()`.
+fn drop_in_folder(user_file: &Path) -> PathBuf {
+    user_file.with_file_name("rules.d")
+}
+
+const USER_LABEL: &str = "rules.json";
+
+/// One file of the load order. `name` is None for rules.json, so the order of
+/// the names is the load order.
+struct Source {
+    name: Option<String>,
+    path: PathBuf,
+}
+
+impl Source {
+    /// The source label of docs/specs/RULES-JSON.md.
+    fn label(&self) -> String {
+        match &self.name {
+            None => USER_LABEL.to_string(),
+            Some(name) => format!("rules.d/{name}"),
+        }
+    }
+}
+
+/// The drop-in files in `folder`, in load order. A missing folder has none.
+/// `metadata` follows a symlink, and skips a FIFO before anything opens it.
+fn drop_ins(folder: &Path) -> Result<Vec<Source>> {
+    let entries = match std::fs::read_dir(folder) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => {
+            return Err(Fail::error(format!(
+                "Cannot read {}: {e}",
+                folder.display()
+            )))
+        }
+    };
+    let mut names: Vec<String> = entries
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| {
+            rules::is_drop_in_name(name)
+                && std::fs::metadata(folder.join(name)).is_ok_and(|metadata| metadata.is_file())
+        })
+        .collect();
+    names.sort();
+    Ok(names
+        .into_iter()
+        .map(|name| Source {
+            path: folder.join(&name),
+            name: Some(name),
+        })
+        .collect())
+}
+
+/// The rules of one file, under its source label.
+struct RuleFile {
+    label: String,
+    raw: Vec<Value>,
+    compiled: Vec<rules::Rule>,
+}
+
+/// The drop-in files beside `user_file`. A rules.d that cannot be listed is
+/// a warning: the extension still loads rules.json then.
+fn listed_drop_ins(user_file: &Path) -> Vec<Source> {
+    drop_ins(&drop_in_folder(user_file)).unwrap_or_else(|failure| {
+        eprintln!("Warning: {failure}");
+        Vec::new()
+    })
+}
+
+/// Each drop-in file that loads. One that does not is named in a warning and
+/// left out, as the extension leaves it out.
+fn load_drop_ins(user_file: &Path) -> Vec<RuleFile> {
+    listed_drop_ins(user_file)
+        .into_iter()
+        .filter_map(|source| match read_rules(&source.path, true) {
+            Ok(rules) => {
+                let (raw, compiled) = rules.unwrap_or_default();
+                Some(RuleFile {
+                    label: source.label(),
+                    raw,
+                    compiled,
+                })
+            }
+            Err(failure) => {
+                eprintln!("Warning: {failure}");
+                None
+            }
+        })
+        .collect()
+}
+
 /// What reading the rules file produced.
 enum Loaded {
     /// The file does not exist. Not an error: an absent file means no rules.
@@ -221,8 +326,28 @@ fn parse(text: &str, path: &Path) -> Result<Value> {
 fn check(args: &[String]) -> Result<()> {
     let (file, rest) = take_file_option(args)?;
     let json = super::parse_json_flag(&rest)?;
-    let path = rules_path(file)?;
+    if let Some(path) = file {
+        return check_file(&path, json);
+    }
+    let path = default_path()?;
+    let drop_ins = listed_drop_ins(&path);
+    if drop_ins.is_empty() {
+        return check_file(&path, json);
+    }
+    check_all(&path, &drop_ins, json)
+}
 
+fn valid_line(path: &Path, count: usize) -> String {
+    let plural = if count == 1 { "" } else { "s" };
+    format!("{}: {count} rule{plural}, valid", path.display())
+}
+
+fn no_file_line(path: &Path) -> String {
+    format!("No rules file at {}; no rules are loaded", path.display())
+}
+
+/// `check` of one file.
+fn check_file(path: &Path, json: bool) -> Result<()> {
     let report_invalid = |message: String| -> Fail {
         if json {
             Fail::plain(
@@ -239,8 +364,9 @@ fn check(args: &[String]) -> Result<()> {
         }
     };
 
-    let text = match read_file(&path).map_err(|failure| report_invalid(failure.to_string()))? {
-        Loaded::Absent => {
+    let compiled = match read_rules(path, false) {
+        Err(failure) => return Err(report_invalid(failure.to_string())),
+        Ok(None) => {
             if json {
                 println!(
                     "{}",
@@ -252,38 +378,153 @@ fn check(args: &[String]) -> Result<()> {
                     })
                 );
             } else {
-                println!("No rules file at {}; no rules are loaded", path.display());
+                println!("{}", no_file_line(path));
             }
             return Ok(());
         }
-        Loaded::Present { text } => text,
+        Ok(Some((_, compiled))) => compiled,
     };
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "exists": true,
+                "valid": true,
+                "rules": compiled.len(),
+            })
+        );
+    } else {
+        println!("{}", valid_line(path, compiled.len()));
+    }
+    Ok(())
+}
 
-    let document = match parse(&text, &path) {
-        Ok(document) => document,
-        Err(failure) => return Err(report_invalid(failure.to_string())),
-    };
-
-    match rules::compile_rules(&document) {
-        Err(message) => Err(report_invalid(message)),
-        Ok(compiled) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "path": path.display().to_string(),
-                        "exists": true,
-                        "valid": true,
-                        "rules": compiled.len(),
-                    })
-                );
-            } else {
-                let plural = if compiled.len() == 1 { "" } else { "s" };
-                println!("{}: {} rule{plural}, valid", path.display(), compiled.len());
+/// `check` of rules.json and the drop-in files. Every file is reported before
+/// the verdict, so one broken file does not hide another.
+fn check_all(path: &Path, drop_ins: &[Source], json: bool) -> Result<()> {
+    let mut errors = Vec::new();
+    let mut loaded = Vec::new();
+    let mut report = match read_rules(path, false) {
+        Ok(None) => {
+            if !json {
+                println!("{}", no_file_line(path));
             }
-            Ok(())
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "exists": false,
+                "valid": true,
+                "rules": 0,
+            })
+        }
+        Ok(Some((raw, compiled))) => {
+            if !json {
+                println!("{}", valid_line(path, compiled.len()));
+            }
+            let report = serde_json::json!({
+                "path": path.display().to_string(),
+                "exists": true,
+                "valid": true,
+                "rules": compiled.len(),
+            });
+            loaded.push(RuleFile {
+                label: USER_LABEL.to_string(),
+                raw,
+                compiled,
+            });
+            report
+        }
+        Err(failure) => {
+            errors.push(failure.to_string());
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "exists": true,
+                "valid": false,
+                "error": failure.to_string(),
+            })
+        }
+    };
+
+    let mut drop_in_reports = Vec::new();
+    for source in drop_ins {
+        let path = source.path.display().to_string();
+        match read_rules(&source.path, true) {
+            Ok(rules) => {
+                let (raw, compiled) = rules.unwrap_or_default();
+                if !json {
+                    println!("{}", valid_line(&source.path, compiled.len()));
+                }
+                drop_in_reports.push(serde_json::json!({
+                    "path": path,
+                    "valid": true,
+                    "rules": compiled.len(),
+                }));
+                loaded.push(RuleFile {
+                    label: source.label(),
+                    raw,
+                    compiled,
+                });
+            }
+            Err(failure) => {
+                drop_in_reports.push(serde_json::json!({
+                    "path": path,
+                    "valid": false,
+                    "error": failure.to_string(),
+                }));
+                errors.push(failure.to_string());
+            }
         }
     }
+
+    for (earlier, earlier_index, later, later_index) in cross_file_shadows(&loaded) {
+        eprintln!(
+            "Warning: rule {earlier_index} of {earlier} already matches every window rule \
+             {later_index} of {later} would, and the first match wins, so rule {later_index} \
+             of {later} will never fire."
+        );
+    }
+
+    if json {
+        report["dropins"] = Value::Array(drop_in_reports);
+        if errors.is_empty() {
+            println!("{report}");
+            return Ok(());
+        }
+        report["valid"] = Value::Bool(false);
+        return Err(Fail::plain(report.to_string()));
+    }
+    let Some(last) = errors.pop() else {
+        return Ok(());
+    };
+    for error in errors {
+        Fail::error(error).report();
+    }
+    Err(Fail::error(last))
+}
+
+/// Each rule that a rule of an earlier file shadows, as (earlier label, index,
+/// later label, index), with the first rule that shadows it. A rule shadowed
+/// within its own file is left to `rules add`, which warns when it is written.
+fn cross_file_shadows(files: &[RuleFile]) -> Vec<(&str, usize, &str, usize)> {
+    let mut found = Vec::new();
+    for (position, file) in files.iter().enumerate() {
+        for (later_index, later) in file.compiled.iter().enumerate() {
+            let shadowing = files[..position]
+                .iter()
+                .flat_map(|earlier| {
+                    earlier
+                        .compiled
+                        .iter()
+                        .enumerate()
+                        .map(move |(index, rule)| (earlier.label.as_str(), index, rule))
+                })
+                .find(|(_, _, rule)| shadows(rule, later));
+            if let Some((label, index, _)) = shadowing {
+                found.push((label, index, file.label.as_str(), later_index));
+            }
+        }
+    }
+    found
 }
 
 /// Read the file and validate it, for the subcommands that need the rules
@@ -294,16 +535,29 @@ fn check(args: &[String]) -> Result<()> {
 /// whole document, so acting on a file we could not read correctly would
 /// discard whatever the user actually wrote.
 fn load(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
+    Ok(read_rules(path, false)?.unwrap_or_default())
+}
+
+/// The rules of the file, or None when it does not exist. `name_the_file`
+/// puts the path before a validation message, which names no file of its own;
+/// a read or parse failure names it already.
+fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Vec<rules::Rule>)>> {
     let Loaded::Present { text } = read_file(path)? else {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok(None);
     };
     let document = parse(&text, path)?;
-    let compiled = rules::compile_rules(&document).map_err(Fail::error)?;
+    let compiled = rules::compile_rules(&document).map_err(|message| {
+        if name_the_file {
+            Fail::error(format!("{}: {message}", path.display()))
+        } else {
+            Fail::error(message)
+        }
+    })?;
     let raw = document
         .as_array()
         .expect("compile_rules refuses a non-array")
         .clone();
-    Ok((raw, compiled))
+    Ok(Some((raw, compiled)))
 }
 
 /// Write the document, atomically.
@@ -339,7 +593,7 @@ fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
         }
     };
 
-    let temporary_link = link_directory.join(format!(".rules.json.link.{}", std::process::id()));
+    let temporary_link = link_directory.join(temporary_name(path, ".link"));
     let _ = std::fs::remove_file(&temporary_link);
     std::os::unix::fs::symlink(&link, &temporary_link)
         .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary_link.display())))?;
@@ -357,10 +611,10 @@ fn replace_file(path: &Path, text: &str) -> Result<()> {
     std::fs::create_dir_all(directory)
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
 
-    let temporary = directory.join(format!(".rules.json.{}", std::process::id()));
+    let temporary = directory.join(temporary_name(path, ""));
     std::fs::write(&temporary, text).map_err(|e| {
         // A write that fails after creating the file (a full disk) must not
-        // leave it next to rules.json.
+        // leave it next to the rules file.
         let _ = std::fs::remove_file(&temporary);
         Fail::error(format!("Cannot write {}: {e}", temporary.display()))
     })?;
@@ -369,6 +623,15 @@ fn replace_file(path: &Path, text: &str) -> Result<()> {
         let _ = std::fs::set_permissions(&temporary, metadata.permissions());
     }
     rename_over(&temporary, path)
+}
+
+/// `.<name of path><infix>.<pid>`. The leading dot keeps the extension from
+/// reading the file as a drop-in before the rename.
+fn temporary_name(path: &Path, infix: &str) -> std::ffi::OsString {
+    let mut name = std::ffi::OsString::from(".");
+    name.push(path.file_name().unwrap_or_default());
+    name.push(format!("{infix}.{}", std::process::id()));
+    name
 }
 
 fn rename_over(temporary: &Path, path: &Path) -> Result<()> {
@@ -412,9 +675,13 @@ fn describe_action_or_none(rule: &rules::Rule) -> String {
 }
 
 /// `wctl rules list [--file PATH] [--json]`
+///
+/// Without `--file`, the table holds every file in load order, and `--json`
+/// still prints rules.json alone: a script reads that document unchanged.
 fn list(args: &[String]) -> Result<()> {
     let (file, rest) = take_file_option(args)?;
     let json = super::parse_json_flag(&rest)?;
+    let merged = file.is_none();
     let path = rules_path(file)?;
     let (raw, compiled) = load(&path)?;
 
@@ -428,42 +695,69 @@ fn list(args: &[String]) -> Result<()> {
         return Ok(());
     }
 
+    let mut files = vec![RuleFile {
+        label: USER_LABEL.to_string(),
+        raw,
+        compiled,
+    }];
+    if merged {
+        files.extend(load_drop_ins(&path));
+    }
+
     // No file and no rules print nothing at all: a `wctl rules list | wc -l`
     // should say 0, not 1 for a header over an empty table.
-    if compiled.is_empty() {
+    if files.iter().all(|file| file.compiled.is_empty()) {
         return Ok(());
     }
 
-    let mut rows = vec![vec![
+    let mut header = vec![
         "INDEX".to_string(),
         "MATCH".to_string(),
         "ACTION".to_string(),
         "WORKSPACE".to_string(),
         "MONITOR".to_string(),
         "OVERLAY".to_string(),
-    ]];
-    for (index, rule) in compiled.iter().enumerate() {
-        rows.push(vec![
-            index.to_string(),
-            describe_match(rule),
-            describe_action(rule),
-            rule.workspace.map(|n| n.to_string()).unwrap_or_default(),
-            rule.monitor.map(|n| n.to_string()).unwrap_or_default(),
-            if rule.overlay { "yes" } else { "" }.to_string(),
-        ]);
+    ];
+    if merged {
+        header.insert(0, "SOURCE".to_string());
+    }
+    let mut rows = vec![header];
+    for file in &files {
+        for (index, rule) in file.compiled.iter().enumerate() {
+            let mut row = vec![
+                index.to_string(),
+                describe_match(rule),
+                describe_action(rule),
+                rule.workspace.map(|n| n.to_string()).unwrap_or_default(),
+                rule.monitor.map(|n| n.to_string()).unwrap_or_default(),
+                if rule.overlay { "yes" } else { "" }.to_string(),
+            ];
+            if merged {
+                row.insert(0, file.label.clone());
+            }
+            rows.push(row);
+        }
     }
     super::print_table(&rows);
     Ok(())
 }
 
-/// `wctl rules path [--file PATH]`
+/// `wctl rules path [--file PATH | --dir]`
 fn path_command(args: &[String]) -> Result<()> {
     let (file, rest) = take_file_option(args)?;
+    let (dir, rest) = super::take_flag(&rest, "--dir");
     if let Some(unexpected) = rest.first() {
         return Err(Fail::error(format!("Unexpected argument: {unexpected}")));
     }
+    if dir && file.is_some() {
+        return Err(Fail::error("Option --dir cannot be used with --file"));
+    }
     let path = rules_path(file)?;
-    println!("{}", path.display());
+    if dir {
+        println!("{}", drop_in_folder(&path).display());
+    } else {
+        println!("{}", path.display());
+    }
     Ok(())
 }
 
@@ -605,6 +899,115 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
         })
 }
 
+/// What the extension makes of the file `add` or `remove` writes.
+enum Target {
+    /// rules.json, the file without `--file`.
+    User,
+    /// A file in rules.d the extension reads, by its name.
+    DropIn(String),
+    /// A file in rules.d with a name the extension skips.
+    SkippedName(String),
+    /// Any other `--file`: the extension never reads it.
+    Other,
+}
+
+impl Target {
+    fn of(file: Option<&Path>) -> Self {
+        let Some(path) = file else {
+            return Target::User;
+        };
+        let Ok(user_file) = default_path() else {
+            return Target::Other;
+        };
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+            return Target::Other;
+        };
+        let parent = if parent.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            parent
+        };
+        if resolve_folder(parent) != resolve_folder(&drop_in_folder(&user_file)) {
+            return Target::Other;
+        }
+        let name = name.to_string_lossy().into_owned();
+        if rules::is_drop_in_name(&name) {
+            Target::DropIn(name)
+        } else {
+            Target::SkippedName(name)
+        }
+    }
+
+    /// After a write: warn about what keeps the extension from applying it.
+    fn warn_after_write(&self, ctx: &Ctx, document: &[Value]) {
+        match self {
+            Target::User => warn_if_unsupported(ctx, document, false),
+            Target::DropIn(_) => warn_if_unsupported(ctx, document, true),
+            Target::SkippedName(name) => eprintln!(
+                "Warning: The extension does not read {name} in rules.d. A drop-in \
+                 name starts with a letter or a digit, has only letters, digits, \
+                 '.', '_' and '-', and ends in .json."
+            ),
+            Target::Other => {}
+        }
+    }
+}
+
+/// `folder` as an absolute path without symlinks. A folder that does not
+/// exist yet, as rules.d before the first drop-in, is resolved through its
+/// parent, so a relative `--file rules.d/x.json` still names rules.d.
+fn resolve_folder(folder: &Path) -> PathBuf {
+    let Ok(absolute) = std::path::absolute(folder) else {
+        return folder.to_path_buf();
+    };
+    if let Ok(resolved) = std::fs::canonicalize(&absolute) {
+        return resolved;
+    }
+    match (absolute.parent(), absolute.file_name()) {
+        (Some(parent), Some(name)) => {
+            std::fs::canonicalize(parent).map_or(absolute.clone(), |parent| parent.join(name))
+        }
+        _ => absolute,
+    }
+}
+
+/// The other files of the load order, split around `target`: a rule in a file
+/// before it can shadow the new rule, and the new rule can shadow one in a
+/// file after it. A file that does not load is left out; `rules check` names
+/// it.
+fn files_around(target: &Target) -> (Vec<RuleFile>, Vec<RuleFile>) {
+    let own = match target {
+        Target::User => None,
+        Target::DropIn(name) => Some(name.as_str()),
+        Target::SkippedName(_) | Target::Other => return (Vec::new(), Vec::new()),
+    };
+    let Ok(user_file) = default_path() else {
+        return (Vec::new(), Vec::new());
+    };
+    let mut sources = vec![Source {
+        name: None,
+        path: user_file.clone(),
+    }];
+    sources.extend(drop_ins(&drop_in_folder(&user_file)).unwrap_or_default());
+
+    let (mut before, mut after) = (Vec::new(), Vec::new());
+    for source in sources {
+        let side = match source.name.as_deref().cmp(&own) {
+            std::cmp::Ordering::Less => &mut before,
+            std::cmp::Ordering::Greater => &mut after,
+            std::cmp::Ordering::Equal => continue,
+        };
+        if let Ok(Some((raw, compiled))) = read_rules(&source.path, false) {
+            side.push(RuleFile {
+                label: source.label(),
+                raw,
+                compiled,
+            });
+        }
+    }
+    (before, after)
+}
+
 /// `wctl rules add <MATCH> [ACTION] [--min-width N] [--workspace N] [--monitor N] [--overlay] [--at N] [--dry-run]`
 ///
 /// The action may be left out when `--workspace`, `--monitor` or `--overlay` is
@@ -701,9 +1104,9 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
     let rule = Value::Object(rule);
 
-    // The warning is about the file the extension READS, so `--file` earns
-    // neither the warning nor the bus call it costs.
-    let is_default_file = file.is_none();
+    // The warnings are about the files the extension READS, so any other
+    // `--file` earns neither them nor the bus call they cost.
+    let target = Target::of(file.as_deref());
     let path = rules_path(file)?;
     let (mut raw, compiled) = load(&path)?;
 
@@ -726,17 +1129,40 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     candidate.insert(position, rule.clone());
     let recompiled = rules::compile_rules(&Value::Array(candidate.clone())).map_err(Fail::error)?;
 
-    // First match wins, so only an EARLIER rule can shadow this one.
+    // First match wins, so only an EARLIER rule can shadow this one: one in
+    // a file loaded before this one, or one before it in this file.
     let added = &recompiled[position];
-    if let Some(shadow) = compiled
+    let (before, after) = files_around(&target);
+    let earlier_files = before.iter().flat_map(|file| {
+        file.compiled
+            .iter()
+            .enumerate()
+            .map(|(index, rule)| (format!("rule {index} of {}", file.label), rule))
+    });
+    let earlier_here = compiled
         .iter()
         .take(position)
-        .position(|earlier| shadows(earlier, added))
+        .enumerate()
+        .map(|(index, rule)| (format!("rule {index}"), rule));
+    if let Some((shadow, _)) = earlier_files
+        .chain(earlier_here)
+        .find(|(_, earlier)| shadows(earlier, added))
     {
         eprintln!(
-            "Warning: rule {shadow} already matches every window this rule would, \
+            "Warning: {shadow} already matches every window this rule would, \
              and the first match wins, so the new rule will never fire."
         );
+    }
+    for file in &after {
+        for (index, later) in file.compiled.iter().enumerate() {
+            if shadows(added, later) {
+                eprintln!(
+                    "Warning: this rule matches every window rule {index} of {} would, \
+                     and the first match wins, so rule {index} of {} will never fire.",
+                    file.label, file.label
+                );
+            }
+        }
     }
 
     if dry_run {
@@ -750,9 +1176,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     raw.insert(position, rule);
     write_atomically(&path, &raw)?;
     println!("Added rule {position} to {}", path.display());
-    if is_default_file {
-        warn_if_unsupported(ctx, &raw);
-    }
+    target.warn_after_write(ctx, &raw);
     Ok(())
 }
 
@@ -767,7 +1191,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         return Err(Fail::error("Rule index must be a non-negative number"));
     }
 
-    let is_default_file = file.is_none();
+    let target = Target::of(file.as_deref());
     let path = rules_path(file)?;
     let (mut raw, _) = load(&path)?;
     // A number too large for usize is past the end like any other.
@@ -788,9 +1212,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
     write_atomically(&path, &raw)?;
     println!("Removed rule {index} from {}", path.display());
-    if is_default_file {
-        warn_if_unsupported(ctx, &raw);
-    }
+    target.warn_after_write(ctx, &raw);
     Ok(())
 }
 
@@ -806,13 +1228,24 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let usage = "Usage: wctl rules test <WINDOW> [--file PATH] [--json]";
     let (file, args) = take_file_option(args)?;
+    let merged = file.is_none();
     let (json, args) = super::take_flag(&args, "--json");
     let selector = crate::selector::parse_exact(0, usage, &args)?;
 
     let path = rules_path(file)?;
-    // The file is read BEFORE the bus call: a broken rules file is the user's
-    // problem to fix either way, and reporting it costs nothing.
+    // The files are read BEFORE the bus call: a broken rules file is the
+    // user's problem to fix either way, and reporting it costs nothing.
     let (raw, compiled) = load(&path)?;
+    let user = RuleFile {
+        label: USER_LABEL.to_string(),
+        raw,
+        compiled,
+    };
+    let drop_ins = if merged {
+        load_drop_ins(&path)
+    } else {
+        Vec::new()
+    };
 
     // A match reported against an extension that ignores the file would
     // explain a placement that never happens. This command needs the shell
@@ -822,31 +1255,35 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     if !capabilities.iter().any(|name| name == RULES_CAPABILITY) {
         return Err(Fail::error(NO_RULES_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
-    // One match key or rule key the extension does not know makes it refuse
-    // the whole file.
-    if let Some(warning) = refused_keys(&capabilities, &raw).first() {
-        return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
-    }
+    let files = files_the_extension_loads(&capabilities, user, drop_ins)?;
+    let rules: Vec<(&str, usize, &rules::Rule)> = files
+        .iter()
+        .flat_map(|file| {
+            file.compiled
+                .iter()
+                .enumerate()
+                .map(|(index, rule)| (file.label.as_str(), index, rule))
+        })
+        .collect();
 
     let id = crate::selector::lookup(ctx, &selector)?;
     let window = ctx.window_by_id(id)?;
     let wm_class = model::text(&window, "wm_class").to_string();
     let title = model::text(&window, "title").to_string();
     let window_monitor = model::number(&window, "monitor_index");
-    let monitor_widths = if compiled.iter().any(|rule| rule.min_width.is_some()) {
+    let monitor_widths = if rules.iter().any(|(_, _, rule)| rule.min_width.is_some()) {
         monitor_widths(ctx)?
     } else {
         Vec::new()
     };
 
-    // Every rule that matches, in file order. The first wins; the rest are
+    // Every rule that matches, in load order. The first wins; the rest are
     // shadowed, which is the case this command exists to name. A min_width is
     // tested against the monitor the rule resolves against: its own, else the
     // one the window is on.
-    let matching: Vec<usize> = compiled
+    let matching: Vec<&(&str, usize, &rules::Rule)> = rules
         .iter()
-        .enumerate()
-        .filter(|(_, rule)| {
+        .filter(|(_, _, rule)| {
             let monitor = rule.monitor.unwrap_or(window_monitor);
             let width = monitor_widths
                 .iter()
@@ -854,16 +1291,15 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
                 .map(|(_, width)| *width);
             rule.matches_window(&wm_class, &title) && rules::fits_monitor(rule.min_width, width)
         })
-        .map(|(index, _)| index)
         .collect();
 
-    let winner = matching.first().copied();
+    let winner = matching.first().map(|(_, _, rule)| *rule);
     // The workarea the extension would use: the rule's monitor when it names
     // one, otherwise the monitor the window is on. rules.js skips the rest of
     // a rule whose monitor does not exist -- the monitor move and the geometry
     // -- so that is an outcome to report, not an error. A missing monitor the
     // window itself reports is still an error.
-    let rule_monitor = winner.and_then(|index| compiled[index].monitor);
+    let rule_monitor = winner.and_then(|rule| rule.monitor);
     let monitor = rule_monitor.unwrap_or(window_monitor) as i32;
     let workarea = if rule_monitor.is_some() {
         super::workarea_if_present(ctx, monitor)?
@@ -878,21 +1314,21 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         height,
     };
     // rules.js skips the geometry of a fullscreen window.
-    let fullscreen = model::flag(&window, "is_fullscreen")
-        && winner.is_some_and(|index| compiled[index].action.is_some());
+    let fullscreen =
+        model::flag(&window, "is_fullscreen") && winner.is_some_and(|rule| rule.action.is_some());
     let target = winner
         .zip(workarea)
         .filter(|_| !fullscreen)
-        .and_then(|(index, workarea)| compiled[index].resolve(workarea, frame));
+        .and_then(|(rule, workarea)| rule.resolve(workarea, frame));
 
     if json {
         let mut report = serde_json::json!({
             "window": {"id": id, "wm_class": wm_class, "title": title},
             "rules_file": path.display().to_string(),
-            "rules": compiled.len(),
-            "matched": winner,
-            "overlay": winner.map(|index| compiled[index].overlay),
-            "shadowed": matching.iter().skip(1).collect::<Vec<_>>(),
+            "rules": rules.len(),
+            "matched": matching.first().map(|(_, index, _)| index),
+            "overlay": winner.map(|rule| rule.overlay),
+            "shadowed": matching.iter().skip(1).map(|(_, index, _)| index).collect::<Vec<_>>(),
             "monitor_index": monitor,
             "workarea": workarea.map(|rect| serde_json::json!({
                 "x": rect.x, "y": rect.y,
@@ -908,12 +1344,21 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         } else if fullscreen {
             report["skipped"] = serde_json::json!(SKIPPED_FULLSCREEN);
         }
+        if merged {
+            report["matched_source"] =
+                serde_json::json!(matching.first().map(|(label, _, _)| label));
+            report["shadowed_sources"] = serde_json::json!(matching
+                .iter()
+                .skip(1)
+                .map(|(label, _, _)| label)
+                .collect::<Vec<_>>());
+        }
         println!("{report}");
         return Ok(());
     }
 
     println!("{}", window_line(id, &wm_class, &title));
-    if compiled.is_empty() {
+    if rules.is_empty() {
         match read_file(&path)? {
             Loaded::Absent => println!("No rules file at {}", path.display()),
             Loaded::Present { .. } => println!("{}: no rules", path.display()),
@@ -921,25 +1366,26 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    let Some(index) = winner else {
+    let Some(&&(label, index, rule)) = matching.first() else {
         println!(
             "No rule matches this window (checked {} rules)",
-            compiled.len()
+            rules.len()
         );
         return Ok(());
     };
 
-    let rule = &compiled[index];
     println!(
-        "Matched rule {index}: {} -> {}",
+        "Matched {}: {} -> {}",
+        rule_name(label, index),
         describe_match(rule),
         describe_action_or_none(rule)
     );
-    for shadowed in matching.iter().skip(1) {
+    for (label, index, shadowed) in matching.iter().skip(1) {
         println!(
-            "  rule {shadowed} also matches but is shadowed: {} -> {}",
-            describe_match(&compiled[*shadowed]),
-            describe_action_or_none(&compiled[*shadowed])
+            "  {} also matches but is shadowed: {} -> {}",
+            rule_name(label, *index),
+            describe_match(shadowed),
+            describe_action_or_none(shadowed)
         );
     }
     if let Some(workspace) = rule.workspace {
@@ -971,6 +1417,50 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// A rule of `test`'s output. A rule of rules.json reads as it did before
+/// rules.d existed.
+fn rule_name(label: &str, index: usize) -> String {
+    if label == USER_LABEL {
+        format!("rule {index}")
+    } else {
+        format!("rule {index} of {label}")
+    }
+}
+
+/// The files whose rules the loaded extension applies, for `test` and
+/// `apply`.
+///
+/// One match key or rule key the extension does not know makes it refuse that
+/// whole file. With rules.json alone that leaves nothing to test or apply, so
+/// it fails; with drop-in files, the refused file is left out with a warning,
+/// as the extension leaves it out.
+fn files_the_extension_loads(
+    capabilities: &[String],
+    user: RuleFile,
+    mut drop_ins: Vec<RuleFile>,
+) -> Result<Vec<RuleFile>> {
+    if !drop_ins.is_empty() && !capabilities.iter().any(|name| name == DROP_IN_CAPABILITY) {
+        eprintln!("Warning: {NO_DROP_IN_SUPPORT}");
+        drop_ins.clear();
+    }
+    if drop_ins.is_empty() {
+        if let Some(warning) = refused_keys(capabilities, &user.raw).first() {
+            return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
+        }
+        return Ok(vec![user]);
+    }
+    Ok(std::iter::once(user)
+        .chain(drop_ins)
+        .filter(|file| {
+            let refused = refused_keys(capabilities, &file.raw);
+            for warning in &refused {
+                eprintln!("Warning: {}: {warning}", file.label);
+            }
+            refused.is_empty()
+        })
+        .collect())
+}
+
 /// (index, logical width) of every monitor, what `min_width` is compared
 /// against. Mutter's layout mode is asked only when a monitor is scaled.
 fn monitor_widths(ctx: &mut Ctx) -> Result<Vec<(i64, i64)>> {
@@ -997,9 +1487,9 @@ fn monitor_widths(ctx: &mut Ctx) -> Result<Vec<(i64, i64)>> {
 /// `wctl rules apply [<WINDOW>]`
 ///
 /// The extension applies the rules it has loaded to every open window, or to
-/// the one named, as it does to a new window. The rules file is read first,
-/// as `test` reads it: a file the extension refuses loads no rule, and an
-/// apply would then report success while it does nothing.
+/// the one named, as it does to a new window. The rules files are read first,
+/// as `test` reads them: a rules.json the extension refuses loads no rule, and
+/// an apply would then report success while it does nothing.
 fn apply(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let selector = if args.is_empty() {
         None
@@ -1011,15 +1501,20 @@ fn apply(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         )?)
     };
 
-    let (raw, _) = load(&default_path()?)?;
+    let path = default_path()?;
+    let (raw, compiled) = load(&path)?;
+    let user = RuleFile {
+        label: USER_LABEL.to_string(),
+        raw,
+        compiled,
+    };
+    let drop_ins = load_drop_ins(&path);
 
     let capabilities = ctx.bus.get_capabilities()?;
     if !capabilities.iter().any(|name| name == APPLY_CAPABILITY) {
         return Err(Fail::error(NO_APPLY_SUPPORT).with_code(crate::fail::EXIT_NO_EXTENSION));
     }
-    if let Some(warning) = refused_keys(&capabilities, &raw).first() {
-        return Err(Fail::error(*warning).with_code(crate::fail::EXIT_NO_EXTENSION));
-    }
+    files_the_extension_loads(&capabilities, user, drop_ins)?;
 
     // ApplyRules reads 0 as every open window, so the window ID 0, which no
     // window has, must not reach it.
@@ -1275,6 +1770,81 @@ mod tests {
                 "{earlier_key}={earlier_value} before {later_key}={later_value}"
             );
         }
+    }
+
+    fn file(label: &str, document: Value) -> RuleFile {
+        let compiled = rules::compile_rules(&document).expect("a valid file");
+        RuleFile {
+            label: label.to_string(),
+            raw: document.as_array().expect("an array").clone(),
+            compiled,
+        }
+    }
+
+    /// Only a rule of an earlier file counts, and only the first one that
+    /// shadows a rule is named.
+    #[test]
+    fn cross_file_shadows_names_the_first_earlier_file_rule() {
+        let files = [
+            file(
+                "rules.json",
+                json!([{"match": {"class": "kitty"}, "tile": "left"}]),
+            ),
+            file(
+                "rules.d/a.json",
+                json!([
+                    {"match": {"class": "kitty"}, "tile": "right"},
+                    {"match": {"class": "foot"}, "tile": "left"},
+                    {"match": {"class": "foot"}, "tile": "right"},
+                ]),
+            ),
+            file(
+                "rules.d/b.json",
+                json!([
+                    {"match": {"class": "kitty"}, "tile": "center"},
+                    {"match": {"class": "foot"}, "tile": "center"},
+                    {"match": {"class": "mpv"}, "tile": "center"},
+                ]),
+            ),
+        ];
+        assert_eq!(
+            cross_file_shadows(&files),
+            vec![
+                ("rules.json", 0, "rules.d/a.json", 0),
+                ("rules.json", 0, "rules.d/b.json", 0),
+                ("rules.d/a.json", 1, "rules.d/b.json", 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn rule_name_names_the_file_of_a_drop_in_rule_only() {
+        assert_eq!(rule_name("rules.json", 2), "rule 2");
+        assert_eq!(rule_name("rules.d/a.json", 2), "rule 2 of rules.d/a.json");
+    }
+
+    #[test]
+    fn temporary_name_is_a_dot_name_after_the_target() {
+        let pid = std::process::id();
+        assert_eq!(
+            temporary_name(Path::new("/x/rules.d/revier.json"), ""),
+            std::ffi::OsString::from(format!(".revier.json.{pid}"))
+        );
+        assert_eq!(
+            temporary_name(Path::new("rules.json"), ".link"),
+            std::ffi::OsString::from(format!(".rules.json.link.{pid}"))
+        );
+        assert!(!rules::is_drop_in_name(
+            &temporary_name(Path::new("revier.json"), "").to_string_lossy()
+        ));
+    }
+
+    #[test]
+    fn drop_in_folder_is_beside_rules_json() {
+        assert_eq!(
+            drop_in_folder(Path::new("/c/gnome-window-control/rules.json")),
+            Path::new("/c/gnome-window-control/rules.d")
+        );
     }
 
     #[test]

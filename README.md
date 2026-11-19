@@ -311,7 +311,7 @@ as the `wctl` commands:
 
 `place`, `tile` and `center` are mutually exclusive in one rule; combine any of
 them with `workspace`, `monitor` and `overlay`. The first matching rule wins, in
-file order, and applies once per new window; `wctl rules apply` applies the
+file order ([rules.json first](#drop-in-files-rulesd)), and applies once per new window; `wctl rules apply` applies the
 rules to the open windows again.
 
 On GNOME 49 and later a `place` or `tile` rule takes effect before the window
@@ -323,6 +323,29 @@ This sets the *initial* position only: an app that resizes itself afterwards is
 left alone until you run `wctl rules apply` ([Resetting windows to their
 rules](#resetting-windows-to-their-rules)). A rule with a bad value is reported to the journal and the whole file
 is ignored until you fix it, so one typo never places a window half-right.
+
+### Drop-in files (rules.d)
+
+A tool that adds rules of its own writes them to one file in
+`~/.config/gnome-window-control/rules.d/`, for example `rules.d/revier.json`,
+and never edits `rules.json`. Each drop-in file has the format of `rules.json`.
+
+- The rules are `rules.json`, then each drop-in file in byte order of its name.
+  The first match wins, so a rule in `rules.json` wins over a drop-in rule for
+  the same window: override a tool's rule there.
+- A name is read when it is letters, digits, `.`, `_` and `-`, starts with a
+  letter or a digit, and ends in `.json`. A file that starts with `.`, ends in
+  `~` or is renamed to `.json.off` is skipped. Subfolders are not read.
+- A file with a bad value is ignored on its own; the other files still load.
+- A tool writes the file to a temporary name that starts with `.` in
+  `rules.d`, then renames it into place, so the extension never reads half a
+  file. Check it first with `wctl rules check --file <PATH>`, and check that
+  `wctl version --json` lists `rules-dropin`: an older extension ignores
+  `rules.d`.
+
+`wctl rules path --dir` prints the folder. `wctl rules add --file <PATH>`
+with a path in `rules.d` writes a drop-in file and creates a missing
+`rules.d`; `wctl rules remove --file <PATH>` removes a rule from one.
 
 ### Rules per monitor size
 
@@ -391,19 +414,24 @@ wctl rules add -s Report place right top 50% 100%
 wctl rules add -t Calculator center both --monitor 1 --workspace 2
 wctl rules add -c Slack --workspace 2            # Only move it to a workspace
 wctl rules add -c quake --overlay                # Make it an overlay window
-wctl rules list                                 # What is in the file
+wctl rules list                                 # Every rule, rules.json and rules.d
 wctl rules remove 0                             # Drop a rule by index
 wctl rules path                                 # Where the file lives
+wctl rules path --dir                           # Where rules.d lives
 ```
 
 ```console
 $ wctl rules list
-INDEX  MATCH             ACTION                     WORKSPACE  MONITOR  OVERLAY
-0      class=kitty       tile left
-1      substr=Report     place right top 50% 100%
-2      title=Calculator  center both                2          1
-3      class=quake       place center top 100% 40%                      yes
+SOURCE               INDEX  MATCH             ACTION                     WORKSPACE  MONITOR  OVERLAY
+rules.json           0      class=kitty       tile left
+rules.json           1      substr=Report     place right top 50% 100%
+rules.json           2      title=Calculator  center both                2          1
+rules.d/revier.json  0      class=quake       place center top 100% 40%                      yes
 ```
+
+`SOURCE` names the file, and `INDEX` counts within it: `remove` and
+`add --at` use that index, with `--file` for a drop-in file. `list --json` prints `rules.json` alone, and
+`--file` makes every subcommand act on that one file.
 
 A rule matches with `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`,
 `--title-prefix <TEXT>`, `--title-suffix <TEXT>` or `--class-prefix <TEXT>`
@@ -460,6 +488,12 @@ It exits 0 when the shell would load the file and 1 when it would not, and the
 message is the same one the extension writes to the journal. It reads only the
 file: no D-Bus, and it works with the extension stopped or not installed.
 
+With drop-in files and no `--file`, it checks `rules.json` and each drop-in
+file, prints one line per valid file and an `Error:` line with the path per
+broken one, and exits 1 when any file is broken. It warns when a rule of an
+earlier file matches every window a rule of a later file would. `--json` adds
+a `dropins` array of `path`, `valid` and `rules` or `error`.
+
 ### Why did a rule not fire?
 
 ```bash
@@ -489,6 +523,14 @@ the file uses `title_prefix`, `title_suffix`, `class_prefix`, `overlay` or
 `min_width` and the extension does not report `rules-title-affix`,
 `rules-class-prefix`, `rules-overlay` or `rules-min-width` for it, because that
 extension refuses the whole file.
+
+Without `--file` it tests the rules of every file the extension loads. A
+drop-in rule reads `Matched rule 0 of rules.d/revier.json: ...`, and `--json`
+adds `matched_source` and `shadowed_sources`, the source of `matched` and of
+each `shadowed` index. A file the extension refuses is left out with a
+warning; only `rules.json` alone still exits 5. Against an extension that
+does not report `rules-dropin`, only `rules.json` takes part, with a warning.
+`rules apply` checks the files the same way.
 
 ### Resetting windows to their rules
 
@@ -600,10 +642,12 @@ gnome-extensions prefs window-control@carlo9890.github.io
   extension reads the saved file at once. **Apply** applies the saved rules to
   every open window, as `wctl rules apply` does. When another program changes
   the file while you have changes that are not saved, the page offers to load
-  the new version.
+  the new version. Below the editor, **Rule Files from Other Programs** lists
+  each [drop-in file](#drop-in-files-rulesd) with its rule count or its error;
+  edit those with the program that owns them.
 
-The extension only reads `rules.json`. The preferences window writes it when
-you click **Save**.
+The extension only reads the rules files. The preferences window writes
+`rules.json` when you click **Save**, and never writes a drop-in file.
 
 ## D-Bus Interface
 
@@ -632,7 +676,7 @@ destination is `org.gnome.Shell` (not a standalone service name).
 | `Move` | `(tii) -> ()` | Move window to (x, y). Raises on failure — see **Errors** below |
 | `Resize` | `(tii) -> ()` | Resize window to (width, height). Raises on failure |
 | `MoveResize` | `(tiiii) -> ()` | Move and resize window. Raises on failure |
-| `ApplyRules` | `(t) -> u` | Apply the loaded rules.json rules again: `0` for every open window, else that window. Returns how many windows a rule matched. Raises `NotFound` for an id no window has |
+| `ApplyRules` | `(t) -> u` | Apply the loaded rules of rules.json and rules.d again: `0` for every open window, else that window. Returns how many windows a rule matched. Raises `NotFound` for an id no window has |
 | `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
 | `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area; `(-1, -1, -1, -1)` for an index that is not a monitor, and only then |
 | `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |

@@ -23,7 +23,7 @@ const format = await import(
     GLib.filename_to_uri(`${ROOT}/window-control@carlo9890.github.io/rules-format.js`, null));
 const {
     compileRules, resolvePlaceRect, tileRect, centerRect, matchPredicate, fitsMonitor, nextWidePosition,
-    TILE_CELLS,
+    isDropInName, TILE_CELLS,
 } = format;
 
 const [, bytes] = GLib.file_get_contents(`${ROOT}/tests/vectors/rules-spec.json`);
@@ -200,5 +200,15 @@ for (const vector of VECTORS.match.min_width) {
 }
 
 // -- report ----------------------------------------------------------------
+
+for (const vector of VECTORS.dropins.names) {
+    check(`drop-in name: ${JSON.stringify(vector.name)}`, isDropInName(vector.name) === vector.loaded,
+        `expected ${vector.loaded}`);
+}
+{
+    const sorted = [...VECTORS.dropins.order.input].sort();
+    check('drop-in order: byte order', JSON.stringify(sorted) === JSON.stringify(VECTORS.dropins.order.output),
+        `got ${JSON.stringify(sorted)}`);
+}
 
 report();
