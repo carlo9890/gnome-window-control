@@ -367,13 +367,14 @@ export class PopupSeparatorMenuItem {}
         get_n_monitors: () => monitors.length,
         get_monitor_geometry: index => monitors[index],
         get_monitor_scale: index => monitors[index].scale,
-        // The monitor the rectangle overlaps most, as mutter picks it.
+        // The monitor the rectangle overlaps most, as mutter picks it, and
+        // the primary (0 here) for a rectangle on no monitor.
         get_monitor_index_for_rect(rect) {
             const overlap = m => Math.max(0, Math.min(rect.x + rect.width, m.x + m.width) - Math.max(rect.x, m.x)) *
                 Math.max(0, Math.min(rect.y + rect.height, m.y + m.height) - Math.max(rect.y, m.y));
-            let best = -1;
+            let best = 0;
             monitors.forEach((m, index) => {
-                if (overlap(m) > 0 && (best < 0 || overlap(m) > overlap(monitors[best])))
+                if (overlap(m) > overlap(monitors[best]))
                     best = index;
             });
             return best;
@@ -984,6 +985,12 @@ export class PopupSeparatorMenuItem {}
         check('MoveResize to another monitor moves the window to that monitor first',
             JSON.stringify(win.monitorMoves) === '[1]' && JSON.stringify(win.moves) === '[[2000,100,800,600]]',
             `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${JSON.stringify(win.moves)}`);
+        win.monitor = 1;
+        win.monitorMoves = undefined;
+        service.MoveResizeAsync([61, -3000, 100, 800, 600], invocation());
+        check('MoveResize to a rectangle on no monitor does not move the window to the primary first',
+            win.monitorMoves === undefined, JSON.stringify(win.monitorMoves));
+        win.monitor = 0;
         monitors.pop();
         service.unexport();
         rules.disable();

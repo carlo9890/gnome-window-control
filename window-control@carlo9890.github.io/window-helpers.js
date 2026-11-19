@@ -98,11 +98,15 @@ export function workareaOf(win, monitor = win.get_monitor()) {
 // Only a user operation or move_to_monitor() makes mutter record a new
 // preferred monitor, the one it puts the window back on after a monitor
 // change. So a frame on another monitor goes there with move_to_monitor()
-// first, which is a program request too.
+// first, which is a program request too. For a rectangle on no monitor,
+// mutter names the primary one, so only a monitor the rectangle overlaps
+// counts.
 export function moveResizeFrame(win, { x, y, width, height }) {
     const monitor = global.display.get_monitor_index_for_rect(
         new Mtk.Rectangle({ x, y, width, height }));
-    if (monitor >= 0 && monitor !== win.get_monitor())
+    const m = global.display.get_monitor_geometry(monitor);
+    const overlaps = x < m.x + m.width && m.x < x + width && y < m.y + m.height && m.y < y + height;
+    if (overlaps && monitor !== win.get_monitor())
         win.move_to_monitor(monitor);
     win.move_resize_frame(false, x, y, width, height);
 }
