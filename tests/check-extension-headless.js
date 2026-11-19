@@ -119,7 +119,7 @@ try {
     const EXT = `${SCRATCH}/ext`;
     GLib.mkdir_with_parents(EXT, 0o755);
     for (const name of ['dbus-interface.js', 'dbus-service.js', 'extension.js', 'indicator.js', 'keybindings.js',
-        'overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js']) {
+        'overlay.js', 'rules-files.js', 'rules-format.js', 'rules.js', 'window-helpers.js']) {
         const text = read(`${EXTENSION_DIR}/${name}`)
             .replace("'resource:///org/gnome/shell/ui/main.js'", "'./stub-main.js'")
             .replace("'resource:///org/gnome/shell/extensions/extension.js'", "'./stub-extension.js'")
@@ -235,7 +235,7 @@ export class PopupSeparatorMenuItem {}
     // branch below mutter 50.
     const EXT49 = `${SCRATCH}/ext49`;
     GLib.mkdir_with_parents(EXT49, 0o755);
-    for (const name of ['overlay.js', 'rules-format.js', 'rules.js', 'window-helpers.js',
+    for (const name of ['overlay.js', 'rules-files.js', 'rules-format.js', 'rules.js', 'window-helpers.js',
         'stub-main.js', 'stub-shell.js'])
         write(`${EXT49}/${name}`, read(`${EXT}/${name}`));
     write(`${EXT49}/stub-config.js`, "export const PACKAGE_VERSION = '49.2';\n");

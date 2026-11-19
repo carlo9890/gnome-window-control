@@ -1,0 +1,84 @@
+// SPDX-FileCopyrightText: 2026 hko9890
+// SPDX-License-Identifier: MIT
+// Reading the rules files: rules.json, then the drop-ins in rules.d.
+
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import { isDropInName } from './rules-format.js';
+
+export const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
+export const RULES_FILE = 'rules.json';
+export const DROPIN_DIR = 'rules.d';
+export const DROPIN_PATH = GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]);
+
+Gio._promisify(Gio.File.prototype, 'load_contents_async');
+Gio._promisify(Gio.File.prototype, 'enumerate_children_async');
+Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async');
+Gio._promisify(Gio.FileEnumerator.prototype, 'close_async');
+
+// [{label, text}] of every file that could be read: rules.json, then the
+// drop-ins in name order.
+export async function readRuleFiles(cancellable) {
+    const files = [];
+    const main = await readFile(RULES_FILE, cancellable);
+    if (main !== null)
+        files.push({ label: RULES_FILE, text: main });
+    for (const name of await dropInNames(cancellable)) {
+        const label = `${DROPIN_DIR}/${name}`;
+        const text = await readFile(label, cancellable);
+        if (text !== null)
+            files.push({ label, text });
+    }
+    return files;
+}
+
+// The text of a file under CONFIG_DIR, or null when there is none to read.
+async function readFile(label, cancellable) {
+    try {
+        const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, label]));
+        const [bytes] = await file.load_contents_async(cancellable);
+        return new TextDecoder().decode(bytes);
+    } catch (e) {
+        // A drop-in deleted since the listing is simply gone.
+        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
+            if (label === RULES_FILE)
+                console.debug(`[Window Control] no ${RULES_FILE}`);
+        } else if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
+            console.error(`[Window Control] ${label}: cannot read: ${e.message}; the rules of that file are off`);
+        }
+        return null;
+    }
+}
+
+// The drop-in names in rules.d, sorted. The type is the one of a link's
+// target, so a FIFO behind a link is skipped too.
+async function dropInNames(cancellable) {
+    try {
+        const dir = Gio.File.new_for_path(DROPIN_PATH);
+        const enumerator = await dir.enumerate_children_async('standard::name,standard::type',
+            Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
+        const names = [];
+        try {
+            for (;;) {
+                const infos = await enumerator.next_files_async(32, GLib.PRIORITY_DEFAULT, cancellable);
+                if (infos.length === 0)
+                    break;
+                for (const info of infos) {
+                    if (info.get_file_type() === Gio.FileType.REGULAR && isDropInName(info.get_name()))
+                        names.push(info.get_name());
+                }
+            }
+        } finally {
+            // Not with the load's cancellable: a cancelled load must still
+            // release the folder.
+            await enumerator.close_async(GLib.PRIORITY_DEFAULT, null);
+        }
+        return names.sort();
+    } catch (e) {
+        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+            console.debug(`[Window Control] no ${DROPIN_DIR}`);
+        else if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+            console.error(`[Window Control] ${DROPIN_DIR}: cannot list: ${e.message}; its rules are off`);
+        return [];
+    }
+}

@@ -9,18 +9,9 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
-import { centerRect, compileRules, fitsMonitor, isDropInName, resolvePlaceRect, tileRect } from './rules-format.js';
+import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
+import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles } from './rules-files.js';
 import { UnmaximizeWait, looksUnmapped, maximizeFlags, workareaOf } from './window-helpers.js';
-
-const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnome-window-control']);
-const RULES_FILE = 'rules.json';
-const DROPIN_DIR = 'rules.d';
-const DROPIN_PATH = GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]);
-
-Gio._promisify(Gio.File.prototype, 'load_contents_async');
-Gio._promisify(Gio.File.prototype, 'enumerate_children_async');
-Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async');
-Gio._promisify(Gio.FileEnumerator.prototype, 'close_async');
 
 // A Wayland client's app_id and first real title can land after the window is
 // shown, so a shown window that matched nothing yet stays under evaluation this
@@ -87,7 +78,7 @@ export class WindowRules {
         try {
             this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
         } catch (e) {
-            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; ${RULES_FILE} is read only at enable()`);
+            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; the rules files are read only at enable() and when rules.d changes`);
         }
         if (this._fileMonitor) {
             this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
@@ -171,7 +162,7 @@ export class WindowRules {
         this._loading = true;
         const cancellable = new Gio.Cancellable();
         this._loadCancellable = cancellable;
-        this._readFiles(cancellable).then(files => {
+        readRuleFiles(cancellable).then(files => {
             if (cancellable.is_cancelled())
                 return;
             // A throw while the rules are applied must not leave ApplyRules
@@ -182,73 +173,6 @@ export class WindowRules {
                 this._finishLoad();
             }
         });
-    }
-
-    // [{label, text}] of every file that could be read: rules.json, then the
-    // drop-ins in name order.
-    async _readFiles(cancellable) {
-        const files = [];
-        const main = await this._readFile(RULES_FILE, cancellable);
-        if (main !== null)
-            files.push({ label: RULES_FILE, text: main });
-        for (const name of await this._dropInNames(cancellable)) {
-            const label = `${DROPIN_DIR}/${name}`;
-            const text = await this._readFile(label, cancellable);
-            if (text !== null)
-                files.push({ label, text });
-        }
-        return files;
-    }
-
-    // The text of a file under CONFIG_DIR, or null when there is none to read.
-    async _readFile(label, cancellable) {
-        try {
-            const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, label]));
-            const [bytes] = await file.load_contents_async(cancellable);
-            return new TextDecoder().decode(bytes);
-        } catch (e) {
-            // A drop-in deleted since the listing is simply gone.
-            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
-                if (label === RULES_FILE)
-                    console.debug(`[Window Control] no ${RULES_FILE}`);
-            } else if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
-                console.error(`[Window Control] ${label}: cannot read: ${e.message}; the rules of that file are off`);
-            }
-            return null;
-        }
-    }
-
-    // The drop-in names in rules.d, sorted. The type is the one of a link's
-    // target, so a FIFO behind a link is skipped too.
-    async _dropInNames(cancellable) {
-        try {
-            const dir = Gio.File.new_for_path(DROPIN_PATH);
-            const enumerator = await dir.enumerate_children_async('standard::name,standard::type',
-                Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
-            const names = [];
-            try {
-                for (;;) {
-                    const infos = await enumerator.next_files_async(32, GLib.PRIORITY_DEFAULT, cancellable);
-                    if (infos.length === 0)
-                        break;
-                    for (const info of infos) {
-                        if (info.get_file_type() === Gio.FileType.REGULAR && isDropInName(info.get_name()))
-                            names.push(info.get_name());
-                    }
-                }
-            } finally {
-                // Not with the load's cancellable: a cancelled load must still
-                // release the folder.
-                await enumerator.close_async(GLib.PRIORITY_DEFAULT, null);
-            }
-            return names.sort();
-        } catch (e) {
-            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-                console.debug(`[Window Control] no ${DROPIN_DIR}`);
-            else if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-                console.error(`[Window Control] ${DROPIN_DIR}: cannot list: ${e.message}; its rules are off`);
-            return [];
-        }
     }
 
     // Run `callback(true)` once no reload is due and no read is in flight, at
