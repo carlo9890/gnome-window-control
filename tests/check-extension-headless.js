@@ -953,7 +953,8 @@ export class PopupSeparatorMenuItem {}
     //
     // Mutter applies a minimum size from the old position of a user operation,
     // so a narrow tile would not move. Resize keeps its position, so it stays
-    // a user operation.
+    // a user operation. A frame or a rule's `monitor` on another monitor moves
+    // the window there with move_to_monitor() first.
 
     {
         windows.length = 0;
