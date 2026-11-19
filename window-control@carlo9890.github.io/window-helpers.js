@@ -204,7 +204,8 @@ export class WindowPlacer {
         const entry = { wait: null, request };
         entry.wait = new UnmaximizeWait(win, landed => {
             this._pending.delete(win);
-            if (landed)
+            // Maximized again since: that maximize is the newest request.
+            if (landed && maximizeFlags(win) === 0)
                 entry.request();
         });
         this._pending.set(win, entry);

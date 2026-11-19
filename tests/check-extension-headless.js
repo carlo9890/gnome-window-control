@@ -1067,6 +1067,14 @@ export class PopupSeparatorMenuItem {}
         check('a window maximized again while its restore is pending is restored again',
             win.maximizeFlags === 0 && moves === RIGHT, `flags ${win.maximizeFlags}, ${moves}`);
 
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        win.maximizeFlags = Meta.MaximizeFlags.BOTH;   // maximized again, and nothing newer
+        moves = await settle();
+        check('a window maximized again while its restore is pending stays maximized',
+            win.maximizeFlags === Meta.MaximizeFlags.BOTH && moves === '[]', `flags ${win.maximizeFlags}, ${moves}`);
+        win.maximizeFlags = 0;
+
         keybindings._tile('tile-left', win, 'left');
         check('a request with no restore pending runs at once', JSON.stringify(win.moves) === LEFT,
             JSON.stringify(win.moves));
