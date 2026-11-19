@@ -235,8 +235,14 @@ else
     ky=$(get_window_field '.frame_rect.y')
     kh=$(get_window_field '.frame_rect.height')
     assert_within "$kh" 300 "$GEOM_TOLERANCE" "move-resize off the bottom: height is 300"
-    assert_within "$((ky + kh))" "$((tc_wa_y + tc_wa_h))" "$GEOM_TOLERANCE" \
-        "move-resize off the bottom: frame ends at the workarea bottom"
+    # Mutter keeps the frame inside all monitors together, so with a second
+    # monitor below this one the frame can end lower.
+    if [[ $("$WCTL" monitors --json 2>/dev/null | jq 'length') == 1 ]]; then
+        assert_within "$((ky + kh))" "$((tc_wa_y + tc_wa_h))" "$GEOM_TOLERANCE" \
+            "move-resize off the bottom: frame ends at the workarea bottom"
+    else
+        skip "move-resize off the bottom: frame end checked on one monitor only"
+    fi
 fi
 
 echo ""
