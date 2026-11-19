@@ -8,7 +8,7 @@ Shell 45-50.
 
 ```
 window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
-├── extension.js           enable()/disable(): starts and stops the three parts below
+├── extension.js           enable()/disable(): starts and stops the three parts below and the WindowPlacer they share
 ├── dbus-service.js        D-Bus service + method handlers (WindowControlService)
 ├── dbus-interface.js      D-Bus interface XML (imported by dbus-service.js)
 ├── rules.js               WindowRules: rules.json auto-placement (no D-Bus)
@@ -19,7 +19,7 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── prefs.js               the preferences window (its own process, GTK4 + libadwaita)
 ├── prefs/                 the modules only prefs.js loads: the Shortcuts and Rules pages
 ├── schemas/               the GSettings schema: the shortcuts and the top-bar icon switch
-├── window-helpers.js      the GNOME 49 maximize API, the quiet minimize, the workarea lookup and the unmaximize wait, shared by the modules above
+├── window-helpers.js      the GNOME 49 maximize API, the quiet minimize, the workarea lookup, the unmaximize wait and the WindowPlacer, shared by the modules above
 ├── metadata.json          extension metadata (uuid, shell-version, url, version)
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
 └── README.md              packaged docs (shipped inside the release zip)
@@ -64,8 +64,9 @@ README.md                  user docs; the D-Bus method table
 - `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
   lives in `dbus-interface.js` and is imported into `dbus-service.js`.
-  `extension.js` only starts and stops the service, `WindowRules` and
-  `WindowKeybindings`, adds and removes the top-bar icon (`_syncIndicator`),
+  `extension.js` only starts and stops the service, `WindowRules`,
+  `WindowKeybindings` and the `WindowPlacer` the three share, adds and removes
+  the top-bar icon (`_syncIndicator`),
   and removes the shortcuts and the icon while the screen is locked
   (`_syncSessionMode`).
 - `wctl` speaks D-Bus directly through **zbus's blocking API** — no gdbus, no
@@ -91,7 +92,14 @@ README.md                  user docs; the D-Bus method table
   `window-created`, and places a matching window once mutter has shown it. It
   makes no D-Bus call; `ApplyRules` in `dbus-service.js` calls its
   `applyRules` to place the open windows again. The GNOME-49 maximize API detection is shared with
-  `dbus-service.js` through `window-helpers.js`. A geometry request only
+  `dbus-service.js` through `window-helpers.js`.
+- **Every frame request goes through one `WindowPlacer`** (`window-helpers.js`):
+  the shortcuts, the rules and the `Move`, `Resize` and `MoveResize` handlers.
+  A window has at most one placement pending, and the newest request wins. A
+  maximized window is restored first and placed once the restore has landed
+  (`UnmaximizeWait`). `moveResizeFrame` requests a frame as the program, not
+  as the user, so a window whose minimum size is above its tile still moves.
+- In `rules.js`, a geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   above), so a rule waits for `shown` and then applies from an idle callback; a
   window that maps maximized is unmaximized first. On GNOME 49 and later the
@@ -109,9 +117,8 @@ README.md                  user docs; the D-Bus method table
   key, a rule and `wctl tile` cannot disagree about a rectangle; `cycle-wide`
   picks its position with `nextWidePosition` from the window's frame (within
   half a cell, so a terminal snapped to its character grid still counts), not
-  from remembered state. A maximized window is restored first and placed once
-  the restore has landed, through the `UnmaximizeWait` class in
-  `window-helpers.js` that `rules.js` uses too. `apply-rules` is the one
+  from remembered state. A shortcut places through the `WindowPlacer`, as a
+  rule does. `apply-rules` is the one
   shortcut without `PER_WINDOW`: it calls the service's `applyRulesToAll`, the
   `ApplyRules(0)` path without a D-Bus caller. The zip ships the schema
   XML only: every install path but a plain copy compiles it, and `build.sh
