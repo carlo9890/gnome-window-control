@@ -997,6 +997,7 @@ export class PopupSeparatorMenuItem {}
             win.monitorMoves === undefined, JSON.stringify(win.monitorMoves));
 
         win.monitor = 0;
+        win.monitorMoves = undefined;
         win.moves = [];
         const workareaFor = workspace.get_work_area_for_monitor;
         workspace.get_work_area_for_monitor = index => ({ ...monitors[index] });
