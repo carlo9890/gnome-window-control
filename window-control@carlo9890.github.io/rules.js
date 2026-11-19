@@ -164,16 +164,16 @@ export class WindowRules {
         this._loading = true;
         const cancellable = new Gio.Cancellable();
         this._loadCancellable = cancellable;
+        // Whatever ends a load that was not replaced, a throw included, must
+        // not leave ApplyRules waiting for it.
         readRuleFiles(cancellable).then(files => {
-            if (cancellable.is_cancelled())
-                return;
-            // A throw while the rules are applied must not leave ApplyRules
-            // waiting for a load that has ended.
-            try {
+            if (!cancellable.is_cancelled())
                 this._compile(files);
-            } finally {
+        }).catch(e => {
+            console.error(`[Window Control] the rules files cannot be loaded: ${e.message}`);
+        }).finally(() => {
+            if (!cancellable.is_cancelled())
                 this._finishLoad();
-            }
         });
     }
 
