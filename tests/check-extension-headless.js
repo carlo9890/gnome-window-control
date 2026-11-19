@@ -337,7 +337,7 @@ export class PopupSeparatorMenuItem {}
             this.userOps = [...this.userOps ?? [], userOp];
         }
         change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
-        move_to_monitor() {}
+        move_to_monitor(index) { this.monitorMoves = [...this.monitorMoves ?? [], index]; }
 
         map() {
             this.hidden = false;
@@ -367,6 +367,17 @@ export class PopupSeparatorMenuItem {}
         get_n_monitors: () => monitors.length,
         get_monitor_geometry: index => monitors[index],
         get_monitor_scale: index => monitors[index].scale,
+        // The monitor the rectangle overlaps most, as mutter picks it.
+        get_monitor_index_for_rect(rect) {
+            const overlap = m => Math.max(0, Math.min(rect.x + rect.width, m.x + m.width) - Math.max(rect.x, m.x)) *
+                Math.max(0, Math.min(rect.y + rect.height, m.y + m.height) - Math.max(rect.y, m.y));
+            let best = -1;
+            monitors.forEach((m, index) => {
+                if (overlap(m) > 0 && (best < 0 || overlap(m) > overlap(monitors[best])))
+                    best = index;
+            });
+            return best;
+        },
         currentMonitor: 0,
         get_current_monitor() { return this.currentMonitor; },
         list_all_windows: () => [...windows],
@@ -962,6 +973,18 @@ export class PopupSeparatorMenuItem {}
         service.MoveAsync([61, 10, 10], invocation());
         check('the shortcut, the rule and MoveResize request the frame as the program, Resize and Move as the user',
             JSON.stringify(win.userOps) === '[false,false,false,true,true]', JSON.stringify(win.userOps));
+        check('a frame on its own monitor does not move the window to a monitor first',
+            win.monitorMoves === undefined, JSON.stringify(win.monitorMoves));
+
+        // Only move_to_monitor() records the preferred monitor mutter returns
+        // the window to after a monitor change.
+        monitors.push({ x: 1920, y: 0, width: 1920, height: 1080, scale: 1 });
+        win.moves = [];
+        service.MoveResizeAsync([61, 2000, 100, 800, 600], invocation());
+        check('MoveResize to another monitor moves the window to that monitor first',
+            JSON.stringify(win.monitorMoves) === '[1]' && JSON.stringify(win.moves) === '[[2000,100,800,600]]',
+            `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${JSON.stringify(win.moves)}`);
+        monitors.pop();
         service.unexport();
         rules.disable();
         placer.destroy();

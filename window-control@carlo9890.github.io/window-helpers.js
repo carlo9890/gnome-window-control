@@ -9,6 +9,7 @@
 
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import Mtk from 'gi://Mtk';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
@@ -93,7 +94,16 @@ export function workareaOf(win, monitor = win.get_monitor()) {
 // moves. As the program's request, the frame goes where it was asked, grown
 // to the minimum, and mutter keeps it on the screen (unless the window is
 // partly off the screen already: require_fully_onscreen is then unset).
+//
+// Only a user operation or move_to_monitor() makes mutter record a new
+// preferred monitor, the one it puts the window back on after a monitor
+// change. So a frame on another monitor goes there with move_to_monitor()
+// first, which is a program request too.
 export function moveResizeFrame(win, { x, y, width, height }) {
+    const monitor = global.display.get_monitor_index_for_rect(
+        new Mtk.Rectangle({ x, y, width, height }));
+    if (monitor >= 0 && monitor !== win.get_monitor())
+        win.move_to_monitor(monitor);
     win.move_resize_frame(false, x, y, width, height);
 }
 
