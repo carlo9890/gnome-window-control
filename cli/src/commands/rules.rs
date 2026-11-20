@@ -622,7 +622,9 @@ fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Ve
         return Ok(None);
     };
     let document = parse(&text, path)?;
+    // The unknown-key message quotes a key of the file.
     let compiled = rules::compile_rules(&document).map_err(|message| {
+        let message = crate::table::sanitize(&message);
         if name_the_file {
             Fail::error(format!("{}: {message}", path.display()))
         } else {
@@ -1442,19 +1444,9 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         return Ok(());
     };
 
-    println!(
-        "Matched {}: {} -> {}",
-        rule_name(label, index),
-        describe_match(rule),
-        describe_action_or_none(rule)
-    );
+    println!("{}", matched_line(label, index, rule));
     for (label, index, shadowed) in matching.iter().skip(1) {
-        println!(
-            "  {} also matches but is shadowed: {} -> {}",
-            rule_name(label, *index),
-            describe_match(shadowed),
-            describe_action_or_none(shadowed)
-        );
+        println!("{}", shadowed_line(label, *index, shadowed));
     }
     if let Some(workspace) = rule.workspace {
         println!("  workspace: {workspace}");
@@ -1639,6 +1631,27 @@ fn window_line(id: u64, wm_class: &str, title: &str) -> String {
     )
 }
 
+/// A match value comes from a rules file, and a drop-in is written by another
+/// program, so the two lines that print one go through `sanitize`: a newline
+/// in a value would forge a line of the report.
+fn matched_line(label: &str, index: usize, rule: &rules::Rule) -> String {
+    crate::table::sanitize(&format!(
+        "Matched {}: {} -> {}",
+        rule_name(label, index),
+        describe_match(rule),
+        describe_action_or_none(rule)
+    ))
+}
+
+fn shadowed_line(label: &str, index: usize, rule: &rules::Rule) -> String {
+    crate::table::sanitize(&format!(
+        "  {} also matches but is shadowed: {} -> {}",
+        rule_name(label, index),
+        describe_match(rule),
+        describe_action_or_none(rule)
+    ))
+}
+
 fn no_such_monitor_line(monitor: i32) -> String {
     format!("  monitor {monitor} does not exist; the extension skips the rest of this rule")
 }
@@ -1681,6 +1694,19 @@ mod tests {
                 "a\nMatched rule 0: forged\u{1b}[2J"
             ),
             "Window 7  class=kitty?]0;x?  title=a?Matched rule 0: forged?[2J"
+        );
+    }
+
+    #[test]
+    fn a_match_value_cannot_forge_a_line_of_the_test_report() {
+        let forged = rule("title", "a\n  would place at 0,0 1x1\u{1b}[2J");
+        assert_eq!(
+            matched_line(USER_LABEL, 0, &forged),
+            "Matched rule 0: title=a?  would place at 0,0 1x1?[2J -> tile left"
+        );
+        assert_eq!(
+            shadowed_line(USER_LABEL, 1, &forged),
+            "  rule 1 also matches but is shadowed: title=a?  would place at 0,0 1x1?[2J -> tile left"
         );
     }
 
