@@ -1030,9 +1030,9 @@ export class PopupSeparatorMenuItem {}
     // A shortcut, a rule and a D-Bus geometry call made while another of them
     // still waits for the window's unmaximize replace that placement: only
     // the newest lands, once, after the restore. Without a restore pending,
-    // a request runs at once. A move to another monitor drops the pending
-    // placement and keeps its wait for the restore; a move to the window's own
-    // monitor keeps it.
+    // a request runs at once. A move to a monitor drops a pending placement
+    // that puts the window on another monitor, of every kind, and keeps its
+    // wait for the restore; one for the same monitor still lands.
 
     {
         windows.length = 0;
@@ -1124,8 +1124,25 @@ export class PopupSeparatorMenuItem {}
         keybindings._tile('tile-left', win, 'left');
         service.MoveToMonitor(60, 0);
         moves = await settle();
-        check('MoveToMonitor to the window\'s own monitor keeps the pending placement',
+        check('MoveToMonitor to the window\'s own monitor keeps the pending placement for that monitor',
             JSON.stringify(win.monitorMoves) === '[0]' && moves === LEFT, `${showMonitorMoves()}, moves ${moves}`);
+        toMonitor0();
+
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.MoveResizeAsync([60, 2000, 100, 800, 600], invocation());
+        service.MoveToMonitor(60, 0);
+        moves = await settle();
+        check('MoveToMonitor to the window\'s own monitor drops a pending MoveResize to another monitor',
+            JSON.stringify(win.monitorMoves) === '[0]' && moves === '[]', `${showMonitorMoves()}, moves ${moves}`);
+        toMonitor0();
+
+        maximize();
+        service.applyRulesToAll();
+        service.MoveToMonitor(60, 1);
+        moves = await settle();
+        check('MoveToMonitor drops a pending rule tile too',
+            JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]', `${showMonitorMoves()}, moves ${moves}`);
         toMonitor0();
 
         rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":1}]' }]);

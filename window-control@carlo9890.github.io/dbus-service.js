@@ -10,7 +10,7 @@ import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
     isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, moveResizeFrame,
-    moveToMonitor, skipNextEffect, unmaximizeWindow,
+    moveToMonitor, skipNextEffect, targetMonitor, unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once and kept for the life of the shell, never per enable(). GJS
@@ -456,7 +456,9 @@ export class WindowControlService {
         console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         this._namedErrorCall(invocation, 'Move', () => {
             const win = this._geometryTarget(windowId, 'Move');
-            this._placer.place(win, () => win.move_frame(true, x, y));
+            const { width, height } = win.get_frame_rect();
+            this._placer.place(win, () => win.move_frame(true, x, y),
+                targetMonitor(win, { x, y, width, height }));
             console.debug(`[Window Control] Move(${windowId}) -> ok`);
         });
     }
@@ -489,7 +491,8 @@ export class WindowControlService {
                     'MoveResize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'MoveResize');
-            this._placer.place(win, () => moveResizeFrame(win, { x, y, width, height }));
+            const rect = { x, y, width, height };
+            this._placer.place(win, () => moveResizeFrame(win, rect), targetMonitor(win, rect));
             console.debug(`[Window Control] MoveResize(${windowId}) -> ok`);
         });
     }

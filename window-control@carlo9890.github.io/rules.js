@@ -503,7 +503,8 @@ export class WindowRules {
         }
         // A maximized window is restored first (see WindowPlacer); the frame
         // resolves once that has landed, against the window as it is then.
-        this._placer.place(win, () => this._placeFrame(win, rule, headStartMonitor));
+        this._placer.place(win, () => this._placeFrame(win, rule, headStartMonitor),
+            rule.monitor ?? headStartMonitor ?? win.get_monitor());
     }
 
     _placeFrame(win, rule, headStartMonitor) {

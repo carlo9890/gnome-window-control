@@ -53,9 +53,10 @@ If it fails, the code has a syntax error and must not be committed.
   (`window-helpers.js`), so a request made while a restore is pending does
   not land under the restored size. Three kinds stay outside it: a move to a
   monitor (`MoveToMonitor`, a rule's `monitor`), which moves at once through
-  `moveToMonitor`: to another monitor, it drops the window's pending request
-  and keeps the wait for the restore, so an older request cannot put the
-  window back and a newer one still waits; the maximize and fullscreen methods, which set
+  `moveToMonitor`: it drops a pending request whose target monitor (the
+  third argument of `place`) is another one, and keeps the wait for the
+  restore, so an older request cannot put the window back and a newer one
+  still waits; the maximize and fullscreen methods, which set
   a state; and the initial configuration (`_preplace` in `rules.js`), which
   must set the frame inside the `configure` emission. A request that moves and
   resizes calls `moveResizeFrame`: as a user operation, mutter would keep a

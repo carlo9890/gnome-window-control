@@ -564,7 +564,8 @@ or undocked a laptop.
 
 - A maximized window is restored first, then placed. A shortcut or a geometry
   command for the same window before the restore lands replaces this
-  placement: the newest request wins.
+  placement: the newest request wins. A `move-to-monitor` to another monitor
+  drops it, and the window keeps its restored size there.
 - A minimized window is placed and stays minimized.
 - A fullscreen window gets its `workspace` and `monitor`, but no geometry.
 - A `workspace` that does not exist is skipped, so each apply does not add
@@ -602,8 +603,8 @@ columns of four; press it again on the same window and it goes `wide-left`.
 A maximized window is unmaximized first, then placed; a fullscreen one is left
 alone. A newer shortcut, rule apply, `move`, `resize`, `move-resize`, `place`,
 `tile` or `center` for the same window replaces a placement that still waits
-for the restore. A `move-to-monitor` or a rule's `monitor` to another monitor
-drops it: the window stays on the new monitor.
+for the restore. A `move-to-monitor` or a rule's `monitor` drops it when it
+was made for another monitor: the window stays on the monitor it was moved to.
 
 `Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
 every open window, as `wctl rules apply` does ([Resetting windows to their
