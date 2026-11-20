@@ -654,8 +654,10 @@ export class WindowControlService {
             console.debug(`[Window Control] MoveToMonitor(${windowId}, ${monitorIndex}) -> false (invalid index)`);
             return false;
         }
-        return this._actOnWindow(windowId, 'MoveToMonitor',
-            win => win.move_to_monitor(monitorIndex));
+        return this._actOnWindow(windowId, 'MoveToMonitor', win => {
+            this._placer.cancel(win);
+            win.move_to_monitor(monitorIndex);
+        });
     }
 
     // Reply with the ID of a shown window matching (kind, value), either

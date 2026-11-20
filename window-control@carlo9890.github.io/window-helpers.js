@@ -176,8 +176,10 @@ export class UnmaximizeWait {
 // The one owner of the frame requests of a shown window: the shortcuts, a
 // rule's geometry and the D-Bus geometry methods all place through it, so a
 // window has at most one placement pending and the newest request wins.
-// MoveToMonitor and a rule's `monitor` call move_to_monitor() outside it; a
-// frame on another monitor goes there inside it (moveResizeFrame).
+// MoveToMonitor and a rule's `monitor` call move_to_monitor() outside it, and
+// cancel() the window's pending placement first: run after the move, it would
+// put the window back. A frame on another monitor goes there inside it
+// (moveResizeFrame).
 //
 // A maximized window is restored first, and its request runs once the
 // restore has landed (see UnmaximizeWait). A request made while that restore
@@ -211,6 +213,13 @@ export class WindowPlacer {
                 entry.request();
         });
         this._pending.set(win, entry);
+    }
+
+    // Drop the window's pending request, without running it. The restore
+    // already requested stays.
+    cancel(win) {
+        this._pending.get(win)?.wait.destroy();
+        this._pending.delete(win);
     }
 
     // Drop every pending request, without running it.

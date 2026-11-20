@@ -491,6 +491,7 @@ export class WindowRules {
                 console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: no such monitor, skipped`);
                 return;
             }
+            this._placer.cancel(win);
             win.move_to_monitor(rule.monitor);
         }
         if (!rule.geometry) {

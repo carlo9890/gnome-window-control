@@ -602,7 +602,8 @@ columns of four; press it again on the same window and it goes `wide-left`.
 A maximized window is unmaximized first, then placed; a fullscreen one is left
 alone. A newer shortcut, rule apply, `move`, `resize`, `move-resize`, `place`,
 `tile` or `center` for the same window replaces a placement that still waits
-for the restore.
+for the restore. A `move-to-monitor` or a rule's `monitor` drops it: the window
+stays on the new monitor.
 
 `Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
 every open window, as `wctl rules apply` does ([Resetting windows to their

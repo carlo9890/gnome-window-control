@@ -1086,6 +1086,32 @@ export class PopupSeparatorMenuItem {}
         moves = await settle();
         check('Move after a shortcut replaces the shortcut\'s pending placement', moves === '[[5,6]]', moves);
 
+        // A move to a monitor runs at once, outside the placer: the older
+        // pending placement must not put the window back after it.
+        monitors.push({ x: 1920, y: 0, width: 1920, height: 1080, scale: 1 });
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        const movedToMonitor = service.MoveToMonitor(60, 1);
+        moves = await settle();
+        check('MoveToMonitor drops the shortcut\'s pending placement',
+            movedToMonitor && JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]' &&
+            !placer._pending.has(win), `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${moves}`);
+        win.monitor = 0;
+        win.monitorMoves = undefined;
+
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":1}]' }]);
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.applyRulesToAll();
+        moves = await settle();
+        check('a rule\'s monitor drops the shortcut\'s pending placement',
+            JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]' && !placer._pending.has(win),
+            `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${moves}`);
+        win.monitor = 0;
+        win.monitorMoves = undefined;
+        monitors.pop();
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"tile":"right"}]' }]);
+
         maximize();
         keybindings._tile('tile-left', win, 'left');
         win.maximizeFlags = Meta.MaximizeFlags.BOTH;   // maximized again before the restore landed

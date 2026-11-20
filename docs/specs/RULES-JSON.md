@@ -358,7 +358,9 @@ Action order within `_apply`:
 3. `monitor` — when the index is not below `get_n_monitors()`, the rest of
    the rule (the monitor move and the geometry) is skipped with a debug line.
    The workspace step has already run. Else `move_to_monitor(index)` moves
-   the window at once: this move does not wait in the `WindowPlacer`.
+   the window at once: this move does not wait in the `WindowPlacer`. Before
+   it, a placement still waiting there for the window is dropped, without
+   running: run after the move, it would put the window back.
 4. Geometry — skipped when the window is fullscreen. The frame is requested
    through the `WindowPlacer` (`window-helpers.js`) that the keyboard shortcuts
    and the D-Bus geometry methods share:
