@@ -62,12 +62,8 @@ appear as two checks on the PR. Read the workflow for the steps; both run on a
 bare `ubuntu-latest` and every gate in them is reproducible locally from the
 minimum-checks table in [TESTING.md](TESTING.md).
 
-Two things the workflow does not say:
-
-- It triggers only on a path under `window-control@carlo9890.github.io/`, `cli/`,
-  `scripts/`, `tests/`, `install-wctl.sh`, `.mise.toml` or the workflow itself.
-- No branch protection is configured, so a docs-only PR reports **no checks at
-  all** and is still mergeable — a green tick is not evidence a docs PR was
-  tested.
+A PR that touches no path in the `on.pull_request.paths` filter of
+`build.yml`, for example a docs-only PR, reports **no checks at all**. No branch protection is configured,
+so it is still mergeable — a green tick is not evidence a docs PR was tested.
 
 Releases are a separate flow — see [RELEASING.md](RELEASING.md).

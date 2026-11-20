@@ -25,14 +25,16 @@ If it fails, the code has a syntax error and must not be committed.
   a human reviewer reads every line of each upload, and a violation costs a new
   release.
 - `Move`, `Resize`, `MoveResize`, `ApplyRules`, `WaitForWindow` and
-  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean.
-  `WaitForWindow` returns the `window_id`, or 0 on timeout; `WaitForGeometry`
-  returns the settled rectangle, or raises `Timeout`; the three geometry methods
-  return nothing at all; `ApplyRules` returns how many windows a rule matched. `GetWorkarea` returns `(-1, -1, -1, -1)` for an index
-  that is not a monitor.
-  The names, and the reason each method raises, are in the ERRORS block in
-  `dbus-interface.js`; add to that list rather than inventing a name at the
-  throw site.
+  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean
+  (`WaitForWindow` returns 0 on timeout); a new method that can fail for more
+  than one reason does the same. The reason each method raises is in the
+  ERRORS block in `dbus-interface.js`. A new name goes into that block, a
+  `DBUS_ERROR_*` constant in `dbus-service.js`, the Errors section of
+  `README.md`, and an `ERROR_*` constant in `cli/src/dbus.rs` that `map_err`
+  maps to its exit code: a match arm of its own, or `is_extension_not_running`
+  for a name that means the extension is not there. Only a body that
+  `_namedErrorCall` runs can throw it as a `NamedError`; an `...Async` handler
+  outside that body sends it with `invocation.return_dbus_error`.
 - A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
@@ -62,7 +64,7 @@ If it fails, the code has a syntax error and must not be committed.
   resizes calls `moveResizeFrame`: as a user operation, mutter would keep a
   window whose minimum size is above the rectangle at its old place.
 - `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
-  an upload that does not ([RELEASING.md](RELEASING.md#constraints-the-review-enforces)).
+  an upload that does not ([REVIEWING.md](REVIEWING.md#extensionsgnomeorg-review)).
   That covers every signal handler, GLib source, bus-name watch, file monitor,
   cancellable, keybinding and pending `...Async` invocation. Keep each ID where
   the teardown reaches it; in `rules.js` and `dbus-service.js`, add a timeout
@@ -112,6 +114,10 @@ The extension directory name must stay identical to the `uuid` in
 `metadata.json` — `build.sh validate` hard-fails if they diverge. The zip and
 what it ships are described in [RELEASING.md](RELEASING.md).
 
+No CI job runs `install-wctl.sh` or `scripts/release.sh`: after a change to
+either, run it offline as
+[TESTING.md](TESTING.md#driving-install-wctlsh-and-releasesh-offline) describes.
+
 ## Adding a new D-Bus method
 
 1. Add the method signature to the interface XML in
@@ -143,8 +149,8 @@ what it ships are described in [RELEASING.md](RELEASING.md).
 
    > A method that can fail for more than one reason should raise a named error
    > (see the JavaScript section above) and declare no `success` out-arg. Add the
-   > name to `ERROR_*` in `cli/src/dbus.rs` so `map_err` maps it to the right
-   > exit code, and call it with `call_unit` rather than `call_bool`.
+   > name in every place the JavaScript section lists, and call it with
+   > `call_unit` rather than `call_bool`.
 
 3. Add the corresponding command to the crate, reusing the shared helpers.
    A simple boolean action is one line in `cli/src/commands/state.rs`:

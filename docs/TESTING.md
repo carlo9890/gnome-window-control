@@ -12,13 +12,12 @@ and drive the extension by hand see [RUNNING.md](RUNNING.md).
 | Preferences logic (CI gate) | `tests/check-prefs.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js` |
 | Extension against fake windows (CI gate) | `tests/check-extension-headless.js` | No — headless, needs the mutter typelib | `dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' \| sort -V \| tail -1) && GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js` |
 | Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
-| Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` |
+| Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` in a headless shell or a VM guest's session only |
 | Keyboard shortcuts (state-changing, in the modification runner) | `tests/test-keybindings.sh` | Yes, plus injected keys | `./tests/test-keybindings.sh` in a headless shell or a VM guest's session (see below) |
 
-The live suites were last run green on 2026-10-10 on GNOME Shell 46.0 (the
-real session of an Ubuntu 24.04 libvirt guest, with the extension installed
-from the built zip) and 50.1 (a headless shell on Ubuntu 26.04); both paths
-are in [RUNNING.md](RUNNING.md). Add a version here when you run them on another one.
+The live suites run green on GNOME Shell 46.0 (the real session of an Ubuntu
+24.04 libvirt guest, with the extension installed from the built zip) and 50.1
+(a headless shell on Ubuntu 26.04); both paths are in [RUNNING.md](RUNNING.md).
 
 ## The keyboard-shortcut suite
 
@@ -83,14 +82,9 @@ with only the `gjs` package.
 
 **Every vector group MUST be read from both sides**, with the exception below,
 so `wctl rules check` and the extension cannot disagree about whether a file is
-valid, about the message text or about a rectangle. The GJS check reads every
-group; in `cli/src/rules.rs`, `rules_spec_vectors` reads `validation`,
-`geometry_vectors` reads `geometry`, `match_vectors` reads `match.cases`,
-`min_width_vectors` reads `match.min_width`, and `dropin_vectors` reads
-`dropins`.
-Two parts are read by the GJS check only, because `rules.json` has no `pid` key
-and the CLI builds no predicate from a bare kind: the `pid` cases and
-`match.no_predicate`. A new group gets a reader on each side in the same commit:
+valid, about the message text or about a rectangle. Two parts are read by the
+GJS check only, because `rules.json` has no `pid` key and the CLI builds no
+predicate from a bare kind: the `pid` cases and `match.no_predicate`. A new group gets a reader on each side in the same commit:
 a group that only one side reads pins nothing across the pair. Adding a
 validation rule means adding a case to the vectors in the same commit, and
 [specs/RULES-JSON.md](specs/RULES-JSON.md) is the normative definition both
@@ -113,10 +107,8 @@ it stops with `no Meta-*.typelib installed`.
 Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `rules-files.js`, `overlay.js`,
 `keybindings.js` and `indicator.js` against fake windows and a fake display that count their signal handlers. No
 GNOME session, no D-Bus: the check copies the extension files into a temporary
-directory and points the shell-only imports (`ui/main.js`, `ui/panelMenu.js`,
-`ui/popupMenu.js`, `misc/config.js`, `extensions/extension.js`, `gi://Shell`,
-`gi://St`) at stubs
-written there. It needs the
+directory and points the shell-only imports at stubs written there (the check's header
+lists them). It needs the
 mutter typelib (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package
 `gir1.2-mutter-14`), which the extension job in `.github/workflows/build.yml`
 installs.
@@ -140,8 +132,13 @@ window (found through `wctl wait -p`, which replies once the window is shown)
 and exercise every state-changing command
 (move, resize, move-resize, place, tile, center, minimize/maximize, fullscreen,
 above, sticky, activate, focus, move-to-workspace, move-to-monitor, wait, the
-selector forms, close), asserting geometry within a pixel tolerance. **They
-disrupt your desktop** (create/move/focus/close a window, switch workspace).
+selector forms, close), asserting geometry within a pixel tolerance. They
+create, move, focus and close a window and switch workspace in the session
+they run against, so never run them on your desktop's session. **Run the
+modification runner only in a headless shell or a VM guest's session** (see
+[RUNNING.md](RUNNING.md)): it includes the keyboard-shortcut suite, which
+presses keys into the shell that runs it. A nested session runs
+`tests/test-modifications.sh` directly.
 
 `tests/test-workspaces-monitors.sh` (query) covers `workspaces`, `monitors`,
 the `list` filters and the read-only selector forms. Both suites need the
@@ -198,19 +195,15 @@ network are needed.
   `cli/target/` in that clone.
 - Log each stub's arguments to a file and assert the calls from that file.
 
-| Stub | Caller | Call | The stub must |
-|------|--------|------|---------------|
-| `curl` | `install-wctl.sh` (download) | `curl -fsSL <url> -o <file>`; `<file>` is `-` for `wctl.sha256` | for `<url>` ending in `/wctl`, write an executable that exits 0 on `--version` to `<file>`; for `/wctl.sha256`, print `<sha256>  wctl` of that executable; exit non-zero for any other URL |
-| `wget` | `install-wctl.sh` (download), only when no `curl` is on `PATH` | `wget -q <url> -O <file>` | do the same as `curl` |
-| `mise` | `install-wctl.sh --local`, only when `cli/target/release/wctl` is missing | `mise run build` in the repository root | create `cli/target/release/wctl` |
-| `mise` | `release.sh` | `mise install`, then `mise run build:musl` | exit 0; on `build:musl`, create `cli/target/x86_64-unknown-linux-musl/release/wctl` |
-| `gh` | `release.sh` | `gh auth status` | exit 0 |
-| | | `gh api repos/{owner}/{repo}/commits/tags/<tag> -q .sha` | print the `HEAD` commit |
-| | | `gh release view <tag>` before `create` | exit non-zero; exit 0 makes the script prompt on stdin |
-| | | `gh repo view --json nameWithOwner -q .nameWithOwner` | print `<owner>/<repo>` |
-| | | `gh release create <tag> --verify-tag ...` | exit 0, and make the next `release view` succeed |
-| | | `gh release view <tag>` after `create`, plain and with `--json assets -q '.assets \| length'`, `-q '.assets[].name'`, `--json url -q .url` | exit 0; print `4`, four asset names, a URL |
-| `file` | `scripts/check-static.sh`, which only the real `mise run build:musl` runs | `file <binary>` | print a line with `static-pie linked` to pass, `dynamically linked` to fail |
+Stub each network and toolchain command the script calls: `curl`, `mise` and
+`gh` (read the script for the calls). `install-wctl.sh` calls `wget` only when
+no `curl` is on `PATH`: to test that path, stub `wget` and leave `curl` off
+`PATH`. With `mise` stubbed, the
+static-linkage check never runs: only the real `mise run build:musl` runs it. Keep `git`,
+`sha256sum` and the other local tools real: the scripts check their output.
+The `gh release view <tag>` stub is not obvious: before `gh release create` it
+must exit non-zero, because exit 0 makes `release.sh` prompt on stdin; after
+it, it must exit 0 and print `4` for `--json assets -q '.assets | length'`.
 
 ## Minimum checks before a PR
 

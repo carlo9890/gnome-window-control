@@ -158,7 +158,7 @@ README.md                  user docs; the D-Bus method table
 grep -n 'method name=' window-control@carlo9890.github.io/dbus-interface.js
 
 # A method's handler implementation
-grep -n 'MethodName(' window-control@carlo9890.github.io/dbus-service.js
+grep -nE 'MethodName(Async)?\(' window-control@carlo9890.github.io/dbus-service.js
 
 # A wctl subcommand's implementation and its dispatch
 grep -rn '"<name>" =>' cli/src/main.rs cli/src/commands/

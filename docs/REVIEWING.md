@@ -1,8 +1,10 @@
 # Reviewing
 
-Project-specific review rules. The generic review lenses are covered by the
-`project-review-*` skills — this file records only the local delta. Where it
-conflicts with a skill's default, this file wins.
+Project-specific review rules; this file records only the local delta over
+the generic review. An agent runs the generic review by calling the Skill tool
+with `project-review:project-review-change` (or `worktree-flow:worktree-review`
+for a PR whose fixes it pushes). Where this file conflicts with a skill's
+default, this file wins.
 
 ## extensions.gnome.org review
 
@@ -35,8 +37,9 @@ review:
    shexli "$PWD/window-control@carlo9890.github.io"
    ```
 
-5. The pages win over everything in this repository: this file, CODING.md, a
-   code comment, existing code and a test. A test that pins a pattern the
+5. Where the pages reject a pattern, they win over everything in this
+   repository: this file, CODING.md, a code comment, existing code and a test.
+   A quality rule below that is stricter than the pages still applies. A test that pins a pattern the
    pages reject is wrong; change the test with the code.
 6. Each guideline violation, and each shexli finding that
    [Out of scope](#out-of-scope--non-blocking) does not list, blocks the
@@ -74,6 +77,15 @@ the correct form.
   logged before that: it lets any process on the session bus write arbitrary
   text, newlines included, into the journal. The value it matches against is
   never logged.
+- **No dynamic code or processes**: extension code calls no `eval()` or
+  `Function()` and starts no process itself, through `GLib.spawn*`,
+  `Gio.Subprocess`, `Util.spawn*`, a `Gio.AppInfo` launch or any other way,
+  and the zip ships no generated code. `openPreferences()` asks the shell to
+  open the preferences window and is allowed. Flag each use. The correct form does the work in-process
+  through the Meta and Gio APIs; work that needs a process goes in `wctl`,
+  outside the zip. The extensions.gnome.org guidelines allow a carefully
+  spawned process and well-formatted transpiled code, and this project does
+  not.
 - **Client text in plain output**: a window field a client sets (a title, a
   `wm_class`, any other window field) that `wctl` prints outside `--json` goes
   through `table::sanitize` in `cli/src/table.rs`. `table::render` already

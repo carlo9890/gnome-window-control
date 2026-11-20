@@ -20,10 +20,14 @@ session writes to a new log file per run, and its start script prints the path:
 repository root for `./scripts/start-headless.sh`.
 
 Errors and warnings appear by default; the per-call `console.debug()` trace
-needs `G_MESSAGES_DEBUG=all` in the shell's environment. In a nested or
-headless session, put it in front of the start script:
-`G_MESSAGES_DEBUG=all ./scripts/start-nested.sh`. The
-main Wayland session cannot be restarted, so it needs the variable in the
+needs `G_MESSAGES_DEBUG=all` in the shell's environment. For a nested or
+headless session, prefix the start script:
+`G_MESSAGES_DEBUG=all ./scripts/start-nested.sh` or
+`G_MESSAGES_DEBUG=all ./scripts/start-headless.sh`. The rest of the procedure
+is in RUNNING.md, for the
+[nested](RUNNING.md#reload-after-a-code-change-required) and the
+[headless](RUNNING.md#headless-session-no-window-on-the-real-screen) session.
+The main Wayland session cannot be restarted, so it needs the variable in the
 session environment before login — use a nested or headless session instead.
 
 ## Log levels
@@ -47,12 +51,16 @@ may contain.
 ## Interpreting common signals
 
 - **`wctl` prints "extension is not running"** — the D-Bus destination isn't
-  answering; enable it
-  (`gnome-extensions enable window-control@carlo9890.github.io`).
+  answering. On the main session, enable it with
+  `gnome-extensions enable window-control@carlo9890.github.io`. In a nested
+  or headless session, never use that command, which writes the main
+  session's dconf; enable it as
+  [RUNNING.md](RUNNING.md#reload-after-a-code-change-required) describes.
   `is_extension_not_running` in `cli/src/dbus.rs` lists the error names that
   produce this message, including the `WindowControl.Disabled` error the
   extension returns when it is disabled while a `WaitForWindow` or
-  `WaitForGeometry` call is pending. For `UnknownMethod`, `map_err` asks
+  `WaitForGeometry` call is pending, or while an `ApplyRules` call waits for
+  the rules files to load. For `UnknownMethod`, `map_err` asks
   whether the object is served at all.
 - **The message starts with "Cannot connect to the session bus"** — wctl
   reached no bus at all (`map_connect_err` in `cli/src/dbus.rs`); check
@@ -61,7 +69,7 @@ may contain.
 - **`wctl` fails with `org.gnome.gjs.JSError.<name>`** — a handler threw and GJS
   answered for it. GJS logs it as `JS ERROR: Exception in method call: <Method>`.
 - **`wctl` fails with `org.freedesktop.DBus.Error.Failed`** — a geometry call
-  threw; the `[Window Control] <Method>() error:` line names the method and
+  or `ApplyRules` threw; the `[Window Control] <Method>() error:` line names the method and
   message.
 - **`wctl wait` fails with a D-Bus timeout** — on GNOME 45-49 the wait handler
   threw and GJS sent no reply; the `JS ERROR` line names the cause.

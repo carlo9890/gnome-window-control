@@ -14,7 +14,9 @@ rather than repeating it. (AI agents start from [AGENTS.md](AGENTS.md) instead.)
 2. Set up and build from source — see [docs/CODING.md](docs/CODING.md).
 3. Reload and drive the extension while developing — see [docs/RUNNING.md](docs/RUNNING.md).
 4. Run the tests and learn the gates — see [docs/TESTING.md](docs/TESTING.md).
-5. Commit, branch, and open a PR — pre-handoff gates and conventions:
+5. Check the change against the review rules — see
+   [docs/REVIEWING.md](docs/REVIEWING.md).
+6. Commit, branch, and open a PR — pre-handoff gates and conventions:
    [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md).
 
 Prerequisites: GNOME Shell 45-50, the `gnome-extensions` CLI, and `node` (for
