@@ -14,20 +14,14 @@ export function buildShortcutsPage(window, settings) {
         title: 'Shortcuts',
         icon_name: 'preferences-desktop-keyboard-shortcuts-symbolic',
     });
-    // A schema compiled by an older install lacks the newer keys, and a read
-    // of a key the schema does not know throws.
-    const hasKey = ([key]) => settings.settings_schema.has_key(key);
-    const titles = new Map(SHORTCUT_GROUPS.flatMap(group => group.keys).filter(hasKey));
+    const titles = new Map(SHORTCUT_GROUPS.flatMap(group => group.keys));
     const handlerIds = [];
     for (const group of SHORTCUT_GROUPS) {
-        const keys = group.keys.filter(hasKey);
-        if (keys.length === 0)
-            continue;
         const prefsGroup = new Adw.PreferencesGroup({
             title: group.title,
             description: group.description ?? null,
         });
-        for (const [key, title] of keys) {
+        for (const [key, title] of group.keys) {
             const row = shortcutRow(window, settings, key, title, titles);
             prefsGroup.add(row.widget);
             handlerIds.push(settings.connect(`changed::${key}`, row.update));

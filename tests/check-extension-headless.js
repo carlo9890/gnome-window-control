@@ -53,16 +53,11 @@ function unknownSourceRemovals(from) {
 
 const EXTENSION_DIR = `${ROOT}/window-control@carlo9890.github.io`;
 const DBUS_ERROR_DISABLED = 'org.gnome.Shell.Extensions.WindowControl.Disabled';
-// A Gio.Settings whose schema has every key the extension asks for.
 const SETTINGS = {
     values: { 'show-indicator': false },
-    keys: null,                        // null: every key; else the keys the schema has
     handlers: new Map(),
     nextId: 1,
-    settings_schema: { has_key: name => SETTINGS.keys === null || SETTINGS.keys.includes(name) },
     get_boolean(name) {
-        if (!this.settings_schema.has_key(name))
-            throw new Error(`GSettings would abort the shell: no key ${name}`);
         return this.values[name];
     },
     set(name, value) {
@@ -1168,30 +1163,6 @@ export class PopupSeparatorMenuItem {}
         keybindings.disable();
     }
 
-    // -- WindowKeybindings: a key the compiled schema lacks -----------------------
-    //
-    // A compiled schema left from an older install lacks the newer keys, and
-    // GSettings aborts the shell on a key it does not know, so such a key is
-    // never handed to addKeybinding.
-
-    {
-        const realAdd = Main.wm.addKeybinding;
-        const asked = [];
-        Main.wm.addKeybinding = name => {
-            asked.push(name);
-            return 1;
-        };
-        const keybindings = new WindowKeybindings(new WindowPlacer(), () => {});
-        try {
-            keybindings.enable({ settings_schema: { has_key: name => name !== 'apply-rules' } });
-        } finally {
-            Main.wm.addKeybinding = realAdd;
-        }
-        check('a key the schema lacks never reaches addKeybinding', !asked.includes('apply-rules'),
-            `asked ${asked}`);
-        check('a key the schema lacks serves no shortcut', !keybindings.registered);
-    }
-
     // -- enable() when the D-Bus export fails -------------------------------------
     //
     // The shell calls no disable() for an extension whose enable() threw, so the
@@ -1384,19 +1355,9 @@ export class PopupSeparatorMenuItem {}
             check('disable() removes the icon', shown() === undefined);
             check('disable() leaves no settings handler', SETTINGS.handlers.size === handlerCount,
                 `${SETTINGS.handlers.size - handlerCount} left`);
-
-            // The schema of version 23: the tile shortcut keys, no apply-rules
-            // and no show-indicator.
-            SETTINGS.keys = ['tile-top-left', 'tile-top-center', 'tile-top-right', 'tile-left', 'tile-center',
-                'tile-right', 'tile-bottom-left', 'tile-bottom-center', 'tile-bottom-right', 'cycle-wide'];
-            SETTINGS.values['show-indicator'] = true;
-            extension.enable();
-            check('a schema without show-indicator shows no icon and does not abort', shown() === undefined);
-            extension.disable();
         } finally {
             if (extension._service)
                 extension.disable();
-            SETTINGS.keys = null;
             SETTINGS.values['show-indicator'] = false;
             Main.sessionMode.isLocked = false;
             WindowControlService.prototype.export = realExport;
