@@ -470,7 +470,7 @@ nothing.
 #### Keys that need a newer extension
 
 Some keys need a capability beyond `rules`. An extension that does not report
-it refuses a file that has the key and then applies no rule at all; `add` and
+it refuses a file that has the key and applies no rule from that file; `add` and
 `remove` warn about that too.
 
 | Key | Capability |
@@ -741,8 +741,8 @@ destination is `org.gnome.Shell` (not a standalone service name).
 `Move`, `Resize` and `MoveResize` return nothing and raise instead;
 `ApplyRules`, `WaitForWindow` and `WaitForGeometry` raise too. The ERRORS block in
 `window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
-errors; `org.freedesktop.DBus.Error.*` below are the standard names a handler
-raises without declaring them there, and `org.gnome.gjs.JSError.*` is the name
+errors and the standard `org.freedesktop.DBus.Error.*` names below that a
+handler raises, and `org.gnome.gjs.JSError.*` is the name
 GJS raises when any other method throws. Before GNOME 50, a wait method that
 throws before it starts waiting sends no reply, and the caller's D-Bus timeout
 ends the call.

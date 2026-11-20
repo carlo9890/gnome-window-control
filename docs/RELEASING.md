@@ -108,11 +108,10 @@ Uploads go to that same listing — never create a second one, and never change 
 EGO is a separate channel from the GitHub release. Do the GitHub release first,
 then upload the same zip.
 
-1. Use the zip that `scripts/release.sh` wrote to
-   `dist/window-control@carlo9890.github.io_v<version>.zip` in step 8 of the
-   release checklist, not a CI artifact. A later `build.sh all` or
-   `build.sh build` run deletes `dist/`; then download the extension zip asset
-   of the GitHub release. The archive must have `metadata.json` at its root,
+1. Download the extension zip asset of the GitHub release
+   (`window-control@carlo9890.github.io_v<version>.zip`). Not a zip in `dist/`
+   or a CI artifact: a later build writes a zip of the same name from newer
+   code. The archive must have `metadata.json` at its root,
    not inside a subdirectory — `release.sh` builds it with `build.sh`, which
    zips the git-tracked files of the extension directory with `metadata.json`
    at the root. An untracked or ignored file never ships; commit a new file
@@ -121,8 +120,9 @@ then upload the same zip.
    (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
    compile the XML.
 2. Run the
-   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) and
-   fix each violation before the upload.
+   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review). A
+   violation found here changes the code, so it needs a new release before
+   the upload.
 3. Upload that zip at <https://extensions.gnome.org/upload/>.
 4. Wait for the review. A human reviewer reads every line of the extension, and
    the queue is usually weeks. Every new version needs a new upload and a new

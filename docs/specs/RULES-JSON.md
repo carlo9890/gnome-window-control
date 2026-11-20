@@ -566,7 +566,7 @@ absent or empty file costs nothing per window.
 
 ## Timing constants
 
-Defined at the top of the file named; change them there, not here.
+Defined in the file named; change them there.
 
 | Constant | Guards | File |
 |---|---|---|
