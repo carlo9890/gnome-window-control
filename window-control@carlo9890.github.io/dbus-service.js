@@ -379,7 +379,6 @@ export class WindowControlService {
                 width: geometry.width,
                 height: geometry.height,
                 is_primary: i === primaryMonitor,
-                connector: '',  // Connector name not available via stable API
                 scale: scale,
             });
         }
