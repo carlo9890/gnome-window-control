@@ -23,9 +23,11 @@ Errors and warnings appear by default; the per-call `console.debug()` trace
 needs `G_MESSAGES_DEBUG=all` in the shell's environment. For a nested or
 headless session, prefix the start script:
 `G_MESSAGES_DEBUG=all ./scripts/start-nested.sh` or
-`G_MESSAGES_DEBUG=all ./scripts/start-headless.sh`; the rest of the procedure
-is in [RUNNING.md](RUNNING.md#reload-after-a-code-change-required). The main
-Wayland session cannot be restarted, so it needs the variable in the
+`G_MESSAGES_DEBUG=all ./scripts/start-headless.sh`. The rest of the procedure
+is in RUNNING.md, for the
+[nested](RUNNING.md#reload-after-a-code-change-required) and the
+[headless](RUNNING.md#headless-session-no-window-on-the-real-screen) session.
+The main Wayland session cannot be restarted, so it needs the variable in the
 session environment before login — use a nested or headless session instead.
 
 ## Log levels
@@ -49,9 +51,11 @@ may contain.
 ## Interpreting common signals
 
 - **`wctl` prints "extension is not running"** — the D-Bus destination isn't
-  answering; enable it as
-  [RUNNING.md](RUNNING.md#reload-after-a-code-change-required) describes for
-  the session in use.
+  answering. On the main session, enable it with
+  `gnome-extensions enable window-control@carlo9890.github.io`. In a nested
+  or headless session, never use that command, which writes the main
+  session's dconf; enable it as
+  [RUNNING.md](RUNNING.md#reload-after-a-code-change-required) describes.
   `is_extension_not_running` in `cli/src/dbus.rs` lists the error names that
   produce this message, including the `WindowControl.Disabled` error the
   extension returns when it is disabled while a `WaitForWindow` or

@@ -374,7 +374,7 @@ rule without it, and the second rule is the fallback on a smaller monitor:
 - `wctl rules add ... --min-width 3000` writes the key.
 
 `min_width` needs a newer extension: see the
-[capability table](#managing-rules-from-the-command-line).
+[capability table](#keys-that-need-a-newer-extension).
 
 ### Overlay windows
 
@@ -467,6 +467,8 @@ applied until you install the newer extension and restart the shell. With no
 shell running, and with a `--file` the extension does not read, they say
 nothing.
 
+#### Keys that need a newer extension
+
 Some keys need a capability beyond `rules`. An extension that does not report
 it refuses a file that has the key and then applies no rule at all; `add` and
 `remove` warn about that too.
@@ -535,7 +537,7 @@ needs the extension running, because it resolves a live window. It never moves
 anything. Against an extension that does not report the `rules` capability it
 exits 5 instead, because that extension ignores the file. It also exits 5 when
 the file uses a key whose capability in the
-[capability table](#managing-rules-from-the-command-line) the extension does
+[capability table](#keys-that-need-a-newer-extension) the extension does
 not report, because that extension refuses the whole file.
 
 Without `--file` it tests the rules of every file the extension loads. A

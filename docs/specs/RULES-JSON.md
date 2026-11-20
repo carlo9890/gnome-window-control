@@ -569,7 +569,7 @@ Defined at the top of the file named; change them there, not here.
 
 | Constant | Guards | File |
 |---|---|---|
-| `LATE_IDENTITY_GRACE_MS` | late Wayland app ID / title | `rules.js` |
+| `LATE_IDENTITY_GRACE_MS` | late Wayland app ID / title; README.md's `rules apply` section quotes its value | `rules.js` |
 | `RELOAD_DEBOUNCE_MS` | one reload per save | `rules.js` |
 | `FOCUS_LOSS_GRACE_MS` | a focus that comes straight back, as wl-copy and wl-paste hand it | `overlay.js` |
 | `UNMAXIMIZE_SETTLE_MS` | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`) |

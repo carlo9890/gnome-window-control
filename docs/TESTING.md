@@ -132,10 +132,13 @@ window (found through `wctl wait -p`, which replies once the window is shown)
 and exercise every state-changing command
 (move, resize, move-resize, place, tile, center, minimize/maximize, fullscreen,
 above, sticky, activate, focus, move-to-workspace, move-to-monitor, wait, the
-selector forms, close), asserting geometry within a pixel tolerance. **Run the
+selector forms, close), asserting geometry within a pixel tolerance. They
+create, move, focus and close a window and switch workspace in the session
+they run against, so never run them on your desktop's session. **Run the
 modification runner only in a headless shell or a VM guest's session** (see
 [RUNNING.md](RUNNING.md)): it includes the keyboard-shortcut suite, which
-presses keys into the shell that runs it.
+presses keys into the shell that runs it. A nested session runs
+`tests/test-modifications.sh` directly.
 
 `tests/test-workspaces-monitors.sh` (query) covers `workspaces`, `monitors`,
 the `list` filters and the read-only selector forms. Both suites need the
@@ -192,9 +195,12 @@ network are needed.
   `cli/target/` in that clone.
 - Log each stub's arguments to a file and assert the calls from that file.
 
-Stub each external command the script calls (read the script for the calls).
-One stub is not obvious: `gh release view <tag>` before `gh release create`
-must exit non-zero; exit 0 makes `release.sh` prompt on stdin.
+Stub each network and toolchain command the script calls: `curl` or `wget`,
+`mise`, `gh`, and `file` (read the script for the calls). Keep `git`,
+`sha256sum` and the other local tools real: the scripts check their output.
+The `gh release view <tag>` stub is not obvious: before `gh release create` it
+must exit non-zero, because exit 0 makes `release.sh` prompt on stdin; after
+it, it must exit 0 and print `4` for `--json assets -q '.assets | length'`.
 
 ## Minimum checks before a PR
 

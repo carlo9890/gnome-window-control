@@ -24,10 +24,13 @@ If it fails, the code has a syntax error and must not be committed.
   before you write extension code, and write the code and its comments to them:
   a human reviewer reads every line of each upload, and a violation costs a new
   release.
-- A method that can fail for more than one reason raises a named D-Bus error
-  instead of reporting a boolean. The names, and the reason each method
-  raises, are in the ERRORS block in `dbus-interface.js`; add to that block,
-  never name an error at the throw site.
+- `Move`, `Resize`, `MoveResize`, `ApplyRules`, `WaitForWindow` and
+  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean
+  (`WaitForWindow` returns 0 on timeout); a new method that can fail for more
+  than one reason does the same. The names, and the reason each method raises,
+  are in the ERRORS block in `dbus-interface.js` and in the `DBUS_ERROR_*`
+  constants of `dbus-service.js`. Add a new name to both and throw it with its
+  constant, never with a string at the throw site.
 - A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
