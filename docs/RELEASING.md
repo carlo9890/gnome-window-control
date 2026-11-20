@@ -110,12 +110,13 @@ then upload the same zip.
 
 1. Use the zip that `scripts/release.sh` wrote to
    `dist/window-control@carlo9890.github.io_v<version>.zip` in step 8 of the
-   release checklist, not a CI artifact. A later `build.sh` run deletes
-   `dist/`; then download the extension zip asset of the GitHub release. The archive must have
-   `metadata.json` at its root, not inside a subdirectory — `release.sh` builds
-   it with `build.sh`, which zips the git-tracked files of the extension
-   directory with `metadata.json` at the root. An untracked or ignored file never ships; commit a new file before it
-   can. `gschemas.compiled` is
+   release checklist, not a CI artifact. A later `build.sh all` or
+   `build.sh build` run deletes `dist/`; then download the extension zip asset
+   of the GitHub release. The archive must have `metadata.json` at its root,
+   not inside a subdirectory — `release.sh` builds it with `build.sh`, which
+   zips the git-tracked files of the extension directory with `metadata.json`
+   at the root. An untracked or ignored file never ships; commit a new file
+   before it can. `gschemas.compiled` is
    ignored on purpose: the review rejects a shipped compiled schema
    (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
    compile the XML.

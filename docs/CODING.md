@@ -30,8 +30,9 @@ If it fails, the code has a syntax error and must not be committed.
   than one reason does the same. The reason each method raises is in the
   ERRORS block in `dbus-interface.js`. A new name goes into that block, a
   `DBUS_ERROR_*` constant in `dbus-service.js`, the Errors section of
-  `README.md`, and an `ERROR_*` constant in `cli/src/dbus.rs` with a match
-  arm in `map_err` that gives its exit code. Only a body that
+  `README.md`, and an `ERROR_*` constant in `cli/src/dbus.rs` that `map_err`
+  maps to its exit code: a match arm of its own, or `is_extension_not_running`
+  for a name that means the extension is not there. Only a body that
   `_namedErrorCall` runs can throw it as a `NamedError`; an `...Async` handler
   outside that body sends it with `invocation.return_dbus_error`.
 - A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
