@@ -70,8 +70,13 @@ export default class WindowControlExtension extends Extension {
         this._syncIndicator();
     }
 
+    // An older version installed while this code runs compiles a schema
+    // without show-indicator, and GSettings aborts the shell on a read of a
+    // key it does not know.
     _syncIndicator() {
-        const show = !Main.sessionMode.isLocked && this._settings.get_boolean(SHOW_INDICATOR_KEY);
+        const show = !Main.sessionMode.isLocked &&
+            this._settings.settings_schema.has_key(SHOW_INDICATOR_KEY) &&
+            this._settings.get_boolean(SHOW_INDICATOR_KEY);
         if (show && !this._indicator) {
             this._indicator = new WindowControlIndicator(this, () => this._service.applyRulesToAll());
         } else if (!show && this._indicator) {

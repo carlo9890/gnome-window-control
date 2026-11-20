@@ -12,7 +12,9 @@ import { moveResizeFrame, workareaOf } from './window-helpers.js';
 
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
-// the schema: GSettings aborts the shell on a key it does not know.
+// the schema: GSettings aborts the shell on a key it does not know, so _add
+// refuses one that the schema of an older version, installed while this code
+// runs, lacks.
 const TILE_BINDINGS = {
     'tile-top-left': 'top-left',
     'tile-top-center': 'top-center',
@@ -74,6 +76,8 @@ export class WindowKeybindings {
     }
 
     _add(name, settings, flags, handler) {
+        if (!settings.settings_schema.has_key(name))
+            return false;
         // NORMAL: a shortcut that moves a window has no meaning in the overview
         // or on the lock screen.
         const action = Main.wm.addKeybinding(name, settings, flags, Shell.ActionMode.NORMAL, handler);
