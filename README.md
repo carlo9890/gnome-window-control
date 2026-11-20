@@ -611,6 +611,14 @@ rules](#resetting-windows-to-their-rules)). It does not check the file and
 prints no count: a file with an error moves nothing, and the journal and the
 Rules page of the preferences window say why.
 
+The default needs a numpad. To use the `*` of the main keyboard, record it on
+the Shortcuts page: Super+Shift+8 on a US layout, Super+Shift+`+` on a German
+one. The page stores `<Shift><Super>asterisk`, the Shift included, and that
+works on both layouts. Do not write `<Super>asterisk` by hand: mutter binds
+the key that carries `*` without the Shift, so it fires on Super+8 (US) or
+Super+`+` (German), and on US it takes Super+8 from GNOME's "switch to
+application 8".
+
 Change a shortcut on the Shortcuts page of the
 [preferences window](#preferences-window-and-top-bar-icon). Every shortcut is
 also a GSettings key, so a script can change one:
@@ -652,6 +660,9 @@ gnome-extensions prefs window-control@carlo9890.github.io
   does, and **Settings**, which opens the preferences window.
 - **Shortcuts** has one row per shortcut. Click a row and press the new key
   combination: Backspace disables the shortcut, and Esc keeps the old one. The
+  first time, GNOME Shell asks whether the preferences window may take the
+  system shortcuts. Choose **Allow**: while that question is open, it gets the
+  keys you press. The
   arrow button resets a row to its default. A combination that another
   shortcut of this extension holds is refused, pressed or restored by a reset.
   A key without a modifier other than Shift, such as Super, Ctrl or Alt, is
