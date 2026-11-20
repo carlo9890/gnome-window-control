@@ -280,11 +280,7 @@ export class RulesEditor {
 
     _watchDropIns() {
         this._unwatchDropIns();
-        try {
-            this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        } catch {
-            return;
-        }
+        this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
         this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleDiskChange());
     }
 
@@ -312,7 +308,8 @@ export class RulesEditor {
         let text;
         try {
             text = this._readFile() ?? '';
-        } catch {
+        } catch (e) {
+            this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
             return;
         }
         if (text === this._savedText)

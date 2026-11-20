@@ -525,13 +525,7 @@ export class WindowControlService {
                 console.debug('[Window Control] apply rules again: disabled before the rules were read');
                 return;
             }
-            // A throw would end the loop that runs the other callbacks waiting
-            // for the same read, a pending ApplyRules call among them.
-            try {
-                this.applyRules(null, win => this._isUnshown(win));
-            } catch (e) {
-                console.error(`[Window Control] apply rules again: ${e.message}`);
-            }
+            this.applyRules(null, win => this._isUnshown(win));
         });
     }
 
