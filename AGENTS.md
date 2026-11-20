@@ -22,7 +22,8 @@ command fast.
 ### Coding and file changes
 
 **MUST read [docs/CODING.md](docs/CODING.md) before creating or editing ANY file
-under `window-control@carlo9890.github.io/`, `cli/`, `scripts/` or `tests/`.**
+under `window-control@carlo9890.github.io/`, `cli/`, `scripts/` or `tests/`,
+or `install-wctl.sh`, `.mise.toml` or a file under `.github/workflows/`.**
 It owns the mandatory `node --check` gate, the build commands, the mechanisms a
 handler or a command must use, and the recipe for adding a D-Bus method end to
 end.
@@ -48,7 +49,7 @@ validation message, and the show/unmaximize timing a placement depends on.
 ### Testing and verification
 
 **MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test, and before
-your first `mise run test`, `mise run ci`, or `./tests/run-all-*.sh`
+your first `mise run test`, `mise run ci`, `gjs -m tests/…`, or `./tests/*.sh`
 invocation.** It owns the test layers, the CI gate, and the minimum checks per
 action.
 

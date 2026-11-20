@@ -126,8 +126,8 @@ matches.
 ### min_width
 
 `min_width` is a condition on the monitor, not on the window. Its value MUST be
-an integer from 1 to 2147483647; `0`, a fraction and a string are refused with
-`rules[N].match.min_width: must be a positive integer`.
+an integer from 1 to 2147483647; `0`, a fraction and a string are refused
+([Validation](#validation) has the message).
 
 | Property | Value |
 |---|---|
@@ -339,8 +339,7 @@ Gating, in order:
    placement overrides a frame requested through the window before that, so a
    rule applied earlier would be discarded. The initial configuration below is
    the one earlier way in.
-2. A shown window that is not `Meta.WindowType.NORMAL` matches no rule, and
-   enters the `LATE_IDENTITY_GRACE_MS` period below like any unmatched window.
+2. A shown window that is not `Meta.WindowType.NORMAL` matches no rule.
 3. On a match, the action runs from a `GLib.idle_add` callback, not from inside
    the signal emission: a frame requested re-entrantly is overwritten when the
    outer move-resize continues.
@@ -375,8 +374,7 @@ Action order within `_apply`:
      the window as it is after the restore.
    - A shortcut, an apply, or a `Move`, `Resize` or `MoveResize` call for the
      same window before then replaces this request: only the newest one runs.
-     A move to a monitor (`MoveToMonitor`, a rule's `monitor`) drops it when
-     it puts the window on another monitor (step 3).
+     A move to a monitor can drop it (step 3).
    - The frame is requested as the program, not as the user
      (`move_resize_frame(false, ...)`). A window whose minimum size is above
      the rectangle grows to that minimum at the rectangle's position, kept on
@@ -569,12 +567,33 @@ absent or empty file costs nothing per window.
 
 Defined at the top of the file named; change them there, not here.
 
-| Constant | Value | Guards | File |
-|---|---|---|---|
-| `LATE_IDENTITY_GRACE_MS` | 2000 | late Wayland app ID / title | `rules.js` |
-| `RELOAD_DEBOUNCE_MS` | 100 | one reload per save | `rules.js` |
-| `FOCUS_LOSS_GRACE_MS` | 250 | a focus that comes straight back, as wl-copy and wl-paste hand it | `overlay.js` |
-| `UNMAXIMIZE_SETTLE_MS` | 1000 | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`, through the `WindowPlacer` that the keyboard shortcuts and the D-Bus geometry methods share) |
+| Constant | Guards | File |
+|---|---|---|
+| `LATE_IDENTITY_GRACE_MS` | late Wayland app ID / title | `rules.js` |
+| `RELOAD_DEBOUNCE_MS` | one reload per save | `rules.js` |
+| `FOCUS_LOSS_GRACE_MS` | a focus that comes straight back, as wl-copy and wl-paste hand it | `overlay.js` |
+| `UNMAXIMIZE_SETTLE_MS` | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`) |
+
+## Capabilities
+
+Rules are read by the extension alone. The format is not part of the D-Bus
+interface and carries no version field. A caller learns what the extension
+reads from `GetCapabilities`, not from the version number. An extension that
+supports a feature MUST report its name:
+
+| Feature | Capability name |
+|---|---|
+| applies rules at all | `rules` |
+| `title_prefix`, `title_suffix` | `rules-title-affix` |
+| `class_prefix` | `rules-class-prefix` |
+| `overlay` | `rules-overlay` |
+| `min_width` | `rules-min-width` |
+| serves `ApplyRules` | `rules-apply` |
+| reads `rules.d` | `rules-dropin` |
+
+An extension without the name of a key refuses a file that uses the key. One
+without `rules` ignores the file. One without `rules-dropin` ignores the folder
+and gives no error, so a tool that writes a drop-in checks this name first.
 
 ## Extending the format
 
@@ -591,8 +610,8 @@ Adding a key means editing, in one commit, on BOTH sides:
   `compileRule` and before `MATCH_KEYS` in `compile_rule`, and is read in
   `_matchIndex` in `rules.js` and in `test` in `cli/src/commands/rules.rs`.
 - A case in `tests/vectors/rules-spec.json`.
-- Its capability name (see below): in `CAPABILITIES` in `dbus-service.js`,
-  and in `NEWER_MATCH_KEYS` (a match key) or `NEWER_RULE_KEYS` (a rule key) in
+- Its capability name ([Capabilities](#capabilities)): in `CAPABILITIES` in
+  `dbus-service.js`, and in `NEWER_MATCH_KEYS` (a match key) or `NEWER_RULE_KEYS` (a rule key) in
   `cli/src/commands/rules.rs`, which makes `wctl rules` warn when the loaded
   extension refuses the file.
 - For a key that `wctl rules add` takes as a flag: the flag in
@@ -600,27 +619,6 @@ Adding a key means editing, in one commit, on BOTH sides:
   `cli/completions/`.
 - This spec's rule-object and validation tables, and the README section.
 
-Re-verify with the two checks that read the vectors:
-
-```bash
-env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
-mise run test
-```
-
-A change to `rules.js` or `dbus-service.js` also runs the fake-windows check
-([TESTING.md](../TESTING.md#minimum-checks-before-a-pr)).
-
-Both are CI gates — see [../TESTING.md](../TESTING.md).
-
-Rules are read by the extension alone. The format is not part of the D-Bus
-interface and carries no version field. An extension that applies rules MUST
-report the `rules` capability from `GetCapabilities`; that name, not the
-version number, is how a caller learns the file is read. An extension that
-knows `title_prefix` and `title_suffix` MUST also report `rules-title-affix`:
-one without it refuses a file that carries either key. An extension that knows
-`class_prefix` MUST report `rules-class-prefix`, one that knows `overlay`
-MUST report `rules-overlay`, and one that knows `min_width` MUST report
-`rules-min-width`, for the same reason. An extension that serves `ApplyRules`
-MUST report `rules-apply`. An extension that reads `rules.d` MUST report
-`rules-dropin`: one without it ignores the folder and gives no error, so a
-tool that writes a drop-in checks this name first.
+Run the checks that
+[TESTING.md](../TESTING.md#minimum-checks-before-a-pr) requires: the vector
+file is the fixture both sides read.

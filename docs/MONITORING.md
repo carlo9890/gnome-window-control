@@ -20,10 +20,10 @@ session writes to a new log file per run, and its start script prints the path:
 repository root for `./scripts/start-headless.sh`.
 
 Errors and warnings appear by default; the per-call `console.debug()` trace
-needs `G_MESSAGES_DEBUG=all` in the shell's environment. In a nested or
-headless session, put it in front of the start script:
-`G_MESSAGES_DEBUG=all ./scripts/start-nested.sh`. The
-main Wayland session cannot be restarted, so it needs the variable in the
+needs `G_MESSAGES_DEBUG=all` in the shell's environment. For a nested or
+headless session,
+[RUNNING.md](RUNNING.md#reload-after-a-code-change-required) gives the start
+command. The main Wayland session cannot be restarted, so it needs the variable in the
 session environment before login — use a nested or headless session instead.
 
 ## Log levels
@@ -47,8 +47,9 @@ may contain.
 ## Interpreting common signals
 
 - **`wctl` prints "extension is not running"** — the D-Bus destination isn't
-  answering; enable it
-  (`gnome-extensions enable window-control@carlo9890.github.io`).
+  answering; enable it as
+  [RUNNING.md](RUNNING.md#reload-after-a-code-change-required) describes for
+  the session in use.
   `is_extension_not_running` in `cli/src/dbus.rs` lists the error names that
   produce this message, including the `WindowControl.Disabled` error the
   extension returns when it is disabled while a `WaitForWindow` or

@@ -24,15 +24,10 @@ If it fails, the code has a syntax error and must not be committed.
   before you write extension code, and write the code and its comments to them:
   a human reviewer reads every line of each upload, and a violation costs a new
   release.
-- `Move`, `Resize`, `MoveResize`, `ApplyRules`, `WaitForWindow` and
-  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean.
-  `WaitForWindow` returns the `window_id`, or 0 on timeout; `WaitForGeometry`
-  returns the settled rectangle, or raises `Timeout`; the three geometry methods
-  return nothing at all; `ApplyRules` returns how many windows a rule matched. `GetWorkarea` returns `(-1, -1, -1, -1)` for an index
-  that is not a monitor.
-  The names, and the reason each method raises, are in the ERRORS block in
-  `dbus-interface.js`; add to that list rather than inventing a name at the
-  throw site.
+- A method that can fail for more than one reason raises a named D-Bus error
+  instead of reporting a boolean. The names, and the reason each method
+  raises, are in the ERRORS block in `dbus-interface.js`; add to that block,
+  never name an error at the throw site.
 - A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
@@ -62,7 +57,7 @@ If it fails, the code has a syntax error and must not be committed.
   resizes calls `moveResizeFrame`: as a user operation, mutter would keep a
   window whose minimum size is above the rectangle at its old place.
 - `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
-  an upload that does not ([RELEASING.md](RELEASING.md#constraints-the-review-enforces)).
+  an upload that does not ([REVIEWING.md](REVIEWING.md#extensionsgnomeorg-review)).
   That covers every signal handler, GLib source, bus-name watch, file monitor,
   cancellable, keybinding and pending `...Async` invocation. Keep each ID where
   the teardown reaches it; in `rules.js` and `dbus-service.js`, add a timeout
@@ -111,6 +106,10 @@ If it fails, the code has a syntax error and must not be committed.
 The extension directory name must stay identical to the `uuid` in
 `metadata.json` — `build.sh validate` hard-fails if they diverge. The zip and
 what it ships are described in [RELEASING.md](RELEASING.md).
+
+No CI job runs `install-wctl.sh` or `scripts/release.sh`: after a change to
+either, run it offline as
+[TESTING.md](TESTING.md#driving-install-wctlsh-and-releasesh-offline) describes.
 
 ## Adding a new D-Bus method
 

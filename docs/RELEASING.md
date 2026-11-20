@@ -108,14 +108,11 @@ Uploads go to that same listing — never create a second one, and never change 
 EGO is a separate channel from the GitHub release. Do the GitHub release first,
 then upload the same zip.
 
-1. Build the zip: `./scripts/build.sh all`. The archive must have
+1. Use `dist/window-control@carlo9890.github.io_v<version>.zip` from the
+   release run. The archive must have
    `metadata.json` at its root, not inside a subdirectory — `build.sh` zips the
-   git-tracked files of the extension directory (`extension.js`,
-   `dbus-service.js`, `dbus-interface.js`, `rules.js`, `rules-files.js`,
-   `rules-format.js`, `overlay.js`, `keybindings.js`, `indicator.js`,
-   `prefs.js`, `prefs/*.js`, `window-helpers.js`, `schemas/*.gschema.xml`,
-   `metadata.json`, `README.md`, `LICENSE`), so this holds as long as you use
-   it. An untracked or ignored file never ships; commit a new file before it
+   git-tracked files of the extension directory, so this holds as long as you
+   use it. An untracked or ignored file never ships; commit a new file before it
    can. `gschemas.compiled` is
    ignored on purpose: the review rejects a shipped compiled schema
    (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
@@ -123,8 +120,7 @@ then upload the same zip.
 2. Run the
    [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) and
    fix each violation before the upload.
-3. Upload `dist/window-control@carlo9890.github.io_v<version>.zip` at
-   <https://extensions.gnome.org/upload/>.
+3. Upload that zip at <https://extensions.gnome.org/upload/>.
 4. Wait for the review. A human reviewer reads every line of the extension, and
    the queue is usually weeks. Every new version needs a new upload and a new
    review.
@@ -137,23 +133,21 @@ of `docs/images/overview.svg` and `docs/images/icon.svg`. Both are written by
 renders by hand when a default shortcut, a tile position or `shell-version`
 changes.
 
-### Constraints the review enforces
+### Listing constraints
 
-The code must keep satisfying:
+The code rules the review enforces are in the guidelines that the
+[extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) fetches.
+The listing must keep satisfying:
 
 - The `uuid` is permanent. Never change it again — a new UUID is a new listing
   and loses every existing user.
-- No `eval()`, no `Function()`, no `GLib.spawn` or any other subprocess, and no
-  bundled binaries. `wctl` is a separate asset and MUST stay out of the zip.
+- `wctl` is a separate asset and MUST stay out of the zip.
 - `wctl` is published as a **statically linked x86_64 binary**, built by
   `mise run build:musl` (`cargo build --release --target
   x86_64-unknown-linux-musl`), which `release.sh` and CI both run. The task
   fails on a dynamically linked binary (`scripts/check-static.sh`). aarch64 is not
   published; on other architectures users build from source
   (`./install-wctl.sh --local`).
-- `disable()` must undo everything `enable()` did, as
-  [CODING.md](CODING.md#javascript-the-extension) lists.
-- No minified or generated code. The source in the zip is what the reviewer reads.
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.
 

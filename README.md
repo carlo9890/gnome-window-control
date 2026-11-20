@@ -113,7 +113,8 @@ curl -fsSL https://github.com/carlo9890/gnome-window-control/releases/latest/dow
 
 Piped from `curl`, the script downloads the published binary. Run from a
 checkout, it installs a local build when one exists and downloads otherwise;
-`--download` always downloads, `--local` always builds. `--help` shows the
+`--download` always downloads; `--local` installs the local build, and builds
+it first when there is none. `--help` shows the
 options.
 
 The script checks the download against the release's `wctl.sha256` and runs it
@@ -171,10 +172,6 @@ wctl activate 12345 --no-animation
 
 wctl --help                        # every command, global options, and --json/--settled
 ```
-
-`wctl activate` keeps the extension's first-match rule for `-t`/`-s`/`-c`/`-p`
-(useful for run-or-raise scripts). Every other command requires the selector to
-be unambiguous.
 
 #### Exit codes
 
@@ -376,7 +373,8 @@ rule without it, and the second rule is the fallback on a smaller monitor:
   match, so the next rule can.
 - `wctl rules add ... --min-width 3000` writes the key.
 
-`min_width` needs an extension that reports `rules-min-width`.
+`min_width` needs a newer extension: see the
+[capability table](#managing-rules-from-the-command-line).
 
 ### Overlay windows
 
@@ -469,11 +467,16 @@ applied until you install the newer extension and restart the shell. With no
 shell running, and with a `--file` the extension does not read, they say
 nothing.
 
-`title_prefix` and `title_suffix` need an extension that also reports
-`rules-title-affix`. An older one refuses a file that has either key and then
-applies no rule at all; `add` and `remove` warn about that too. `class_prefix`
-needs `rules-class-prefix` in the same way, `overlay` needs `rules-overlay`,
-and `min_width` needs `rules-min-width`.
+Some keys need a capability beyond `rules`. An extension that does not report
+it refuses a file that has the key and then applies no rule at all; `add` and
+`remove` warn about that too.
+
+| Key | Capability |
+|-----|------------|
+| `title_prefix`, `title_suffix` | `rules-title-affix` |
+| `class_prefix` | `rules-class-prefix` |
+| `overlay` | `rules-overlay` |
+| `min_width` | `rules-min-width` |
 
 ### Checking the file
 
@@ -531,10 +534,9 @@ is `"fullscreen"`. It
 needs the extension running, because it resolves a live window. It never moves
 anything. Against an extension that does not report the `rules` capability it
 exits 5 instead, because that extension ignores the file. It also exits 5 when
-the file uses `title_prefix`, `title_suffix`, `class_prefix`, `overlay` or
-`min_width` and the extension does not report `rules-title-affix`,
-`rules-class-prefix`, `rules-overlay` or `rules-min-width` for it, because that
-extension refuses the whole file.
+the file uses a key whose capability in the
+[capability table](#managing-rules-from-the-command-line) the extension does
+not report, because that extension refuses the whole file.
 
 Without `--file` it tests the rules of every file the extension loads. A
 drop-in rule reads `Matched rule 0 of rules.d/revier.json: ...`, and `--json`
@@ -565,8 +567,8 @@ or undocked a laptop.
 
 - A maximized window is restored first, then placed. A shortcut or a geometry
   command for the same window before the restore lands replaces this
-  placement: the newest request wins. A `move-to-monitor` to another monitor
-  drops it, and the window keeps its restored size there.
+  placement: the newest request wins. A `move-to-monitor` drops it when it
+  was made for another monitor, and the window keeps its restored size there.
 - A minimized window is placed and stays minimized.
 - A fullscreen window gets its `workspace` and `monitor`, but no geometry.
 - A `workspace` that does not exist is skipped, so each apply does not add

@@ -16,6 +16,8 @@ rather than repeating it. (AI agents start from [AGENTS.md](AGENTS.md) instead.)
 4. Run the tests and learn the gates — see [docs/TESTING.md](docs/TESTING.md).
 5. Commit, branch, and open a PR — pre-handoff gates and conventions:
    [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md).
+6. Check the change against the review rules — see
+   [docs/REVIEWING.md](docs/REVIEWING.md).
 
 Prerequisites: GNOME Shell 45-50, the `gnome-extensions` CLI, and `node` (for
 the `node --check` gate). The Rust toolchain for the `wctl` CLI comes from
