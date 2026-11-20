@@ -136,9 +136,9 @@ changes.
 
 ### Listing constraints
 
-The code rules the review enforces are in the guidelines that the
-[extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) fetches.
-The listing must keep satisfying:
+The code rules are in [REVIEWING.md](REVIEWING.md): the
+[extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) and the
+[quality rules](REVIEWING.md#quality-rules). The listing must keep satisfying:
 
 - The `uuid` is permanent. Never change it again — a new UUID is a new listing
   and loses every existing user.
