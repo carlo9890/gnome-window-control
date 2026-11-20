@@ -57,6 +57,23 @@ async function readFile(label, cancellable) {
     }
 }
 
+// The names of the regular files among `infos`. get_name() throws for a name
+// that is not UTF-8; such a name is no drop-in name, so the entry is skipped
+// like any other, and the rest of the folder still loads.
+export function regularFileNames(infos) {
+    const names = [];
+    for (const info of infos) {
+        if (info.get_file_type() !== Gio.FileType.REGULAR)
+            continue;
+        try {
+            names.push(info.get_name());
+        } catch {
+            continue;
+        }
+    }
+    return names;
+}
+
 // The drop-in names in rules.d, sorted. The type is the one of a link's
 // target, so a FIFO behind a link is skipped too.
 async function listDropIns(cancellable) {
@@ -70,10 +87,7 @@ async function listDropIns(cancellable) {
                 const infos = await enumerator.next_files_async(32, GLib.PRIORITY_DEFAULT, cancellable);
                 if (infos.length === 0)
                     break;
-                for (const info of infos) {
-                    if (info.get_file_type() === Gio.FileType.REGULAR)
-                        names.push(info.get_name());
-                }
+                names.push(...regularFileNames(infos));
             }
         } finally {
             // Not with the load's cancellable: a cancelled load must still

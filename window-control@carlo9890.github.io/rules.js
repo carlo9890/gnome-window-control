@@ -81,14 +81,19 @@ export class WindowRules {
             console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; the rules files are read only at enable() and when rules.d changes`);
         }
         if (this._fileMonitor) {
+            // Compared as files, not by name: get_basename() throws for a
+            // name that is not UTF-8.
+            const rulesFile = dir.get_child(RULES_FILE);
+            const dropInDir = dir.get_child(DROPIN_DIR);
             this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
-                const name = file.get_basename();
                 // A rules.d created, deleted or replaced after enable() is
                 // another folder, so its monitor is made again.
-                if (name === DROPIN_DIR)
+                if (file.equal(dropInDir)) {
                     this._watchDropIns();
-                if (name === RULES_FILE || name === DROPIN_DIR)
                     this._scheduleReload();
+                } else if (file.equal(rulesFile)) {
+                    this._scheduleReload();
+                }
             });
         }
         this._watchDropIns();

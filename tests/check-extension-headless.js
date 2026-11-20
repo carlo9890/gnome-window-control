@@ -2263,6 +2263,20 @@ export class PopupSeparatorMenuItem {}
         check('rules.d: a FIFO is skipped, behind a link too, and a link to a file is followed',
             sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]', sourcesOf(rules));
 
+        // Gio cannot hand out a name that is not UTF-8. Such a file is no
+        // drop-in, and it must not cost the other drop-ins their rules.
+        const linesBeforeBadName = consoleLines.length;
+        GLib.spawn_sync(null, ['sh', '-c', ': > "$0/$(printf \'bad\\377.json\')"', dropIns], null,
+            GLib.SpawnFlags.SEARCH_PATH, null);
+        rules._load();
+        await sleep(300);
+        check('rules.d: a name that is not UTF-8 is skipped and the other drop-ins load',
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]', sourcesOf(rules));
+        const badNameErrors = consoleLines.slice(linesBeforeBadName)
+            .filter(line => line.level === GLib.LogLevelFlags.LEVEL_CRITICAL).map(line => line.message);
+        check('rules.d: a name that is not UTF-8 logs no error', badNameErrors.length === 0,
+            JSON.stringify(badNameErrors));
+
         const linesBeforeReloads = consoleLines.length;
         rules._load();
         rules._load();

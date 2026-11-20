@@ -3,13 +3,15 @@
 // SPDX-License-Identifier: MIT
 //
 // Check the parts of the preferences window that import no GTK: the shortcut
-// list against the schema, and the rules editor's validation. Run from
+// list against the schema, the rules editor's validation and its file
+// access. Run from
 // anywhere, without a display or a GNOME session:
 //
 //     env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js
 //
 // Exits 0 when every check passes, 1 when any fails.
 
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import { ROOT, check, report } from './check-helper.js';
@@ -18,6 +20,9 @@ const PREFS = `${ROOT}/window-control@carlo9890.github.io/prefs`;
 const { SHORTCUT_GROUPS, needsModifier } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
 const { checkRules, elementOffsets, ruleSummary } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
 const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-format.js`, null));
+const { regularFileNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-files.js`, null));
+
+const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
 
 // -- the shortcut list holds every shortcut key of the schema, once ----------
 
@@ -76,6 +81,22 @@ const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-for
     check('an empty file shows the parse error', empty === checkRules('').message && empty !== '', empty);
 }
 
+// -- the folder listing skips a name Gio cannot hand out ----------------------
+
+{
+    // Not UTF-8, so get_name() throws for it.
+    GLib.spawn_sync(null, ['sh', '-c', ': > "$0/$(printf \'bad\\377.json\')"', SCRATCH], null,
+        GLib.SpawnFlags.SEARCH_PATH, null);
+    GLib.file_set_contents(`${SCRATCH}/a.json`, '[]');
+    GLib.mkdir_with_parents(`${SCRATCH}/folder.json`, 0o755);
+    const infos = [...Gio.File.new_for_path(SCRATCH).enumerate_children('standard::name,standard::type',
+        Gio.FileQueryInfoFlags.NONE, null)];
+    const names = regularFileNames(infos);
+    check('the listing holds all three entries', infos.length === 3, `${infos.length}`);
+    check('regularFileNames skips a folder and a name that is not UTF-8',
+        JSON.stringify(names) === '["a.json"]', JSON.stringify(names));
+}
+
 // -- elementOffsets skips brackets and commas inside strings and nesting ------
 
 {
@@ -100,4 +121,5 @@ const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-for
         .every(mods => !needsModifier(mods, SHIFT)));
 }
 
+GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);
 report();

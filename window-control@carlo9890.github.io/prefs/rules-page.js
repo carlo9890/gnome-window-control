@@ -10,7 +10,7 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import { dropInNames } from '../rules-format.js';
-import { CONFIG_DIR, DROPIN_DIR, RULES_FILE } from '../rules-files.js';
+import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames } from '../rules-files.js';
 import { checkRules, ruleSummary, rulesLabel } from './rules-check.js';
 
 const CHECK_DELAY_MS = 300;
@@ -176,9 +176,7 @@ export class RulesEditor {
             return [[DROPIN_DIR, `Cannot read: ${e.message}`]];
         }
         // Following symlinks, as the extension does, so a FIFO is never opened.
-        const regular = infos.filter(info => info.get_file_type() === Gio.FileType.REGULAR)
-            .map(info => info.get_name());
-        return dropInNames(regular).map(name => {
+        return dropInNames(regularFileNames(infos)).map(name => {
             try {
                 const [, bytes] = this._dropInDir.get_child(name).load_contents(null);
                 return [name, ruleSummary(new TextDecoder().decode(bytes))];
@@ -274,11 +272,12 @@ export class RulesEditor {
             this._toast(`Cannot watch ${CONFIG_DIR}: ${e.message}`);
             return;
         }
+        // Compared as files, not by name: get_basename() throws for a name
+        // that is not UTF-8.
         this._monitorId = this._monitor.connect('changed', (_monitor, file) => {
-            const name = file.get_basename();
-            if (name === DROPIN_DIR)
+            if (file.equal(this._dropInDir))
                 this._watchDropIns();
-            else if (name !== RULES_FILE)
+            else if (!file.equal(this._file))
                 return;
             this._scheduleDiskChange();
         });
