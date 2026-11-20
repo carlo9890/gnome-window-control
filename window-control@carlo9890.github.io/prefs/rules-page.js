@@ -12,6 +12,7 @@ import Pango from 'gi://Pango';
 import { dropInNames } from '../rules-format.js';
 import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames } from '../rules-files.js';
 import { checkRules, ruleSummary, rulesLabel } from './rules-check.js';
+import { readText } from './rules-disk.js';
 
 const CHECK_DELAY_MS = 300;
 // An editor's save raises several events; read the file once they stop.
@@ -153,17 +154,6 @@ export class RulesEditor {
         return group;
     }
 
-    _readFile() {
-        try {
-            const [, bytes] = this._file.load_contents(null);
-            return new TextDecoder().decode(bytes);
-        } catch (e) {
-            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-                return null;
-            throw e;
-        }
-    }
-
     // [name, subtitle] per drop-in file. A missing rules.d has none.
     _readDropIns() {
         let infos;
@@ -205,7 +195,7 @@ export class RulesEditor {
         this._diskToast?.dismiss();
         let text;
         try {
-            text = this._readFile();
+            text = readText(this._file);
         } catch (e) {
             this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
             this._syncButtons();
@@ -318,7 +308,7 @@ export class RulesEditor {
         this._loadDropIns();
         let text;
         try {
-            text = this._readFile() ?? '';
+            text = readText(this._file) ?? '';
         } catch (e) {
             this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
             return;

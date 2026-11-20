@@ -20,6 +20,7 @@ const PREFS = `${ROOT}/window-control@carlo9890.github.io/prefs`;
 const { SHORTCUT_GROUPS, needsModifier } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
 const { checkRules, elementOffsets, ruleSummary } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
 const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-format.js`, null));
+const { readText } = await import(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null));
 const { regularFileNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-files.js`, null));
 
 const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
@@ -95,6 +96,28 @@ const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
     check('the listing holds all three entries', infos.length === 3, `${infos.length}`);
     check('regularFileNames skips a folder and a name that is not UTF-8',
         JSON.stringify(names) === '["a.json"]', JSON.stringify(names));
+}
+
+// -- the editor reads rules.json only when it is a regular file ---------------
+
+{
+    const file = Gio.File.new_for_path(`${SCRATCH}/rules.json`);
+    check('no rules.json reads as null', readText(file) === null);
+    GLib.file_set_contents(file.get_path(), '[]');
+    check('a rules.json reads as its text', readText(file) === '[]');
+    GLib.unlink(file.get_path());
+
+    // Without the type check this read never returns: nothing writes to the FIFO.
+    GLib.spawn_command_line_sync(`mkfifo ${GLib.shell_quote(file.get_path())}`);
+    let refusal = null;
+    try {
+        readText(file);
+    } catch (e) {
+        refusal = e;
+    }
+    check('a FIFO rules.json is refused before it is opened',
+        refusal?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE) === true, `${refusal}`);
+    GLib.unlink(file.get_path());
 }
 
 // -- elementOffsets skips brackets and commas inside strings and nesting ------
