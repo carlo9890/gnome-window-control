@@ -21,9 +21,11 @@ repository root for `./scripts/start-headless.sh`.
 
 Errors and warnings appear by default; the per-call `console.debug()` trace
 needs `G_MESSAGES_DEBUG=all` in the shell's environment. For a nested or
-headless session,
-[RUNNING.md](RUNNING.md#reload-after-a-code-change-required) gives the start
-command. The main Wayland session cannot be restarted, so it needs the variable in the
+headless session, prefix the start script:
+`G_MESSAGES_DEBUG=all ./scripts/start-nested.sh` or
+`G_MESSAGES_DEBUG=all ./scripts/start-headless.sh`; the rest of the procedure
+is in [RUNNING.md](RUNNING.md#reload-after-a-code-change-required). The main
+Wayland session cannot be restarted, so it needs the variable in the
 session environment before login — use a nested or headless session instead.
 
 ## Log levels
