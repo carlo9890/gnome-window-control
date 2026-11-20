@@ -98,9 +98,9 @@ the correct form.
   approves it on the PR:
   - extension code, in any module, that reads pixels, injects input or ends
     a window's client by any means (`kill()`, a signal to its PID);
-  - a D-Bus method, new or changed, that lays out windows. `ApplyRules` is
-    the approved exception (PR #86): it applies the loaded rules files
-    (`rules.json` and `rules.d`) through `_apply` in `rules.js` and adds no layout of its own;
+  - a D-Bus method, new or changed, that lays out windows; `ApplyRules` is
+    the one exception
+    ([0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md));
   - a new property in the `ListDetailed` window document, or window data
     that any other method returns and `ListDetailed` does not hold;
   - any other D-Bus addition that does not act on a window's geometry,
@@ -133,6 +133,5 @@ the correct form.
     `Meta.MaximizeFlags` enum itself is still there on 49 and later, as the type
     `get_maximize_flags()` returns; `isFullyMaximized` (`window-helpers.js`) and
     `_frameRefusal` (`dbus-service.js`) compare against it on every version. Answer
-    the reviewer with the guard and the enum. Narrowing `shell-version` to 45-48
-    clears both findings and costs the 49/50 users — `shell-version` cannot be
-    widened again without a new review.
+    the reviewer with the guard and the enum. `shell-version` stays 45-50:
+    [0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md).

@@ -579,8 +579,9 @@ Defined in the file named; change them there.
 
 Rules are applied by the extension alone. The format is not part of the D-Bus
 interface and carries no version field. A caller learns what the extension
-reads from `GetCapabilities`, not from the version number. An extension that
-supports a feature MUST report its name:
+reads from `GetCapabilities`, not from the version number
+([0008](../decisions/0008-a-client-learns-what-the-extension-supports-from-a-capability-name.md)).
+An extension that supports a feature MUST report its name:
 
 | Feature | Capability name |
 |---|---|
