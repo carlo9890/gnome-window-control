@@ -2306,7 +2306,7 @@ export class PopupSeparatorMenuItem {}
         rules.disable();
         check('rules.d: disable() cancels both monitors and disconnects their handlers',
             rules._fileMonitor === null && rules._dropInMonitor === null &&
-            monitors.every((monitor, i) => monitor.is_cancelled() &&
+            monitors.every((monitor, i) => monitor !== null && monitor.is_cancelled() &&
                 !GObject.signal_handler_is_connected(monitor, ids[i])));
         check('rules.d: disable() leaves no handler on the display and no source',
             display.handlerCount() === 0 && rules._sourceIds.size === 0,
