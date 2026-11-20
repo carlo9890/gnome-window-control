@@ -98,17 +98,33 @@ export function workareaOf(win, monitor = win.get_monitor()) {
 // Only a user operation or move_to_monitor() makes mutter record a new
 // preferred monitor, the one it puts the window back on after a monitor
 // change. So a frame on another monitor goes there with move_to_monitor()
-// first, which is a program request too. For a rectangle on no monitor,
-// mutter names the primary one, so only a monitor the rectangle overlaps
-// counts.
-export function moveResizeFrame(win, { x, y, width, height }) {
+// first, which is a program request too.
+export function moveResizeFrame(win, rect) {
+    const monitor = targetMonitor(win, rect);
+    if (monitor !== win.get_monitor())
+        win.move_to_monitor(monitor);
+    win.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+}
+
+// The monitor a frame at `rect` puts the window on: the one the rectangle
+// overlaps most. For a rectangle on no monitor, mutter names the primary one,
+// so the window's own monitor counts then.
+export function targetMonitor(win, { x, y, width, height }) {
     const monitor = global.display.get_monitor_index_for_rect(
         new Mtk.Rectangle({ x, y, width, height }));
     const m = global.display.get_monitor_geometry(monitor);
     const overlaps = x < m.x + m.width && m.x < x + width && y < m.y + m.height && m.y < y + height;
-    if (overlaps && monitor !== win.get_monitor())
-        win.move_to_monitor(monitor);
-    win.move_resize_frame(false, x, y, width, height);
+    return overlaps ? monitor : win.get_monitor();
+}
+
+// Move the window to monitor `index` at once, outside the placer. The move is
+// the newest request, so a pending placement that puts the window on another
+// monitor is dropped, of every kind; one for monitor `index` still runs.
+export function moveToMonitor(win, placer, index) {
+    const pending = placer.pendingMonitor(win);
+    if (pending !== null && pending !== index)
+        placer.cancel(win);
+    win.move_to_monitor(index);
 }
 
 // How long to wait for an unmaximize to land before placing the frame anyway.
@@ -176,8 +192,9 @@ export class UnmaximizeWait {
 // The one owner of the frame requests of a shown window: the shortcuts, a
 // rule's geometry and the D-Bus geometry methods all place through it, so a
 // window has at most one placement pending and the newest request wins.
-// MoveToMonitor and a rule's `monitor` call move_to_monitor() outside it; a
-// frame on another monitor goes there inside it (moveResizeFrame).
+// MoveToMonitor and a rule's `monitor` move the window outside it
+// (moveToMonitor). A frame on another monitor goes there inside it
+// (moveResizeFrame).
 //
 // A maximized window is restored first, and its request runs once the
 // restore has landed (see UnmaximizeWait). A request made while that restore
@@ -186,14 +203,15 @@ export class UnmaximizeWait {
 // after it.
 export class WindowPlacer {
     constructor() {
-        this._pending = new Map();        // Meta.Window -> { wait, request }
+        this._pending = new Map();        // Meta.Window -> { wait, request, monitor }
     }
 
     // Run `request()` now, or once the window's restore has landed.
-    place(win, request) {
+    // `monitor` is the monitor the request puts the window on.
+    place(win, request, monitor = win.get_monitor()) {
         const pending = this._pending.get(win);
         if (pending && maximizeFlags(win) === 0) {
-            pending.request = request;
+            Object.assign(pending, { request, monitor });
             return;
         }
         // Maximized again while its restore was pending: that restore is
@@ -203,7 +221,7 @@ export class WindowPlacer {
             request();
             return;
         }
-        const entry = { wait: null, request };
+        const entry = { wait: null, request, monitor };
         entry.wait = new UnmaximizeWait(win, landed => {
             this._pending.delete(win);
             // Maximized again since: that maximize is the newest request.
@@ -211,6 +229,19 @@ export class WindowPlacer {
                 entry.request();
         });
         this._pending.set(win, entry);
+    }
+
+    // The monitor the window's pending request puts it on, or null for none.
+    pendingMonitor(win) {
+        return this._pending.get(win)?.monitor ?? null;
+    }
+
+    // Drop the window's pending request, without running it. Its wait stays,
+    // so a newer request still waits for the restore.
+    cancel(win) {
+        const pending = this._pending.get(win);
+        if (pending)
+            pending.request = () => {};
     }
 
     // Drop every pending request, without running it.

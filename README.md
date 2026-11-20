@@ -564,7 +564,8 @@ or undocked a laptop.
 
 - A maximized window is restored first, then placed. A shortcut or a geometry
   command for the same window before the restore lands replaces this
-  placement: the newest request wins.
+  placement: the newest request wins. A `move-to-monitor` to another monitor
+  drops it, and the window keeps its restored size there.
 - A minimized window is placed and stays minimized.
 - A fullscreen window gets its `workspace` and `monitor`, but no geometry.
 - A `workspace` that does not exist is skipped, so each apply does not add
@@ -602,13 +603,22 @@ columns of four; press it again on the same window and it goes `wide-left`.
 A maximized window is unmaximized first, then placed; a fullscreen one is left
 alone. A newer shortcut, rule apply, `move`, `resize`, `move-resize`, `place`,
 `tile` or `center` for the same window replaces a placement that still waits
-for the restore.
+for the restore. A `move-to-monitor` or a rule's `monitor` drops it when it
+was made for another monitor: the window stays on the monitor it was moved to.
 
 `Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
 every open window, as `wctl rules apply` does ([Resetting windows to their
 rules](#resetting-windows-to-their-rules)). It does not check the file and
 prints no count: a file with an error moves nothing, and the journal and the
 Rules page of the preferences window say why.
+
+The default needs a numpad. To use the `*` of the main keyboard, record it on
+the Shortcuts page: Super+Shift+8 on a US layout, Super+Shift+`+` on a German
+one. The page stores `<Shift><Super>asterisk`, the Shift included, and that
+works on both layouts. Do not write `<Super>asterisk` by hand: mutter binds
+the key that carries `*` without the Shift, so it fires on Super+8 (US) or
+Super+`+` (German), and on US it takes Super+8 from GNOME's "switch to
+application 8".
 
 Change a shortcut on the Shortcuts page of the
 [preferences window](#preferences-window-and-top-bar-icon). Every shortcut is
@@ -651,6 +661,9 @@ gnome-extensions prefs window-control@carlo9890.github.io
   does, and **Settings**, which opens the preferences window.
 - **Shortcuts** has one row per shortcut. Click a row and press the new key
   combination: Backspace disables the shortcut, and Esc keeps the old one. The
+  first time, GNOME Shell asks whether the preferences window may take the
+  system shortcuts. Choose **Allow**: while that question is open, it gets the
+  keys you press. The
   arrow button resets a row to its default. A combination that another
   shortcut of this extension holds is refused, pressed or restored by a reset.
   A key without a modifier other than Shift, such as Super, Ctrl or Alt, is

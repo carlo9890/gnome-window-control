@@ -100,7 +100,8 @@ README.md                  user docs; the D-Bus method table
   (`window-helpers.js`): the shortcuts, a rule's geometry and the `Move`,
   `Resize` and `MoveResize` handlers. A window has at most one placement
   pending, and the newest of these requests wins. A move to a monitor
-  (`MoveToMonitor`, a rule's `monitor`) runs at once, outside it. A rule's
+  (`MoveToMonitor`, a rule's `monitor`) runs at once, outside it, and drops
+  a pending placement for another monitor. A rule's
   first apply enters it only after the waits in
   [RULES-JSON.md](specs/RULES-JSON.md#matching-and-application). A
   maximized window is restored first and placed once the restore has landed

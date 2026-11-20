@@ -11,7 +11,7 @@ import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
 import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles } from './rules-files.js';
-import { looksUnmapped, maximizeFlags, moveResizeFrame, workareaOf } from './window-helpers.js';
+import { looksUnmapped, maximizeFlags, moveResizeFrame, moveToMonitor, workareaOf } from './window-helpers.js';
 
 // A Wayland client's app_id and first real title can land after the window is
 // shown, so a shown window that matched nothing yet stays under evaluation this
@@ -491,7 +491,7 @@ export class WindowRules {
                 console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: no such monitor, skipped`);
                 return;
             }
-            win.move_to_monitor(rule.monitor);
+            moveToMonitor(win, this._placer, rule.monitor);
         }
         if (!rule.geometry) {
             console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: applied`);
@@ -503,7 +503,8 @@ export class WindowRules {
         }
         // A maximized window is restored first (see WindowPlacer); the frame
         // resolves once that has landed, against the window as it is then.
-        this._placer.place(win, () => this._placeFrame(win, rule, headStartMonitor));
+        this._placer.place(win, () => this._placeFrame(win, rule, headStartMonitor),
+            rule.monitor ?? headStartMonitor ?? win.get_monitor());
     }
 
     _placeFrame(win, rule, headStartMonitor) {
