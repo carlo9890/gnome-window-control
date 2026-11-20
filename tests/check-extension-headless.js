@@ -2277,6 +2277,21 @@ export class PopupSeparatorMenuItem {}
         check('rules.d: a name that is not UTF-8 logs no error', badNameErrors.length === 0,
             JSON.stringify(badNameErrors));
 
+        // The same kind of name beside rules.json: the folder monitor hands
+        // the file to its handler, which must not throw on it.
+        const linesBeforeBadSibling = consoleLines.length;
+        GLib.spawn_sync(null, ['sh', '-c', ': > "$0/$(printf \'bad\\377.json\')"', configDir], null,
+            GLib.SpawnFlags.SEARCH_PATH, null);
+        await sleep(300);
+        const badSiblingErrors = consoleLines.slice(linesBeforeBadSibling)
+            .filter(line => line.level === GLib.LogLevelFlags.LEVEL_CRITICAL).map(line => line.message);
+        check('a name that is not UTF-8 beside rules.json logs no error and changes no rule',
+            badSiblingErrors.length === 0 &&
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]',
+            `${JSON.stringify(badSiblingErrors)} ${sourcesOf(rules)}`);
+        GLib.spawn_sync(null, ['sh', '-c', 'rm -- "$0/$(printf \'bad\\377.json\')"', configDir], null,
+            GLib.SpawnFlags.SEARCH_PATH, null);
+
         const linesBeforeReloads = consoleLines.length;
         rules._load();
         rules._load();
