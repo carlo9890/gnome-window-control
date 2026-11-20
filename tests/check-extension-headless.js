@@ -314,7 +314,8 @@ export class PopupSeparatorMenuItem {}
         is_hidden() { return this.hidden; }
         located_on_workspace() { return this.onActiveWorkspace; }
         get_client_type() { return Meta.WindowClientType.WAYLAND; }
-        is_fullscreen() { return false; }
+        is_fullscreen() { return this.fullscreen ?? false; }
+        make_fullscreen() { this.fullscreen = true; }
         unmaximize() { this.maximizeFlags = 0; }
         get_monitor() { return this.monitor; }
         get_workspace() { return workspace; }
@@ -1032,7 +1033,9 @@ export class PopupSeparatorMenuItem {}
     // the newest lands, once, after the restore. Without a restore pending,
     // a request runs at once. A move to a monitor drops a pending placement
     // that puts the window on another monitor, of every kind, and keeps its
-    // wait for the restore; one for the same monitor still lands.
+    // wait for the restore; one for the same monitor still lands. A window
+    // maximized again or made fullscreen before the restore lands gets no
+    // frame and no monitor move.
 
     {
         windows.length = 0;
@@ -1164,6 +1167,16 @@ export class PopupSeparatorMenuItem {}
             earlyRuleMoves === '[]' && JSON.stringify(win.monitorMoves) === '[1]' && moves === '[[3360,0,480,1080]]',
             `before the restore ${earlyRuleMoves}, ${showMonitorMoves()}, after ${moves}`);
         toMonitor0();
+
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.MoveResizeAsync([60, 2000, 100, 800, 600], invocation());
+        service.Fullscreen(60);
+        moves = await settle();
+        check('a window made fullscreen while a MoveResize to another monitor waits stays on its monitor',
+            win.monitorMoves === undefined && moves === '[]', `${showMonitorMoves()}, moves ${moves}`);
+        win.fullscreen = false;
+        toMonitor0();
         workspace.get_work_area_for_monitor = workareaFor;
         monitors.pop();
         rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"tile":"right"}]' }]);
@@ -1182,6 +1195,21 @@ export class PopupSeparatorMenuItem {}
         moves = await settle();
         check('a window maximized again while its restore is pending stays maximized',
             win.maximizeFlags === Meta.MaximizeFlags.BOTH && moves === '[]', `flags ${win.maximizeFlags}, ${moves}`);
+        win.maximizeFlags = 0;
+
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        win.fullscreen = true;   // made fullscreen before the restore landed, by any path
+        moves = await settle();
+        check('a window made fullscreen while its restore is pending gets no frame', moves === '[]', moves);
+        win.fullscreen = false;
+
+        maximize();
+        service.applyRulesToAll();
+        service.Fullscreen(60);
+        moves = await settle();
+        check('Fullscreen while a rule tile waits for the restore drops the tile', moves === '[]', moves);
+        win.fullscreen = false;
         win.maximizeFlags = 0;
 
         keybindings._tile('tile-left', win, 'left');

@@ -372,7 +372,8 @@ Action order within `_apply`:
      the next `size-changed` or `UNMAXIMIZE_SETTLE_MS`, whichever comes first,
      because a frame requested while the unmaximize is in flight is
      overwritten by the restored size. The rectangle resolves then, against
-     the window as it is after the restore.
+     the window as it is after the restore. A window that is maximized again
+     or fullscreen by then gets no frame: that state is the newest request.
    - A shortcut, an apply, or a `Move`, `Resize` or `MoveResize` call for the
      same window before then replaces this request: only the newest one runs.
      A move to a monitor (`MoveToMonitor`, a rule's `monitor`) drops it when

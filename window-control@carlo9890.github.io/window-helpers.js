@@ -224,8 +224,10 @@ export class WindowPlacer {
         const entry = { wait: null, request, monitor };
         entry.wait = new UnmaximizeWait(win, landed => {
             this._pending.delete(win);
-            // Maximized again since: that maximize is the newest request.
-            if (landed && maximizeFlags(win) === 0)
+            // Maximized or made fullscreen since: that state is the newest
+            // request, and mutter would still move a fullscreen window to
+            // the request's monitor.
+            if (landed && maximizeFlags(win) === 0 && !win.is_fullscreen())
                 entry.request();
         });
         this._pending.set(win, entry);
