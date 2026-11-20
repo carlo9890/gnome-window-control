@@ -25,6 +25,16 @@ const { regularFileNames } = await import(GLib.filename_to_uri(`${PREFS}/../rule
 
 const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
 
+// The criticals GLib logs, so a check can assert that a call logs none.
+const criticals = [];
+GLib.log_set_writer_func((level, fields) => {
+    const message = new TextDecoder().decode(fields.MESSAGE);
+    if (level === GLib.LogLevelFlags.LEVEL_CRITICAL)
+        criticals.push(message);
+    printerr(message);
+    return GLib.LogWriterOutput.HANDLED;
+});
+
 // -- the shortcut list holds every shortcut key of the schema, once ----------
 
 {
@@ -101,7 +111,9 @@ const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
 // -- the editor reads rules.json only when it is a regular file ---------------
 
 {
-    const file = Gio.File.new_for_path(`${SCRATCH}/rules.json`);
+    const folder = `${SCRATCH}/read`;
+    GLib.mkdir_with_parents(folder, 0o755);
+    const file = Gio.File.new_for_path(`${folder}/rules.json`);
     check('no rules.json reads as null', readText(file) === null);
     GLib.file_set_contents(file.get_path(), '[]');
     check('a rules.json reads as its text', readText(file) === '[]');
@@ -117,7 +129,30 @@ const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
     }
     check('a FIFO rules.json is refused before it is opened',
         refusal?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE) === true, `${refusal}`);
+
+    // The open of a FIFO for a write does not return either, directly or
+    // through a link, and the refused save must leave no temporary link.
+    const link = Gio.File.new_for_path(`${folder}/link.json`);
+    link.make_symbolic_link('rules.json', null);
+    const refusals = [file, link].map(target => {
+        try {
+            writeText(target, '[]');
+            return null;
+        } catch (e) {
+            return e;
+        }
+    });
+    check('a save to a FIFO is refused before it is opened, behind a link too',
+        refusals.every(e => e?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE) === true),
+        `${refusals}`);
+    const left = [...Gio.File.new_for_path(folder).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name()).filter(name => name.startsWith('.'));
+    check('a refused save leaves no temporary link', left.length === 0, JSON.stringify(left));
     GLib.unlink(file.get_path());
+
+    // The link has no target now: that is no file, as for wctl.
+    check('a link without a target reads as null', readText(link) === null);
+    GLib.unlink(link.get_path());
 }
 
 // -- a save through a symlink keeps the link, and fails before it writes ------
@@ -146,19 +181,32 @@ const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
     // target is still writable: a save that reports a failure must not
     // have changed it.
     GLib.chmod(config, 0o555);
+    // Root writes to a read-only folder, so the case proves nothing there.
+    const W_OK = 2;
+    const readOnly = GLib.access(config, W_OK) !== 0;
     let failure = null;
     try {
-        writeText(file, 'lost');
+        if (readOnly)
+            writeText(file, 'lost');
     } catch (e) {
         failure = e;
     }
     GLib.chmod(config, 0o755);
-    check('a save fails when the folder takes no new link', failure !== null);
-    check('a failed save leaves the target as it was', read(target) === 'new', read(target));
+    if (readOnly) {
+        check('a save fails when the folder takes no new link', failure !== null);
+        check('a failed save leaves the target as it was', read(target) === 'new', read(target));
+    } else {
+        print('SKIP  the read-only folder case: this user writes to a read-only folder');
+    }
 
     const plain = Gio.File.new_for_path(`${config}/plain.json`);
     writeText(plain, 'text');
-    check('a save of a regular file writes it', read(plain.get_path()) === 'text');
+    check('a save of a new regular file writes it', read(plain.get_path()) === 'text');
+    const criticalsBefore = criticals.length;
+    writeText(plain, 'again');
+    check('a save over a regular file writes it', read(plain.get_path()) === 'again');
+    check('a save over a regular file logs no critical', criticals.length === criticalsBefore,
+        JSON.stringify(criticals.slice(criticalsBefore)));
 }
 
 // -- elementOffsets skips brackets and commas inside strings and nesting ------

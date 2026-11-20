@@ -198,6 +198,10 @@ export class RulesEditor {
             text = readText(this._file);
         } catch (e) {
             this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
+            // At the first load the buffer is empty and there is nothing
+            // to save: Apply must stay usable for the drop-in rules.
+            this._savedText ??= '';
+            this._loadedText ??= '';
             this._syncButtons();
             return;
         }
