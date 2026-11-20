@@ -110,7 +110,8 @@ then upload the same zip.
 
 1. Use the zip that `scripts/release.sh` wrote to
    `dist/window-control@carlo9890.github.io_v<version>.zip` in step 8 of the
-   release checklist, not a CI artifact. The archive must have
+   release checklist, not a CI artifact. A later `build.sh` run deletes
+   `dist/`; then download the extension zip asset of the GitHub release. The archive must have
    `metadata.json` at its root, not inside a subdirectory — `release.sh` builds
    it with `build.sh`, which zips the git-tracked files of the extension
    directory with `metadata.json` at the root. An untracked or ignored file never ships; commit a new file before it

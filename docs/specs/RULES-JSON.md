@@ -374,8 +374,8 @@ Action order within `_apply`:
      the window as it is after the restore.
    - A shortcut, an apply, or a `Move`, `Resize` or `MoveResize` call for the
      same window before then replaces this request: only the newest one runs.
-     A `MoveToMonitor` call or a rule's `monitor` drops it when it targets
-     another monitor (step 3).
+     A `MoveToMonitor` call or a rule's `monitor` drops it when the request's
+     target monitor differs from the move's index (step 3).
    - The frame is requested as the program, not as the user
      (`move_resize_frame(false, ...)`). A window whose minimum size is above
      the rectangle grows to that minimum at the rectangle's position, kept on
@@ -577,7 +577,7 @@ Defined at the top of the file named; change them there, not here.
 
 ## Capabilities
 
-Rules are read by the extension alone. The format is not part of the D-Bus
+Rules are applied by the extension alone. The format is not part of the D-Bus
 interface and carries no version field. A caller learns what the extension
 reads from `GetCapabilities`, not from the version number. An extension that
 supports a feature MUST report its name:
