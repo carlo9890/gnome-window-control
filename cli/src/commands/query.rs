@@ -322,9 +322,9 @@ pub fn workarea(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 /// The bare form is handled in `main::run` and never touches the bus. This one
 /// runs only for `--json`, and asking the shell is the point: `metadata.json`
 /// on disk can already be newer than what is loaded, and on Wayland it stays
-/// that way until the user logs out. Reading the version off disk -- or out of
-/// `gnome-extensions info`, which reports the same loaded value but needs two
-/// more programs and the extension UUID -- is what this replaces.
+/// that way until the user logs out. Reading the version off disk is what this
+/// replaces. `gnome-extensions info` prints `version`, which differs from
+/// `version-name` on an install from extensions.gnome.org.
 ///
 /// `compatible` asserts that the loaded extension is in the range from
 /// `crate::MIN_EXTENSION_VERSION` to `crate::EXPECTED_EXTENSION_VERSION`. A

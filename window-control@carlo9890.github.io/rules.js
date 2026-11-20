@@ -380,8 +380,9 @@ export class WindowRules {
     // then skips its own placement and asks the client for that size, so the
     // first frame is drawn in place instead of jumping there afterwards.
     //
-    // Only a head start: the client may commit another size and its identity
-    // may not have arrived, so the rule is still applied in full once shown.
+    // Only a head start: the client may commit another size, its identity may
+    // not have arrived, and `center` needs a size the window does not have
+    // yet, so the rule is still applied in full once shown.
     _preplace(win, config) {
         // Wayland clients only: for an X11 window mutter reads the frame
         // back as the client's size hints, and one with server-side
