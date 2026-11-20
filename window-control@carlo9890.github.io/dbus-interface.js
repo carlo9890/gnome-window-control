@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// D-Bus interface XML for the Window Control extension.
-// Kept in its own module so the declarative interface contract can be read and
-// diffed independently of the handler implementations in dbus-service.js.
+// The D-Bus interface XML, kept apart from the handlers in dbus-service.js so
+// the contract can be read and diffed on its own.
 
 export const DBUS_INTERFACE_XML = `
 <node>
@@ -79,8 +78,8 @@ export const DBUS_INTERFACE_XML = `
       ERRORS RAISED BY NAME
 
       Move, Resize, MoveResize, ApplyRules, WaitForWindow and WaitForGeometry
-      return no success flag: they complete or raise one of the names below. In any
-      other method, an unexpected Error answers with GJS's own
+      return no success flag: they complete or raise one of the names below.
+      In any other method, an unexpected Error answers with GJS's own
       org.gnome.gjs.JSError.<name>; before GNOME 50, a wait method that throws
       before it starts waiting sends no reply.
 
@@ -128,15 +127,14 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      Applies the loaded rules (rules.json and rules.d) again, as a new window gets them
-      once shown: window_id 0 means every open window, any other id that one
-      window. applied is the number of windows a rule matched. A window not
-      yet shown, whose own first rule apply is still queued, or that is still
-      in its late-identity grace period, is skipped. A
-      window whose placement waits for its unmaximize is placed again: the
-      newer placement replaces the pending one. A rules file change
-      that is still being read is waited for, so the rules applied are the
-      ones saved.
+      Applies the loaded rules (rules.json and rules.d) again, as a new window
+      gets them once shown: window_id 0 means every open window, any other id
+      that one window. applied is the number of windows a rule matched. A
+      window not yet shown, whose own first rule apply is still queued, or
+      that is still in its late-identity grace period, is skipped. A window
+      whose placement waits for its unmaximize is placed again: the newer
+      placement replaces the pending one. A rules file change that is still
+      being read is waited for, so the rules applied are the ones saved.
     -->
     <method name="ApplyRules">
       <arg type="t" direction="in" name="window_id"/>
@@ -314,16 +312,14 @@ export const DBUS_INTERFACE_XML = `
     <!-- Event Methods -->
 
     <!--
-      Replies once a window matching the selector is shown. kind is "class",
-      "title", "substring" or "pid"; timeout_ms > 0; window_id is 0 on timeout.
-      The reply is deferred until a matching window has been shown (mapped and
-      placed by mutter) or the timeout elapses; the shell main loop is never
-      blocked. Replying only once the window is shown matters: a geometry
-      request on a window that exists but is not yet shown is overridden by
-      mutter's initial placement. An already existing matching window returns
-      immediately. Invalid arguments raise
-      org.freedesktop.DBus.Error.InvalidArgs; disabling the extension while a
-      call is pending raises org.gnome.Shell.Extensions.WindowControl.Disabled.
+      Replies once a window matching the selector is shown (mapped and placed
+      by mutter). kind is "class", "title", "substring" or "pid"; timeout_ms
+      > 0; window_id is 0 on timeout. An already shown matching window returns
+      at once. The reply waits for the show because mutter's initial placement
+      overrides a geometry request made before it.
+      Invalid arguments raise org.freedesktop.DBus.Error.InvalidArgs;
+      disabling the extension while a call is pending raises
+      org.gnome.Shell.Extensions.WindowControl.Disabled.
       A pending call whose caller leaves the bus is dropped without a reply.
     -->
     <method name="WaitForWindow">
@@ -334,16 +330,12 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      Replies with the frame once it has stopped changing: quiet_ms (> 0) is
-      how long it must hold still, timeout_ms (>= quiet_ms) when to give up.
-      The reply is deferred until size-changed and position-changed have both
-      been silent for quiet_ms, then carries the frame as it then stands. Only
-      the compositor can do this: move_resize_frame() is asynchronous and
-      get_frame_rect() read straight after it still returns the old rect, so a
-      client outside the shell can only sample and guess. Watching the signals
-      replaces that guess with the compositor's own account -- but "stopped
-      changing" is still a quiet period, not a promise: a client is free to
-      resize itself again later.
+      Replies with the frame once size-changed and position-changed have been
+      silent for quiet_ms (> 0); timeout_ms (>= quiet_ms) is when to give up.
+      A client outside the shell cannot do this: move_resize_frame() is
+      asynchronous and get_frame_rect() read straight after it still returns
+      the old rect. The quiet period is not a promise: a client can resize
+      itself again later.
       Raises WindowControl.NotFound if the window does not exist or closes
       while waiting, WindowControl.Timeout if the frame never settles,
       org.freedesktop.DBus.Error.InvalidArgs for bad arguments, and

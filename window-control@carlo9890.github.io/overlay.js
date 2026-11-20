@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Overlay windows: a window that a rules.json rule marks "overlay": true stays
-// above the other windows and out of Alt+Tab and the overview, and is
-// minimized when the user turns to another window or the overview has opened.
-// Its caller brings it back with an ordinary activate.
-//
-// rules.js decides which windows are overlays; this file holds what being one
-// means, and undoes it when a window stops being one.
+// Overlay windows (rules.json "overlay": true): kept above, out of Alt+Tab and
+// the overview, and minimized when focus moves away or the overview opens.
+// rules.js decides which windows are overlays.
 
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';

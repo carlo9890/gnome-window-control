@@ -43,13 +43,10 @@ export const CENTER_AXES = ['horizontal', 'vertical', 'both'];
 
 // The position the "cycle wide" shortcut moves a window to next: wide-right,
 // unless the frame already is wide-right, then wide-left. Decided from the
-// frame rather than remembered per window, so a window moved elsewhere in
-// between starts the cycle over, and nothing has to be forgotten on close.
-//
-// "Is wide-right" allows half a cell of slack on every edge: a client that
-// snaps to size increments (a terminal's character cell) never lands on the
-// exact pixels, and every other grid span differs from wide-right by a full
-// cell on some edge, so the slack cannot mistake one for it.
+// frame, not remembered per window, so nothing has to be forgotten on close.
+// Half a cell of slack per edge: a client that snaps to size increments (a
+// terminal) misses the exact pixels, and every other grid span differs from
+// wide-right by a full cell on some edge.
 export function nextWidePosition(frame, workarea) {
     const wideRight = tileRect('wide-right', workarea);
     const slackW = Math.trunc(workarea.width / 8);
@@ -67,16 +64,11 @@ export const RULE_KEYS = ['match', 'place', 'tile', 'center', 'workspace', 'moni
 // reported when the file is read rather than when a window first appears.
 export const PROBE_WORKAREA = { x: 0, y: 0, width: 1000, height: 1000 };
 
-// Build the match predicate for a (kind, value) selector. One implementation
-// for WaitForWindow, the ActivateBy* methods and rules.json, so the three
-// cannot disagree about which window a value names. Returns null for an
-// unknown kind, an empty substring, prefix, suffix or class prefix (which
-// would match every window) or a pid that is not a positive decimal integer:
-// get_pid() is 0 for a window whose client pid is unknown, so 0 must never be
-// matchable.
-//
-// The window is duck-typed through its getters, which is what keeps this file
-// free of gi://Meta.
+// Shared by WaitForWindow, ActivateBy* and rules.json, so they agree on which
+// window a value names. Returns null for an unknown kind, a value that would
+// match every window (an empty substring, prefix, suffix or class prefix), or
+// a pid that is not a positive integer: get_pid() is 0 for an unknown client
+// pid. The window is duck-typed, which keeps this file free of gi://Meta.
 export function matchPredicate(kind, value) {
     switch (kind) {
     case 'class':
@@ -251,11 +243,8 @@ export function compileRule(rule, index) {
         const kind = MATCH_KINDS[key];
         if (typeof value !== 'string')
             throw new Error(`${label}.match.${key}: must be a string`);
-        // Checked here rather than left to matchPredicate, which only refuses an
-        // empty substring, prefix, suffix or class prefix. An empty class or
-        // title builds a predicate that is true only for a window whose class
-        // or title is the empty string -- never what the user meant, and a rule
-        // that silently never fires is worse than a message.
+        // matchPredicate accepts an empty class or title, but such a rule
+        // silently never fires, so refuse it here with a message.
         if (value === '')
             throw new Error(`${label}.match.${key}: must not be empty`);
         predicates.push(matchPredicate(kind, value));

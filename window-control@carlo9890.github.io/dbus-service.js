@@ -13,12 +13,9 @@ import {
     skipNextEffect, unmaximizeWindow,
 } from './window-helpers.js';
 
-// Parsed once and kept for the life of the shell, never per enable(). GJS
-// cache_build()s the info it exports and never releases it, and GLib keys that
-// method cache by the info's address without holding a reference. An info
-// parsed per enable() is freed after disable(), and a later one allocated at
-// the same address inherits the stale cache: every call then fails with
-// "No such method" while introspection still lists the method.
+// Parsed once per shell, never per enable(). GLib keys the GJS method cache by
+// the info's address without a reference, so a new info at a freed address
+// inherits the stale cache and every call fails with "No such method".
 const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML);
 
 // Reported by GetCapabilities, without 'keybindings' when the shortcuts could
@@ -86,19 +83,15 @@ const WINDOW_TYPE_NAMES = {
 };
 
 export class WindowControlService {
-    // `placer`: the WindowPlacer the frame requests go through.
     constructor(metadata, placer) {
         this._placer = placer;
         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
             DBUS_INTERFACE_INFO,
             this
         );
-        // Reported by GetVersion. Read from the metadata the shell loaded, not
-        // from metadata.json on disk: those two disagreeing is the whole point
-        // of the method, because on Wayland an install lands on disk and the
-        // shell keeps running the old copy until the user logs out.
-        // version-name, not version: extensions.gnome.org replaces version
-        // with its own upload number.
+        // The loaded metadata, not metadata.json: on Wayland the shell runs the
+        // old copy until logout. version-name, because extensions.gnome.org
+        // replaces version with its own upload number.
         this._version = metadata['version-name'];
         // Set by the extension: false once WindowKeybindings failed to
         // register the shortcuts.
@@ -115,11 +108,8 @@ export class WindowControlService {
         // Mutter exposes no "has been mapped" getter, so record it: a window
         // seen unhidden once has been placed, and that never becomes untrue.
         this._shownWindows = new WeakSet();
-        // Every window created while the service runs, and a one-shot 'shown'
-        // watch on each untracked one until its first map (Meta.Window ->
-        // [signal handler ids]), so _isUnshown() knows the answer for all of
-        // them. A window costs two handlers until it is first shown, and none
-        // after.
+        // Windows created since export(), and a one-shot 'shown' watch on each
+        // untracked one until its first map, so _isUnshown() is exact for them.
         this._createdSinceStart = new WeakSet();
         this._firstShowWatches = new Map();
         this._windowCreatedId = 0;
@@ -188,8 +178,6 @@ export class WindowControlService {
         return null;
     }
 
-    // Shared preamble for the geometry handlers: find the window and check the
-    // frame, raising a named error for either failure.
     _geometryTarget(windowId, label) {
         const win = this._findWindowById(windowId);
         if (!win) {
@@ -205,15 +193,9 @@ export class WindowControlService {
         return win;
     }
 
-    // Run a handler body and answer the invocation: the body's GLib.Variant,
-    // or an empty reply when it returns none, on success, and a named error
-    // otherwise.
-    //
-    // The three geometry methods and ApplyRules are async (GJS convention:
-    // <Method>Async(params, invocation)) so they can answer here rather than
-    // by throwing. GJS logs a throw from a synchronous handler as a warning,
-    // one per ordinary refusal. Only ApplyRules waits, for a rules file read
-    // in flight.
+    // The geometry methods and ApplyRules are <Method>Async so they answer
+    // here: GJS logs a throw from a synchronous handler as a warning. Only
+    // ApplyRules waits, for a rules file read in flight.
     _namedErrorCall(invocation, label, body) {
         try {
             invocation.return_value(body() ?? null);
@@ -233,10 +215,8 @@ export class WindowControlService {
         return SELECTOR_KINDS.includes(kind) ? matchPredicate(kind, value) : null;
     }
 
-    // Has mutter mapped and placed this window at least once?
-    // Recorded rather than inferred -- a window seen unhidden has been placed,
-    // and that never stops being true, whereas is_hidden() flips with minimize
-    // and workspace changes.
+    // Recorded, not read from is_hidden(), which also flips with minimize and
+    // workspace changes.
     _hasBeenShown(win) {
         if (this._shownWindows.has(win))
             return true;
@@ -260,11 +240,8 @@ export class WindowControlService {
         return looksUnmapped(win);
     }
 
-    // Look up a window by ID and run an action on it, for the simple boolean
-    // handlers. Returns false if the window is missing or the action returns
-    // false -- which is how an action that reads its result back
-    // (MoveToWorkspace, SetSticky) reports a change mutter declined. An action
-    // that returns nothing counts as success.
+    // An action returns false for a change mutter declined (MoveToWorkspace,
+    // SetSticky); one that returns nothing counts as success.
     _actOnWindow(windowId, label, action) {
         const win = this._findWindowById(windowId);
         if (!win) {
@@ -276,10 +253,8 @@ export class WindowControlService {
         return ok;
     }
 
-    // The ActivateBy* contract. Activates the first window matching
-    // (kind, value) and returns true; false if none does or the value is one
-    // _matchPredicate refuses. `kind` is one of this file's own keywords, never
-    // caller-supplied, so it is safe to log; the value is not logged.
+    // `kind` is one of this file's keywords, never caller-supplied, so it is
+    // safe to log; the value is not logged.
     _activateMatching(kind, value) {
         const label = `ActivateBy(${kind})`;
         console.debug(`[Window Control] ${label} called`);
@@ -426,10 +401,7 @@ export class WindowControlService {
         });
     }
 
-    // Mutter keeps the focused window as a property, so this is one read
-    // rather than a walk over every actor; the NORMAL filter every other
-    // method applies still holds, so a focused dialog reports "no focused
-    // window".
+    // A focused dialog reports "no focused window", as in every other method.
     GetFocused() {
         console.debug('[Window Control] GetFocused() called');
         const focused = global.display.focus_window;
@@ -446,13 +418,10 @@ export class WindowControlService {
         return [0, '', ''];
     }
 
-    // The three geometry methods place through the WindowPlacer: a call made
-    // while a shortcut or a rule still waits for the window's unmaximize
-    // replaces that placement, rather than being overwritten when it lands.
-    // A window maximized now is refused (_geometryTarget), not restored.
-    //
-    // Raises instead of returning a flag; see the ERRORS block in
-    // dbus-interface.js.
+    // Through the WindowPlacer, a call replaces a placement that still waits
+    // for an unmaximize instead of being overwritten by it. A window
+    // maximized now is refused (_geometryTarget), not restored. The geometry
+    // methods raise; see the ERRORS block in dbus-interface.js.
     MoveAsync([windowId, x, y], invocation) {
         console.debug(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         this._namedErrorCall(invocation, 'Move', () => {
@@ -462,8 +431,7 @@ export class WindowControlService {
         });
     }
 
-    // Keeps the position the frame has when the request runs. Raises on
-    // failure.
+    // Keeps the position the frame has when the request runs.
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'Resize', () => {
@@ -481,7 +449,7 @@ export class WindowControlService {
     }
 
     // One request for both, so mutter applies them together, as the program's
-    // request (see moveResizeFrame). Raises on failure.
+    // request (see moveResizeFrame).
     MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'MoveResize', () => {
@@ -626,13 +594,10 @@ export class WindowControlService {
         return switched;
     }
 
-    // change_workspace_by_index() returns void and declines silently for a
-    // window mutter holds on all workspaces -- and with the GNOME default
-    // workspaces-only-on-primary=true that is every window on a secondary
-    // monitor. Reporting the call as a success there would claim a move that
-    // never happened, so the workspace is read back, the way ActivateWorkspace
-    // reads back its switch. The assignment is synchronous, so this sees the
-    // final state.
+    // change_workspace_by_index() declines silently for a window held on all
+    // workspaces, which with workspaces-only-on-primary (the default) is every
+    // window on a secondary monitor, so the move is read back. The assignment
+    // is synchronous, so the read sees the final state.
     MoveToWorkspace(windowId, workspaceIndex) {
         if (!this._isValidIndex(workspaceIndex, global.workspace_manager.get_n_workspaces())) {
             console.debug(`[Window Control] MoveToWorkspace(${windowId}, ${workspaceIndex}) -> false (invalid index)`);
@@ -653,11 +618,8 @@ export class WindowControlService {
             win => win.move_to_monitor(monitorIndex));
     }
 
-    // Reply with the ID of a shown window matching (kind, value), either
-    // immediately if one exists or when one appears, or 0 after timeoutMs.
-    // Async handler (GJS convention: <Method>Async(params, invocation)) so the
-    // shell main loop is never blocked; the reply is sent from a signal handler
-    // or the timeout source.
+    // Reply with the ID of a shown window matching (kind, value), now or when
+    // one appears, or 0 after timeoutMs.
     WaitForWindowAsync([kind, value, timeoutMs], invocation) {
         // `kind` is not validated yet, so it is not logged here.
         console.debug('[Window Control] WaitForWindow() called');
@@ -726,14 +688,9 @@ export class WindowControlService {
                 console.debug(`[Window Control] WaitForGeometry(${windowId}) dropped (caller left the bus)`);
         });
 
-        // The quiet period is attached before the overall timeout. A caller
-        // is allowed to pass timeout_ms === quiet_ms, and GLib dispatches
-        // sources of equal priority that come ready together in the order
-        // they were attached -- so with the timeout first, a frame that was
-        // never moving would answer Timeout instead of settling.
-        //
-        // Starting it now is also what lets an already still frame settle,
-        // rather than waiting for a change that never comes.
+        // Attached before the timeout: GLib dispatches equal-priority sources
+        // that come ready together in attach order, and timeout_ms may equal
+        // quiet_ms. Starting it now also lets an already still frame settle.
         this._restartQuietPeriod(watcher);
         watcher.timeoutId = this._addTimeout(timeoutMs, () => {
             watcher.timeoutId = 0;
@@ -819,10 +776,8 @@ export class WindowControlService {
     _trackWindow(win) {
         const evaluate = () => {
             this._evaluateWindow(win);
-            // Handlers stay connected while any waiter is pending: a waiter this
-            // window did not satisfy may still be waiting for a title or class
-            // that changes later. _retireWaiter() untracks everything through
-            // _stopWatching() once the last waiter is gone.
+            // Kept while any waiter is pending: one this window did not satisfy
+            // may still wait for a later title or class change.
             if (this._waiters.length === 0)
                 this._untrackWindow(win);
         };
@@ -887,13 +842,11 @@ export class WindowControlService {
         this._firstShowWatches.delete(win);
     }
 
-    // Call onGone once the caller of `invocation` leaves the bus, so a deferred
-    // call whose caller was killed does not keep its handlers and timers until
-    // timeout_ms. A name watch, not a bare NameOwnerChanged subscription: the
-    // watch asks for the owner after it subscribes, so a caller that left
-    // before this handler ran (killed right after it sent the call) is seen
-    // too; a subscription alone misses it. Returns null for a call with no
-    // sender (a peer-to-peer connection), where there is no name to watch.
+    // Call onGone once the caller leaves the bus, so a killed caller's call
+    // does not hold its handlers and timers until timeout_ms. A name watch,
+    // not a bare NameOwnerChanged subscription: it also sees a caller that
+    // left before this ran. Returns null for a peer-to-peer call, which has
+    // no sender.
     _watchCaller(invocation, onGone) {
         const sender = invocation.get_sender();
         if (!sender)

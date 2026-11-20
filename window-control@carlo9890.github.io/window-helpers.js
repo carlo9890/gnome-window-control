@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Helpers shared by the D-Bus service, the window rules, the overlay windows
-// and the keyboard shortcuts: the maximize API that changed in GNOME 49, a
-// minimize without the animation, the workarea a window resolves against, the
-// wait for an unmaximize to land, and the placer the frame requests of a
-// shown window go through. Everything here needs Meta; the Meta-free selector grammar is in
+// Window helpers that need Meta, shared by the D-Bus service, the rules, the
+// overlays and the shortcuts. The Meta-free rules.json grammar is in
 // rules-format.js.
 
 import GLib from 'gi://GLib';
@@ -12,12 +9,9 @@ import Meta from 'gi://Meta';
 import Mtk from 'gi://Mtk';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-// GNOME 49 changed the Meta.Window maximize API: maximize()/unmaximize() no
-// longer take a Meta.MaximizeFlags argument, and get_maximized() was removed in
-// favor of get_maximize_flags()/is_maximized(). The rest of the Meta.Window
-// API used here is unchanged across GNOME 45-50. Detect the pre-49 API via the
-// removed get_maximized() method so a single extension works on all supported
-// shells.
+// GNOME 49 dropped the Meta.MaximizeFlags argument of maximize()/unmaximize()
+// and removed get_maximized(). Its presence marks the pre-49 API, so one
+// extension serves GNOME 45-50.
 export function maximizeFlags(win) {
     if (typeof win.get_maximized === 'function') {
         return win.get_maximized();                                  // GNOME <= 48
@@ -116,11 +110,9 @@ export function moveResizeFrame(win, { x, y, width, height }) {
 // size change, so the wait has to be bounded.
 export const UNMAXIMIZE_SETTLE_MS = 1000;
 
-// Unmaximize, then call `settled(true)` from an idle callback after the next
-// 'size-changed' or after UNMAXIMIZE_SETTLE_MS, whichever comes first, or
-// `settled(false)` when the window is unmanaged before then. The owner calls
-// destroy() to give the wait up; after it, or after `settled`, nothing is left
-// behind.
+// Unmaximize, then call `settled(true)` after the next 'size-changed' or
+// UNMAXIMIZE_SETTLE_MS, or `settled(false)` if the window is unmanaged first.
+// destroy() gives the wait up; after it, or after `settled`, nothing is left.
 //
 // A frame requested while the unmaximize is still in flight is overwritten by
 // the restored size, which is why the callers wait at all. 'size-changed' is

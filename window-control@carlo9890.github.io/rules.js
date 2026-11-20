@@ -35,13 +35,11 @@ const PLACES_BEFORE_FIRST_FRAME = Meta.WindowConfig !== undefined &&
 // no Meta.is_wayland_compositor().
 const STAGE_ALWAYS_LOGICAL = Number.parseInt(Config.PACKAGE_VERSION) >= 50;
 
-// How a journal line names a rule: its file and its index in that file.
 function ruleName(rule) {
     return `${rule.source} rules[${rule.index}]`;
 }
 
 export class WindowRules {
-    // `placer`: the WindowPlacer the frame requests go through.
     constructor(placer) {
         this._placer = placer;
         this._rules = [];
@@ -232,16 +230,13 @@ export class WindowRules {
         }
     }
 
-    // Apply the rules again to the open windows, or to `only`, as a new
-    // window gets them once shown, and decide each one's overlay membership
-    // as a load does. Returns how many windows a rule matched.
-    //
-    // A tracked window is skipped: its own rule is still on the way, or it
-    // is still in its late-identity grace period. So is a
-    // window `isUnshown` reports, which mutter has not shown yet: its initial
-    // placement would override the frame. A window still waiting for its
-    // unmaximize is placed again: the newer request replaces the pending one
-    // (see WindowPlacer).
+    // Apply the rules again to the open windows, or to `only`, and decide
+    // each one's overlay membership as a load does. Returns how many windows
+    // a rule matched. A tracked window is skipped: its own rule is on the
+    // way, or its grace period runs. So is a window mutter has not shown yet:
+    // its initial placement would override the frame. A window waiting for
+    // its unmaximize is placed again: the newer request replaces the pending
+    // one (see WindowPlacer).
     applyRules(only, isUnshown) {
         let applied = 0;
         for (const win of only ? [only] : global.display.list_all_windows()) {
@@ -385,10 +380,8 @@ export class WindowRules {
     // then skips its own placement and asks the client for that size, so the
     // first frame is drawn in place instead of jumping there afterwards.
     //
-    // A head start, not the rule's application: the client may commit another
-    // size, its identity may not have arrived yet, and `center` needs a size
-    // the window does not have yet. So the window stays tracked and the rule
-    // is applied in full once it is shown, exactly as on an older shell.
+    // Only a head start: the client may commit another size and its identity
+    // may not have arrived, so the rule is still applied in full once shown.
     _preplace(win, config) {
         // Wayland clients only: for an X11 window mutter reads the frame
         // back as the client's size hints, and one with server-side
