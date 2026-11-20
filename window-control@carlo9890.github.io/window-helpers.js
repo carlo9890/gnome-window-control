@@ -111,6 +111,17 @@ export function moveResizeFrame(win, { x, y, width, height }) {
     win.move_resize_frame(false, x, y, width, height);
 }
 
+// Move the window to monitor `index` at once, outside the placer. To another
+// monitor, the move is the newest request, so the window's pending placement
+// is dropped: run after the move, a placement made for the old monitor would
+// put the window back. To its own monitor, the window stays, so the pending
+// placement still runs.
+export function moveToMonitor(win, placer, index) {
+    if (index !== win.get_monitor())
+        placer.cancel(win);
+    win.move_to_monitor(index);
+}
+
 // How long to wait for an unmaximize to land before placing the frame anyway.
 // A client whose restored size equals its maximized one never reports a
 // size change, so the wait has to be bounded.
@@ -176,9 +187,8 @@ export class UnmaximizeWait {
 // The one owner of the frame requests of a shown window: the shortcuts, a
 // rule's geometry and the D-Bus geometry methods all place through it, so a
 // window has at most one placement pending and the newest request wins.
-// MoveToMonitor and a rule's `monitor` call move_to_monitor() outside it, and
-// cancel() the window's pending placement first: run after the move, it would
-// put the window back. A frame on another monitor goes there inside it
+// MoveToMonitor and a rule's `monitor` move the window outside it
+// (moveToMonitor). A frame on another monitor goes there inside it
 // (moveResizeFrame).
 //
 // A maximized window is restored first, and its request runs once the
@@ -215,11 +225,12 @@ export class WindowPlacer {
         this._pending.set(win, entry);
     }
 
-    // Drop the window's pending request, without running it. The restore
-    // already requested stays.
+    // Drop the window's pending request, without running it. Its wait stays:
+    // the restore is still in flight, so a newer request must still wait.
     cancel(win) {
-        this._pending.get(win)?.wait.destroy();
-        this._pending.delete(win);
+        const pending = this._pending.get(win);
+        if (pending)
+            pending.request = () => {};
     }
 
     // Drop every pending request, without running it.

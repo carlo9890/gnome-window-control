@@ -1086,18 +1086,45 @@ export class PopupSeparatorMenuItem {}
         moves = await settle();
         check('Move after a shortcut replaces the shortcut\'s pending placement', moves === '[[5,6]]', moves);
 
-        // A move to a monitor runs at once, outside the placer: the older
-        // pending placement must not put the window back after it.
+        // A move to another monitor runs at once, outside the placer: the
+        // older pending placement must not put the window back after it, and
+        // a newer request must still wait for the restore in flight.
         monitors.push({ x: 1920, y: 0, width: 1920, height: 1080, scale: 1 });
+        const workareaFor = workspace.get_work_area_for_monitor;
+        workspace.get_work_area_for_monitor = index => ({ ...monitors[index] });
+        const toMonitor0 = () => {
+            win.monitor = 0;
+            win.monitorMoves = undefined;
+        };
+        const showMonitorMoves = () => `monitor moves ${JSON.stringify(win.monitorMoves)}`;
+
         maximize();
         keybindings._tile('tile-left', win, 'left');
         const movedToMonitor = service.MoveToMonitor(60, 1);
+        const waitKept = placer._pending.has(win);
         moves = await settle();
-        check('MoveToMonitor drops the shortcut\'s pending placement',
-            movedToMonitor && JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]' &&
-            !placer._pending.has(win), `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${moves}`);
-        win.monitor = 0;
-        win.monitorMoves = undefined;
+        check('MoveToMonitor drops the shortcut\'s pending placement, and its wait for the restore stays',
+            movedToMonitor && waitKept && JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]',
+            `wait kept ${waitKept}, ${showMonitorMoves()}, moves ${moves}`);
+        toMonitor0();
+
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.MoveToMonitor(60, 1);
+        service.MoveResizeAsync([60, 2000, 100, 800, 600], invocation());
+        const earlyMoves = JSON.stringify(win.moves);
+        moves = await settle();
+        check('a frame request right after MoveToMonitor still waits for the restore',
+            earlyMoves === '[]' && moves === '[[2000,100,800,600]]', `before the restore ${earlyMoves}, after ${moves}`);
+        toMonitor0();
+
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.MoveToMonitor(60, 0);
+        moves = await settle();
+        check('MoveToMonitor to the window\'s own monitor keeps the pending placement',
+            JSON.stringify(win.monitorMoves) === '[0]' && moves === LEFT, `${showMonitorMoves()}, moves ${moves}`);
+        toMonitor0();
 
         rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":1}]' }]);
         maximize();
@@ -1105,10 +1132,20 @@ export class PopupSeparatorMenuItem {}
         service.applyRulesToAll();
         moves = await settle();
         check('a rule\'s monitor drops the shortcut\'s pending placement',
-            JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]' && !placer._pending.has(win),
-            `monitor moves ${JSON.stringify(win.monitorMoves)}, moves ${moves}`);
-        win.monitor = 0;
-        win.monitorMoves = undefined;
+            JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]', `${showMonitorMoves()}, moves ${moves}`);
+        toMonitor0();
+
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":1,"tile":"right"}]' }]);
+        maximize();
+        keybindings._tile('tile-left', win, 'left');
+        service.applyRulesToAll();
+        const earlyRuleMoves = JSON.stringify(win.moves);
+        moves = await settle();
+        check('a rule\'s monitor and tile replace the shortcut\'s pending placement, after the restore',
+            earlyRuleMoves === '[]' && JSON.stringify(win.monitorMoves) === '[1]' && moves === '[[3360,0,480,1080]]',
+            `before the restore ${earlyRuleMoves}, ${showMonitorMoves()}, after ${moves}`);
+        toMonitor0();
+        workspace.get_work_area_for_monitor = workareaFor;
         monitors.pop();
         rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"tile":"right"}]' }]);
 

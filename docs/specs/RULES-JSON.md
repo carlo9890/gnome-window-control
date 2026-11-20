@@ -359,8 +359,11 @@ Action order within `_apply`:
    the rule (the monitor move and the geometry) is skipped with a debug line.
    The workspace step has already run. Else `move_to_monitor(index)` moves
    the window at once: this move does not wait in the `WindowPlacer`. Before
-   it, a placement still waiting there for the window is dropped, without
-   running: run after the move, it would put the window back.
+   a move to a monitor other than the window's own, the request of a
+   placement still waiting there for the window is dropped, without running:
+   run after the move, it would put the window back. Its wait for the
+   restore stays, so a later request, this rule's geometry included, still
+   waits for that restore.
 4. Geometry — skipped when the window is fullscreen. The frame is requested
    through the `WindowPlacer` (`window-helpers.js`) that the keyboard shortcuts
    and the D-Bus geometry methods share:
@@ -371,6 +374,8 @@ Action order within `_apply`:
      the window as it is after the restore.
    - A shortcut, an apply, or a `Move`, `Resize` or `MoveResize` call for the
      same window before then replaces this request: only the newest one runs.
+     A move to another monitor (`MoveToMonitor`, a rule's `monitor`) drops it
+     (step 3).
    - The frame is requested as the program, not as the user
      (`move_resize_frame(false, ...)`). A window whose minimum size is above
      the rectangle grows to that minimum at the rectangle's position, kept on
@@ -412,7 +417,8 @@ For each window, in this order:
 
 1. A window `_tracked` holds is skipped: its own apply or grace period is
    still running. A window whose placement waits for its unmaximize is not
-   tracked: the new apply replaces that placement (step 4 above).
+   tracked: the new apply replaces that placement (step 4 above), or its
+   `monitor` drops it (step 3 above).
 2. A window that has not been shown is skipped: mutter's initial placement
    would override the frame. `ApplyRules` decides this with the service's
    own record of first shows (`_isUnshown`).

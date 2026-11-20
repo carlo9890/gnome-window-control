@@ -10,7 +10,7 @@ import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
     isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, moveResizeFrame,
-    skipNextEffect, unmaximizeWindow,
+    moveToMonitor, skipNextEffect, unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once and kept for the life of the shell, never per enable(). GJS
@@ -654,10 +654,8 @@ export class WindowControlService {
             console.debug(`[Window Control] MoveToMonitor(${windowId}, ${monitorIndex}) -> false (invalid index)`);
             return false;
         }
-        return this._actOnWindow(windowId, 'MoveToMonitor', win => {
-            this._placer.cancel(win);
-            win.move_to_monitor(monitorIndex);
-        });
+        return this._actOnWindow(windowId, 'MoveToMonitor',
+            win => moveToMonitor(win, this._placer, monitorIndex));
     }
 
     // Reply with the ID of a shown window matching (kind, value), either
