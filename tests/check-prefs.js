@@ -20,7 +20,7 @@ const PREFS = `${ROOT}/window-control@carlo9890.github.io/prefs`;
 const { SHORTCUT_GROUPS, needsModifier } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
 const { checkRules, elementOffsets, ruleSummary } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
 const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-format.js`, null));
-const { readText } = await import(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null));
+const { readText, writeText } = await import(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null));
 const { regularFileNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-files.js`, null));
 
 const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
@@ -118,6 +118,47 @@ const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
     check('a FIFO rules.json is refused before it is opened',
         refusal?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE) === true, `${refusal}`);
     GLib.unlink(file.get_path());
+}
+
+// -- a save through a symlink keeps the link, and fails before it writes ------
+
+{
+    const config = `${SCRATCH}/config`;
+    const target = `${SCRATCH}/dotfiles/rules.json`;
+    GLib.mkdir_with_parents(config, 0o755);
+    GLib.mkdir_with_parents(`${SCRATCH}/dotfiles`, 0o755);
+    GLib.file_set_contents(target, 'old');
+    const file = Gio.File.new_for_path(`${config}/rules.json`);
+    file.make_symbolic_link('../dotfiles/rules.json', null);
+    const read = path => new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+    const isLink = () => file.query_info('standard::is-symlink',
+        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
+
+    writeText(file, 'new');
+    check('a save through a symlink writes the target', read(target) === 'new', read(target));
+    check('a save through a symlink leaves a symlink', isLink());
+    const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
+    check('a save leaves no temporary link behind', JSON.stringify(entries) === '["rules.json"]',
+        JSON.stringify(entries));
+
+    // The folder takes no new entry, so the new link cannot be made. The
+    // target is still writable: a save that reports a failure must not
+    // have changed it.
+    GLib.chmod(config, 0o555);
+    let failure = null;
+    try {
+        writeText(file, 'lost');
+    } catch (e) {
+        failure = e;
+    }
+    GLib.chmod(config, 0o755);
+    check('a save fails when the folder takes no new link', failure !== null);
+    check('a failed save leaves the target as it was', read(target) === 'new', read(target));
+
+    const plain = Gio.File.new_for_path(`${config}/plain.json`);
+    writeText(plain, 'text');
+    check('a save of a regular file writes it', read(plain.get_path()) === 'text');
 }
 
 // -- elementOffsets skips brackets and commas inside strings and nesting ------

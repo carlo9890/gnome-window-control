@@ -12,7 +12,7 @@ import Pango from 'gi://Pango';
 import { dropInNames } from '../rules-format.js';
 import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames } from '../rules-files.js';
 import { checkRules, ruleSummary, rulesLabel } from './rules-check.js';
-import { readText } from './rules-disk.js';
+import { readText, writeText } from './rules-disk.js';
 
 const CHECK_DELAY_MS = 300;
 // An editor's save raises several events; read the file once they stop.
@@ -210,7 +210,7 @@ export class RulesEditor {
     _save() {
         const text = this._buffer.text;
         try {
-            this._writeFile(text);
+            writeText(this._file, text);
         } catch (e) {
             this._toast(`Cannot save ${RULES_FILE}: ${e.message}`);
             return;
@@ -219,31 +219,6 @@ export class RulesEditor {
         this._loadedText = text;
         this._syncButtons();
         this._toast(`Saved ${RULES_FILE}`);
-    }
-
-    // A write through a symlink changes its target and raises no event on
-    // the watched directory, so a new link is renamed over the old one, as
-    // wctl does.
-    _writeFile(text) {
-        let target = null;
-        try {
-            target = this._file.query_info('standard::symlink-target',
-                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_symlink_target();
-        } catch (e) {
-            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-                throw e;
-        }
-        this._file.replace_contents(new TextEncoder().encode(text), null, false, Gio.FileCreateFlags.NONE, null);
-        if (!target)
-            return;
-        const link = this._file.get_parent().get_child(`.${RULES_FILE}.link.${GLib.uuid_string_random()}`);
-        link.make_symbolic_link(target, null);
-        try {
-            link.move(this._file, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, null, null);
-        } catch (e) {
-            link.delete(null);
-            throw e;
-        }
     }
 
     // Watch the directory, not the file, so a save by rename is seen. The
