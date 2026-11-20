@@ -76,11 +76,14 @@ the correct form.
   logged before that: it lets any process on the session bus write arbitrary
   text, newlines included, into the journal. The value it matches against is
   never logged.
-- **No dynamic code or processes**: extension code calls no `eval()`,
-  `Function()`, `GLib.spawn*` or `Gio.Subprocess`, and the zip ships no
-  minified or generated code and no binary. Flag each use: the
-  extensions.gnome.org guidelines allow a carefully spawned process, and this
-  project does not.
+- **No dynamic code or processes**: extension code calls no `eval()` or
+  `Function()` and starts no process, through `GLib.spawn*`, `Gio.Subprocess`,
+  `Util.spawn*`, a `Gio.AppInfo` launch or any other way, and the zip ships no
+  generated code. Flag each use. The correct form does the work in-process
+  through the Meta and Gio APIs; work that needs a process goes in `wctl`,
+  outside the zip. The extensions.gnome.org guidelines allow a carefully
+  spawned process and well-formatted transpiled code, and this project does
+  not.
 - **Client text in plain output**: a window field a client sets (a title, a
   `wm_class`, any other window field) that `wctl` prints outside `--json` goes
   through `table::sanitize` in `cli/src/table.rs`. `table::render` already
