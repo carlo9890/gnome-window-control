@@ -153,10 +153,9 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      The integer 'version' from metadata.json, as a string, as the running
-      shell loaded it. That is what makes it useful: metadata.json on disk can
-      already be a newer version that the shell has not loaded, and on Wayland
-      it stays that way until the user logs out.
+      'version-name' from metadata.json, as the running shell loaded it.
+      metadata.json on disk can already be a newer version that the shell has
+      not loaded, and on Wayland it stays that way until the user logs out.
     -->
     <method name="GetVersion">
       <arg type="s" direction="out" name="version"/>
@@ -164,13 +163,10 @@ export const DBUS_INTERFACE_XML = `
 
     <!--
       Capability names, e.g. ['rules']: what this extension supports beyond the
-      methods it serves. A caller asks for a name rather than comparing version
-      numbers, because the version is not a reliable signal:
-      extensions.gnome.org replaces the 'version' field in metadata.json with
-      its own upload number, so an install from there reports a number
-      unrelated to this project's releases. A capability the extension does not
-      have is an absent name, and an extension too old to serve this method
-      raises UnknownMethod, which means the same.
+      methods it serves. A caller asks for a name, not a version: before v25,
+      an install from extensions.gnome.org reported that site's upload number.
+      A capability the extension does not have is an absent name; an extension
+      too old to serve this method raises UnknownMethod, which means the same.
     -->
     <method name="GetCapabilities">
       <arg type="as" direction="out" name="capabilities"/>
