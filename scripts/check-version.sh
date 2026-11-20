@@ -16,10 +16,11 @@ METADATA="$PROJECT_ROOT/window-control@carlo9890.github.io/metadata.json"
 MANIFEST="$PROJECT_ROOT/cli/Cargo.toml"
 
 extension_version=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['version'])" "$METADATA")
-version_name=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1])).get('version-name', ''))" "$METADATA")
+# GetVersion returns version-name as a D-Bus string, so it must be a JSON string.
+version_name=$(python3 -c "import json, sys; print(json.dumps(json.load(open(sys.argv[1])).get('version-name')))" "$METADATA")
 
-if [[ "$version_name" != "$extension_version" ]]; then
-    echo "Error: metadata.json version-name is '${version_name}', version is $extension_version" >&2
+if [[ "$version_name" != "\"$extension_version\"" ]]; then
+    echo "Error: metadata.json version-name is ${version_name}, expected \"$extension_version\"" >&2
     echo "Set both to the same N (see docs/RELEASING.md)." >&2
     exit 1
 fi
