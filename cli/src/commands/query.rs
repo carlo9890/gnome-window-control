@@ -322,9 +322,9 @@ pub fn workarea(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 /// The bare form is handled in `main::run` and never touches the bus. This one
 /// runs only for `--json`, and asking the shell is the point: `metadata.json`
 /// on disk can already be newer than what is loaded, and on Wayland it stays
-/// that way until the user logs out. Reading the version off disk -- or out of
-/// `gnome-extensions info`, which reports the same loaded value but needs two
-/// more programs and the extension UUID -- is what this replaces.
+/// that way until the user logs out. Reading the version off disk is what this
+/// replaces. `gnome-extensions info` reports the loaded metadata too, but
+/// needs the UUID and another program.
 ///
 /// `compatible` asserts that the loaded extension is in the range from
 /// `crate::MIN_EXTENSION_VERSION` to `crate::EXPECTED_EXTENSION_VERSION`. A
@@ -354,8 +354,9 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             document["extension"] = Value::String(loaded);
             document["compatible"] = Value::Bool(compatible);
             // What the extension supports, which the number cannot say: an
-            // install from extensions.gnome.org reports that site's upload
-            // number. An extension too old to serve the method reports none.
+            // extension before v25 installed from extensions.gnome.org
+            // reports that site's upload number. An extension too old to
+            // serve the method reports none.
             match ctx.bus.capabilities_of_answering() {
                 Ok(names) => {
                     document["capabilities"] =

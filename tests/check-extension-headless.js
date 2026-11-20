@@ -62,7 +62,7 @@ const SETTINGS = {
     settings_schema: { has_key: name => SETTINGS.keys === null || SETTINGS.keys.includes(name) },
     get_boolean(name) {
         if (!this.settings_schema.has_key(name))
-            throw new Error(`GSettings would abort the shell: no key ${name}`);
+            throw new Error(`GSettings key ${name} not found`);
         return this.values[name];
     },
     set(name, value) {
@@ -487,10 +487,21 @@ export class PopupSeparatorMenuItem {}
 
     // An exported service, on a fake export: nothing here may reach a bus.
     function startService(placer = new WindowPlacer()) {
-        const service = new WindowControlService({ version: 0 }, placer);
+        const service = new WindowControlService({ version: 0, 'version-name': '0' }, placer);
         service._dbusImpl = { export() {}, unexport() {} };
         service.export();
         return service;
+    }
+
+    // -- GetVersion: the release, not the upload number --------------------------
+    //
+    // extensions.gnome.org replaces `version` in the metadata it serves with
+    // its own upload number, so GetVersion reports `version-name`.
+
+    {
+        const service = new WindowControlService({ version: 9, 'version-name': '24' }, new WindowPlacer());
+        check('GetVersion reports version-name, not the upload number', service.GetVersion() === '24',
+            service.GetVersion());
     }
 
     // -- WaitForWindow: a window created during an earlier wait ------------------
@@ -1281,7 +1292,7 @@ export class PopupSeparatorMenuItem {}
 
     {
         const extension = new WindowControlExtension();
-        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.metadata = { name: 'Window Control', version: 1, 'version-name': '1' };
         extension.getSettings = () => SETTINGS;
         const realExport = WindowControlService.prototype.export;
         WindowControlService.prototype.export = function () {
@@ -1315,7 +1326,7 @@ export class PopupSeparatorMenuItem {}
 
     {
         const extension = new WindowControlExtension();
-        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.metadata = { name: 'Window Control', version: 1, 'version-name': '1' };
         extension.getSettings = () => SETTINGS;
         const realExport = WindowControlService.prototype.export;
         WindowControlService.prototype.export = function () {
@@ -1420,7 +1431,7 @@ export class PopupSeparatorMenuItem {}
 
     {
         const extension = new WindowControlExtension();
-        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.metadata = { name: 'Window Control', version: 1, 'version-name': '1' };
         extension.uuid = 'window-control@test';
         extension.getSettings = () => SETTINGS;
         let preferencesOpened = 0;
@@ -1473,7 +1484,7 @@ export class PopupSeparatorMenuItem {}
                 'tile-right', 'tile-bottom-left', 'tile-bottom-center', 'tile-bottom-right', 'cycle-wide'];
             SETTINGS.values['show-indicator'] = true;
             extension.enable();
-            check('a schema without show-indicator shows no icon and does not abort', shown() === undefined);
+            check('a schema without show-indicator shows no icon and does not throw', shown() === undefined);
             extension.disable();
         } finally {
             if (extension._service)
@@ -1560,9 +1571,10 @@ export class PopupSeparatorMenuItem {}
 
     // -- WindowRules: a config directory that cannot be watched -------------------
     //
-    // No path on a local disk makes monitor_directory() throw, so the stub
-    // does. The failure is logged, the file is still read once, and disable()
-    // has no monitor to undo (RULES-JSON.md).
+    // monitor_directory() throws when the user has no inotify instance left
+    // (fs.inotify.max_user_instances), so the stub does. The failure is
+    // logged, the file is still read once, and disable() has no monitor to
+    // undo (RULES-JSON.md).
 
     {
         const configDir = `${SCRATCH}/config/gnome-window-control`;

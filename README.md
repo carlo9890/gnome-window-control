@@ -79,8 +79,8 @@ Every upload there waits for a manual review, so that page can be several
 versions behind the GitHub release, and an older version has no rules and no
 keyboard shortcuts. Run `wctl version --json` and read `capabilities`: `rules`
 and `keybindings` are listed when the loaded extension has them. The same
-command reports `"compatible": false` for an install from that page - see
-[Checking the extension version](#checking-the-extension-version).
+command reports `"compatible": false` for a version before v25 installed from
+that page - see [Checking the extension version](#checking-the-extension-version).
 
 #### Upgrading from window-control@hko9890
 
@@ -239,11 +239,12 @@ is still 9. `compatible` is true for every extension version from
 `min_extension` to `expects_extension`; outside that range the command exits 5.
 
 `capabilities` is what the extension says it supports, by name. Ask for a name
-rather than comparing version numbers: an install from extensions.gnome.org
-carries that site's own upload number in `extension`, which no release of this
-project ever had. `no-animation` means the extension has `MinimizeNoAnimation`
-and `UnminimizeNoAnimation`, and `activate-no-animation` means it has
-`ActivateNoAnimation`. An empty list means the extension is too old to answer.
+rather than comparing version numbers: a version before v25 installed from
+extensions.gnome.org carries that site's own upload number in `extension`,
+which is not related to this project's release numbers. `no-animation` means
+the extension has `MinimizeNoAnimation` and `UnminimizeNoAnimation`, and
+`activate-no-animation` means it has `ActivateNoAnimation`. An empty list means
+the extension is too old to answer.
 When the call fails for another reason (a timeout, an extension disabled
 in between), `capabilities` is `null` and the command exits with that
 failure's code.

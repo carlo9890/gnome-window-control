@@ -128,6 +128,9 @@ jobs:
       - name: Check the metadata.json / Cargo.toml version pair
         run: ./scripts/check-version.sh
 
+      - name: Check that check-version.sh refuses a bad version-name
+        run: ./tests/check-version-refusals.sh
+
       # The release asset: the static musl build, with the linkage check
       # release.sh runs.
       - name: Build the static musl release binary

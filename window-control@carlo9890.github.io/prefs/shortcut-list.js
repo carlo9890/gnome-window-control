@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// The shortcut rows of the preferences window: each schema key of type `as`,
-// grouped and in numpad order, and the rule for a key the capture accepts.
-// Imports nothing, so a plain gjs check can hold the rows against the schema
-// and test the rule.
+// The shortcut rows of the preferences window, in numpad order, and the rule
+// for a key the capture accepts. Imports nothing, so a plain gjs check can
+// test it.
 
 export const SHORTCUT_GROUPS = [
     {

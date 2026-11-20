@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// The Rules page: a text editor for rules.json. It checks the text as you
-// type with the extension's own grammar, saves only a valid file, and asks
-// the extension over D-Bus to apply the saved rules to the open windows.
-// The drop-in files in rules.d are listed below the editor, read only.
+// The Rules page: a rules.json editor that checks the text with the extension's
+// own grammar, saves only a valid file and applies the rules over D-Bus. The
+// rules.d drop-ins are listed read only.
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
@@ -37,6 +36,8 @@ export class RulesEditor {
         this._file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
         this._dropInDir = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]));
         this._dropInRows = [];
+        this._monitor = null;
+        this._monitorId = 0;
         this._dropInMonitor = null;
         this._dropInMonitorId = 0;
         // The text on disk, '' for no file, and the text _load put in the
@@ -74,9 +75,11 @@ export class RulesEditor {
             GLib.source_remove(this._diskId);
             this._diskId = 0;
         }
-        this._monitor.disconnect(this._monitorId);
-        this._monitor.cancel();
-        this._monitor = null;
+        if (this._monitor) {
+            this._monitor.disconnect(this._monitorId);
+            this._monitor.cancel();
+            this._monitor = null;
+        }
         this._unwatchDropIns();
     }
 
@@ -255,10 +258,9 @@ export class RulesEditor {
         }
     }
 
-    // The directory rather than the file, as the extension watches it: an
-    // editor that saves by renaming a new file over the old one is seen too.
-    // rules.d gets a monitor of its own, made again when the folder itself
-    // changes, so one created later is watched too.
+    // Watch the directory, not the file, so a save by rename is seen. The
+    // rules.d monitor is made again when that folder changes, so one created
+    // later is watched too.
     _watch() {
         try {
             this._file.get_parent().make_directory_with_parents(null);
@@ -266,7 +268,12 @@ export class RulesEditor {
             if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
                 this._toast(`Cannot create ${CONFIG_DIR}: ${e.message}`);
         }
-        this._monitor = this._file.get_parent().monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        try {
+            this._monitor = this._file.get_parent().monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch (e) {
+            this._toast(`Cannot watch ${CONFIG_DIR}: ${e.message}`);
+            return;
+        }
         this._monitorId = this._monitor.connect('changed', (_monitor, file) => {
             const name = file.get_basename();
             if (name === DROPIN_DIR)
@@ -282,7 +289,8 @@ export class RulesEditor {
         this._unwatchDropIns();
         try {
             this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        } catch {
+        } catch (e) {
+            this._toast(`Cannot watch ${DROPIN_DIR}: ${e.message}`);
             return;
         }
         this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleDiskChange());
@@ -312,7 +320,8 @@ export class RulesEditor {
         let text;
         try {
             text = this._readFile() ?? '';
-        } catch {
+        } catch (e) {
+            this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
             return;
         }
         if (text === this._savedText)

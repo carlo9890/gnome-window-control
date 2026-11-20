@@ -1,13 +1,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Keyboard shortcuts: tile the focused window to a grid position, the way a
-// `wctl tile focused <position>` would, and apply the rules again,
-// the way `wctl rules apply` would, without a process spawn per key.
-//
-// The shortcuts are GSettings keys (schemas/*.gschema.xml), one per tile
-// position plus `cycle-wide` and `apply-rules`, so a user rebinds one with
-// dconf or gsettings and never edits this file. The grid and the position
-// names are the ones rules.json and wctl use, from rules-format.js.
+// Keyboard shortcuts that do what `wctl tile focused <position>` and
+// `wctl rules apply` do, without a process spawn per key. The keys are in
+// schemas/*.gschema.xml.
 
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
@@ -18,7 +13,8 @@ import { moveResizeFrame, workareaOf } from './window-helpers.js';
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
 // the schema: GSettings aborts the shell on a key it does not know, so _add
-// refuses one that a stale compiled schema from an older install lacks.
+// refuses one that the schema of an older version, installed while this code
+// runs, lacks.
 const TILE_BINDINGS = {
     'tile-top-left': 'top-left',
     'tile-top-center': 'top-center',
@@ -42,7 +38,6 @@ const WINDOW_FLAGS = Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNO
 const GLOBAL_FLAGS = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT;
 
 export class WindowKeybindings {
-    // `placer`: the WindowPlacer the frame requests go through.
     // `applyRules()` applies the rules again to every open window.
     constructor(placer, applyRules) {
         this._placer = placer;
