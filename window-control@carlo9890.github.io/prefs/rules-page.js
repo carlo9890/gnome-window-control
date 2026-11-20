@@ -36,6 +36,8 @@ export class RulesEditor {
         this._file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
         this._dropInDir = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]));
         this._dropInRows = [];
+        this._monitor = null;
+        this._monitorId = 0;
         this._dropInMonitor = null;
         this._dropInMonitorId = 0;
         // The text on disk, '' for no file, and the text _load put in the
@@ -73,9 +75,11 @@ export class RulesEditor {
             GLib.source_remove(this._diskId);
             this._diskId = 0;
         }
-        this._monitor.disconnect(this._monitorId);
-        this._monitor.cancel();
-        this._monitor = null;
+        if (this._monitor) {
+            this._monitor.disconnect(this._monitorId);
+            this._monitor.cancel();
+            this._monitor = null;
+        }
         this._unwatchDropIns();
     }
 
@@ -264,7 +268,12 @@ export class RulesEditor {
             if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
                 this._toast(`Cannot create ${CONFIG_DIR}: ${e.message}`);
         }
-        this._monitor = this._file.get_parent().monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        try {
+            this._monitor = this._file.get_parent().monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch (e) {
+            this._toast(`Cannot watch ${CONFIG_DIR}: ${e.message}`);
+            return;
+        }
         this._monitorId = this._monitor.connect('changed', (_monitor, file) => {
             const name = file.get_basename();
             if (name === DROPIN_DIR)
@@ -280,7 +289,8 @@ export class RulesEditor {
         this._unwatchDropIns();
         try {
             this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        } catch {
+        } catch (e) {
+            this._toast(`Cannot watch ${DROPIN_DIR}: ${e.message}`);
             return;
         }
         this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleDiskChange());
