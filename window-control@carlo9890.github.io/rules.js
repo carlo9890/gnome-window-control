@@ -128,6 +128,8 @@ export class WindowRules {
 
     // No rules.d means no monitor: the CONFIG_DIR monitor sees it created.
     // monitor_directory() does not fail for a missing path, hence the check.
+    // The check is synchronous because monitor_directory() is: Gio has no
+    // asynchronous form of it, and it looks the same path up.
     _watchDropIns() {
         this._unwatchDropIns();
         const dir = Gio.File.new_for_path(DROPIN_PATH);
