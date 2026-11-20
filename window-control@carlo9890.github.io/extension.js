@@ -71,8 +71,8 @@ export default class WindowControlExtension extends Extension {
     }
 
     // An older version installed while this code runs compiles a schema
-    // without show-indicator, and GSettings aborts the shell on a read of a
-    // key it does not know.
+    // without show-indicator, and a read of a key the schema lacks throws,
+    // which would fail enable() after the D-Bus export.
     _syncIndicator() {
         const show = !Main.sessionMode.isLocked &&
             this._settings.settings_schema.has_key(SHOW_INDICATOR_KEY) &&

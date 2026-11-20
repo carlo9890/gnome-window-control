@@ -62,7 +62,7 @@ const SETTINGS = {
     settings_schema: { has_key: name => SETTINGS.keys === null || SETTINGS.keys.includes(name) },
     get_boolean(name) {
         if (!this.settings_schema.has_key(name))
-            throw new Error(`GSettings would abort the shell: no key ${name}`);
+            throw new Error(`GSettings key ${name} not found`);
         return this.values[name];
     },
     set(name, value) {
@@ -1402,7 +1402,7 @@ export class PopupSeparatorMenuItem {}
                 'tile-right', 'tile-bottom-left', 'tile-bottom-center', 'tile-bottom-right', 'cycle-wide'];
             SETTINGS.values['show-indicator'] = true;
             extension.enable();
-            check('a schema without show-indicator shows no icon and does not abort', shown() === undefined);
+            check('a schema without show-indicator shows no icon and does not throw', shown() === undefined);
             extension.disable();
         } finally {
             if (extension._service)
