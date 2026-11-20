@@ -337,8 +337,8 @@ impl Bus {
     ///
     /// A name, not a version number: extensions.gnome.org replaces the `version`
     /// field in metadata.json with its own upload number, so an extension
-    /// before v25 installed from there reports a number this project never
-    /// released.
+    /// before v25 installed from there reports a number not related to this
+    /// project's releases.
     pub fn get_capabilities(&self) -> Result<Vec<String>> {
         self.call("GetCapabilities", &())
     }

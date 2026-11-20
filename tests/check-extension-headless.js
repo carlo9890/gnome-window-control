@@ -1181,7 +1181,7 @@ export class PopupSeparatorMenuItem {}
 
     {
         const extension = new WindowControlExtension();
-        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.metadata = { name: 'Window Control', version: 1, 'version-name': '1' };
         extension.getSettings = () => SETTINGS;
         const realExport = WindowControlService.prototype.export;
         WindowControlService.prototype.export = function () {
@@ -1215,7 +1215,7 @@ export class PopupSeparatorMenuItem {}
 
     {
         const extension = new WindowControlExtension();
-        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.metadata = { name: 'Window Control', version: 1, 'version-name': '1' };
         extension.getSettings = () => SETTINGS;
         const realExport = WindowControlService.prototype.export;
         WindowControlService.prototype.export = function () {
@@ -1320,7 +1320,7 @@ export class PopupSeparatorMenuItem {}
 
     {
         const extension = new WindowControlExtension();
-        extension.metadata = { name: 'Window Control', version: 1 };
+        extension.metadata = { name: 'Window Control', version: 1, 'version-name': '1' };
         extension.uuid = 'window-control@test';
         extension.getSettings = () => SETTINGS;
         let preferencesOpened = 0;
