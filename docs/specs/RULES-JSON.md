@@ -548,7 +548,9 @@ so the rule set changes when the read lands: a window created between
 
 A file that is absent, that cannot be read, or that does not validate adds no
 rules until a file changes; the other files still load. A `rules.d` that
-cannot be listed is logged, and `rules.json` still loads.
+cannot be listed is logged, and `rules.json` still loads. A folder that cannot
+be watched is logged, and its files are then read only at `enable()` and at a
+reload that the other monitor starts.
 
 `window-created` is connected only while at least one rule is loaded, so an
 absent or empty file costs nothing per window.

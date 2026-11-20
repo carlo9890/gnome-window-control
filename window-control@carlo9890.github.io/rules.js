@@ -75,16 +75,22 @@ export class WindowRules {
         }
         // The directory rather than the file: a file monitor misses an editor
         // that saves by writing a new file and renaming it over the old one.
-        this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
-            const name = file.get_basename();
-            // A rules.d created, deleted or replaced after enable() is
-            // another folder, so its monitor is made again.
-            if (name === DROPIN_DIR)
-                this._watchDropIns();
-            if (name === RULES_FILE || name === DROPIN_DIR)
-                this._scheduleReload();
-        });
+        try {
+            this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch (e) {
+            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; the rules files are read only at enable() and when rules.d changes`);
+        }
+        if (this._fileMonitor) {
+            this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
+                const name = file.get_basename();
+                // A rules.d created, deleted or replaced after enable() is
+                // another folder, so its monitor is made again.
+                if (name === DROPIN_DIR)
+                    this._watchDropIns();
+                if (name === RULES_FILE || name === DROPIN_DIR)
+                    this._scheduleReload();
+            });
+        }
         this._watchDropIns();
         this._load();
     }
@@ -100,10 +106,12 @@ export class WindowRules {
         for (const callback of this._afterLoad.splice(0))
             callback(false);
         this._mutterSettings = null;
-        this._fileMonitor.disconnect(this._fileMonitorId);
-        this._fileMonitor.cancel();
-        this._fileMonitor = null;
-        this._fileMonitorId = 0;
+        if (this._fileMonitor) {
+            this._fileMonitor.disconnect(this._fileMonitorId);
+            this._fileMonitor.cancel();
+            this._fileMonitor = null;
+            this._fileMonitorId = 0;
+        }
         this._unwatchDropIns();
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
@@ -120,7 +128,12 @@ export class WindowRules {
         const dir = Gio.File.new_for_path(DROPIN_PATH);
         if (dir.query_file_type(Gio.FileQueryInfoFlags.NONE, null) !== Gio.FileType.DIRECTORY)
             return;
-        this._dropInMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        try {
+            this._dropInMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch (e) {
+            console.error(`[Window Control] cannot watch ${DROPIN_PATH}: ${e.message}`);
+            return;
+        }
         this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleReload());
     }
 

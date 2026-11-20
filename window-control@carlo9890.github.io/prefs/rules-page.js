@@ -278,7 +278,11 @@ export class RulesEditor {
 
     _watchDropIns() {
         this._unwatchDropIns();
-        this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        try {
+            this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        } catch {
+            return;
+        }
         this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleDiskChange());
     }
 
