@@ -354,8 +354,9 @@ pub fn version(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             document["extension"] = Value::String(loaded);
             document["compatible"] = Value::Bool(compatible);
             // What the extension supports, which the number cannot say: an
-            // install from extensions.gnome.org reports that site's upload
-            // number. An extension too old to serve the method reports none.
+            // extension before v25 installed from extensions.gnome.org
+            // reports that site's upload number. An extension too old to
+            // serve the method reports none.
             match ctx.bus.capabilities_of_answering() {
                 Ok(names) => {
                     document["capabilities"] =

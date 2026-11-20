@@ -158,7 +158,8 @@ The code must keep satisfying:
 - `shell-version` must list only versions the extension really supports.
 
 EGO assigns its own integer `version` on upload and ignores the one in
-`metadata.json`; `version-name` is what users see.
+`metadata.json`; `version-name` is what users see, and what `GetVersion`
+reports, so keep it equal to `version`.
 
 ### If the reviewer asks about the unauthenticated interface
 

@@ -97,7 +97,9 @@ export class WindowControlService {
         // from metadata.json on disk: those two disagreeing is the whole point
         // of the method, because on Wayland an install lands on disk and the
         // shell keeps running the old copy until the user logs out.
-        this._version = String(metadata.version);
+        // version-name, not version: extensions.gnome.org replaces version
+        // with its own upload number.
+        this._version = metadata['version-name'];
         // Set by the extension: false once WindowKeybindings failed to
         // register the shortcuts.
         this.keybindingsServed = false;

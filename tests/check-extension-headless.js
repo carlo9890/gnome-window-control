@@ -482,10 +482,21 @@ export class PopupSeparatorMenuItem {}
 
     // An exported service, on a fake export: nothing here may reach a bus.
     function startService(placer = new WindowPlacer()) {
-        const service = new WindowControlService({ version: 0 }, placer);
+        const service = new WindowControlService({ version: 0, 'version-name': '0' }, placer);
         service._dbusImpl = { export() {}, unexport() {} };
         service.export();
         return service;
+    }
+
+    // -- GetVersion: the release, not the upload number --------------------------
+    //
+    // extensions.gnome.org replaces `version` in the metadata it serves with
+    // its own upload number, so GetVersion reports `version-name`.
+
+    {
+        const service = new WindowControlService({ version: 9, 'version-name': '24' }, new WindowPlacer());
+        check('GetVersion reports version-name, not the upload number', service.GetVersion() === '24',
+            service.GetVersion());
     }
 
     // -- WaitForWindow: a window created during an earlier wait ------------------
