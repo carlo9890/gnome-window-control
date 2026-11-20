@@ -1030,7 +1030,9 @@ export class PopupSeparatorMenuItem {}
     // A shortcut, a rule and a D-Bus geometry call made while another of them
     // still waits for the window's unmaximize replace that placement: only
     // the newest lands, once, after the restore. Without a restore pending,
-    // a request runs at once.
+    // a request runs at once. A move to another monitor drops the pending
+    // placement and keeps its wait for the restore; a move to the window's own
+    // monitor keeps it.
 
     {
         windows.length = 0;
