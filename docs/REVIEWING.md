@@ -3,8 +3,8 @@
 Project-specific review rules; this file records only the local delta over
 the generic review. An agent runs the generic review by calling the Skill tool
 with `project-review:project-review-change` (or `worktree-flow:worktree-review`
-for a PR whose fixes it pushes). Where it
-conflicts with a skill's default, this file wins.
+for a PR whose fixes it pushes). Where this file conflicts with a skill's
+default, this file wins.
 
 ## extensions.gnome.org review
 

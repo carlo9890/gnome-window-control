@@ -147,8 +147,9 @@ either, run it offline as
 
    > A method that can fail for more than one reason should raise a named error
    > (see the JavaScript section above) and declare no `success` out-arg. Add the
-   > name to `ERROR_*` in `cli/src/dbus.rs` so `map_err` maps it to the right
-   > exit code, and call it with `call_unit` rather than `call_bool`.
+   > name in every place the JavaScript section lists (`ERROR_*` is what
+   > `map_err` maps to an exit code), and call it with `call_unit` rather than
+   > `call_bool`.
 
 3. Add the corresponding command to the crate, reusing the shared helpers.
    A simple boolean action is one line in `cli/src/commands/state.rs`:
