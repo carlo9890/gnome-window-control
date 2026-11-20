@@ -374,7 +374,8 @@ Action order within `_apply`:
      the window as it is after the restore.
    - A shortcut, an apply, or a `Move`, `Resize` or `MoveResize` call for the
      same window before then replaces this request: only the newest one runs.
-     A move to a monitor can drop it (step 3).
+     A `MoveToMonitor` call or a rule's `monitor` drops it when it targets
+     another monitor (step 3).
    - The frame is requested as the program, not as the user
      (`move_resize_frame(false, ...)`). A window whose minimum size is above
      the rectangle grows to that minimum at the rectangle's position, kept on
@@ -569,9 +570,9 @@ Defined at the top of the file named; change them there, not here.
 
 | Constant | Guards | File |
 |---|---|---|
-| `LATE_IDENTITY_GRACE_MS` | late Wayland app ID / title; README.md's `rules apply` section quotes its value | `rules.js` |
+| `LATE_IDENTITY_GRACE_MS` | late Wayland app ID / title; README.md's "Resetting windows to their rules" quotes its value | `rules.js` |
 | `RELOAD_DEBOUNCE_MS` | one reload per save | `rules.js` |
-| `FOCUS_LOSS_GRACE_MS` | a focus that comes straight back, as wl-copy and wl-paste hand it | `overlay.js` |
+| `FOCUS_LOSS_GRACE_MS` | a focus that comes straight back, as wl-copy and wl-paste hand it; README.md's "Overlay windows" quotes its value | `overlay.js` |
 | `UNMAXIMIZE_SETTLE_MS` | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`) |
 
 ## Capabilities
@@ -618,6 +619,8 @@ Adding a key means editing, in one commit, on BOTH sides:
   `cli/src/commands/rules.rs`, `cli/src/help.rs` and both files in
   `cli/completions/`.
 - This spec's rule-object and validation tables, and the README section.
+- For a key with its own capability name, a row in [Capabilities](#capabilities)
+  and in README.md's "Keys that need a newer extension" table.
 
 Run the checks that
 [TESTING.md](../TESTING.md#minimum-checks-before-a-pr) requires: the vector

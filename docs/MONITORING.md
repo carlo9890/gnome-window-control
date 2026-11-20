@@ -59,7 +59,8 @@ may contain.
   `is_extension_not_running` in `cli/src/dbus.rs` lists the error names that
   produce this message, including the `WindowControl.Disabled` error the
   extension returns when it is disabled while a `WaitForWindow` or
-  `WaitForGeometry` call is pending. For `UnknownMethod`, `map_err` asks
+  `WaitForGeometry` call is pending, or while an `ApplyRules` call waits for
+  the rules files to load. For `UnknownMethod`, `map_err` asks
   whether the object is served at all.
 - **The message starts with "Cannot connect to the session bus"** — wctl
   reached no bus at all (`map_connect_err` in `cli/src/dbus.rs`); check

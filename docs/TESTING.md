@@ -196,7 +196,8 @@ network are needed.
 - Log each stub's arguments to a file and assert the calls from that file.
 
 Stub each network and toolchain command the script calls: `curl` or `wget`,
-`mise`, `gh`, and `file` (read the script for the calls). Keep `git`,
+`mise` and `gh` (read the script for the calls). With `mise` stubbed, the
+static-linkage check never runs: only the real `mise run build:musl` runs it. Keep `git`,
 `sha256sum` and the other local tools real: the scripts check their output.
 The `gh release view <tag>` stub is not obvious: before `gh release create` it
 must exit non-zero, because exit 0 makes `release.sh` prompt on stdin; after

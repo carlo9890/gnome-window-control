@@ -27,10 +27,12 @@ If it fails, the code has a syntax error and must not be committed.
 - `Move`, `Resize`, `MoveResize`, `ApplyRules`, `WaitForWindow` and
   `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean
   (`WaitForWindow` returns 0 on timeout); a new method that can fail for more
-  than one reason does the same. The names, and the reason each method raises,
-  are in the ERRORS block in `dbus-interface.js` and in the `DBUS_ERROR_*`
-  constants of `dbus-service.js`. Add a new name to both and throw it with its
-  constant, never with a string at the throw site.
+  than one reason does the same. The reason each method raises is in the
+  ERRORS block in `dbus-interface.js`. A new name goes into that block, a
+  `DBUS_ERROR_*` constant in `dbus-service.js`, the Errors section of
+  `README.md` and `ERROR_*` in `cli/src/dbus.rs`. Only a body that
+  `_namedErrorCall` runs can throw it as a `NamedError`; an `...Async` handler
+  outside that body sends it with `invocation.return_dbus_error`.
 - A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
   `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
   <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
