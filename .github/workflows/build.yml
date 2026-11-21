@@ -131,6 +131,9 @@ jobs:
       - name: Check that check-version.sh refuses a bad version-name
         run: ./tests/check-version-refusals.sh
 
+      - name: Check that release.sh reads a relative --notes-file from the start folder
+        run: ./tests/check-release-notes-path.sh
+
       # The release asset: the static musl build, with the linkage check
       # release.sh runs.
       - name: Build the static musl release binary

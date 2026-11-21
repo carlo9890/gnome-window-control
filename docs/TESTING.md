@@ -58,12 +58,13 @@ The inventory assertions in `cli/src/main.rs` and `cli/tests/cli.rs` keep the
 command list in sync across the dispatch table, the help text and both shell
 completions, so a command that is not wired into all of them fails `cargo test`.
 
-The `cli` job also runs three release checks. Run them locally before a push
+The `cli` job also runs four release checks. Run them locally before a push
 that changes a version or a dependency:
 
 ```bash
 ./scripts/check-version.sh   # cli/Cargo.toml is 0.<metadata.json version>.0, and version-name is the same N as a string
 ./tests/check-version-refusals.sh  # check-version.sh refuses a numeric, wrong or missing version-name
+./tests/check-release-notes-path.sh  # release.sh reads a relative --notes-file from the start folder
 mise run build:musl          # the static release binary, and its linkage check
 ```
 
