@@ -57,8 +57,10 @@ jobs:
         run: env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
 
       # The prefs modules that import no GTK: the shortcut list against the
-      # schema, and the rules editor's validation.
-      - name: Check the preferences shortcut list and rules validation
+      # schema, and the rules editor's validation and file access. The
+      # timeout ends a run that waits on the FIFO of the file-access checks.
+      - name: Check the preferences shortcut list, rules validation and file access
+        timeout-minutes: 5
         run: env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js
 
       # dbus-service.js, rules.js and keybindings.js import gi://Meta, so this
@@ -130,6 +132,9 @@ jobs:
 
       - name: Check that check-version.sh refuses a bad version-name
         run: ./tests/check-version-refusals.sh
+
+      - name: Check that release.sh reads a relative --notes-file from the start folder
+        run: ./tests/check-release-notes-path.sh
 
       # The release asset: the static musl build, with the linkage check
       # release.sh runs.

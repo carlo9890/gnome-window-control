@@ -735,6 +735,17 @@ fn rules_guards_and_verdicts_need_no_bus() {
         &["rules", "check", "--file", &bad],
     );
 
+    // The unknown-key message quotes a key of the file. A newline or an
+    // escape in it must not forge a line or reach the terminal.
+    let forged = write(
+        "forged.json",
+        r#"[{"match":{"class":"k"},"tile":"left","a\nError: b\u001b[2J":1}]"#,
+    );
+    expect_die(
+        "rules[0].a?Error: b?[2J: unknown key",
+        &["rules", "check", "--file", &forged],
+    );
+
     // Malformed JSON names the file rather than the grammar.
     expect_die("not valid JSON", &["rules", "check", "--file", &broken]);
 

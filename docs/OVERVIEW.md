@@ -39,7 +39,7 @@ scripts/                   build.sh, release.sh, check-version.sh, check-static.
                            start-nested.sh, start-headless.sh, debug-dbus.sh
 tests/                     test suites (see docs/TESTING.md)
 ├── check-rules-format.js  headless gjs check of the rules.json grammar
-├── check-prefs.js         headless gjs check of the prefs shortcut list and rules validation
+├── check-prefs.js         headless gjs check of the prefs shortcut list, rules validation and rules file access
 ├── check-extension-headless.js  the extension against fake windows (needs the mutter typelib)
 ├── check-helper.js        the root, check() and report() both checks share (imports only gi://GLib)
 └── vectors/               shared test vectors read by GJS and Rust alike

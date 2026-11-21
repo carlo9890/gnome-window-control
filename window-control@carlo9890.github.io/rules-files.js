@@ -41,7 +41,11 @@ async function readFile(label, cancellable) {
         const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, label]));
         const info = await file.query_info_async('standard::type', Gio.FileQueryInfoFlags.NONE,
             GLib.PRIORITY_DEFAULT, cancellable);
-        if (info.get_file_type() !== Gio.FileType.REGULAR)
+        const type = info.get_file_type();
+        // Gio reports a link that it cannot follow as a link. The open then
+        // gives the cause: "not found" for a link without a target, as for
+        // wctl.
+        if (type !== Gio.FileType.REGULAR && type !== Gio.FileType.SYMBOLIC_LINK)
             throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
         const [bytes] = await file.load_contents_async(cancellable);
         return new TextDecoder().decode(bytes);
@@ -57,6 +61,23 @@ async function readFile(label, cancellable) {
     }
 }
 
+// The names of the regular files among `infos`. get_name() throws for a name
+// that is not UTF-8; such a name is no drop-in name, so the entry is skipped
+// like any other, and the rest of the folder still loads.
+export function regularFileNames(infos) {
+    const names = [];
+    for (const info of infos) {
+        if (info.get_file_type() !== Gio.FileType.REGULAR)
+            continue;
+        try {
+            names.push(info.get_name());
+        } catch {
+            continue;
+        }
+    }
+    return names;
+}
+
 // The drop-in names in rules.d, sorted. The type is the one of a link's
 // target, so a FIFO behind a link is skipped too.
 async function listDropIns(cancellable) {
@@ -70,10 +91,7 @@ async function listDropIns(cancellable) {
                 const infos = await enumerator.next_files_async(32, GLib.PRIORITY_DEFAULT, cancellable);
                 if (infos.length === 0)
                     break;
-                for (const info of infos) {
-                    if (info.get_file_type() === Gio.FileType.REGULAR)
-                        names.push(info.get_name());
-                }
+                names.push(...regularFileNames(infos));
             }
         } finally {
             // Not with the load's cancellable: a cancelled load must still

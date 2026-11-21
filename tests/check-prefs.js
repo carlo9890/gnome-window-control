@@ -3,13 +3,15 @@
 // SPDX-License-Identifier: MIT
 //
 // Check the parts of the preferences window that import no GTK: the shortcut
-// list against the schema, and the rules editor's validation. Run from
+// list against the schema, the rules editor's validation and its file
+// access. Run from
 // anywhere, without a display or a GNOME session:
 //
 //     env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js
 //
 // Exits 0 when every check passes, 1 when any fails.
 
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import { ROOT, check, report } from './check-helper.js';
@@ -18,6 +20,20 @@ const PREFS = `${ROOT}/window-control@carlo9890.github.io/prefs`;
 const { SHORTCUT_GROUPS, needsModifier } = await import(GLib.filename_to_uri(`${PREFS}/shortcut-list.js`, null));
 const { checkRules, elementOffsets, ruleSummary } = await import(GLib.filename_to_uri(`${PREFS}/rules-check.js`, null));
 const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-format.js`, null));
+const { readText, writeText } = await import(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null));
+const { regularFileNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-files.js`, null));
+
+const SCRATCH = GLib.dir_make_tmp('wctl-check-prefs-XXXXXX');
+
+// The criticals GLib logs, so a check can assert that a call logs none.
+const criticals = [];
+GLib.log_set_writer_func((level, fields) => {
+    const message = new TextDecoder().decode(fields.MESSAGE);
+    if (level === GLib.LogLevelFlags.LEVEL_CRITICAL)
+        criticals.push(message);
+    printerr(message);
+    return GLib.LogWriterOutput.HANDLED;
+});
 
 // -- the shortcut list holds every shortcut key of the schema, once ----------
 
@@ -76,6 +92,134 @@ const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-for
     check('an empty file shows the parse error', empty === checkRules('').message && empty !== '', empty);
 }
 
+// -- the folder listing skips a name Gio cannot hand out ----------------------
+
+{
+    // Not UTF-8, so get_name() throws for it.
+    GLib.spawn_sync(null, ['sh', '-c', ': > "$0/$(printf \'bad\\377.json\')"', SCRATCH], null,
+        GLib.SpawnFlags.SEARCH_PATH, null);
+    GLib.file_set_contents(`${SCRATCH}/a.json`, '[]');
+    GLib.mkdir_with_parents(`${SCRATCH}/folder.json`, 0o755);
+    const infos = [...Gio.File.new_for_path(SCRATCH).enumerate_children('standard::name,standard::type',
+        Gio.FileQueryInfoFlags.NONE, null)];
+    const names = regularFileNames(infos);
+    check('the listing holds all three entries', infos.length === 3, `${infos.length}`);
+    check('regularFileNames skips a folder and a name that is not UTF-8',
+        JSON.stringify(names) === '["a.json"]', JSON.stringify(names));
+}
+
+// -- the editor reads rules.json only when it is a regular file ---------------
+
+{
+    const folder = `${SCRATCH}/read`;
+    GLib.mkdir_with_parents(folder, 0o755);
+    const file = Gio.File.new_for_path(`${folder}/rules.json`);
+    check('no rules.json reads as null', readText(file) === null);
+    GLib.file_set_contents(file.get_path(), '[]');
+    check('a rules.json reads as its text', readText(file) === '[]');
+    GLib.unlink(file.get_path());
+
+    // Without the type check this read never returns: nothing writes to the FIFO.
+    GLib.spawn_command_line_sync(`mkfifo ${GLib.shell_quote(file.get_path())}`);
+    let refusal = null;
+    try {
+        readText(file);
+    } catch (e) {
+        refusal = e;
+    }
+    check('a FIFO rules.json is refused before it is opened',
+        refusal?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE) === true, `${refusal}`);
+
+    // The open of a FIFO for a write does not return either, directly or
+    // through a link, and the refused save must leave no temporary link.
+    const link = Gio.File.new_for_path(`${folder}/link.json`);
+    link.make_symbolic_link('rules.json', null);
+    const refusals = [file, link].map(target => {
+        try {
+            writeText(target, '[]');
+            return null;
+        } catch (e) {
+            return e;
+        }
+    });
+    check('a save to a FIFO is refused before it is opened, behind a link too',
+        refusals.every(e => e?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE) === true),
+        `${refusals}`);
+    const left = [...Gio.File.new_for_path(folder).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name()).filter(name => name.startsWith('.'));
+    check('a refused save leaves no temporary link', left.length === 0, JSON.stringify(left));
+    GLib.unlink(file.get_path());
+
+    // The link has no target now: that is no file, as for wctl.
+    check('a link without a target reads as null', readText(link) === null);
+    GLib.unlink(link.get_path());
+
+    // A link that cannot be followed is not "no file": the target can exist.
+    link.make_symbolic_link('link.json', null);
+    let loop = null;
+    try {
+        readText(link);
+    } catch (e) {
+        loop = e;
+    }
+    check('a link to itself is an error, not an absent file', loop !== null, `${loop}`);
+    GLib.unlink(link.get_path());
+}
+
+// -- a save through a symlink keeps the link, and fails before it writes ------
+
+{
+    const config = `${SCRATCH}/config`;
+    const target = `${SCRATCH}/dotfiles/rules.json`;
+    GLib.mkdir_with_parents(config, 0o755);
+    GLib.mkdir_with_parents(`${SCRATCH}/dotfiles`, 0o755);
+    GLib.file_set_contents(target, 'old');
+    const file = Gio.File.new_for_path(`${config}/rules.json`);
+    file.make_symbolic_link('../dotfiles/rules.json', null);
+    const read = path => new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+    const isLink = () => file.query_info('standard::is-symlink',
+        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
+
+    writeText(file, 'new');
+    check('a save through a symlink writes the target', read(target) === 'new', read(target));
+    check('a save through a symlink leaves a symlink', isLink());
+    const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
+    check('a save leaves no temporary link behind', JSON.stringify(entries) === '["rules.json"]',
+        JSON.stringify(entries));
+
+    // The folder takes no new entry, so the new link cannot be made. The
+    // target is still writable: a save that reports a failure must not
+    // have changed it.
+    GLib.chmod(config, 0o555);
+    // Root writes to a read-only folder, so the case proves nothing there.
+    const W_OK = 2;
+    const readOnly = GLib.access(config, W_OK) !== 0;
+    let failure = null;
+    try {
+        if (readOnly)
+            writeText(file, 'lost');
+    } catch (e) {
+        failure = e;
+    }
+    GLib.chmod(config, 0o755);
+    if (readOnly) {
+        check('a save fails when the folder takes no new link', failure !== null);
+        check('a failed save leaves the target as it was', read(target) === 'new', read(target));
+    } else {
+        print('SKIP  the read-only folder case: this user writes to a read-only folder');
+    }
+
+    const plain = Gio.File.new_for_path(`${config}/plain.json`);
+    writeText(plain, 'text');
+    check('a save of a new regular file writes it', read(plain.get_path()) === 'text');
+    const criticalsBefore = criticals.length;
+    writeText(plain, 'again');
+    check('a save over a regular file writes it', read(plain.get_path()) === 'again');
+    check('a save over a regular file logs no critical', criticals.length === criticalsBefore,
+        JSON.stringify(criticals.slice(criticalsBefore)));
+}
+
 // -- elementOffsets skips brackets and commas inside strings and nesting ------
 
 {
@@ -100,4 +244,5 @@ const { dropInNames } = await import(GLib.filename_to_uri(`${PREFS}/../rules-for
         .every(mods => !needsModifier(mods, SHIFT)));
 }
 
+GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(SCRATCH)}`);
 report();

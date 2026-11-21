@@ -29,7 +29,7 @@ The rules come from one or more files. Every file has the format of the
 | User file | `$XDG_CONFIG_HOME/gnome-window-control/rules.json`, `~/.config` when unset (`CONFIG_DIR`) |
 | Drop-in folder | `CONFIG_DIR/rules.d/`. A tool that adds rules owns one file in it, for example `rules.d/revier.json`. |
 | Encoding | UTF-8, parsed with `JSON.parse` — no comments, no trailing commas |
-| Required | No. An absent file or folder means no rules from it. |
+| Required | No. An absent file or folder means no rules from it. A `rules.json` symlink without a target is an absent file. |
 
 The extension creates `CONFIG_DIR` at `enable()`. It does not create
 `rules.d`, and it never writes a file. `wctl rules add --file` creates a
@@ -259,6 +259,15 @@ have won. A broken drop-in releases the overlays its rules made, at that load.
 
 Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
+
+An unknown key is text of the file. Its message MUST show `?` in place of each
+of these characters of the key, so a key cannot write a line of its own into
+the journal or a terminal:
+
+- a control character (Unicode category Cc),
+- U+2028 and U+2029,
+- a bidirectional control: U+061C, U+200E, U+200F, U+202A to U+202E, U+2066
+  to U+2069.
 
 The checks of one rule run in this order, and the message names the first that
 fails:

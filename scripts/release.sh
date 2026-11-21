@@ -466,7 +466,10 @@ parse_args() {
                     log_error "--notes-file needs a path"
                     exit 1
                 fi
+                # Absolute, because main() changes to the project root
+                # before the file is read.
                 NOTES_FILE="$2"
+                [[ "$NOTES_FILE" == /* ]] || NOTES_FILE="$PWD/$NOTES_FILE"
                 shift 2
                 ;;
             *)

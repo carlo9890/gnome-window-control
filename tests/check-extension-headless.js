@@ -2263,6 +2263,35 @@ export class PopupSeparatorMenuItem {}
         check('rules.d: a FIFO is skipped, behind a link too, and a link to a file is followed',
             sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]', sourcesOf(rules));
 
+        // Gio cannot hand out a name that is not UTF-8. Such a file is no
+        // drop-in, and it must not cost the other drop-ins their rules.
+        const linesBeforeBadName = consoleLines.length;
+        GLib.spawn_sync(null, ['sh', '-c', ': > "$0/$(printf \'bad\\377.json\')"', dropIns], null,
+            GLib.SpawnFlags.SEARCH_PATH, null);
+        rules._load();
+        await sleep(300);
+        check('rules.d: a name that is not UTF-8 is skipped and the other drop-ins load',
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]', sourcesOf(rules));
+        const badNameErrors = consoleLines.slice(linesBeforeBadName)
+            .filter(line => line.level === GLib.LogLevelFlags.LEVEL_CRITICAL).map(line => line.message);
+        check('rules.d: a name that is not UTF-8 logs no error', badNameErrors.length === 0,
+            JSON.stringify(badNameErrors));
+
+        // The same kind of name beside rules.json: the folder monitor hands
+        // the file to its handler, which must not throw on it.
+        const linesBeforeBadSibling = consoleLines.length;
+        GLib.spawn_sync(null, ['sh', '-c', ': > "$0/$(printf \'bad\\377.json\')"', configDir], null,
+            GLib.SpawnFlags.SEARCH_PATH, null);
+        await sleep(300);
+        const badSiblingErrors = consoleLines.slice(linesBeforeBadSibling)
+            .filter(line => line.level === GLib.LogLevelFlags.LEVEL_CRITICAL).map(line => line.message);
+        check('a name that is not UTF-8 beside rules.json logs no error and changes no rule',
+            badSiblingErrors.length === 0 &&
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]',
+            `${JSON.stringify(badSiblingErrors)} ${sourcesOf(rules)}`);
+        GLib.spawn_sync(null, ['sh', '-c', 'rm -- "$0/$(printf \'bad\\377.json\')"', configDir], null,
+            GLib.SpawnFlags.SEARCH_PATH, null);
+
         const linesBeforeReloads = consoleLines.length;
         rules._load();
         rules._load();
@@ -2301,12 +2330,40 @@ export class PopupSeparatorMenuItem {}
             `answered ${fifoAnswered}, ${sourcesOf(rules)}`);
         GLib.unlink(rulesJson);
 
+        // A rules.json link without a target is no file, as for wctl: no
+        // error line, and the drop-ins load.
+        Gio.File.new_for_path(rulesJson).make_symbolic_link('no-target.json', null);
+        const linesBeforeDangling = consoleLines.length;
+        rules._load();
+        let danglingAnswered = null;
+        rules.whenLoaded(ok => (danglingAnswered = ok));
+        await sleep(200);
+        const danglingErrors = consoleLines.slice(linesBeforeDangling)
+            .filter(line => line.level <= GLib.LogLevelFlags.LEVEL_WARNING).map(line => line.message);
+        check('rules.d: a rules.json link without a target logs no error and the drop-ins load',
+            danglingAnswered === true && danglingErrors.length === 0 &&
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]',
+            `answered ${danglingAnswered}, ${JSON.stringify(danglingErrors)}, ${sourcesOf(rules)}`);
+        GLib.unlink(rulesJson);
+
+        // A link that cannot be followed is not "no file": the target can
+        // exist, so the load says that it cannot read it.
+        Gio.File.new_for_path(rulesJson).make_symbolic_link('rules.json', null);
+        const linesBeforeLoop = consoleLines.length;
+        rules._load();
+        await sleep(200);
+        const loopErrors = consoleLines.slice(linesBeforeLoop).map(line => line.message)
+            .filter(message => message.includes('rules.json: cannot read'));
+        check('rules.d: a rules.json link to itself logs that it cannot be read',
+            loopErrors.length > 0, JSON.stringify(consoleLines.slice(linesBeforeLoop)));
+        GLib.unlink(rulesJson);
+
         const monitors = [rules._fileMonitor, rules._dropInMonitor];
         const ids = [rules._fileMonitorId, rules._dropInMonitorId];
         rules.disable();
         check('rules.d: disable() cancels both monitors and disconnects their handlers',
             rules._fileMonitor === null && rules._dropInMonitor === null &&
-            monitors.every((monitor, i) => monitor.is_cancelled() &&
+            monitors.every((monitor, i) => monitor !== null && monitor.is_cancelled() &&
                 !GObject.signal_handler_is_connected(monitor, ids[i])));
         check('rules.d: disable() leaves no handler on the display and no source',
             display.handlerCount() === 0 && rules._sourceIds.size === 0,

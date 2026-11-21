@@ -40,7 +40,7 @@ installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
 
 `mise run ci` is the gate (see `.mise.toml`); CI runs the same command on a bare
 `ubuntu-latest` runner. None of it needs an extension, a GNOME session, or D-Bus.
-Coverage is not measured; `mise run ci`, the three release checks below and the
+Coverage is not measured; `mise run ci`, the four release checks below and the
 suites in the minimum-checks table are the whole bar.
 
 Two kinds of test live there:
@@ -58,12 +58,13 @@ The inventory assertions in `cli/src/main.rs` and `cli/tests/cli.rs` keep the
 command list in sync across the dispatch table, the help text and both shell
 completions, so a command that is not wired into all of them fails `cargo test`.
 
-The `cli` job also runs three release checks. Run them locally before a push
+The `cli` job also runs four release checks. Run them locally before a push
 that changes a version or a dependency:
 
 ```bash
 ./scripts/check-version.sh   # cli/Cargo.toml is 0.<metadata.json version>.0, and version-name is the same N as a string
 ./tests/check-version-refusals.sh  # check-version.sh refuses a numeric, wrong or missing version-name
+./tests/check-release-notes-path.sh  # release.sh reads a relative --notes-file from the start folder
 mise run build:musl          # the static release binary, and its linkage check
 ```
 
@@ -216,7 +217,7 @@ it, it must exit 0 and print `4` for `--json assets -q '.assets | length'`.
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
 `tests/vectors/`. The preferences column applies to any change to `prefs.js`,
-`prefs/` or the schema. The fake-windows column applies to any change to
+`prefs/`, `rules-files.js` or the schema. The fake-windows column applies to any change to
 `extension.js`, `dbus-service.js`, `rules.js`, `rules-files.js`, `overlay.js`,
 `keybindings.js`, `indicator.js` or `window-helpers.js`. All three are headless and take seconds, so there is no reason
 to skip them. The query column applies to any change under

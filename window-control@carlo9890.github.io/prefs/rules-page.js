@@ -10,8 +10,9 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import { dropInNames } from '../rules-format.js';
-import { CONFIG_DIR, DROPIN_DIR, RULES_FILE } from '../rules-files.js';
+import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames } from '../rules-files.js';
 import { checkRules, ruleSummary, rulesLabel } from './rules-check.js';
+import { readText, writeText } from './rules-disk.js';
 
 const CHECK_DELAY_MS = 300;
 // An editor's save raises several events; read the file once they stop.
@@ -153,17 +154,6 @@ export class RulesEditor {
         return group;
     }
 
-    _readFile() {
-        try {
-            const [, bytes] = this._file.load_contents(null);
-            return new TextDecoder().decode(bytes);
-        } catch (e) {
-            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-                return null;
-            throw e;
-        }
-    }
-
     // [name, subtitle] per drop-in file. A missing rules.d has none.
     _readDropIns() {
         let infos;
@@ -176,9 +166,7 @@ export class RulesEditor {
             return [[DROPIN_DIR, `Cannot read: ${e.message}`]];
         }
         // Following symlinks, as the extension does, so a FIFO is never opened.
-        const regular = infos.filter(info => info.get_file_type() === Gio.FileType.REGULAR)
-            .map(info => info.get_name());
-        return dropInNames(regular).map(name => {
+        return dropInNames(regularFileNames(infos)).map(name => {
             try {
                 const [, bytes] = this._dropInDir.get_child(name).load_contents(null);
                 return [name, ruleSummary(new TextDecoder().decode(bytes))];
@@ -207,9 +195,13 @@ export class RulesEditor {
         this._diskToast?.dismiss();
         let text;
         try {
-            text = this._readFile();
+            text = readText(this._file);
         } catch (e) {
             this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
+            // At the first load the buffer is empty and there is nothing
+            // to save: Apply must stay usable for the drop-in rules.
+            this._savedText ??= '';
+            this._loadedText ??= '';
             this._syncButtons();
             return;
         }
@@ -222,7 +214,7 @@ export class RulesEditor {
     _save() {
         const text = this._buffer.text;
         try {
-            this._writeFile(text);
+            writeText(this._file, text);
         } catch (e) {
             this._toast(`Cannot save ${RULES_FILE}: ${e.message}`);
             return;
@@ -231,31 +223,6 @@ export class RulesEditor {
         this._loadedText = text;
         this._syncButtons();
         this._toast(`Saved ${RULES_FILE}`);
-    }
-
-    // A write through a symlink changes its target and raises no event on
-    // the watched directory, so a new link is renamed over the old one, as
-    // wctl does.
-    _writeFile(text) {
-        let target = null;
-        try {
-            target = this._file.query_info('standard::symlink-target',
-                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_symlink_target();
-        } catch (e) {
-            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-                throw e;
-        }
-        this._file.replace_contents(new TextEncoder().encode(text), null, false, Gio.FileCreateFlags.NONE, null);
-        if (!target)
-            return;
-        const link = this._file.get_parent().get_child(`.${RULES_FILE}.link.${GLib.uuid_string_random()}`);
-        link.make_symbolic_link(target, null);
-        try {
-            link.move(this._file, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, null, null);
-        } catch (e) {
-            link.delete(null);
-            throw e;
-        }
     }
 
     // Watch the directory, not the file, so a save by rename is seen. The
@@ -274,11 +241,12 @@ export class RulesEditor {
             this._toast(`Cannot watch ${CONFIG_DIR}: ${e.message}`);
             return;
         }
+        // Compared as files, not by name: get_basename() throws for a name
+        // that is not UTF-8.
         this._monitorId = this._monitor.connect('changed', (_monitor, file) => {
-            const name = file.get_basename();
-            if (name === DROPIN_DIR)
+            if (file.equal(this._dropInDir))
                 this._watchDropIns();
-            else if (name !== RULES_FILE)
+            else if (!file.equal(this._file))
                 return;
             this._scheduleDiskChange();
         });
@@ -319,7 +287,7 @@ export class RulesEditor {
         this._loadDropIns();
         let text;
         try {
-            text = this._readFile() ?? '';
+            text = readText(this._file) ?? '';
         } catch (e) {
             this._toast(`Cannot read ${RULES_FILE}: ${e.message}`);
             return;
