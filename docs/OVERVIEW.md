@@ -60,8 +60,9 @@ README.md                  user docs; the D-Bus method table
   `org.gnome.Shell.Extensions.WindowControl`. Who can call it is in
   README.md's "Security model".
 - **The D-Bus surface is fixed in scope**: it offers no layout, except
-  `ApplyRules`, which applies the rules files again; what it must not
-  grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
+  `ApplyRules`, which applies the rules files again
+  ([0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md));
+  what it must not grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
 - `dbus-service.js` holds one `WindowControlService` class; the simple boolean
   handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
   lives in `dbus-interface.js` and is imported into `dbus-service.js`.
@@ -69,10 +70,12 @@ README.md                  user docs; the D-Bus method table
   `WindowKeybindings` and the `WindowPlacer` the three share, adds and removes
   the top-bar icon (`_syncIndicator`),
   and removes the shortcuts and the icon while the screen is locked
-  (`_syncSessionMode`).
-- `wctl` speaks D-Bus directly through **zbus's blocking API** — no gdbus, no
-  busctl, no jq, and no async runtime. It has no runtime dependencies at all: the
-  release asset is a static musl binary. Failures funnel through `map_err`
+  (`_syncSessionMode`); the service and the rules stay up
+  ([0003](decisions/0003-the-d-bus-interface-and-the-rules-stay-up-while-the-session-is-locked.md)).
+- `wctl` speaks D-Bus directly through **zbus's blocking API**, and its
+  release asset is a static musl binary with no runtime dependencies
+  ([0004](decisions/0004-the-wctl-release-asset-is-one-static-binary-with-no-runtime-dependencies.md)).
+  Failures funnel through `map_err`
   (a call) and `map_connect_err` (the connection) in `dbus.rs` for a
   consistent hint.
 - The session connection is opened **lazily**, so every argument-validation error
@@ -82,7 +85,8 @@ README.md                  user docs; the D-Bus method table
   `preserve_order`), because `list --json` and `info --json` must emit the
   extension's document unchanged, key order included.
 - One code base runs across GNOME 45-50 via runtime API detection for
-  the maximize path (`get_maximized()` vs `get_maximize_flags()`).
+  the maximize path (`get_maximized()` vs `get_maximize_flags()`):
+  [0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md).
 - `WaitForWindow` and `WaitForGeometry` are the **async** handlers (the GJS
   `...Async(params, invocation)` convention), holding the invocation in
   `_waiters` / `_geometryWatchers`. A window satisfies a waiter only once it is
@@ -140,11 +144,11 @@ README.md                  user docs; the D-Bus method table
   `show-indicator` key turns on; `extension.js` adds and removes it
   (`_syncIndicator`) and removes it while the screen is locked, as the
   shortcuts are.
-- **The rules.json grammar** is `rules-format.js` — the one module that imports
-  **nothing**, so plain `gjs` loads it without the mutter typelib and CI can
-  check it. `cli/src/rules.rs` is a second implementation of the same grammar;
-  both are pinned to `tests/vectors/rules-spec.json`, so neither drifts without
-  the other's test failing. `docs/specs/RULES-JSON.md` is normative.
+- **The rules.json grammar** is `rules-format.js`, which imports
+  **nothing**. `cli/src/rules.rs` is a second implementation of the same
+  grammar, and both are pinned to `tests/vectors/rules-spec.json`
+  ([0007](decisions/0007-the-rules-json-grammar-has-two-implementations-pinned-to-one-vector-file.md)).
+  `docs/specs/RULES-JSON.md` is normative.
 - `wctl` addresses windows through one **selector resolver** in two halves:
   `selector::parse_exact` / `parse_min` (pure: the selector and the argument
   count) and `selector::lookup(ctx, &selector)` (the bus: a numeric ID needs no

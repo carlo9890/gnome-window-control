@@ -27,7 +27,9 @@ If it fails, the code has a syntax error and must not be committed.
 - `Move`, `Resize`, `MoveResize`, `ApplyRules`, `WaitForWindow` and
   `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean
   (`WaitForWindow` returns 0 on timeout); a new method that can fail for more
-  than one reason does the same. The reason each method raises is in the
+  than one reason does the same
+  ([0005](decisions/0005-the-geometry-methods-applyrules-and-the-wait-methods-raise-named-d-bus-errors.md)).
+  The reason each method raises is in the
   ERRORS block in `dbus-interface.js`. A new name goes into that block, a
   `DBUS_ERROR_*` constant in `dbus-service.js`, the Errors section of
   `README.md`, and an `ERROR_*` constant in `cli/src/dbus.rs` that `map_err`
@@ -93,15 +95,18 @@ If it fails, the code has a syntax error and must not be committed.
 - A limit that the extension enforces too (a range, a keyword set, a message)
   has one value, in a vector file under `tests/vectors/`, and a test on each
   side asserts it: a GJS check and a Rust test, as `tests/vectors/rules-spec.json`
-  does for the rules grammar ([TESTING.md](TESTING.md#the-rulesjson-grammar-check-a-ci-gate)).
-  A value written into each side separately drifts with no test failing.
+  does for the rules grammar ([TESTING.md](TESTING.md#the-rulesjson-grammar-check-a-ci-gate),
+  [0007](decisions/0007-the-rules-json-grammar-has-two-implementations-pinned-to-one-vector-file.md)).
 - `wctl` works with every extension version from `MIN_EXTENSION_VERSION`
   (`cli/src/main.rs`) up. Gate a call to a method or a behavior newer than that
   version on its capability name from `GetCapabilities`, as `commands/rules.rs`
-  does with `NEWER_MATCH_KEYS`. Only the maintainer raises the baseline.
+  does with `NEWER_MATCH_KEYS`
+  ([0008](decisions/0008-a-client-learns-what-the-extension-supports-from-a-capability-name.md)).
+  Only the maintainer raises the baseline.
 - The CLI grammar is a frozen contract: output strings, usage text and exit
   codes are asserted by the live suites. Do not reword a message without
-  changing the suite that pins it.
+  changing the suite that pins it. Write argument parsing, help and
+  completions by hand: [0009](decisions/0009-wctl-parses-its-arguments-by-hand.md).
 
 ## Building
 

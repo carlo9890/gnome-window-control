@@ -28,6 +28,15 @@ It owns the mandatory `node --check` gate, the build commands, the mechanisms a
 handler or a command must use, and the recipe for adding a D-Bus method end to
 end.
 
+### Changing a decided design
+
+**MUST read the records in [docs/decisions/](docs/decisions/) that bear on the
+change before editing a file under `window-control@carlo9890.github.io/`,
+`cli/` or `tests/vectors/`, or `tests/check-rules-format.js`,
+`scripts/release.sh`, `scripts/check-static.sh`, `.mise.toml` or
+`.github/workflows/build.yml`.** Each holds a decision in
+force, and a change against one is the user's call — name the record and ask.
+
 ### Documentation changes
 
 **MUST load the `instruction-writing:writing-project-docs` skill before creating

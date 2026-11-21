@@ -162,5 +162,7 @@ reports, so keep it equal to `version`.
 
 Expect this question; it is the one substantive objection to the extension.
 Answer from README.md's "Security model" section — it is the authoritative
-statement. The stance is the answer: state the exposure. Offering a caller
-allowlist or a shared secret would be theater and invites a longer review.
+statement. The stance is the answer: state the exposure. Offer neither a
+caller allowlist nor a shared secret
+([0002](decisions/0002-the-d-bus-interface-has-no-access-control.md)); an
+offer invites a longer review.
