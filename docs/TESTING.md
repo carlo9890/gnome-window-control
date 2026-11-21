@@ -40,7 +40,7 @@ installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
 
 `mise run ci` is the gate (see `.mise.toml`); CI runs the same command on a bare
 `ubuntu-latest` runner. None of it needs an extension, a GNOME session, or D-Bus.
-Coverage is not measured; `mise run ci`, the three release checks below and the
+Coverage is not measured; `mise run ci`, the four release checks below and the
 suites in the minimum-checks table are the whole bar.
 
 Two kinds of test live there:
