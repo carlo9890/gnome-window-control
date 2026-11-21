@@ -2330,6 +2330,22 @@ export class PopupSeparatorMenuItem {}
             `answered ${fifoAnswered}, ${sourcesOf(rules)}`);
         GLib.unlink(rulesJson);
 
+        // A rules.json link without a target is no file, as for wctl: no
+        // error line, and the drop-ins load.
+        Gio.File.new_for_path(rulesJson).make_symbolic_link('no-target.json', null);
+        const linesBeforeDangling = consoleLines.length;
+        rules._load();
+        let danglingAnswered = null;
+        rules.whenLoaded(ok => (danglingAnswered = ok));
+        await sleep(200);
+        const danglingErrors = consoleLines.slice(linesBeforeDangling)
+            .filter(line => line.level <= GLib.LogLevelFlags.LEVEL_WARNING).map(line => line.message);
+        check('rules.d: a rules.json link without a target logs no error and the drop-ins load',
+            danglingAnswered === true && danglingErrors.length === 0 &&
+            sourcesOf(rules) === '["rules.d/b.json#0","rules.d/b.json#1","rules.d/g.json#0"]',
+            `answered ${danglingAnswered}, ${JSON.stringify(danglingErrors)}, ${sourcesOf(rules)}`);
+        GLib.unlink(rulesJson);
+
         const monitors = [rules._fileMonitor, rules._dropInMonitor];
         const ids = [rules._fileMonitorId, rules._dropInMonitorId];
         rules.disable();

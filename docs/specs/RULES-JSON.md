@@ -29,7 +29,7 @@ The rules come from one or more files. Every file has the format of the
 | User file | `$XDG_CONFIG_HOME/gnome-window-control/rules.json`, `~/.config` when unset (`CONFIG_DIR`) |
 | Drop-in folder | `CONFIG_DIR/rules.d/`. A tool that adds rules owns one file in it, for example `rules.d/revier.json`. |
 | Encoding | UTF-8, parsed with `JSON.parse` — no comments, no trailing commas |
-| Required | No. An absent file or folder means no rules from it. |
+| Required | No. An absent file or folder means no rules from it. A `rules.json` symlink without a target is an absent file. |
 
 The extension creates `CONFIG_DIR` at `enable()`. It does not create
 `rules.d`, and it never writes a file. `wctl rules add --file` creates a
