@@ -6,29 +6,26 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-// Whether `file` can be opened: false when there is none. Only a regular file
-// can, as in the extension: the open of a FIFO does not return, and the
-// window would hang. A link is followed; one without a target is no file.
-function exists(file) {
+// Throws when `file` is no regular file. The open of a FIFO does not return,
+// and the window would hang. A link is followed. Gio reports a link that it
+// cannot follow as a link: the open then gives the cause, which is "not
+// found" for a link without a target.
+function refuseNonRegular(file) {
     let type;
     try {
         type = file.query_info('standard::type', Gio.FileQueryInfoFlags.NONE, null).get_file_type();
     } catch (e) {
         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
-            return false;
+            return;
         throw e;
     }
-    if (type === Gio.FileType.SYMBOLIC_LINK)
-        return false;
-    if (type !== Gio.FileType.REGULAR)
+    if (type !== Gio.FileType.REGULAR && type !== Gio.FileType.SYMBOLIC_LINK)
         throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
-    return true;
 }
 
 // The text of `file`, or null when there is none.
 export function readText(file) {
-    if (!exists(file))
-        return null;
+    refuseNonRegular(file);
     try {
         const [, bytes] = file.load_contents(null);
         return new TextDecoder().decode(bytes);
@@ -44,8 +41,7 @@ export function readText(file) {
 // does. The new link is made first: when the folder takes no new entry, the
 // save fails before the target has changed.
 export function writeText(file, text) {
-    // Throws for a FIFO, before anything is written.
-    exists(file);
+    refuseNonRegular(file);
     let target = null;
     try {
         const info = file.query_info('standard::is-symlink,standard::symlink-target',

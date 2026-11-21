@@ -2346,6 +2346,18 @@ export class PopupSeparatorMenuItem {}
             `answered ${danglingAnswered}, ${JSON.stringify(danglingErrors)}, ${sourcesOf(rules)}`);
         GLib.unlink(rulesJson);
 
+        // A link that cannot be followed is not "no file": the target can
+        // exist, so the load says that it cannot read it.
+        Gio.File.new_for_path(rulesJson).make_symbolic_link('rules.json', null);
+        const linesBeforeLoop = consoleLines.length;
+        rules._load();
+        await sleep(200);
+        const loopErrors = consoleLines.slice(linesBeforeLoop).map(line => line.message)
+            .filter(message => message.includes('rules.json: cannot read'));
+        check('rules.d: a rules.json link to itself logs that it cannot be read',
+            loopErrors.length > 0, JSON.stringify(consoleLines.slice(linesBeforeLoop)));
+        GLib.unlink(rulesJson);
+
         const monitors = [rules._fileMonitor, rules._dropInMonitor];
         const ids = [rules._fileMonitorId, rules._dropInMonitorId];
         rules.disable();

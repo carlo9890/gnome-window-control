@@ -42,11 +42,10 @@ async function readFile(label, cancellable) {
         const info = await file.query_info_async('standard::type', Gio.FileQueryInfoFlags.NONE,
             GLib.PRIORITY_DEFAULT, cancellable);
         const type = info.get_file_type();
-        // A followed link that still reads as a link has no target: that is
-        // no file, as for wctl.
-        if (type === Gio.FileType.SYMBOLIC_LINK)
-            throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND, 'a link without a target');
-        if (type !== Gio.FileType.REGULAR)
+        // Gio reports a link that it cannot follow as a link. The open then
+        // gives the cause: "not found" for a link without a target, as for
+        // wctl.
+        if (type !== Gio.FileType.REGULAR && type !== Gio.FileType.SYMBOLIC_LINK)
             throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
         const [bytes] = await file.load_contents_async(cancellable);
         return new TextDecoder().decode(bytes);

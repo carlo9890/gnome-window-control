@@ -414,10 +414,10 @@
       "message": "rules[0].a?b?[2J?c?d?e?f?g?h?i?j?k?l?m?n?o: unknown key (use match, place, tile, center, workspace, monitor, overlay)"
     },
     {
-      "name": "an unknown match key shows ? for a control or bidirectional character",
-      "document": [{ "match": { "a\tb\u200fc\u007fd\u202be\u202cf\u2068g": "x" }, "tile": "left" }],
+      "name": "an unknown match key shows ? for a control or bidirectional character, and no other",
+      "document": [{ "match": { "a\tb\u200fc\u007fd\u202be\u202cf\u2068g\u00a0\u200d\u2060\u206a\u00e9": "x" }, "tile": "left" }],
       "valid": false,
-      "message": "rules[0].match.a?b?c?d?e?f?g: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix, min_width)"
+      "message": "rules[0].match.a?b?c?d?e?f?g\u00a0\u200d\u2060\u206a\u00e9: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix, min_width)"
     },
     {
       "name": "constructor is not a match key",

@@ -153,6 +153,17 @@ GLib.log_set_writer_func((level, fields) => {
     // The link has no target now: that is no file, as for wctl.
     check('a link without a target reads as null', readText(link) === null);
     GLib.unlink(link.get_path());
+
+    // A link that cannot be followed is not "no file": the target can exist.
+    link.make_symbolic_link('link.json', null);
+    let loop = null;
+    try {
+        readText(link);
+    } catch (e) {
+        loop = e;
+    }
+    check('a link to itself is an error, not an absent file', loop !== null, `${loop}`);
+    GLib.unlink(link.get_path());
 }
 
 // -- a save through a symlink keeps the link, and fails before it writes ------

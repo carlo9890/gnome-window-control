@@ -217,7 +217,7 @@ it, it must exit 0 and print `4` for `--json assets -q '.assets | length'`.
 The rules-grammar column applies to any change under
 `window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
 `tests/vectors/`. The preferences column applies to any change to `prefs.js`,
-`prefs/` or the schema. The fake-windows column applies to any change to
+`prefs/`, `rules-files.js` or the schema. The fake-windows column applies to any change to
 `extension.js`, `dbus-service.js`, `rules.js`, `rules-files.js`, `overlay.js`,
 `keybindings.js`, `indicator.js` or `window-helpers.js`. All three are headless and take seconds, so there is no reason
 to skip them. The query column applies to any change under
