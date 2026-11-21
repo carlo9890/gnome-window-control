@@ -114,8 +114,8 @@ The extension directory name must stay identical to the `uuid` in
 `metadata.json` — `build.sh validate` hard-fails if they diverge. The zip and
 what it ships are described in [RELEASING.md](RELEASING.md).
 
-No CI job runs `install-wctl.sh` or `scripts/release.sh`: after a change to
-either, run it offline as
+CI does not run `install-wctl.sh`, and runs `scripts/release.sh` only as far as
+its `--notes-file` check: after a change to either, run it offline as
 [TESTING.md](TESTING.md#driving-install-wctlsh-and-releasesh-offline) describes.
 
 ## Adding a new D-Bus method

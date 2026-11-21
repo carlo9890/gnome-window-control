@@ -184,8 +184,9 @@ Examples: `tests/test-workspaces-monitors.sh` (query),
 
 ## Driving install-wctl.sh and release.sh offline
 
-No CI job runs `install-wctl.sh` or `scripts/release.sh`. After a change to
-either, run it end to end with stubs first on `PATH`: no GNOME Shell and no
+CI does not run `install-wctl.sh`, and runs `scripts/release.sh` only as far as
+its `--notes-file` check (`tests/check-release-notes-path.sh`). After a change
+to either, run it end to end with stubs first on `PATH`: no GNOME Shell and no
 network are needed.
 
 - Set `HOME` to a scratch directory for `install-wctl.sh`: it installs to
