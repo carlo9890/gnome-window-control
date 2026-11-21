@@ -260,6 +260,15 @@ have won. A broken drop-in releases the overlays its rules made, at that load.
 Messages name the offending key and index (`rules[0].tile: ...`) and never the
 matched value, so a window title or WM class cannot reach the journal.
 
+An unknown key is text of the file. Its message MUST show `?` in place of each
+of these characters of the key, so a key cannot write a line of its own into
+the journal or a terminal:
+
+- a control character (Unicode category Cc),
+- U+2028 and U+2029,
+- a bidirectional control: U+061C, U+200E, U+200F, U+202A to U+202E, U+2066
+  to U+2069.
+
 The checks of one rule run in this order, and the message names the first that
 fails:
 

@@ -408,6 +408,18 @@
       "message": "rules[0].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right"
     },
     {
+      "name": "an unknown rule key shows ? for a control or bidirectional character",
+      "document": [{ "match": { "class": "a" }, "tile": "left", "a\nb\u001b[2J\u0085c\u202ed\u2028e\u061cf\u2066g": 1 }],
+      "valid": false,
+      "message": "rules[0].a?b?[2J?c?d?e?f?g: unknown key (use match, place, tile, center, workspace, monitor, overlay)"
+    },
+    {
+      "name": "an unknown match key shows ? for a control or bidirectional character",
+      "document": [{ "match": { "a\tb\u200fc\u007fd": "x" }, "tile": "left" }],
+      "valid": false,
+      "message": "rules[0].match.a?b?c?d: unknown key (use class, title, substr, title_prefix, title_suffix, class_prefix, min_width)"
+    },
+    {
       "name": "constructor is not a match key",
       "document": [{ "match": { "constructor": "a" }, "tile": "left" }],
       "valid": false,

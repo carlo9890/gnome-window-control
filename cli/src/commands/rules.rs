@@ -622,9 +622,7 @@ fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Ve
         return Ok(None);
     };
     let document = parse(&text, path)?;
-    // The unknown-key message quotes a key of the file.
     let compiled = rules::compile_rules(&document).map_err(|message| {
-        let message = crate::table::sanitize(&message);
         if name_the_file {
             Fail::error(format!("{}: {message}", path.display()))
         } else {

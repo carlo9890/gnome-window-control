@@ -199,6 +199,13 @@ export function centerRect(axis, frame, workarea) {
 // file is the user's own, but the journal outlives it, and no log line holds a
 // window title or class, wherever it comes from.
 
+// A key as a message shows it. The key is text of the file, and the message
+// goes to the journal and to a terminal: a newline in it forges a line.
+// The set is the one of table::sanitize in wctl (RULES-JSON.md).
+function shownKey(key) {
+    return key.replace(/[\p{Cc}\u2028\u2029\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu, '?');
+}
+
 function isPlainObject(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -224,7 +231,7 @@ export function compileRule(rule, index) {
         throw new Error(`${label}: must be an object`);
     for (const key of Object.keys(rule)) {
         if (!RULE_KEYS.includes(key))
-            throw new Error(`${label}.${key}: unknown key (use ${RULE_KEYS.join(', ')})`);
+            throw new Error(`${label}.${shownKey(key)}: unknown key (use ${RULE_KEYS.join(', ')})`);
     }
 
     if (!isPlainObject(rule.match))
@@ -239,7 +246,7 @@ export function compileRule(rule, index) {
             continue;
         }
         if (!Object.hasOwn(MATCH_KINDS, key))
-            throw new Error(`${label}.match.${key}: unknown key (use ${ALL_MATCH_KEY_NAMES})`);
+            throw new Error(`${label}.match.${shownKey(key)}: unknown key (use ${ALL_MATCH_KEY_NAMES})`);
         const kind = MATCH_KINDS[key];
         if (typeof value !== 'string')
             throw new Error(`${label}.match.${key}: must be a string`);

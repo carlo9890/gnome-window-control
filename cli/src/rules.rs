@@ -23,6 +23,7 @@
 use serde_json::{Map, Value};
 
 use crate::geometry::{self, Rect};
+use crate::table::sanitize;
 
 /// The workarea `place` tokens are resolved against at validation time, so a
 /// grammar error is reported when the file is read rather than when a window
@@ -273,7 +274,8 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
     for (key, _) in js_entries(rule) {
         if !RULE_KEYS.contains(&key.as_str()) {
             return Err(format!(
-                "{label}.{key}: unknown key (use {})",
+                "{label}.{}: unknown key (use {})",
+                sanitize(key),
                 RULE_KEYS.join(", ")
             ));
         }
@@ -295,7 +297,8 @@ pub fn compile_rule(rule: &Value, index: usize) -> Result<Rule, String> {
         }
         let Some((_, kind)) = MATCH_KEYS.iter().find(|(name, _)| name == key) else {
             return Err(format!(
-                "{label}.match.{key}: unknown key (use {})",
+                "{label}.match.{}: unknown key (use {})",
+                sanitize(key),
                 all_match_key_names()
             ));
         };
