@@ -184,10 +184,10 @@ Examples: `tests/test-workspaces-monitors.sh` (query),
 
 ## Driving install-wctl.sh and release.sh offline
 
-CI does not run `install-wctl.sh`, and runs `scripts/release.sh` only as far as
-its `--notes-file` check (`tests/check-release-notes-path.sh`). After a change
-to either, run it end to end with stubs first on `PATH`: no GNOME Shell and no
-network are needed.
+CI does not run `install-wctl.sh`. It runs a copy of `scripts/release.sh` only
+up to the `gh` login check, and `tests/check-release-notes-path.sh` asserts only
+how `--notes-file` resolves a path. After a change to either script, run it end
+to end with stubs first on `PATH`: no GNOME Shell and no network are needed.
 
 - Set `HOME` to a scratch directory for `install-wctl.sh`: it installs to
   `$HOME/.local/bin`.
