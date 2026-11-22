@@ -312,6 +312,14 @@ GLib.log_set_writer_func((level, fields) => {
     check('a failed write through a link leaves no temporary file',
         names(folder).length === 1 && names(real).length === 1,
         JSON.stringify([names(folder), names(real)]));
+    GLib.unlink(regular);
+
+    const hard = `${real}/hard.json`;
+    GLib.file_set_contents(regular, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(regular)} ${GLib.shell_quote(hard)}`);
+    check('a save to a hard link that cannot finish reports a failure', saveLimited(regular) === 'failed');
+    check('a failed write keeps the old text of a hard link',
+        read(regular) === 'old' && read(hard) === 'old', `${read(hard).length} bytes`);
 }
 
 // -- a save keeps the file's mode, and follows every link ----------------------
@@ -348,6 +356,31 @@ GLib.log_set_writer_func((level, fields) => {
     const isLink = file => file.query_info('standard::is-symlink',
         Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
     check('a save through a chain of links keeps each link', isLink(first) && isLink(middle));
+
+    // A hard link stays one file, and a failed write restores it.
+    const shared = `${folder}/real/shared.json`;
+    const other = `${folder}/real/other.json`;
+    GLib.file_set_contents(shared, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(shared)} ${GLib.shell_quote(other)}`);
+    writeText(Gio.File.new_for_path(shared), 'new');
+    check('a save keeps a hard link', read(other) === 'new', read(other));
+
+    // A writable file in a read-only folder still saves.
+    const lockedDir = `${folder}/locked`;
+    GLib.mkdir_with_parents(lockedDir, 0o755);
+    const locked = `${lockedDir}/rules.json`;
+    GLib.file_set_contents(locked, 'old');
+    GLib.chmod(lockedDir, 0o555);
+    writeText(Gio.File.new_for_path(locked), 'new');
+    GLib.chmod(lockedDir, 0o755);
+    check('a writable file in a read-only folder saves', read(locked) === 'new', read(locked));
+
+    // A link whose name is not UTF-8 is followed.
+    const rawDir = GLib.shell_quote(`${folder}/config`);
+    GLib.spawn_command_line_sync(`bash -c "printf old > ${rawDir}/$'bad\\377.json'; ln -s $'bad\\377.json' ${rawDir}/raw-middle.json; ln -s raw-middle.json ${rawDir}/raw.json"`);
+    writeText(Gio.File.new_for_path(`${folder}/config/raw.json`), 'new');
+    check('a save follows a link to a name that is not UTF-8',
+        read(`${folder}/config/raw-middle.json`) === 'new');
 
     // A link without a target names the file to create.
     const dangling = Gio.File.new_for_path(`${folder}/config/dangling.json`);
