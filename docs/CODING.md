@@ -55,7 +55,9 @@ If it fails, the code has a syntax error and must not be committed.
 - Every frame request (a position or a size) for a shown window, from a D-Bus
   geometry method, a rule or a shortcut, goes through `WindowPlacer.place`
   (`window-helpers.js`), and a request that moves and resizes calls
-  `moveResizeFrame`. Their comments say why. Three kinds stay outside:
+  `moveResizeFrame`. A request that can change monitor passes its target monitor
+  as the third argument of `place`. Their comments say why. Three kinds stay
+  outside:
   - a move to a monitor goes through `moveToMonitor`, which keeps the wait for
     a pending restore, so a newer request still waits;
   - the maximize and fullscreen methods set a state;
