@@ -64,9 +64,10 @@ action.
 
 ### Run the extension to reproduce a bug or verify a change
 
-**MUST read [docs/RUNNING.md](docs/RUNNING.md) before reloading or driving the
-extension by hand, and before starting, killing, or restarting any GNOME Shell,
-nested and headless included.** It owns the reload path, the nested-session
+**MUST read [docs/RUNNING.md](docs/RUNNING.md) before your first
+`./scripts/build.sh install`, `wctl` or `gdbus call` against the extension,
+`./scripts/debug-dbus.sh` or `./scripts/start-*.sh`, and before starting,
+killing, or restarting any GNOME Shell, nested and headless included.** It owns the reload path, the nested-session
 setup, and the pitfalls that cost hours when met blind. **Each shell start,
 kill, or restart needs the user's explicit consent for that specific run**
 (hard rule 1 there).
@@ -84,12 +85,15 @@ operation** — commit, branch, worktree, push, or opening a PR.
 
 ### Reviewing changes
 
-**MUST read [docs/REVIEWING.md](docs/REVIEWING.md) before reviewing a PR or a
-diff.** It carries the quality rules a finished change is held to — the
+**MUST read [docs/REVIEWING.md](docs/REVIEWING.md) before you start a review
+skill, and before your first `gh pr view`, `gh pr diff` or `git diff` against a
+PR's base for a review.** It carries the quality rules a finished change is held to — the
 extensions.gnome.org review guidelines, the SPDX header, log levels and log
 content.
 
 ### Release
 
-**MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release** or
-changing what the project ships.
+**MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release, and
+before editing `metadata.json`, the `version` in `cli/Cargo.toml`,
+`scripts/build.sh`, `scripts/release.sh`, `scripts/check-version.sh` or
+`install-wctl.sh`.**

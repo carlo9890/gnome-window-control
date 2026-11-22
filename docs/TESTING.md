@@ -148,6 +148,9 @@ older loaded build they fail on "No such method" rather than skipping.
 
 If the extension is not running the suites self-skip and the runner reports
 `NO ... TESTS EXECUTED` (a distinct SKIPPED state), never a false pass.
+On a skip, or a "No such method" from an older loaded build, ask the user to
+consent to a [headless shell](RUNNING.md#headless-session-no-window-on-the-real-screen)
+and run the suites there. Without consent, record the skip or the failure in the PR.
 
 `WCTL_TEST_SETTLE` sets the settle wait before asserting (default 0.5 s); a
 nested session needs `WCTL_TEST_SETTLE=1.5`. The multi-monitor cases skip unless
@@ -203,9 +206,16 @@ no `curl` is on `PATH`: to test that path, stub `wget` and leave `curl` off
 `PATH`. With `mise` stubbed, the
 static-linkage check never runs: only the real `mise run build:musl` runs it. Keep `git`,
 `sha256sum` and the other local tools real: the scripts check their output.
-The `gh release view <tag>` stub is not obvious: before `gh release create` it
-must exit non-zero, because exit 0 makes `release.sh` prompt on stdin; after
-it, it must exit 0 and print `4` for `--json assets -q '.assets | length'`.
+Three stubs must produce output:
+
+- `gh release view <tag>`: before `gh release create`, exit non-zero, because
+  exit 0 makes `release.sh` prompt on stdin. After it, exit 0 and print `4` for
+  `--json assets -q '.assets | length'`.
+- `mise run build:musl`: create the file `CLI_BINARY` names in `release.sh`.
+- `curl`, for `install-wctl.sh --download` (without the flag, a checkout with a
+  build installs that build): write a runnable `wctl` to the `-o` path, and
+  print its `sha256sum` line for `wctl.sha256`, which the script fetches with
+  `-o -`.
 
 ## Minimum checks before a PR
 
