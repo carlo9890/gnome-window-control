@@ -36,6 +36,18 @@ export function readText(file) {
     }
 }
 
+// Gio reports each failed replace through a link as a link loop. An open for
+// append follows the link and writes nothing, so it throws the real cause.
+function replaceThroughLink(file, bytes) {
+    try {
+        file.replace_contents(bytes, null, false, Gio.FileCreateFlags.NONE, null);
+    } catch (e) {
+        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
+            file.append_to(Gio.FileCreateFlags.NONE, null).close(null);
+        throw e;
+    }
+}
+
 // A write through a symlink changes its target and raises no event on the
 // watched directory, so a new link is renamed over the old one, as wctl
 // does. The new link is made first: when the folder takes no new entry, the
@@ -60,7 +72,7 @@ export function writeText(file, text) {
     const link = file.get_parent().get_child(`.${file.get_basename()}.link.${GLib.uuid_string_random()}`);
     link.make_symbolic_link(target, null);
     try {
-        file.replace_contents(bytes, null, false, Gio.FileCreateFlags.NONE, null);
+        replaceThroughLink(file, bytes);
         link.move(file, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, null, null);
     } catch (e) {
         link.delete(null);
