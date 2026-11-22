@@ -684,7 +684,9 @@ gnome-extensions prefs window-control@carlo9890.github.io
   edit those with the program that owns them.
 
 The extension only reads the rules files. The preferences window writes
-`rules.json` when you click **Save**, and never writes a drop-in file.
+`rules.json` when you click **Save**, and never writes a drop-in file. **Save**
+writes a temporary file next to `rules.json`, or next to its last link target,
+so that folder must be writable. A failed save keeps the old text.
 
 ## D-Bus Interface
 

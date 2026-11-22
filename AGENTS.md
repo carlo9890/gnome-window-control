@@ -68,9 +68,8 @@ action.
 `./scripts/build.sh install`, `wctl` or `gdbus call` against the extension,
 `./scripts/debug-dbus.sh` or `./scripts/start-*.sh`, and before starting,
 killing, or restarting any GNOME Shell, nested and headless included.** It owns the reload path, the nested-session
-setup, and the pitfalls that cost hours when met blind. **Each shell start,
-kill, or restart needs the user's explicit consent for that specific run**
-(hard rule 1 there).
+setup, and the pitfalls that cost hours when met blind. **Hard rule 1 there
+says which shell starts, kills and restarts need the user's consent.**
 
 ### Analyze logs
 
