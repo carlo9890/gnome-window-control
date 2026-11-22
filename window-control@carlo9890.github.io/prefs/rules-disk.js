@@ -36,16 +36,46 @@ export function readText(file) {
     }
 }
 
-// Gio reports a failed open through a link as a link loop. A plain read-write
-// open follows the link, creates nothing and throws the real cause.
-function replaceThroughLink(file, bytes) {
+// The mode of `file`, or null when it does not exist. A plain read-write open
+// follows a link, creates nothing and changes nothing. It refuses a read-only
+// file, which a rename would replace, and names the real cause: Gio reports
+// any other failed open through a link as a link loop.
+function writableMode(file) {
     try {
-        file.replace_contents(bytes, null, false, Gio.FileCreateFlags.NONE, null);
+        file.open_readwrite(null).close(null);
     } catch (e) {
-        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
-            file.open_readwrite(null).close(null);
+        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+            return null;
         throw e;
     }
+    return file.query_info('unix::mode', Gio.FileQueryInfoFlags.NONE, null)
+        .get_attribute_uint32('unix::mode') & 0o7777;
+}
+
+// The path at the end of the links from `path`. It keeps each `..` for the
+// kernel to resolve: Gio and GLib collapse it without following a linked
+// folder, and the result can name another file.
+function linkEnd(path) {
+    while (GLib.file_test(path, GLib.FileTest.IS_SYMLINK)) {
+        const next = GLib.file_read_link(path);
+        path = GLib.path_is_absolute(next) ? next : `${GLib.path_get_dirname(path)}/${next}`;
+    }
+    return path;
+}
+
+// Writes a temporary file next to the file and renames it over the file, so a
+// write that fails partway, on a full disk for example, keeps the old text.
+function replaceFile(file, bytes) {
+    const mode = writableMode(file);
+    const path = linkEnd(file.get_path());
+    try {
+        GLib.file_set_contents_full(path, bytes, GLib.FileSetContentsFlags.CONSISTENT, mode ?? 0o666);
+    } catch (e) {
+        throw new GLib.Error(Gio.IOErrorEnum, Gio.io_error_from_file_error(e.code), e.message);
+    }
+    // The temporary file was created through the umask.
+    if (mode !== null)
+        GLib.chmod(path, mode);
 }
 
 // A write through a symlink changes its target and raises no event on the
@@ -66,13 +96,13 @@ export function writeText(file, text) {
     }
     const bytes = new TextEncoder().encode(text);
     if (!target) {
-        file.replace_contents(bytes, null, false, Gio.FileCreateFlags.NONE, null);
+        replaceFile(file, bytes);
         return;
     }
     const link = file.get_parent().get_child(`.${file.get_basename()}.link.${GLib.uuid_string_random()}`);
     link.make_symbolic_link(target, null);
     try {
-        replaceThroughLink(file, bytes);
+        replaceFile(file, bytes);
         link.move(file, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, null, null);
     } catch (e) {
         try {
