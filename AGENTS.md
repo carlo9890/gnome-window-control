@@ -65,8 +65,9 @@ action.
 ### Run the extension to reproduce a bug or verify a change
 
 **MUST read [docs/RUNNING.md](docs/RUNNING.md) before your first
-`./scripts/build.sh install`, `wctl` or `gdbus call` against the extension,
-`./scripts/debug-dbus.sh` or `./scripts/start-*.sh`, and before starting,
+`./scripts/build.sh install` or `install-zip`, `gnome-extensions`, `wctl` or
+`gdbus call` against the extension, `./scripts/debug-dbus.sh` or
+`./scripts/start-*.sh`, and before starting,
 killing, or restarting any GNOME Shell, nested and headless included.** It owns the reload path, the nested-session
 setup, and the pitfalls that cost hours when met blind. **Hard rule 1 there
 says which shell starts, kills and restarts need the user's consent.**
@@ -85,8 +86,8 @@ operation** — commit, branch, worktree, push, or opening a PR.
 ### Reviewing changes
 
 **MUST read [docs/REVIEWING.md](docs/REVIEWING.md) before you start a review
-skill, and before your first `gh pr view`, `gh pr diff` or `git diff` against a
-PR's base for a review.** It carries the quality rules a finished change is held to — the
+skill, and before your first `gh pr view`, `gh pr diff` or `git diff` read to
+review a PR or a local change.** It carries the quality rules a finished change is held to — the
 extensions.gnome.org review guidelines, the SPDX header, log levels and log
 content.
 
@@ -94,5 +95,6 @@ content.
 
 **MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release, and
 before editing `metadata.json`, the `version` in `cli/Cargo.toml`,
-`scripts/build.sh`, `scripts/release.sh`, `scripts/check-version.sh` or
-`install-wctl.sh`.**
+`scripts/build.sh`, `scripts/release.sh`, `scripts/check-version.sh`,
+`install-wctl.sh` or `.gitignore`, and before adding or removing a tracked file
+under `window-control@carlo9890.github.io/`.**

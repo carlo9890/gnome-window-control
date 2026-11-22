@@ -195,7 +195,8 @@ install_local() {
     glib-compile-schemas --strict "$target_dir/schemas"
 
     log_info "Installed to: $target_dir"
-    log_warn "Restart GNOME Shell and run: gnome-extensions enable $EXTENSION_UUID"
+    log_warn "Main session: restart GNOME Shell and run: gnome-extensions enable $EXTENSION_UUID"
+    log_warn "Nested or headless session: enable it as docs/RUNNING.md says"
 }
 
 # Install from built zip
@@ -209,7 +210,7 @@ install_zip() {
     
     log_info "Installing from zip..."
     gnome-extensions install "$zip_path" --force
-    log_info "Installed! Restart GNOME Shell and enable the extension."
+    log_info "Installed! Restart GNOME Shell and enable the extension (nested or headless: docs/RUNNING.md)."
 }
 
 # Uninstall
