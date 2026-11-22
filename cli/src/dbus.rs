@@ -34,8 +34,8 @@ const NO_SESSION_BUS: &str = "Run wctl from the user's graphical session, or set
 const ERROR_NOT_FOUND: &str = "org.gnome.Shell.Extensions.WindowControl.NotFound";
 const ERROR_REFUSED: &str = "org.gnome.Shell.Extensions.WindowControl.Refused";
 const ERROR_SETTLE_TIMEOUT: &str = "org.gnome.Shell.Extensions.WindowControl.Timeout";
-/// Raised on a pending WaitForWindow/WaitForGeometry when the extension is
-/// disabled; the shell is still on the bus, so this is "not running" by name.
+/// Raised on a pending WaitForWindow/WaitForGeometry, or on an ApplyRules that
+/// waits for the rules files, when the extension is disabled; the shell is still on the bus, so this is "not running" by name.
 const ERROR_DISABLED: &str = "org.gnome.Shell.Extensions.WindowControl.Disabled";
 const ERROR_UNKNOWN_METHOD: &str = "org.freedesktop.DBus.Error.UnknownMethod";
 /// The bus daemon's answer when nothing owns org.gnome.Shell.
