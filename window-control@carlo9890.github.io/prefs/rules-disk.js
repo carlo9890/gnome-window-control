@@ -67,23 +67,22 @@ function writeAndClose(stream, bytes, cancellable) {
 }
 
 // Gio writes in place when it cannot use a temporary file: for a link target,
-// a hard link or a read-only folder. A failed write then leaves the start of
-// `bytes` in a file whose etag has changed. Returns that etag, or null.
-function cutCopyEtag(file, bytes, oldEtag) {
+// a hard link or a read-only folder. The stream is then open on the file
+// itself. When that cannot be checked, the file may already be empty.
+function writesInPlace(stream, file) {
     try {
-        const [, now, etag] = file.load_contents(null);
-        const isCut = etag !== oldEtag && now.length < bytes.length &&
-            now.every((byte, index) => byte === bytes[index]);
-        return isCut ? etag : null;
+        const inode = info => info.get_attribute_uint64('unix::inode');
+        return inode(stream.query_info('unix::inode', null)) ===
+            inode(file.query_info('unix::inode', Gio.FileQueryInfoFlags.NONE, null));
     } catch {
-        return null;
+        return true;
     }
 }
 
-function writeBack(file, old, etag) {
+function writeBack(file, old) {
     try {
         const cancellable = new Gio.Cancellable();
-        const stream = file.replace(etag, false, Gio.FileCreateFlags.NONE, cancellable);
+        const stream = file.replace(null, false, Gio.FileCreateFlags.NONE, cancellable);
         writeAndClose(stream, old, cancellable);
         return true;
     } catch {
@@ -106,11 +105,11 @@ function replaceFile(file, bytes) {
             file.open_readwrite(null).close(null);
         throw e;
     }
+    const inPlace = old !== null && writesInPlace(stream, file);
     try {
         writeAndClose(stream, bytes, cancellable);
     } catch (e) {
-        const cutEtag = old === null ? null : cutCopyEtag(file, bytes, old.etag);
-        if (cutEtag !== null && !writeBack(file, old.bytes, cutEtag))
+        if (inPlace && !writeBack(file, old.bytes))
             throw new GLib.Error(Gio.IOErrorEnum, e.code, `${e.message}. The old text could not be written back`);
         throw e;
     }

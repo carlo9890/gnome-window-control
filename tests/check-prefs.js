@@ -280,8 +280,14 @@ GLib.log_set_writer_func((level, fields) => {
         import GLib from 'gi://GLib';
         import System from 'system';
         const { writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
-        const [path, other, otherPath] = System.programArgs;
-        if (other) {
+        const [path, other, otherPath, during] = System.programArgs;
+        if (during) {
+            const writeAll = Gio.OutputStream.prototype.write_all;
+            Gio.OutputStream.prototype.write_all = function (...args) {
+                GLib.file_set_contents(otherPath, other);
+                return writeAll.apply(this, args);
+            };
+        } else if (other) {
             const replace = Gio.File.prototype.replace;
             Gio.File.prototype.replace = function (...args) {
                 GLib.file_set_contents(otherPath, other);
@@ -294,9 +300,9 @@ GLib.log_set_writer_func((level, fields) => {
         } catch {
             print('failed');
         }`);
-    const saveLimited = (path, other = '', otherPath = path) => {
+    const saveLimited = (path, other = '', otherPath = path, during = '') => {
         const [, out] = GLib.spawn_sync(null,
-            ['bash', '-c', 'trap "" XFSZ; ulimit -f 8; exec gjs -m "$0" "$1" "$2" "$3"', script, path, other, otherPath],
+            ['bash', '-c', 'trap "" XFSZ; ulimit -f 8; exec gjs -m "$0" "$1" "$2" "$3" "$4"', script, path, other, otherPath, during],
             null, GLib.SpawnFlags.SEARCH_PATH, null);
         return new TextDecoder().decode(out).trim();
     };
@@ -314,9 +320,9 @@ GLib.log_set_writer_func((level, fields) => {
     check('a failed save keeps text another program wrote meanwhile',
         read(regular) === 'from another program', read(regular));
     GLib.file_set_contents(regular, 'old');
-    saveLimited(regular, ' ', regular);
-    check('a refused save keeps a change that is the start of the new text',
-        read(regular) === ' ', read(regular));
+    saveLimited(regular, 'n', regular, 'during');
+    check('a failed save keeps a change made during the write',
+        read(regular) === 'n', read(regular));
     GLib.file_set_contents(regular, 'n');
     check('a failed save of a longer text with the same start reports a failure',
         saveLimited(regular) === 'failed');
