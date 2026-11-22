@@ -12,6 +12,10 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── dbus-service.js        the D-Bus handlers (WindowControlService)
 ├── dbus-interface.js      the D-Bus interface XML
 ├── rules.js               auto-placement (WindowRules)
+├── rules-files.js         reads rules.json and the rules.d drop-ins
+├── overlay.js             overlay windows (WindowOverlays)
+├── keybindings.js         the shortcuts (WindowKeybindings)
+├── indicator.js           the top-bar icon
 ├── rules-format.js        the rules.json grammar; imports NOTHING
 ├── window-helpers.js      the helpers shared by the modules, and WindowPlacer
 ├── prefs.js, prefs/       the preferences window (its own process)

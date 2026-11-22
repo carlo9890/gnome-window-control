@@ -150,7 +150,8 @@ If the extension is not running the suites self-skip and the runner reports
 `NO ... TESTS EXECUTED` (a distinct SKIPPED state), never a false pass.
 On a skip, or a "No such method" from an older loaded build, ask the user to
 consent to a [headless shell](RUNNING.md#headless-session-no-window-on-the-real-screen)
-and run the suites there. Without consent, record the skip or the failure in the PR.
+and run the suites there, or use a throwaway VM (RUNNING.md hard rule 1). With
+neither, record the skip or the failure in the PR.
 
 `WCTL_TEST_SETTLE` sets the settle wait before asserting (default 0.5 s); a
 nested session needs `WCTL_TEST_SETTLE=1.5`. The multi-monitor cases skip unless
