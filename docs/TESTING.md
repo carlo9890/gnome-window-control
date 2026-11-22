@@ -243,5 +243,5 @@ the reload-and-run below tests the new code.
 
 Modifying JavaScript also requires `./scripts/build.sh validate` (see
 [CODING.md](CODING.md)) and a reload-and-run in a nested or headless shell or a
-VM guest (see [RUNNING.md](RUNNING.md)). Starting that shell needs the user's consent under
-RUNNING.md hard rule 1.
+VM guest (see [RUNNING.md](RUNNING.md)). RUNNING.md hard rule 1 says when that
+start needs the user's consent.

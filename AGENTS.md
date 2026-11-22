@@ -64,10 +64,10 @@ action.
 
 ### Run the extension to reproduce a bug or verify a change
 
-**MUST read [docs/RUNNING.md](docs/RUNNING.md) before your first
-`./scripts/build.sh install` or `install-zip`, `gnome-extensions`, `wctl` or
-`gdbus call` against the extension, `./scripts/debug-dbus.sh` or
-`./scripts/start-*.sh`, and before starting,
+**MUST read [docs/RUNNING.md](docs/RUNNING.md) before reloading or driving the
+extension by hand (`./scripts/build.sh install` or `install-zip`,
+`gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
+`./scripts/start-*.sh`), and before starting,
 killing, or restarting any GNOME Shell, nested and headless included.** It owns the reload path, the nested-session
 setup, and the pitfalls that cost hours when met blind. **Hard rule 1 there
 says which shell starts, kills and restarts need the user's consent.**
@@ -93,8 +93,8 @@ content.
 
 ### Release
 
-**MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release, and
-before editing `metadata.json`, the `version` in `cli/Cargo.toml`,
+**MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release or
+changing what the project ships, and before editing `metadata.json`, the `version` in `cli/Cargo.toml`,
 `scripts/build.sh`, `scripts/release.sh`, `scripts/check-version.sh`,
 `scripts/check-static.sh`, the `build:musl` task in `.mise.toml`,
 `install-wctl.sh` or `.gitignore`, and before adding or removing a tracked file
