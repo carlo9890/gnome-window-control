@@ -220,6 +220,51 @@ GLib.log_set_writer_func((level, fields) => {
         JSON.stringify(criticals.slice(criticalsBefore)));
 }
 
+// -- a failed save through a symlink names the real cause --------------------
+
+{
+    const config = `${SCRATCH}/causes`;
+    const real = `${SCRATCH}/causes-real`;
+    GLib.mkdir_with_parents(config, 0o755);
+    GLib.mkdir_with_parents(real, 0o755);
+    const file = Gio.File.new_for_path(`${config}/rules.json`);
+    const saveError = linkTarget => {
+        file.make_symbolic_link(linkTarget, null);
+        try {
+            writeText(file, 'new');
+            return null;
+        } catch (e) {
+            return e;
+        } finally {
+            GLib.unlink(file.get_path());
+        }
+    };
+    const failsWith = (error, code) => error?.matches(Gio.IOErrorEnum, code) === true;
+
+    check('a save to a target in a missing folder reports not found',
+        failsWith(saveError('../absent/rules.json'), Gio.IOErrorEnum.NOT_FOUND));
+    check('a save through a real link loop still reports the loop',
+        failsWith(saveError('rules.json'), Gio.IOErrorEnum.TOO_MANY_LINKS));
+
+    const target = `${real}/rules.json`;
+    GLib.file_set_contents(target, 'old');
+    GLib.chmod(target, 0o444);
+    // Root opens a read-only file for a write, so the case proves nothing there.
+    const W_OK = 2;
+    if (GLib.access(target, W_OK) !== 0) {
+        check('a save to a read-only target reports permission denied',
+            failsWith(saveError('../causes-real/rules.json'), Gio.IOErrorEnum.PERMISSION_DENIED));
+        const [, bytes] = GLib.file_get_contents(target);
+        check('a refused save leaves the read-only target as it was',
+            new TextDecoder().decode(bytes) === 'old');
+    } else {
+        print('SKIP  the read-only target case: this user writes to a read-only file');
+    }
+    const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
+    check('a failed save leaves no temporary link', entries.length === 0, JSON.stringify(entries));
+}
+
 // -- elementOffsets skips brackets and commas inside strings and nesting ------
 
 {
