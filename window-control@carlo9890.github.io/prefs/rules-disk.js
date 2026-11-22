@@ -56,6 +56,18 @@ function loadOld(file) {
     }
 }
 
+// When the check fails, the file may already be empty. A restore is then safe
+// on either kind of stream: a temporary file with the old text replaces the file.
+function isInPlace(stream, old) {
+    if (old === null)
+        return false;
+    try {
+        return inodeOf(stream.query_info('unix::inode', null)) === old.inode;
+    } catch {
+        return true;
+    }
+}
+
 // Through the open stream, so a file that another program has renamed over
 // this path in the meantime stays as it is.
 function restoreInPlace(stream, old) {
@@ -77,7 +89,7 @@ function restoreInPlace(stream, old) {
 //
 // Gio writes in place when it cannot use a temporary file: for a link target,
 // a hard link or a read-only folder. The stream is then open on the loaded
-// file, and a failed write has cut it. Otherwise a cancelled close drops the
+// file, and a failed write has cut it. Otherwise a cancelled close drops any
 // temporary file; replace_contents() would put it in place.
 function replaceFile(file, bytes) {
     const old = loadOld(file);
@@ -90,7 +102,7 @@ function replaceFile(file, bytes) {
             file.open_readwrite(null).close(null);
         throw e;
     }
-    const inPlace = old !== null && inodeOf(stream.query_info('unix::inode', null)) === old.inode;
+    const inPlace = isInPlace(stream, old);
     try {
         stream.write_all(bytes, cancellable);
         stream.close(cancellable);
