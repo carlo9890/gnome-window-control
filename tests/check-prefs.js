@@ -280,11 +280,11 @@ GLib.log_set_writer_func((level, fields) => {
         import GLib from 'gi://GLib';
         import System from 'system';
         const { writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
-        const [path, other] = System.programArgs;
+        const [path, other, otherPath] = System.programArgs;
         if (other) {
             const replace = Gio.File.prototype.replace;
             Gio.File.prototype.replace = function (...args) {
-                GLib.file_set_contents(path, other);
+                GLib.file_set_contents(otherPath, other);
                 return replace.apply(this, args);
             };
         }
@@ -294,9 +294,9 @@ GLib.log_set_writer_func((level, fields) => {
         } catch {
             print('failed');
         }`);
-    const saveLimited = (path, other = '') => {
+    const saveLimited = (path, other = '', otherPath = path) => {
         const [, out] = GLib.spawn_sync(null,
-            ['bash', '-c', 'trap "" XFSZ; ulimit -f 8; exec gjs -m "$0" "$1" "$2"', script, path, other],
+            ['bash', '-c', 'trap "" XFSZ; ulimit -f 8; exec gjs -m "$0" "$1" "$2" "$3"', script, path, other, otherPath],
             null, GLib.SpawnFlags.SEARCH_PATH, null);
         return new TextDecoder().decode(out).trim();
     };
@@ -324,6 +324,23 @@ GLib.log_set_writer_func((level, fields) => {
     check('a failed write through a link leaves no temporary file',
         names(folder).length === 1 && names(real).length === 1,
         JSON.stringify([names(folder), names(real)]));
+    saveLimited(regular, 'from another program', target);
+    check('a failed save through a link keeps text another program wrote meanwhile',
+        read(target) === 'from another program', read(target));
+
+    // A file that cannot be read could not be put back, so the save is refused.
+    GLib.file_set_contents(target, 'old');
+    GLib.chmod(target, 0o200);
+    const unreadable = GLib.access(target, 4) !== 0;
+    const refused = unreadable ? saveLimited(regular) : '';
+    GLib.chmod(target, 0o644);
+    if (unreadable) {
+        check('a save to a file it cannot read is refused', refused === 'failed', refused);
+        check('a refused save keeps the text of a file it cannot read', read(target) === 'old',
+            `${read(target).length} bytes`);
+    } else {
+        print('SKIP  the unreadable target case: this user reads a write-only file');
+    }
     GLib.unlink(regular);
 
     const hard = `${real}/hard.json`;
@@ -332,6 +349,27 @@ GLib.log_set_writer_func((level, fields) => {
     check('a save to a hard link that cannot finish reports a failure', saveLimited(regular) === 'failed');
     check('a failed write keeps the old text of a hard link',
         read(regular) === 'old' && read(hard) === 'old', `${read(hard).length} bytes`);
+
+    // Gio cannot make a temporary file here and writes in place.
+    const lockedDir = `${SCRATCH}/partial-locked`;
+    const locked = `${lockedDir}/rules.json`;
+    GLib.mkdir_with_parents(lockedDir, 0o755);
+    GLib.file_set_contents(locked, 'old');
+    GLib.chmod(lockedDir, 0o555);
+    let lockedResult = null;
+    try {
+        if (GLib.access(lockedDir, 2) !== 0)
+            lockedResult = saveLimited(locked);
+    } finally {
+        GLib.chmod(lockedDir, 0o755);
+    }
+    if (lockedResult !== null) {
+        check('a save in a read-only folder that cannot finish reports a failure', lockedResult === 'failed');
+        check('a failed write in a read-only folder keeps the old text', read(locked) === 'old',
+            `${read(locked).length} bytes`);
+    } else {
+        print('SKIP  the failed write in a read-only folder: this user writes to a read-only folder');
+    }
 }
 
 // -- a save keeps the file's mode, and follows every link ----------------------
@@ -385,9 +423,12 @@ GLib.log_set_writer_func((level, fields) => {
     GLib.chmod(lockedDir, 0o555);
     // Root writes to a read-only folder, so the case proves nothing there.
     const lockedFolder = GLib.access(lockedDir, 2) !== 0;
-    if (lockedFolder)
-        writeText(Gio.File.new_for_path(locked), 'new');
-    GLib.chmod(lockedDir, 0o755);
+    try {
+        if (lockedFolder)
+            writeText(Gio.File.new_for_path(locked), 'new');
+    } finally {
+        GLib.chmod(lockedDir, 0o755);
+    }
     if (lockedFolder)
         check('a writable file in a read-only folder saves', read(locked) === 'new', read(locked));
     else

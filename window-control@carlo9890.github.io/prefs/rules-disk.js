@@ -36,50 +36,25 @@ export function readText(file) {
     }
 }
 
+// The text and etag of `file`, or null when it does not exist. A file that
+// exists and cannot be read is refused: a failed save could not put it back.
 function loadOld(file) {
     try {
-        return file.load_contents(null)[1];
-    } catch {
-        return null;
-    }
-}
-
-// Gio writes a link target or a hard-linked file in place. Any other file gets
-// a temporary file, and a failed write leaves it untouched.
-function writesInPlace(file) {
-    const info = file.query_info('standard::is-symlink,unix::nlink',
-        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
-    return info.get_is_symlink() || info.get_attribute_uint32('unix::nlink') > 1;
-}
-
-function writeBack(file, old) {
-    try {
-        const stream = file.replace(null, false, Gio.FileCreateFlags.NONE, null);
-        stream.write_all(old, null);
-        stream.close(null);
-        return true;
-    } catch {
-        return false;
+        const [, bytes, etag] = file.load_contents(null);
+        return { bytes, etag };
+    } catch (e) {
+        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+            return null;
+        throw e;
     }
 }
 
 // Gio's replace keeps the owner, the group and a hard link. On a failed write,
 // replace_contents() still closes the stream, which puts the cut file in
-// place; a cancelled close drops it. Gio reports a failed open through a link
-// as a link loop: a plain read-write open creates nothing and throws the real
-// cause.
-function replaceFile(file, bytes) {
-    const old = loadOld(file);
-    const inPlace = old !== null && writesInPlace(file);
+// place; a cancelled close drops it.
+function writeBytes(file, bytes, etag) {
     const cancellable = new Gio.Cancellable();
-    let stream;
-    try {
-        stream = file.replace(null, false, Gio.FileCreateFlags.NONE, cancellable);
-    } catch (e) {
-        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
-            file.open_readwrite(null).close(null);
-        throw e;
-    }
+    const stream = file.replace(etag, false, Gio.FileCreateFlags.NONE, cancellable);
     try {
         stream.write_all(bytes, cancellable);
         stream.close(cancellable);
@@ -90,8 +65,39 @@ function replaceFile(file, bytes) {
         } catch {
             // The write error is the one the user needs.
         }
-        if (inPlace && !writeBack(file, old))
-            throw new GLib.Error(Gio.IOErrorEnum, e.code, `${e.message}. The old text could not be written back`);
+        throw e;
+    }
+}
+
+// Gio writes in place when it cannot use a temporary file: for a link target,
+// a hard link or a read-only folder. A failed write then leaves the start of
+// `bytes` in the file.
+function holdsCutCopy(file, bytes) {
+    try {
+        const [, now] = file.load_contents(null);
+        return now.length < bytes.length && now.every((byte, index) => byte === bytes[index]);
+    } catch {
+        return false;
+    }
+}
+
+// The etag makes Gio refuse a file that another program changed after the
+// load. Gio reports a failed open through a link as a link loop: a plain
+// read-write open creates nothing and throws the real cause.
+function replaceFile(file, bytes) {
+    const old = loadOld(file);
+    try {
+        writeBytes(file, bytes, old?.etag ?? null);
+    } catch (e) {
+        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
+            file.open_readwrite(null).close(null);
+        if (old !== null && holdsCutCopy(file, bytes)) {
+            try {
+                writeBytes(file, old.bytes, null);
+            } catch {
+                throw new GLib.Error(Gio.IOErrorEnum, e.code, `${e.message}. The old text could not be written back`);
+            }
+        }
         throw e;
     }
 }
