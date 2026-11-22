@@ -36,12 +36,19 @@ export function readText(file) {
     }
 }
 
-// The text and etag of `file`, or null when it does not exist. A file that
-// exists and cannot be read is refused: a failed save could not put it back.
+// A string, because a uint64 inode can lose precision as a JS number.
+function inodeOf(info) {
+    return info.get_attribute_as_string('unix::inode');
+}
+
+// The text, etag and inode of `file`, or null when it does not exist. A file
+// that exists and cannot be read is refused: a failed save could not put it
+// back.
 function loadOld(file) {
     try {
         const [, bytes, etag] = file.load_contents(null);
-        return { bytes, etag };
+        const inode = inodeOf(file.query_info('unix::inode', Gio.FileQueryInfoFlags.NONE, null));
+        return { bytes, etag, inode };
     } catch (e) {
         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
             return null;
@@ -49,41 +56,14 @@ function loadOld(file) {
     }
 }
 
-// On a failed write, replace_contents() still closes the stream, which puts
-// the cut file in place; a cancelled close drops it.
-function writeAndClose(stream, bytes, cancellable) {
+// Through the open stream, so a file that another program has renamed over
+// this path in the meantime stays as it is.
+function restoreInPlace(stream, old) {
     try {
-        stream.write_all(bytes, cancellable);
-        stream.close(cancellable);
-    } catch (e) {
-        cancellable.cancel();
-        try {
-            stream.close(cancellable);
-        } catch {
-            // The write error is the one the user needs.
-        }
-        throw e;
-    }
-}
-
-// Gio writes in place when it cannot use a temporary file: for a link target,
-// a hard link or a read-only folder. The stream is then open on the file
-// itself. When that cannot be checked, the file may already be empty.
-function writesInPlace(stream, file) {
-    try {
-        const inode = info => info.get_attribute_uint64('unix::inode');
-        return inode(stream.query_info('unix::inode', null)) ===
-            inode(file.query_info('unix::inode', Gio.FileQueryInfoFlags.NONE, null));
-    } catch {
-        return true;
-    }
-}
-
-function writeBack(file, old) {
-    try {
-        const cancellable = new Gio.Cancellable();
-        const stream = file.replace(null, false, Gio.FileCreateFlags.NONE, cancellable);
-        writeAndClose(stream, old, cancellable);
+        stream.seek(0, GLib.SeekType.SET, null);
+        stream.write_all(old, null);
+        stream.truncate(old.length, null);
+        stream.close(null);
         return true;
     } catch {
         return false;
@@ -94,6 +74,11 @@ function writeBack(file, old) {
 // refuse a file that another program changed after the load. Gio reports a
 // failed open through a link as a link loop: a plain read-write open creates
 // nothing and throws the real cause.
+//
+// Gio writes in place when it cannot use a temporary file: for a link target,
+// a hard link or a read-only folder. The stream is then open on the loaded
+// file, and a failed write has cut it. Otherwise a cancelled close drops the
+// temporary file; replace_contents() would put it in place.
 function replaceFile(file, bytes) {
     const old = loadOld(file);
     const cancellable = new Gio.Cancellable();
@@ -105,11 +90,20 @@ function replaceFile(file, bytes) {
             file.open_readwrite(null).close(null);
         throw e;
     }
-    const inPlace = old !== null && writesInPlace(stream, file);
+    const inPlace = old !== null && inodeOf(stream.query_info('unix::inode', null)) === old.inode;
     try {
-        writeAndClose(stream, bytes, cancellable);
+        stream.write_all(bytes, cancellable);
+        stream.close(cancellable);
     } catch (e) {
-        if (inPlace && !writeBack(file, old.bytes))
+        if (inPlace && restoreInPlace(stream, old.bytes))
+            throw e;
+        cancellable.cancel();
+        try {
+            stream.close(cancellable);
+        } catch {
+            // The write error is the one the user needs.
+        }
+        if (inPlace)
             throw new GLib.Error(Gio.IOErrorEnum, e.code, `${e.message}. The old text could not be written back`);
         throw e;
     }

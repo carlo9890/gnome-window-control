@@ -283,8 +283,11 @@ GLib.log_set_writer_func((level, fields) => {
         const [path, other, otherPath, during] = System.programArgs;
         if (during) {
             const writeAll = Gio.OutputStream.prototype.write_all;
+            let fired = false;
             Gio.OutputStream.prototype.write_all = function (...args) {
-                GLib.file_set_contents(otherPath, other);
+                if (!fired)
+                    GLib.file_set_contents(otherPath, other);
+                fired = true;
                 return writeAll.apply(this, args);
             };
         } else if (other) {
@@ -341,6 +344,11 @@ GLib.log_set_writer_func((level, fields) => {
         JSON.stringify([names(folder), names(real)]));
     saveLimited(regular, 'from another program', target);
     check('a failed save through a link keeps text another program wrote meanwhile',
+        read(target) === 'from another program', read(target));
+
+    GLib.file_set_contents(target, 'old');
+    saveLimited(regular, 'from another program', target, 'during');
+    check('a failed save through a link keeps a file renamed over the target during the write',
         read(target) === 'from another program', read(target));
 
     // A file that cannot be read could not be put back, so the save is refused.
