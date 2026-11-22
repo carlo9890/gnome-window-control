@@ -36,12 +36,50 @@ export function readText(file) {
     }
 }
 
+function loadOld(file) {
+    try {
+        return file.load_contents(null)[1];
+    } catch {
+        return null;
+    }
+}
+
+// Gio writes a link target or a hard-linked file in place. Any other file gets
+// a temporary file, and a failed write leaves it untouched.
+function writesInPlace(file) {
+    const info = file.query_info('standard::is-symlink,unix::nlink',
+        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
+    return info.get_is_symlink() || info.get_attribute_uint32('unix::nlink') > 1;
+}
+
+function writeBack(file, old) {
+    try {
+        const stream = file.replace(null, false, Gio.FileCreateFlags.NONE, null);
+        stream.write_all(old, null);
+        stream.close(null);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 // Gio's replace keeps the owner, the group and a hard link. On a failed write,
 // replace_contents() still closes the stream, which puts the cut file in
-// place; a cancelled close drops it.
-function writeBytes(file, bytes) {
+// place; a cancelled close drops it. Gio reports a failed open through a link
+// as a link loop: a plain read-write open creates nothing and throws the real
+// cause.
+function replaceFile(file, bytes) {
+    const old = loadOld(file);
+    const inPlace = old !== null && writesInPlace(file);
     const cancellable = new Gio.Cancellable();
-    const stream = file.replace(null, false, Gio.FileCreateFlags.NONE, cancellable);
+    let stream;
+    try {
+        stream = file.replace(null, false, Gio.FileCreateFlags.NONE, cancellable);
+    } catch (e) {
+        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
+            file.open_readwrite(null).close(null);
+        throw e;
+    }
     try {
         stream.write_all(bytes, cancellable);
         stream.close(cancellable);
@@ -52,41 +90,8 @@ function writeBytes(file, bytes) {
         } catch {
             // The write error is the one the user needs.
         }
-        throw e;
-    }
-}
-
-// Gio writes a link target or a hard-linked file in place, so a failed write
-// can leave it cut.
-function restore(file, old) {
-    try {
-        const [, now] = file.load_contents(null);
-        if (!new GLib.Bytes(now).equal(new GLib.Bytes(old)))
-            writeBytes(file, old);
-    } catch {
-        // The save error is the one the user needs.
-    }
-}
-
-function loadOld(file) {
-    try {
-        return file.load_contents(null)[1];
-    } catch {
-        return null;
-    }
-}
-
-// Gio reports a failed open through a link as a link loop. A plain read-write
-// open follows the link, creates nothing and throws the real cause.
-function replaceFile(file, bytes) {
-    const old = loadOld(file);
-    try {
-        writeBytes(file, bytes);
-    } catch (e) {
-        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
-            file.open_readwrite(null).close(null);
-        if (old !== null)
-            restore(file, old);
+        if (inPlace && !writeBack(file, old))
+            throw new GLib.Error(Gio.IOErrorEnum, e.code, `${e.message}. The old text could not be written back`);
         throw e;
     }
 }

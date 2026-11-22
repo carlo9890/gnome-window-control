@@ -277,17 +277,26 @@ GLib.log_set_writer_func((level, fields) => {
     const script = `${SCRATCH}/save-limited.js`;
     GLib.file_set_contents(script, `
         import Gio from 'gi://Gio';
+        import GLib from 'gi://GLib';
         import System from 'system';
-        const { writeText } = await import('${GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null)}');
+        const { writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
+        const [path, other] = System.programArgs;
+        if (other) {
+            const replace = Gio.File.prototype.replace;
+            Gio.File.prototype.replace = function (...args) {
+                GLib.file_set_contents(path, other);
+                return replace.apply(this, args);
+            };
+        }
         try {
-            writeText(Gio.File.new_for_path(System.programArgs[0]), 'n'.repeat(65536));
+            writeText(Gio.File.new_for_path(path), 'n'.repeat(65536));
             print('saved');
         } catch {
             print('failed');
         }`);
-    const saveLimited = path => {
+    const saveLimited = (path, other = '') => {
         const [, out] = GLib.spawn_sync(null,
-            ['bash', '-c', 'trap "" XFSZ; ulimit -f 8; exec gjs -m "$0" "$1"', script, path],
+            ['bash', '-c', 'trap "" XFSZ; ulimit -f 8; exec gjs -m "$0" "$1" "$2"', script, path, other],
             null, GLib.SpawnFlags.SEARCH_PATH, null);
         return new TextDecoder().decode(out).trim();
     };
@@ -301,6 +310,9 @@ GLib.log_set_writer_func((level, fields) => {
     check('a failed write keeps the old text of a regular file', read(regular) === 'old',
         `${read(regular).length} bytes`);
     check('a failed write leaves no temporary file', names(folder).length === 1, JSON.stringify(names(folder)));
+    saveLimited(regular, 'from another program');
+    check('a failed save keeps text another program wrote meanwhile',
+        read(regular) === 'from another program', read(regular));
     GLib.unlink(regular);
 
     const target = `${real}/rules.json`;
@@ -357,7 +369,7 @@ GLib.log_set_writer_func((level, fields) => {
         Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
     check('a save through a chain of links keeps each link', isLink(first) && isLink(middle));
 
-    // A hard link stays one file, and a failed write restores it.
+    // A hard link stays one file.
     const shared = `${folder}/real/shared.json`;
     const other = `${folder}/real/other.json`;
     GLib.file_set_contents(shared, 'old');
@@ -371,9 +383,15 @@ GLib.log_set_writer_func((level, fields) => {
     const locked = `${lockedDir}/rules.json`;
     GLib.file_set_contents(locked, 'old');
     GLib.chmod(lockedDir, 0o555);
-    writeText(Gio.File.new_for_path(locked), 'new');
+    // Root writes to a read-only folder, so the case proves nothing there.
+    const lockedFolder = GLib.access(lockedDir, 2) !== 0;
+    if (lockedFolder)
+        writeText(Gio.File.new_for_path(locked), 'new');
     GLib.chmod(lockedDir, 0o755);
-    check('a writable file in a read-only folder saves', read(locked) === 'new', read(locked));
+    if (lockedFolder)
+        check('a writable file in a read-only folder saves', read(locked) === 'new', read(locked));
+    else
+        print('SKIP  the writable file in a read-only folder: this user writes to a read-only folder');
 
     // A link whose name is not UTF-8 is followed.
     const rawDir = GLib.shell_quote(`${folder}/config`);
