@@ -265,6 +265,213 @@ GLib.log_set_writer_func((level, fields) => {
     check('a failed save leaves no temporary link', entries.length === 0, JSON.stringify(entries));
 }
 
+// -- a write that fails partway leaves the old text ----------------------------
+
+{
+    // A file-size limit makes write() fail partway, as a full disk does, and
+    // needs no privileges. The save runs in a child, which the limit binds.
+    const folder = `${SCRATCH}/partial`;
+    const real = `${SCRATCH}/partial-real`;
+    GLib.mkdir_with_parents(folder, 0o755);
+    GLib.mkdir_with_parents(real, 0o755);
+    const script = `${SCRATCH}/save-limited.js`;
+    GLib.file_set_contents(script, `
+        import Gio from 'gi://Gio';
+        import GLib from 'gi://GLib';
+        import System from 'system';
+        const { writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
+        const [path, other, otherPath, during] = System.programArgs;
+        if (during) {
+            const writeAll = Gio.OutputStream.prototype.write_all;
+            let fired = false;
+            Gio.OutputStream.prototype.write_all = function (...args) {
+                if (!fired)
+                    GLib.file_set_contents(otherPath, other);
+                fired = true;
+                return writeAll.apply(this, args);
+            };
+        } else if (other) {
+            const replace = Gio.File.prototype.replace;
+            Gio.File.prototype.replace = function (...args) {
+                GLib.file_set_contents(otherPath, other);
+                return replace.apply(this, args);
+            };
+        }
+        try {
+            writeText(Gio.File.new_for_path(path), 'n'.repeat(65536));
+            print('saved');
+        } catch {
+            print('failed');
+        }`);
+    const saveLimited = (path, other = '', otherPath = path, during = '') => {
+        const [, out] = GLib.spawn_sync(null,
+            ['bash', '-c', 'trap "" XFSZ; ulimit -f 8; exec gjs -m "$0" "$1" "$2" "$3" "$4"', script, path, other, otherPath, during],
+            null, GLib.SpawnFlags.SEARCH_PATH, null);
+        return new TextDecoder().decode(out).trim();
+    };
+    const read = path => new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+    const names = dir => [...Gio.File.new_for_path(dir).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name()).sort();
+
+    const regular = `${folder}/rules.json`;
+    GLib.file_set_contents(regular, 'old');
+    check('a save that cannot finish reports a failure', saveLimited(regular) === 'failed');
+    check('a failed write keeps the old text of a regular file', read(regular) === 'old',
+        `${read(regular).length} bytes`);
+    check('a failed write leaves no temporary file', names(folder).length === 1, JSON.stringify(names(folder)));
+    saveLimited(regular, 'from another program');
+    check('a failed save keeps text another program wrote meanwhile',
+        read(regular) === 'from another program', read(regular));
+    GLib.file_set_contents(regular, 'old');
+    saveLimited(regular, 'n', regular, 'during');
+    check('a failed save keeps a change made during the write',
+        read(regular) === 'n', read(regular));
+    GLib.file_set_contents(regular, 'n');
+    check('a failed save of a longer text with the same start reports a failure',
+        saveLimited(regular) === 'failed');
+    check('a failed save leaves an old text that is the start of the new text',
+        read(regular) === 'n', `${read(regular).length} bytes`);
+    GLib.unlink(regular);
+
+    const target = `${real}/rules.json`;
+    GLib.file_set_contents(target, 'old');
+    Gio.File.new_for_path(regular).make_symbolic_link('../partial-real/rules.json', null);
+    check('a save through a link that cannot finish reports a failure', saveLimited(regular) === 'failed');
+    check('a failed write keeps the old text of a link target', read(target) === 'old',
+        `${read(target).length} bytes`);
+    check('a failed write through a link leaves no temporary file',
+        names(folder).length === 1 && names(real).length === 1,
+        JSON.stringify([names(folder), names(real)]));
+    saveLimited(regular, 'from another program', target);
+    check('a failed save through a link keeps text another program wrote meanwhile',
+        read(target) === 'from another program', read(target));
+
+    GLib.file_set_contents(target, 'old');
+    saveLimited(regular, 'from another program', target, 'during');
+    check('a failed save through a link keeps a file renamed over the target during the write',
+        read(target) === 'from another program', read(target));
+
+    // A file that cannot be read could not be put back, so the save is refused.
+    GLib.file_set_contents(target, 'old');
+    GLib.chmod(target, 0o200);
+    const unreadable = GLib.access(target, 4) !== 0;
+    const refused = unreadable ? saveLimited(regular) : '';
+    GLib.chmod(target, 0o644);
+    if (unreadable) {
+        check('a save to a file it cannot read is refused', refused === 'failed', refused);
+        check('a refused save keeps the text of a file it cannot read', read(target) === 'old',
+            `${read(target).length} bytes`);
+    } else {
+        print('SKIP  the unreadable target case: this user reads a write-only file');
+    }
+    GLib.unlink(regular);
+
+    const hard = `${real}/hard.json`;
+    GLib.file_set_contents(regular, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(regular)} ${GLib.shell_quote(hard)}`);
+    check('a save to a hard link that cannot finish reports a failure', saveLimited(regular) === 'failed');
+    check('a failed write keeps the old text of a hard link',
+        read(regular) === 'old' && read(hard) === 'old', `${read(hard).length} bytes`);
+
+    // Gio cannot make a temporary file here and writes in place.
+    const lockedDir = `${SCRATCH}/partial-locked`;
+    const locked = `${lockedDir}/rules.json`;
+    GLib.mkdir_with_parents(lockedDir, 0o755);
+    GLib.file_set_contents(locked, 'old');
+    GLib.chmod(lockedDir, 0o555);
+    let lockedResult = null;
+    try {
+        if (GLib.access(lockedDir, 2) !== 0)
+            lockedResult = saveLimited(locked);
+    } finally {
+        GLib.chmod(lockedDir, 0o755);
+    }
+    if (lockedResult !== null) {
+        check('a save in a read-only folder that cannot finish reports a failure', lockedResult === 'failed');
+        check('a failed write in a read-only folder keeps the old text', read(locked) === 'old',
+            `${read(locked).length} bytes`);
+    } else {
+        print('SKIP  the failed write in a read-only folder: this user writes to a read-only folder');
+    }
+}
+
+// -- a save keeps the file's mode, and follows every link ----------------------
+
+{
+    const folder = `${SCRATCH}/modes`;
+    GLib.mkdir_with_parents(`${folder}/real/deep`, 0o755);
+    GLib.mkdir_with_parents(`${folder}/config`, 0o755);
+    const read = path => new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+    const modeOf = path => Gio.File.new_for_path(path).query_info('unix::mode',
+        Gio.FileQueryInfoFlags.NONE, null).get_attribute_uint32('unix::mode') & 0o7777;
+
+    const plain = `${folder}/config/plain.json`;
+    GLib.file_set_contents(plain, 'old');
+    for (const mode of [0o600, 0o664]) {
+        GLib.chmod(plain, mode);
+        writeText(Gio.File.new_for_path(plain), 'new');
+        check(`a save keeps mode ${mode.toString(8)}`, modeOf(plain) === mode, modeOf(plain).toString(8));
+    }
+    writeText(Gio.File.new_for_path(plain), '');
+    check('a save can write an empty text', read(plain) === '');
+
+    // `..` after a linked folder is the parent of the real folder. A chain of
+    // links must end at the file, and each link must stay a link.
+    const end = `${folder}/real/rules.json`;
+    GLib.file_set_contents(end, 'old');
+    Gio.File.new_for_path(`${folder}/config/deep`).make_symbolic_link('../real/deep', null);
+    const middle = Gio.File.new_for_path(`${folder}/config/middle.json`);
+    middle.make_symbolic_link('deep/../rules.json', null);
+    const first = Gio.File.new_for_path(`${folder}/config/rules.json`);
+    first.make_symbolic_link('middle.json', null);
+    writeText(first, 'new');
+    check('a save through a chain of links writes the last target', read(end) === 'new', read(end));
+    const isLink = file => file.query_info('standard::is-symlink',
+        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
+    check('a save through a chain of links keeps each link', isLink(first) && isLink(middle));
+
+    // A hard link stays one file.
+    const shared = `${folder}/real/shared.json`;
+    const other = `${folder}/real/other.json`;
+    GLib.file_set_contents(shared, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(shared)} ${GLib.shell_quote(other)}`);
+    writeText(Gio.File.new_for_path(shared), 'new');
+    check('a save keeps a hard link', read(other) === 'new', read(other));
+
+    // A writable file in a read-only folder still saves.
+    const lockedDir = `${folder}/locked`;
+    GLib.mkdir_with_parents(lockedDir, 0o755);
+    const locked = `${lockedDir}/rules.json`;
+    GLib.file_set_contents(locked, 'old');
+    GLib.chmod(lockedDir, 0o555);
+    // Root writes to a read-only folder, so the case proves nothing there.
+    const lockedFolder = GLib.access(lockedDir, 2) !== 0;
+    try {
+        if (lockedFolder)
+            writeText(Gio.File.new_for_path(locked), 'new');
+    } finally {
+        GLib.chmod(lockedDir, 0o755);
+    }
+    if (lockedFolder)
+        check('a writable file in a read-only folder saves', read(locked) === 'new', read(locked));
+    else
+        print('SKIP  the writable file in a read-only folder: this user writes to a read-only folder');
+
+    // A link whose name is not UTF-8 is followed.
+    const rawDir = GLib.shell_quote(`${folder}/config`);
+    GLib.spawn_command_line_sync(`bash -c "printf old > ${rawDir}/$'bad\\377.json'; ln -s $'bad\\377.json' ${rawDir}/raw-middle.json; ln -s raw-middle.json ${rawDir}/raw.json"`);
+    writeText(Gio.File.new_for_path(`${folder}/config/raw.json`), 'new');
+    check('a save follows a link to a name that is not UTF-8',
+        read(`${folder}/config/raw-middle.json`) === 'new');
+
+    // A link without a target names the file to create.
+    const dangling = Gio.File.new_for_path(`${folder}/config/dangling.json`);
+    dangling.make_symbolic_link('../real/created.json', null);
+    writeText(dangling, 'made');
+    check('a save through a link without a target creates it',
+        read(`${folder}/real/created.json`) === 'made' && isLink(dangling));
+}
+
 // -- elementOffsets skips brackets and commas inside strings and nesting ------
 
 {

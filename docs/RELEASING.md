@@ -45,8 +45,8 @@ commit.
 5. On the merged `main` commit, run every suite the "Before release" row of
    [TESTING.md](TESTING.md#minimum-checks-before-a-pr) requires, the
    modification suite included, against that commit's extension in a headless
-   shell or a VM guest ([RUNNING.md](RUNNING.md); starting a shell needs the
-   user's consent). Never run them on the real session: it holds older code,
+   shell or a VM guest ([RUNNING.md](RUNNING.md), hard rule 1 for consent).
+   Never run them on the real session: it holds older code,
    and the keyboard-shortcut suite presses keys into it. Do not tag until all
    of them pass.
 6. On the same commit: `git tag vN && git push --tags`.

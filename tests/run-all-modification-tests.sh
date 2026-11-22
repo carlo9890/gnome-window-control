@@ -98,7 +98,7 @@ if [[ $TOTAL_FAILED -gt 0 || $SCRIPTS_FAILED -gt 0 ]]; then
     echo -e "\n${RED}FAILED${RESET}"
     exit 1
 elif [[ $SCRIPTS_WITH_TESTS -eq 0 ]]; then
-    echo -e "\n${YELLOW}NO MODIFICATION TESTS EXECUTED${RESET} - is the extension enabled? (gnome-extensions enable window-control@carlo9890.github.io)"
+    echo -e "\n${YELLOW}NO MODIFICATION TESTS EXECUTED${RESET} - is the extension enabled in a headless shell or a VM guest? (docs/RUNNING.md)"
     exit 0
 else
     echo -e "\n${GREEN}ALL MODIFICATION TESTS PASSED${RESET}"

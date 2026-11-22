@@ -14,6 +14,8 @@ These exist because of a real incident, recorded at the end of this file.
    consent for that specific run.** A nested shell counts. "Verify the change
    in a running shell" is not consent; ask, name the exact command, and wait.
    One approval covers one start. A second start needs a second approval.
+   The one exception is a throwaway VM made for the current task. A guest
+   that is kept needs consent for each run, its reboot included.
 2. **Never `pkill`/`killall` a shell.** Record the PID when you start a nested
    shell and stop that PID only, with a plain `kill <pid>`.
 3. **Log every nested run to a new file** (for example a timestamped name).
@@ -119,8 +121,8 @@ All observed on GNOME 46:
 - **Clients are slow under software rendering.** kitty takes 1-6 s to show its
   first frame in a nested session, and a window that exists but is not yet
   shown ignores geometry requests (mutter's initial placement overrides them).
-  Use `wctl wait` rather than polling `wctl list`. Run the modification suite
-  with the nested settle value from [TESTING.md](TESTING.md).
+  Use `wctl wait` rather than polling `wctl list`. Run
+  `tests/test-modifications.sh` with the nested settle value from [TESTING.md](TESTING.md).
 
 - **A second monitor can be faked:**
   `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 ./scripts/start-nested.sh`
@@ -265,9 +267,9 @@ windows by id only: no title and no WM class.
 
 Re-run the affected command against a live window and confirm the observed
 geometry/state, e.g. after a `tile`/`place`/`move`, read `$W info <ID> --json`
-and compare `frame_rect`. For a full sweep, run the modification suite
-([TESTING.md](TESTING.md)) — it spawns its own window and asserts geometry within
-a tolerance.
+and compare `frame_rect`. For a full sweep, run the modification tests the way
+[TESTING.md](TESTING.md#query-and-modification-tests) says for your session. They spawn their own window and assert geometry within a
+tolerance.
 
 ## Incident 2026-09-11: nested shell start logged the user out
 

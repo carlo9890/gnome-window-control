@@ -54,17 +54,14 @@ If it fails, the code has a syntax error and must not be committed.
   the shared `_actOnWindow(windowId, label, action)` helper.
 - Every frame request (a position or a size) for a shown window, from a D-Bus
   geometry method, a rule or a shortcut, goes through `WindowPlacer.place`
-  (`window-helpers.js`), so a request made while a restore is pending does
-  not land under the restored size. Three kinds stay outside it: a move to a
-  monitor (`MoveToMonitor`, a rule's `monitor`), which moves at once through
-  `moveToMonitor`: it drops a pending request whose target monitor (the
-  third argument of `place`) is another one, and keeps the wait for the
-  restore, so an older request cannot put the window back and a newer one
-  still waits; the maximize and fullscreen methods, which set
-  a state; and the initial configuration (`_preplace` in `rules.js`), which
-  must set the frame inside the `configure` emission. A request that moves and
-  resizes calls `moveResizeFrame`: as a user operation, mutter would keep a
-  window whose minimum size is above the rectangle at its old place.
+  (`window-helpers.js`), and a request that moves and resizes calls
+  `moveResizeFrame`. A request that can change monitor passes its target monitor
+  as the third argument of `place`. Their comments say why. Three kinds stay
+  outside:
+  - a move to a monitor goes through `moveToMonitor`, which keeps the wait for
+    a pending restore, so a newer request still waits;
+  - the maximize and fullscreen methods set a state;
+  - `_preplace` in `rules.js` must set the frame inside the `configure` emission.
 - `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
   an upload that does not ([REVIEWING.md](REVIEWING.md#extensionsgnomeorg-review)).
   That covers every signal handler, GLib source, bus-name watch, file monitor,

@@ -277,7 +277,7 @@ check_extension() {
 require_extension() {
     if ! check_extension; then
         echo -e "${YELLOW}SKIP${RESET}: Window Control extension is not running"
-        echo "Enable the extension with: gnome-extensions enable window-control@carlo9890.github.io"
+        echo "Enable the extension in the session under test (docs/RUNNING.md)"
         exit 0
     fi
 }

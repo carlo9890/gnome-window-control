@@ -8,49 +8,42 @@ Shell 45-50.
 
 ```
 window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
-├── extension.js           enable()/disable(): starts and stops the three parts below and the WindowPlacer they share
-├── dbus-service.js        D-Bus service + method handlers (WindowControlService)
-├── dbus-interface.js      D-Bus interface XML (imported by dbus-service.js)
-├── rules.js               WindowRules: rules.json and rules.d auto-placement (no D-Bus)
-├── rules-files.js         reads rules.json and the rules.d drop-ins, asynchronously (owned by WindowRules)
-├── overlay.js             WindowOverlays: what an overlay rule does while a window is one (owned by WindowRules)
-├── rules-format.js        the rules.json grammar; imports NOTHING (see below)
-├── keybindings.js         WindowKeybindings: the tile and apply-rules shortcuts (no D-Bus)
-├── indicator.js           the optional top-bar icon and its menu
-├── prefs.js               the preferences window (its own process, GTK4 + libadwaita)
-├── prefs/                 the modules only prefs.js loads: the Shortcuts and Rules pages
-├── schemas/               the GSettings schema: the shortcuts and the top-bar icon switch
-├── window-helpers.js      the GNOME 49 maximize API, the quiet minimize, the workarea lookup, the unmaximize wait and the WindowPlacer, shared by the modules above
-├── metadata.json          extension metadata (uuid, shell-version, url, version)
+├── extension.js           enable()/disable()
+├── dbus-service.js        the D-Bus handlers (WindowControlService)
+├── dbus-interface.js      the D-Bus interface XML
+├── rules.js               auto-placement (WindowRules)
+├── rules-files.js         reads rules.json and the rules.d drop-ins
+├── overlay.js             overlay windows (WindowOverlays)
+├── keybindings.js         the shortcuts (WindowKeybindings)
+├── indicator.js           the top-bar icon
+├── rules-format.js        the rules.json grammar; imports NOTHING
+├── window-helpers.js      the helpers shared by the modules, and WindowPlacer
+├── prefs.js, prefs/       the preferences window (its own process)
+├── schemas/               the GSettings schema
+├── metadata.json          uuid, shell-version, url, version
 ├── LICENSE                copy of the top-level LICENSE, shipped in the zip
-└── README.md              packaged docs (shipped inside the release zip)
+└── README.md              packaged docs, shipped in the zip
 cli/                       wctl, the CLI (Rust, zbus)
-├── Cargo.toml             crate manifest
-├── src/main.rs            argument dispatch, command inventory, help/version
-├── src/dbus.rs            the D-Bus client (lazy session connection)
-├── src/selector.rs        the <WINDOW> selector and the list filters
-├── src/geometry.rs        place tokens, tile grid, centring
+├── src/main.rs            argument dispatch, command inventory
+├── src/dbus.rs            the D-Bus client
 ├── src/rules.rs           the rules.json grammar, the Rust half of the pair
-├── src/help.rs            usage and help text (a frozen contract)
 ├── src/commands/          one module per command group
-├── completions/           hand-written bash and zsh completions (embedded)
-└── tests/cli.rs           argument-guard tests, run against the real binary
-scripts/                   build.sh, release.sh, check-version.sh, check-static.sh,
-                           start-nested.sh, start-headless.sh, debug-dbus.sh
+├── completions/           hand-written bash and zsh completions
+└── tests/cli.rs           argument-guard tests
+scripts/                   build, release, version checks, test shells
 tests/                     test suites (see docs/TESTING.md)
-├── check-rules-format.js  headless gjs check of the rules.json grammar
-├── check-prefs.js         headless gjs check of the prefs shortcut list, rules validation and rules file access
-├── check-extension-headless.js  the extension against fake windows (needs the mutter typelib)
-├── check-helper.js        the root, check() and report() both checks share (imports only gi://GLib)
 └── vectors/               shared test vectors read by GJS and Rust alike
 docs/                      developer topic docs (this directory)
-├── specs/                 normative format specs (RULES-JSON.md)
-└── images/                the README image and the listing icon, written by generate.py
+├── decisions/             the design decisions in force
+├── specs/                 normative format specs
+└── images/                the README image and the listing icon
 .github/workflows/         CI (build.yml)
 dist/                      build output (generated zips)
 install-wctl.sh            wctl installer
 README.md                  user docs; the D-Bus method table
 ```
+
+Each module's header comment says what it holds.
 
 ## Architecture & key concepts
 
