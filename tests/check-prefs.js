@@ -313,6 +313,15 @@ GLib.log_set_writer_func((level, fields) => {
     saveLimited(regular, 'from another program');
     check('a failed save keeps text another program wrote meanwhile',
         read(regular) === 'from another program', read(regular));
+    GLib.file_set_contents(regular, 'old');
+    saveLimited(regular, ' ', regular);
+    check('a refused save keeps a change that is the start of the new text',
+        read(regular) === ' ', read(regular));
+    GLib.file_set_contents(regular, 'n');
+    check('a failed save of a longer text with the same start reports a failure',
+        saveLimited(regular) === 'failed');
+    check('a failed save leaves an old text that is the start of the new text',
+        read(regular) === 'n', `${read(regular).length} bytes`);
     GLib.unlink(regular);
 
     const target = `${real}/rules.json`;

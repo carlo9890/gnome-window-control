@@ -49,12 +49,9 @@ function loadOld(file) {
     }
 }
 
-// Gio's replace keeps the owner, the group and a hard link. On a failed write,
-// replace_contents() still closes the stream, which puts the cut file in
-// place; a cancelled close drops it.
-function writeBytes(file, bytes, etag) {
-    const cancellable = new Gio.Cancellable();
-    const stream = file.replace(etag, false, Gio.FileCreateFlags.NONE, cancellable);
+// On a failed write, replace_contents() still closes the stream, which puts
+// the cut file in place; a cancelled close drops it.
+function writeAndClose(stream, bytes, cancellable) {
     try {
         stream.write_all(bytes, cancellable);
         stream.close(cancellable);
@@ -71,33 +68,50 @@ function writeBytes(file, bytes, etag) {
 
 // Gio writes in place when it cannot use a temporary file: for a link target,
 // a hard link or a read-only folder. A failed write then leaves the start of
-// `bytes` in the file.
-function holdsCutCopy(file, bytes) {
+// `bytes` in a file whose etag has changed. Returns that etag, or null.
+function cutCopyEtag(file, bytes, oldEtag) {
     try {
-        const [, now] = file.load_contents(null);
-        return now.length < bytes.length && now.every((byte, index) => byte === bytes[index]);
+        const [, now, etag] = file.load_contents(null);
+        const isCut = etag !== oldEtag && now.length < bytes.length &&
+            now.every((byte, index) => byte === bytes[index]);
+        return isCut ? etag : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeBack(file, old, etag) {
+    try {
+        const cancellable = new Gio.Cancellable();
+        const stream = file.replace(etag, false, Gio.FileCreateFlags.NONE, cancellable);
+        writeAndClose(stream, old, cancellable);
+        return true;
     } catch {
         return false;
     }
 }
 
-// The etag makes Gio refuse a file that another program changed after the
-// load. Gio reports a failed open through a link as a link loop: a plain
-// read-write open creates nothing and throws the real cause.
+// Gio's replace keeps the owner, the group and a hard link. The etag makes it
+// refuse a file that another program changed after the load. Gio reports a
+// failed open through a link as a link loop: a plain read-write open creates
+// nothing and throws the real cause.
 function replaceFile(file, bytes) {
     const old = loadOld(file);
+    const cancellable = new Gio.Cancellable();
+    let stream;
     try {
-        writeBytes(file, bytes, old?.etag ?? null);
+        stream = file.replace(old?.etag ?? null, false, Gio.FileCreateFlags.NONE, cancellable);
     } catch (e) {
         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
             file.open_readwrite(null).close(null);
-        if (old !== null && holdsCutCopy(file, bytes)) {
-            try {
-                writeBytes(file, old.bytes, null);
-            } catch {
-                throw new GLib.Error(Gio.IOErrorEnum, e.code, `${e.message}. The old text could not be written back`);
-            }
-        }
+        throw e;
+    }
+    try {
+        writeAndClose(stream, bytes, cancellable);
+    } catch (e) {
+        const cutEtag = old === null ? null : cutCopyEtag(file, bytes, old.etag);
+        if (cutEtag !== null && !writeBack(file, old.bytes, cutEtag))
+            throw new GLib.Error(Gio.IOErrorEnum, e.code, `${e.message}. The old text could not be written back`);
         throw e;
     }
 }
