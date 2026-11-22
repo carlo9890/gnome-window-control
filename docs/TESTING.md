@@ -206,18 +206,20 @@ no `curl` is on `PATH`: to test that path, stub `wget` and leave `curl` off
 `PATH`. With `mise` stubbed, the
 static-linkage check never runs: only the real `mise run build:musl` runs it. Keep `git`,
 `sha256sum` and the other local tools real: the scripts check their output.
-Four stubs must produce output:
+These stubs must produce output:
 
 - `gh release view <tag>`: before `gh release create`, exit non-zero, because
   exit 0 makes `release.sh` prompt on stdin. After it, exit 0 and print `4` for
   `--json assets -q '.assets | length'`.
 - `gh api repos/{owner}/{repo}/commits/tags/<tag> -q .sha`: print the `HEAD`
   commit, or `release.sh` stops before the build.
+- `gh repo view --json nameWithOwner -q .nameWithOwner`: print `<owner>/<repo>`,
+  which `release.sh` puts in the release notes.
 - `mise run build:musl`: create the file `CLI_BINARY` names in `release.sh`.
-- `curl`, for `install-wctl.sh --download` (without the flag, a checkout with a
-  build installs that build): write a runnable `wctl` to the `-o` path, and
-  print its `sha256sum` line for `wctl.sha256`, which the script fetches with
-  `-o -`.
+- `curl`, or `wget` with `-O`, for `install-wctl.sh --download` (without the
+  flag, a checkout with a build installs that build): write a runnable `wctl`
+  to the output path, and print its `sha256sum` line for `wctl.sha256`, which
+  the script fetches with the output path `-`.
 
 ## Minimum checks before a PR
 

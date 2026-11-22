@@ -96,5 +96,6 @@ content.
 **MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release, and
 before editing `metadata.json`, the `version` in `cli/Cargo.toml`,
 `scripts/build.sh`, `scripts/release.sh`, `scripts/check-version.sh`,
+`scripts/check-static.sh`, the `build:musl` task in `.mise.toml`,
 `install-wctl.sh` or `.gitignore`, and before adding or removing a tracked file
 under `window-control@carlo9890.github.io/`.**
