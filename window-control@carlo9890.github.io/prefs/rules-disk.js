@@ -36,14 +36,14 @@ export function readText(file) {
     }
 }
 
-// Gio reports each failed replace through a link as a link loop. An open for
-// append follows the link and writes nothing, so it throws the real cause.
+// Gio reports a failed open through a link as a link loop. A plain read-write
+// open follows the link, creates nothing and throws the real cause.
 function replaceThroughLink(file, bytes) {
     try {
         file.replace_contents(bytes, null, false, Gio.FileCreateFlags.NONE, null);
     } catch (e) {
         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.TOO_MANY_LINKS))
-            file.append_to(Gio.FileCreateFlags.NONE, null).close(null);
+            file.open_readwrite(null).close(null);
         throw e;
     }
 }
@@ -75,7 +75,11 @@ export function writeText(file, text) {
         replaceThroughLink(file, bytes);
         link.move(file, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, null, null);
     } catch (e) {
-        link.delete(null);
+        try {
+            link.delete(null);
+        } catch {
+            // The save error is the one the user needs.
+        }
         throw e;
     }
 }
