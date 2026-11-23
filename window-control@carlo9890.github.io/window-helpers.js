@@ -142,10 +142,7 @@ export class UnmaximizeWait {
         this._idleId = 0;
         this._signalIds = [
             win.connect('size-changed', () => this._settleFromIdle()),
-            win.connect('unmanaged', () => {
-                this.destroy();
-                this._settled(false);
-            }),
+            win.connect('unmanaged', () => this._finish(false)),
         ];
         this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, UNMAXIMIZE_SETTLE_MS, () => {
             this._timeoutId = 0;
@@ -156,9 +153,6 @@ export class UnmaximizeWait {
     }
 
     destroy() {
-        for (const id of this._signalIds)
-            this._win.disconnect(id);
-        this._signalIds = [];
         if (this._timeoutId) {
             GLib.source_remove(this._timeoutId);
             this._timeoutId = 0;
@@ -167,6 +161,15 @@ export class UnmaximizeWait {
             GLib.source_remove(this._idleId);
             this._idleId = 0;
         }
+        for (const id of this._signalIds)
+            this._win.disconnect(id);
+        this._signalIds = [];
+    }
+
+    _finish(landed) {
+        const settled = this._settled;
+        this.destroy();
+        settled(landed);
     }
 
     _settleFromIdle() {
@@ -174,8 +177,7 @@ export class UnmaximizeWait {
             return;
         this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             this._idleId = 0;
-            this.destroy();
-            this._settled(true);
+            this._finish(true);
             return GLib.SOURCE_REMOVE;
         });
     }
