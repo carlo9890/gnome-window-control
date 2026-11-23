@@ -204,7 +204,7 @@ else
     # workarea center for both/horizontal/vertical.
     for mode in both horizontal vertical; do
         info "Testing: center $mode"
-        run_wctl move "$TEST_WINDOW_ID" 50 50
+        run_wctl move "$TEST_WINDOW_ID" $((tc_wa_x + 50)) $((tc_wa_y + 50))
         wait_for_change
         run_wctl center "$TEST_WINDOW_ID" "$mode"
         wait_for_change
