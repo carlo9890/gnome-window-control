@@ -10,7 +10,7 @@
 # refuses to run without --real-session-ok. The screen must be one monitor at
 # 1920x1080, scale 1.
 #
-# Needs: kitty, ffmpeg, gjs, the JetBrains Mono font. Set WCTL for another wctl.
+# Needs: kitty, ffmpeg, gjs, the JetBrains Mono font, and wctl on PATH.
 # Every window takes its look from kitty/kitty.conf. A scene types its commands
 # into a terminal on screen (typist.sh); a caption at the bottom names each
 # shortcut it presses, which a GIF cannot show.
@@ -23,7 +23,6 @@ REAL_SESSION_FLAG="--real-session-ok"
 SCENES="wctl keyboard rules overlay"
 DEMO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$DEMO")")"
-WCTL=${WCTL:-wctl}
 FONT=/usr/share/fonts/truetype/jetbrains-mono/JetBrainsMono-Bold.ttf
 RULES="${XDG_CONFIG_HOME:-$HOME/.config}/gnome-window-control/rules.json"
 export KITTY_CONFIG_DIRECTORY="$DEMO/kitty"
@@ -80,7 +79,7 @@ declare -A TINT=([logs]="#1c2236" [chat]="#241f36" [editor]="#2a2230" [demo-term
 open_window() {
     kitty --class "$1" --title "$2" --directory "$WORK/files" -o background="${TINT[$1]}" \
         sh -c "$3" >/dev/null 2>&1 &
-    "$WCTL" wait -c "$1" --timeout 15 >/dev/null
+    wctl wait -c "$1" --timeout 15 >/dev/null
 }
 
 # open_terminal: the terminal that run_typed types into, focused.
@@ -89,18 +88,20 @@ open_terminal() {
     mkfifo "$WORK/fifo" "$WORK/done"
     kitty --class demo-term --title "Terminal" --directory "$WORK/files" -o background="${TINT[demo-term]}" \
         -o initial_window_width=960 -o initial_window_height=560 \
-        bash "$DEMO/typist.sh" "$WORK/fifo" "$WORK/done" >/dev/null 2>&1 &
-    "$WCTL" wait -c demo-term --timeout 15 >/dev/null
+        bash "$DEMO/typist.sh" "$WORK/fifo" "$WORK/done" "$WORK/stderr" >/dev/null 2>&1 &
+    wctl wait -c demo-term --timeout 15 >/dev/null
 }
 
 # run_typed <COMMAND>: type COMMAND in the terminal, run it, and wait for it.
-# A command that fails stops the scene, so no broken demo is written.
+# A command that fails stops the scene with its error, so no broken demo is
+# written. Type one command per call: only the status of the last one counts.
 run_typed() {
     local status
     echo "$1" >"$WORK/fifo"
     read -r status <"$WORK/done"
     if [[ "$status" != 0 ]]; then
         echo "The scene command failed with status $status: $1" >&2
+        cat "$WORK/stderr" >&2
         exit 1
     fi
     sleep 0.8
@@ -126,11 +127,11 @@ elapsed() {
 setup_wctl() {
     log_writer &
     open_window logs "logs" "tail -n 40 -f app.log"
-    "$WCTL" move -c logs 1060 140 >/dev/null
+    wctl move -c logs 1060 140 >/dev/null
     open_window chat "chat" "cat chat.txt; exec sleep infinity"
-    "$WCTL" move -c chat 200 560 >/dev/null
+    wctl move -c chat 200 560 >/dev/null
     open_terminal
-    "$WCTL" center -c demo-term both >/dev/null
+    wctl center -c demo-term both >/dev/null
 }
 
 play_wctl() {
@@ -144,7 +145,7 @@ play_wctl() {
 
 setup_keyboard() {
     open_window editor "rules.json" "cat rules.json; exec sleep infinity"
-    "$WCTL" center -c editor both >/dev/null
+    wctl center -c editor both >/dev/null
 }
 
 play_keyboard() {
@@ -164,7 +165,7 @@ play_keyboard() {
 setup_rules() {
     log_writer &
     open_terminal
-    "$WCTL" tile -c demo-term wide-left >/dev/null
+    wctl tile -c demo-term wide-left >/dev/null
 }
 
 play_rules() {
@@ -172,9 +173,12 @@ play_rules() {
     run_typed "wctl rules add -c logs tile top-right"
     run_typed "wctl rules add -c chat tile bottom-right"
     run_typed "kitty --class logs tail -f app.log &"
+    wctl wait -c logs --timeout 15 >/dev/null
     run_typed "kitty --class chat --hold cat chat.txt &"
+    wctl wait -c chat --timeout 15 >/dev/null
     sleep 1
-    run_typed "wctl move -c logs 700 300; wctl move -c chat 300 150; wctl move focused 600 500"
+    run_typed "wctl move -c logs 700 300"
+    run_typed "wctl move -c chat 300 150"
     caption "Super + Ctrl + Num *   apply the rules again"
     keys KP_Multiply
     sleep 2.5
@@ -184,25 +188,26 @@ play_rules() {
 
 setup_overlay() {
     open_window editor "rules.json" "cat rules.json; exec sleep infinity"
-    "$WCTL" tile -c editor right >/dev/null
+    wctl tile -c editor right >/dev/null
     open_terminal
-    "$WCTL" tile -c demo-term wide-left >/dev/null
+    wctl tile -c demo-term wide-left >/dev/null
 }
 
 play_overlay() {
     sleep 1
     run_typed "wctl rules add -c quake place center top 100% 40% --overlay"
     run_typed "kitty --class quake &"
+    wctl wait -c quake --timeout 15 >/dev/null
     sleep 1.5
     caption "focus goes to another window"
-    "$WCTL" activate -c editor >/dev/null
+    wctl activate -c editor >/dev/null
     sleep 2
     caption "a custom shortcut shows it again"
-    "$WCTL" unminimize -c quake --no-animation >/dev/null
-    "$WCTL" activate -c quake >/dev/null
+    wctl unminimize -c quake --no-animation >/dev/null
+    wctl activate -c quake >/dev/null
     sleep 2
     caption "focus goes to another window"
-    "$WCTL" activate -c demo-term >/dev/null
+    wctl activate -c demo-term >/dev/null
     sleep 2
     caption
     sleep 1
@@ -253,9 +258,22 @@ fi
 [[ $# -eq 1 && " $SCENES " == *" $1 "* ]] || usage
 scene=$1
 
-screen=$("$WCTL" monitors | awk 'NR == 2 { s = $4 "x" $5 "@" $6 } END { print (NR == 2 ? s : NR - 1 " monitors") }')
+screen=$(wctl monitors | awk 'NR == 2 { s = $4 "x" $5 "@" $6 } END { print (NR == 2 ? s : NR - 1 " monitors") }')
 if [[ "$screen" != "1920x1080@1" ]]; then
     echo "The screen is $screen; a demo needs one monitor at 1920x1080, scale 1." >&2
+    exit 1
+fi
+
+if [[ ! -r "$FONT" ]]; then
+    echo "The caption font $FONT is missing: install fonts-jetbrains-mono." >&2
+    exit 1
+fi
+
+# The user's rules.json waits next to itself, where a lost /tmp cannot take it;
+# the extension reads no file of that name.
+SAVED="$RULES.demo-saved"
+if [[ -e "$SAVED" || -L "$SAVED" ]]; then
+    echo "$SAVED is left from an earlier run: move it back to $RULES first." >&2
     exit 1
 fi
 
@@ -263,22 +281,27 @@ WORK=$(mktemp -d)
 
 cleanup() {
     kill $(jobs -p) 2>/dev/null || true
-    for class in logs chat editor quake demo-term; do
-        while "$WCTL" close -c "$class" >/dev/null 2>&1; do sleep 0.2; done
-    done
-    if [[ -e "$WORK/rules.json.saved" || -L "$WORK/rules.json.saved" ]]; then
+    if [[ -e "$SAVED" || -L "$SAVED" ]]; then
         rm -f "$RULES"
-        mv "$WORK/rules.json.saved" "$RULES"
+        mv "$SAVED" "$RULES"
     elif [[ -e "$WORK/rules.json.ours" ]]; then
         rm -f "$RULES"
     fi
+    local class try
+    for class in logs chat editor quake demo-term; do
+        for try in 1 2 3 4 5 6 7 8 9 10; do
+            wctl close -c "$class" >/dev/null 2>&1 || break
+            sleep 0.2
+        done
+    done
     rm -rf "$WORK"
 }
 trap cleanup EXIT
 
 mkdir -p "$(dirname "$RULES")"
 if [[ -e "$RULES" || -L "$RULES" ]]; then
-    mv "$RULES" "$WORK/rules.json.saved"
+    mv "$RULES" "$SAVED"
+    echo "Saved $RULES as $SAVED for the time of the scene." >&2
 fi
 touch "$WORK/rules.json.ours"
 echo '[]' >"$RULES"
@@ -287,6 +310,6 @@ write_content
 "setup_$scene"
 sleep 2
 : >"$WORK/captions"
-video=$(gjs -m "$DEMO/screencast.js" "$WORK/demo.webm" "$DEMO/record.sh" "$REAL_SESSION_FLAG" --play "$scene" "$WORK")
+video=$(gjs -m "$DEMO/screencast.js" "$WORK/demo" "$DEMO/record.sh" "$REAL_SESSION_FLAG" --play "$scene" "$WORK")
 to_gif "$video" "$PROJECT_ROOT/docs/images/demo-$scene.gif"
 echo "Wrote docs/images/demo-$scene.gif"

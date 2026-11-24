@@ -234,6 +234,7 @@ Prepare the guest as above, without the reboot step for the suites, then:
   loads the extension:
 
   ```bash
+  gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf
   gsettings set org.gnome.shell disabled-extensions "['ubuntu-dock@ubuntu.com', 'ding@rastersoft.com']"
   gsettings set org.gnome.desktop.interface color-scheme prefer-dark
   gsettings set org.gnome.desktop.background picture-options none

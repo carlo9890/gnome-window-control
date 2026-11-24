@@ -43,6 +43,10 @@ child.wait_async(null, (proc, result) => {
 });
 loop.run();
 
-call('StopScreencast', null, '(b)');
+const [stopped] = call('StopScreencast', null, '(b)');
+if (!stopped) {
+    printerr('The screencast failed while it recorded');
+    imports.system.exit(1);
+}
 print(file);
 imports.system.exit(child.get_if_exited() ? child.get_exit_status() : 1);
