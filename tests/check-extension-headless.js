@@ -1662,7 +1662,7 @@ export class PopupSeparatorMenuItem {}
     // monitor_directory() throws when the user has no inotify instance left
     // (fs.inotify.max_user_instances), so the stub does. The failure is
     // logged, the file is still read once, and disable() has no monitor to
-    // undo (RULES-JSON.md).
+    // undo.
 
     {
         const configDir = `${SCRATCH}/config/gnome-window-control`;
@@ -2276,7 +2276,7 @@ export class PopupSeparatorMenuItem {}
     // rules.json wins a match. A name the pattern refuses and an entry that is
     // not a regular file are skipped; a file that does not validate drops its
     // own rules only. A rules.d created after enable() is watched, and
-    // disable() releases both monitors (RULES-JSON.md).
+    // disable() releases both monitors.
 
     {
         windows.length = 0;

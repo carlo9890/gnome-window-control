@@ -115,7 +115,10 @@ export class WindowOverlays {
                 continue;
             }
             // No focused window at all is not a turn to another window: the
-            // shell's own menus and dialogs take the keyboard that way.
+            // shell's own menus and dialogs take the keyboard that way. A
+            // click on the empty desktop also leaves no focus window, so the
+            // overlay stays; a desktop-icons extension draws the desktop as a
+            // window that takes the focus, and then the click hides it.
             if (!focus)
                 continue;
             this._removeGrace(entry);
