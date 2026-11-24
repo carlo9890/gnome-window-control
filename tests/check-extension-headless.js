@@ -282,7 +282,7 @@ export class PopupSeparatorMenuItem {}
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
                 above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
-                monitor: 0, frame: { x: 10, y: 10, width: 400, height: 300 }, answersLate: false,
+                monitor: 0, frame: { x: 10, y: 10, width: 400, height: 300 }, answersLate: false, constrain: null,
             });
         }
 
@@ -336,7 +336,7 @@ export class PopupSeparatorMenuItem {}
             this.moves.push([x, y, width, height]);
             this.userOps = [...this.userOps ?? [], userOp];
             if (!this.answersLate)
-                this.frame = { x, y, width, height };
+                this.frame = this.constrain?.({ x, y, width, height }) ?? { x, y, width, height };
         }
 
         answer() {
@@ -1049,14 +1049,14 @@ export class PopupSeparatorMenuItem {}
         windows.length = 0;
     }
 
-    // -- WindowPlacer: a move or resize while a resize is unanswered ----------------
+    // -- WindowPlacer: a request while a new size is unanswered ----------------
     //
-    // On Wayland a window takes a new size only when its client answers the
-    // resize, and mutter then applies the position of that request. Seen in a
-    // headless GNOME Shell 50.1: a tile stayed unanswered for seconds, and a
-    // Move in that time was undone by the late answer. A Move or Resize while
-    // a resize is unanswered therefore requests the whole frame again, built
-    // on the requested one, so its request replaces the unanswered one.
+    // On Wayland a window takes a new size only when its client answers, and
+    // mutter then applies the position of that request. Seen in a headless
+    // GNOME Shell 50.1: a covered window was suspended, its tile stayed
+    // unanswered, and a Move in that time was undone by the late answer. A
+    // request made before the answer now waits for it, the newest one runs
+    // after it, and a window that takes its frame at once makes nothing wait.
 
     {
         windows.length = 0;
@@ -1065,30 +1065,61 @@ export class PopupSeparatorMenuItem {}
         const win = createWindow({ id: 61, wmClass: 'late' });
         win.map();
         await sleep(100);
+        const last = () => JSON.stringify(win.moves.at(-1));
         win.answersLate = true;
 
         service.MoveResizeAsync([61, 0, 32, 480, 524], invocation());
         service.MoveAsync([61, 120, 140], invocation());
-        check('Move while a resize is unanswered keeps the requested size',
-            JSON.stringify(win.moves.at(-1)) === '[120,140,480,524]' && win.userOps.at(-1) === true,
-            `${JSON.stringify(win.moves)} ${win.userOps}`);
-
         service.ResizeAsync([61, 600, 400], invocation());
-        check('Resize while a resize is unanswered keeps the requested position',
-            JSON.stringify(win.moves.at(-1)) === '[120,140,600,400]', JSON.stringify(win.moves));
-
-        win.answer();
-        check('the answer leaves no handler on the window', win.handlerCount() === 0,
-            `${win.handlerCount()} handler(s)`);
-        win.answersLate = false;
-        service.MoveAsync([61, 5, 6], invocation());
-        check('Move after the answer moves only', JSON.stringify(win.moves.at(-1)) === '[5,6]',
+        check('a request before the answer waits for it', last() === '[0,32,480,524]',
             JSON.stringify(win.moves));
+        win.answer();
+        await sleep(50);
+        check('the newest waiting request runs after the answer, from the answered frame',
+            last() === '[0,32,600,400]' && win.moves.length === 2, JSON.stringify(win.moves));
+        win.answer();
+        await sleep(50);
+        check('the last answer leaves no handler on the window', win.handlerCount() === 0,
+            `${win.handlerCount()} handler(s)`);
+
+        service.MoveResizeAsync([61, 0, 32, 480, 524], invocation());
+        service.MoveAsync([61, 120, 140], invocation());
+        win.answer();
+        await sleep(50);
+        check('a Move before the answer lands after it', last() === '[120,140]', JSON.stringify(win.moves));
+
+        // A window that mutter constrains inside the call, such as one whose
+        // minimum width is above its tile, has answered already.
+        win.answersLate = false;
+        win.constrain = rect => ({ ...rect, width: Math.max(rect.width, 360) });
+        service.MoveResizeAsync([61, 0, 32, 320, 524], invocation());
+        service.MoveAsync([61, 100, 100], invocation());
+        check('a frame taken inside the call makes nothing wait',
+            last() === '[100,100]' && win.handlerCount() === 0, `${JSON.stringify(win.moves)} ${win.handlerCount()}`);
+        win.constrain = null;
 
         win.answersLate = true;
+        win.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        service.Unmaximize(61);
+        service.MoveAsync([61, 7, 8], invocation());
+        check('a Move before the answer to Unmaximize waits for it', last() === '[100,100]',
+            JSON.stringify(win.moves));
+        win.emit('size-changed');
+        await sleep(50);
+        check('the Move lands after the answer to Unmaximize', last() === '[7,8]', JSON.stringify(win.moves));
+
+        service.MoveResizeAsync([61, 0, 32, 480, 524], invocation());
+        service.MoveAsync([61, 9, 9], invocation());
+        placer.cancel(win);
+        win.answer();
+        await sleep(50);
+        check('a dropped waiting request does not run after the answer', last() === '[0,32,480,524]',
+            JSON.stringify(win.moves));
+
         service.MoveResizeAsync([61, 0, 0, 300, 200], invocation());
+        service.MoveAsync([61, 1, 1], invocation());
         placer.destroy();
-        check('WindowPlacer.destroy() leaves no handler on an unanswered window',
+        check('WindowPlacer.destroy() leaves no handler on a window that has not answered',
             win.handlerCount() === 0, `${win.handlerCount()} handler(s)`);
         service.unexport();
     }

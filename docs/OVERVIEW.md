@@ -105,9 +105,10 @@ Each module's header comment says what it holds.
   maximized window is restored first and placed once the restore has landed
   (`UnmaximizeWait`). `moveResizeFrame` requests a frame as the program, not
   as the user, so a window whose minimum size is above its tile still moves.
-  A resize that the client has not answered yet stays in the placer, and a
-  `Move` or `Resize` in that time builds on it: on Wayland the late answer
-  would otherwise put the window back.
+  On Wayland a window takes a new size only when its client answers, which
+  for a covered (suspended) window can be minutes later. A request made
+  before that answer waits for it, as one waits for a restore, so the late
+  answer cannot put the window back.
 - In `rules.js`, a geometry request only
   sticks after the window is shown (the same constraint `WaitForWindow` documents
   above), so a rule waits for `shown` and then applies from an idle callback; a

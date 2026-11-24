@@ -10,7 +10,7 @@ import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
     addTimeout, isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow,
-    moveToMonitor, removeSource, skipNextEffect, targetMonitor, unmaximizeWindow,
+    moveToMonitor, removeSource, skipNextEffect, targetMonitor,
 } from './window-helpers.js';
 
 // Parsed once per shell, never per enable(). GLib keys the GJS method cache by
@@ -426,7 +426,8 @@ export class WindowControlService {
         });
     }
 
-    // Keeps the position the frame has when the request runs.
+    // Keeps the position the frame has when the request runs, which is after
+    // the window has answered an earlier new size (see WindowPlacer).
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'Resize', () => {
@@ -950,7 +951,7 @@ export class WindowControlService {
     }
 
     Unmaximize(windowId) {
-        return this._actOnWindow(windowId, 'Unmaximize', win => unmaximizeWindow(win));
+        return this._actOnWindow(windowId, 'Unmaximize', win => this._placer.unmaximize(win));
     }
 
     Fullscreen(windowId) {

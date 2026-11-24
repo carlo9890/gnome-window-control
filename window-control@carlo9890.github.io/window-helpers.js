@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 hko9890
 // SPDX-License-Identifier: MIT
-// Window helpers that need Meta, shared by the D-Bus service, the rules, the
-// overlays and the shortcuts. The Meta-free rules.json grammar is in
+// Helpers shared by the D-Bus service, the rules, the overlays and the
+// shortcuts: the tracked timeout and idle sources, the window helpers that
+// need Meta, and the WindowPlacer. The Meta-free rules.json grammar is in
 // rules-format.js.
 
 import GLib from 'gi://GLib';
@@ -33,6 +34,10 @@ function trackOnce(sourceIds, add, callback) {
 export function removeSource(sourceIds, id) {
     if (sourceIds.delete(id))
         GLib.source_remove(id);
+}
+
+function sameRect(a, b) {
+    return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }
 
 // GNOME 49 dropped the Meta.MaximizeFlags argument of maximize()/unmaximize()
@@ -203,76 +208,27 @@ export class UnmaximizeWait {
 // is still pending replaces the pending one: run at once, it would be
 // overwritten by the restored size, and the older request would then land
 // after it.
+//
+// The same holds for a new size on Wayland: the window takes it only when its
+// client answers, and mutter then applies the position of that request. A
+// covered window is suspended and answers only once it is visible again, so
+// the answer can come minutes later. A request made before the answer waits
+// for it, and the newest of them runs after it.
 export class WindowPlacer {
     constructor() {
         this._pending = new Map();        // Meta.Window -> { wait, request, monitor }
-        // Meta.Window -> { rect, signalIds }: a frame of a new size that the
-        // window has not taken yet. On Wayland the client takes it with its
-        // answer to the resize, which can come seconds later, and mutter then
-        // applies the position of that request. A move or a resize built on
-        // the old frame would be undone by it, so it is built on this one.
-        this._requested = new Map();
+        this._answers = new Map();        // Meta.Window -> { signalIds, idleId, request, monitor }
     }
 
-    // Request a frame as the program, not as the user. For a user operation,
-    // mutter applies a minimum size from the frame's old position, so a
-    // window whose minimum is above the requested size keeps its old place
-    // and never moves. As the program's request, the frame goes where it was
-    // asked, grown to the minimum, and mutter keeps it on the screen (unless
-    // the window is partly off the screen already: require_fully_onscreen is
-    // then unset).
-    //
-    // Only a user operation or move_to_monitor() makes mutter record a new
-    // preferred monitor, the one it puts the window back on after a monitor
-    // change. So a frame on another monitor goes there with move_to_monitor()
-    // first, which is a program request too.
-    moveResizeFrame(win, rect) {
-        const monitor = targetMonitor(win, rect);
-        if (monitor !== win.get_monitor())
-            win.move_to_monitor(monitor);
-        this._request(win, false, rect);
-    }
-
-    // As the user, so the window can go partly off the screen.
-    move(win, x, y) {
-        const requested = this._requested.get(win)?.rect;
-        if (requested)
-            this._request(win, true, { ...requested, x, y });
-        else
-            win.move_frame(true, x, y);
-    }
-
-    resize(win, width, height) {
-        const { x, y } = this._requested.get(win)?.rect ?? win.get_frame_rect();
-        this._request(win, true, { x, y, width, height });
-    }
-
-    _request(win, userOp, rect) {
-        this._forget(win);
-        win.move_resize_frame(userOp, rect.x, rect.y, rect.width, rect.height);
-        const frame = win.get_frame_rect();
-        if (frame.width === rect.width && frame.height === rect.height)
-            return;
-        // Any new size or position, also one the client chose itself, means
-        // the window has answered.
-        const forget = () => this._forget(win);
-        const signalIds = ['size-changed', 'position-changed', 'unmanaged']
-            .map(signal => win.connect(signal, forget));
-        this._requested.set(win, { rect, signalIds });
-    }
-
-    _forget(win) {
-        const entry = this._requested.get(win);
-        if (!entry)
-            return;
-        for (const id of entry.signalIds)
-            win.disconnect(id);
-        this._requested.delete(win);
-    }
-
-    // Run `request()` now, or once the window's restore has landed.
-    // `monitor` is the monitor the request puts the window on.
+    // Run `request()` now, or once the window's restore or its answer to a
+    // new size has landed. `monitor` is the monitor the request puts the
+    // window on.
     place(win, request, monitor = win.get_monitor()) {
+        const answer = this._answers.get(win);
+        if (answer) {
+            Object.assign(answer, { request, monitor });
+            return;
+        }
         const pending = this._pending.get(win);
         if (pending && maximizeFlags(win) === 0) {
             Object.assign(pending, { request, monitor });
@@ -295,17 +251,101 @@ export class WindowPlacer {
         this._pending.set(win, entry);
     }
 
+    // Request a frame as the program, not as the user. For a user operation,
+    // mutter applies a minimum size from the frame's old position, so a
+    // window whose minimum is above the requested size keeps its old place
+    // and never moves. As the program's request, the frame goes where it was
+    // asked, grown to the minimum, and mutter keeps it on the screen (unless
+    // the window is partly off the screen already: require_fully_onscreen is
+    // then unset).
+    //
+    // Only a user operation or move_to_monitor() makes mutter record a new
+    // preferred monitor, the one it puts the window back on after a monitor
+    // change. So a frame on another monitor goes there with move_to_monitor()
+    // first, which is a program request too.
+    moveResizeFrame(win, rect) {
+        const monitor = targetMonitor(win, rect);
+        if (monitor !== win.get_monitor())
+            win.move_to_monitor(monitor);
+        this._change(win, () => win.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height), rect);
+    }
+
+    // As the user, so the window can go partly off the screen. The size stays,
+    // so mutter moves the window at once.
+    move(win, x, y) {
+        win.move_frame(true, x, y);
+    }
+
+    resize(win, width, height) {
+        const { x, y } = win.get_frame_rect();
+        this._change(win, () => win.move_resize_frame(true, x, y, width, height), { x, y, width, height });
+    }
+
+    unmaximize(win) {
+        if (maximizeFlags(win) !== 0)
+            this._change(win, () => unmaximizeWindow(win), null);
+    }
+
+    // Run `change()`, and wait for the window's answer when the frame has not
+    // changed yet. An X11 window takes the frame inside the call, as does a
+    // Wayland window whose size stays.
+    _change(win, change, target) {
+        const before = win.get_frame_rect();
+        change();
+        if (win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
+            !sameRect(win.get_frame_rect(), before) || (target && sameRect(target, before)))
+            return;
+        const entry = { signalIds: [], idleId: 0, request: null, monitor: null };
+        const answered = () => {
+            this._disconnect(win, entry);
+            // 'size-changed' is emitted from inside mutter's own move-resize,
+            // where a new request would be overwritten (see UnmaximizeWait).
+            entry.idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                entry.idleId = 0;
+                this._answers.delete(win);
+                if (entry.request)
+                    this.place(win, entry.request, entry.monitor);
+                return GLib.SOURCE_REMOVE;
+            });
+        };
+        entry.signalIds = [
+            win.connect('size-changed', answered),
+            win.connect('position-changed', answered),
+            win.connect('unmanaged', () => this._dropAnswer(win)),
+        ];
+        this._answers.set(win, entry);
+    }
+
+    _disconnect(win, entry) {
+        for (const id of entry.signalIds)
+            win.disconnect(id);
+        entry.signalIds = [];
+    }
+
+    _dropAnswer(win) {
+        const entry = this._answers.get(win);
+        if (!entry)
+            return;
+        if (entry.idleId)
+            GLib.source_remove(entry.idleId);
+        this._disconnect(win, entry);
+        this._answers.delete(win);
+    }
+
     // The monitor the window's pending request puts it on, or null for none.
     pendingMonitor(win) {
-        return this._pending.get(win)?.monitor ?? null;
+        return this._pending.get(win)?.monitor ?? this._answers.get(win)?.monitor ?? null;
     }
 
     // Drop the window's pending request, without running it. Its wait stays,
-    // so a newer request still waits for the restore.
+    // so a newer request still waits for the restore or the answer.
     cancel(win) {
         const pending = this._pending.get(win);
         if (pending)
             pending.request = () => {};
+        const answer = this._answers.get(win);
+        if (answer)
+            Object.assign(answer, { request: null, monitor: null });
     }
 
     // Drop every pending request, without running it.
@@ -313,7 +353,7 @@ export class WindowPlacer {
         for (const { wait } of this._pending.values())
             wait.destroy();
         this._pending.clear();
-        for (const win of [...this._requested.keys()])
-            this._forget(win);
+        for (const win of [...this._answers.keys()])
+            this._dropAnswer(win);
     }
 }
