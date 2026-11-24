@@ -29,8 +29,12 @@ does not run either script end to end.
 - Make `disable()` undo everything `enable()` did: every signal handler, GLib
   source, bus-name watch, file monitor, cancellable, keybinding and pending
   `...Async` invocation. extensions.gnome.org rejects an upload that does not.
-  Keep each ID where the teardown reaches it; create a timeout with
-  `addTimeout` and end it with `removeSource` from `window-helpers.js`.
+  Keep each ID where the teardown reaches it: `dbus-service.js` adds its
+  timeouts through `addTimeout` and `removeSource` from `window-helpers.js`,
+  on a set that `unexport()` empties; `overlay.js` and `WindowPlacer` keep a
+  timer ID on the object their teardown clears. Add a case
+  to `tests/check-extension-headless.js` for each new handler or source: it
+  checks only those it is told about.
 - Send every frame request (a position or a size) for a shown window through
   `WindowPlacer.place` in `window-helpers.js`, and call the placer's
   `moveResizeFrame`, `move` or `resize` inside it, never `Meta.Window`

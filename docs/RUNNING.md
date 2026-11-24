@@ -14,7 +14,8 @@ The project supports Wayland only.
    is not consent. The one exception is a throwaway VM made for the current
    task; a guest that is kept needs consent for each run, its reboot included.
 2. **Never `pkill`, `killall` or kill a shell by name**: the pattern matches the
-   real shell. Stop only the PID the start script printed, with `kill <pid>`.
+   real shell. Stop only the PID the start script printed, with `kill <pid>`;
+   for a headless shell, that is `HEADLESS_SHELL_PID`.
 3. **Start a nested shell only with `scripts/start-nested.sh`**, and a headless
    one only with `scripts/start-headless.sh`. A hand-started mutter registers
    with the real session and can log the user out.
@@ -63,8 +64,9 @@ gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
 - **Clients are slow under software rendering.** kitty takes up to 6 s to show
   its first frame, and a window not yet shown ignores geometry requests. Use
   `wctl wait`, not a `wctl list` poll.
-- **Fake a second monitor** with `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2` before the
-  start script. It is the only way to test `move-to-monitor` across monitors
+- **Fake a second monitor** in a nested shell:
+  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 ./scripts/start-nested.sh`. A headless
+  shell has one virtual monitor. It is the only way to test `move-to-monitor` across monitors
   and the `workspaces-only-on-primary` refusal.
 - **Dynamic workspaces shift indices.** GNOME removes an empty workspace you
   switch away from. Anchor a window on the first workspace before a workspace

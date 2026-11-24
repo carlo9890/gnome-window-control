@@ -54,9 +54,9 @@ gdbus call --session \
 | `Fullscreen` | `(t) -> b` | Make window fullscreen |
 | `Unfullscreen` | `(t) -> b` | Exit fullscreen |
 | `SetAbove` | `(tb) -> b` | Set or unset always-on-top |
-| `SetSticky` | `(tb) -> b` | Set or unset on all workspaces; `false` when the state did not change |
+| `SetSticky` | `(tb) -> b` | Set or unset on all workspaces; `false` when the window is not in the requested state after the call |
 | `ListWorkspaces` | `() -> s` | List workspaces as JSON (`index`, `name`, `is_active`, `window_count`) |
-| `ActivateWorkspace` | `(i) -> b` | Hide the overview, switch to a workspace, and return whether the switch occurred |
+| `ActivateWorkspace` | `(i) -> b` | Hide the overview, switch to a workspace; `false` when that workspace is not active after the call |
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
 | `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
 | `WaitForWindow` | `(ssi) -> t` | Wait up to `timeout_ms` until a window that matches `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown. Returns its ID, or 0 on timeout. The shell does not block |

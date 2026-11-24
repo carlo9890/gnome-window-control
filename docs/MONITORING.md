@@ -35,7 +35,7 @@ or headless shell ([RUNNING.md](RUNNING.md)). Which level a line may use is in
 
 | wctl shows | Cause |
 |---|---|
-| "extension is not running" | One of the error names in `is_extension_not_running` (`cli/src/dbus.rs`) came back. Enable the extension as [RUNNING.md](RUNNING.md) says. |
+| "extension is not running" | One of the error names in `is_extension_not_running` (`cli/src/dbus.rs`) came back, or `UnknownMethod` while no object is served at the path. Enable the extension as [RUNNING.md](RUNNING.md) says. |
 | "Cannot connect to the session bus" | wctl reached no bus. Compare `DBUS_SESSION_BUS_ADDRESS` with the address in the message before you touch the extension. |
 | `org.gnome.gjs.JSError.<name>` | A handler threw and GJS answered for it. GJS logs `JS ERROR: Exception in method call: <Method>`. |
 | `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize` or `ApplyRules` threw. The `[Window Control] <Method>() error:` line has the message. |

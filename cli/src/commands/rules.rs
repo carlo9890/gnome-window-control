@@ -416,7 +416,7 @@ fn read_file(path: &Path) -> Result<Loaded> {
 /// too large for a double such as `1e400` (the extension then gives the key's
 /// own message), a lone surrogate escape, and arrays nested past the recursion
 /// limit. A byte sequence that is not UTF-8 already fails `read_to_string` in
-/// `load_file`; the extension loads it with U+FFFD. `wctl rules add` never
+/// `read_file`; the extension loads it with U+FFFD. `wctl rules add` never
 /// writes any of these.
 fn parse(text: &str, path: &Path) -> Result<Value> {
     serde_json::from_str(text)

@@ -19,7 +19,7 @@ its `wctl` command, and no name links the three.
 
 ### Coding
 
-**MUST read [docs/CODING.md](docs/CODING.md) before editing ANY file under
+**MUST read [docs/CODING.md](docs/CODING.md) before creating or editing ANY file under
 `window-control@carlo9890.github.io/`, `cli/`, `scripts/`, `tests/` or
 `.github/workflows/`, or `install-wctl.sh` or `.mise.toml`.** No compiler checks
 the GJS code.
@@ -35,7 +35,7 @@ the user's call: name the record and ask.
 ### Writing docs
 
 **MUST call the Skill tool with `instruction-writing:writing-project-docs` AND
-read [docs/DOCUMENTING.md](docs/DOCUMENTING.md) before editing ANY `*.md`
+read [docs/DOCUMENTING.md](docs/DOCUMENTING.md) before creating or editing ANY `*.md`
 file.** Each doc tree has its own owner and reader.
 
 ### Testing
@@ -47,7 +47,7 @@ a change as verified.** Some suites move windows and press keys.
 ### Running the extension by hand
 
 **MUST read [docs/RUNNING.md](docs/RUNNING.md) before `./scripts/build.sh
-install` or `install-zip`, `gnome-extensions`, `wctl`, `gdbus call`,
+install` or `install-zip`, `gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
 `./scripts/start-*.sh` or `./scripts/demo/record.sh`, and before you start, kill or restart any GNOME Shell.** Each start needs the
 user's consent; a wrong start can log the user out.
 

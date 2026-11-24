@@ -31,7 +31,7 @@ the Rules page of the
 | `place` | Puts the window at a position and size; see [The workarea](concepts.md#the-workarea). | `[X, Y, WIDTH, HEIGHT]` |
 | `tile` | Puts the window on the tile grid. | A [tile position](concepts.md#the-tile-grid) |
 | `center` | Centers the window and keeps its size. | `horizontal`, `vertical` or `both` |
-| `workspace` | Moves the window to the workspace. An index after the last workspace adds one workspace. | A workspace index |
+| `workspace` | Moves the window to the workspace. An index after the last workspace adds one workspace and moves the window there, not to that index; `wctl rules apply` skips such an index. | A workspace index |
 | `monitor` | Puts the window on the monitor. When the monitor does not exist, only `workspace` and `overlay` apply. | A monitor index |
 | `overlay` | Makes the window an [overlay](#overlay-windows). | `true` |
 

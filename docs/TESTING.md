@@ -89,8 +89,15 @@ first with `mise run build`. Set `WCTL` to test another binary:
 
 CI does not run either script end to end. After a change to one, run it with
 stubs for `gh`, `mise` and `curl` first on `PATH`, and keep `git`, `sha256sum`
-and the other local tools real. Two stub answers are not obvious from
-`release.sh`:
+and the other local tools real.
+
+- Set `HOME` to a scratch directory for `install-wctl.sh`: it installs to
+  `$HOME/.local/bin`.
+- Run `release.sh --notes-file <file>` only in a throwaway clone, on branch
+  `main` with a clean tree and tag `v<metadata.json version-name>` on `HEAD`
+  (`git tag -f`). It tags and writes `dist/` and `cli/target/` there.
+
+Two stub answers are not obvious from `release.sh`:
 
 - `gh release view <tag>` exits non-zero before `gh release create` (exit 0
   makes `release.sh` prompt on stdin), and exits 0 after it, printing `4` for

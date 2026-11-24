@@ -14,8 +14,8 @@
 //!
 //! So the error strings here are not this file's to choose. They are the
 //! extension's messages, reproduced exactly: `docs/specs/RULES-JSON.md` states
-//! the format and `tests/vectors/rules-spec.json` pins the messages. Change
-//! one, change all four.
+//! the format and `tests/vectors/rules-spec.json` pins the messages. A message
+//! changes here, in rules-format.js and in the vectors together.
 //!
 //! The action tokens are NOT revalidated here: `geometry::resolve_place_rect`
 //! and `geometry::tile_cells` already own that grammar for `wctl place` and
@@ -38,12 +38,7 @@ pub const PROBE_WORKAREA: Rect = Rect {
 
 /// Every key a rule object may carry, in the order the message lists them.
 ///
-/// A new key also needs: the apply in rules.js `_apply` (rule key) or
-/// `Rule::matches_window` here and `shadows` in commands/rules.rs (match key);
-/// its capability in `CAPABILITIES` in dbus-service.js and in
-/// `NEWER_MATCH_KEYS` or `NEWER_RULE_KEYS`; a flag in commands/rules.rs,
-/// help.rs and cli/completions/ when `wctl rules add` takes it; and a case in
-/// tests/vectors/rules-spec.json.
+/// A new key follows the "Change the rules format" steps in docs/CODING.md.
 pub const RULE_KEYS: [&str; 7] = [
     "match",
     "place",
