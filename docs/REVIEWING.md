@@ -112,7 +112,8 @@ the correct form.
   rectangles from `rules-format.js` without D-Bus, and `ApplyRules` only
   starts that rules path; `Close` goes through
   `Meta.Window.delete`.
-- A new D-Bus method comes with its row in the method table in `README.md` — flag
+- A new D-Bus method comes with its row in the method table in
+  `docs/user-guide/dbus.md` — flag
   a method in `dbus-interface.js` that the table does not list.
 - A script under `scripts/` that sends a state-changing call to `org.gnome.Shell`
   refuses to run on the login session bus unless the caller opts in. Flag one

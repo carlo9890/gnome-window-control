@@ -32,7 +32,7 @@ If it fails, the code has a syntax error and must not be committed.
   The reason each method raises is in the
   ERRORS block in `dbus-interface.js`. A new name goes into that block, a
   `DBUS_ERROR_*` constant in `dbus-service.js`, the Errors section of
-  `README.md`, and an `ERROR_*` constant in `cli/src/dbus.rs` that `map_err`
+  `docs/user-guide/dbus.md`, and an `ERROR_*` constant in `cli/src/dbus.rs` that `map_err`
   maps to its exit code: a match arm of its own, or `is_extension_not_running`
   for a name that means the extension is not there. Only a body that
   `_namedErrorCall` runs can throw it as a `NamedError`; an `...Async` handler
@@ -173,7 +173,7 @@ After a change to `install-wctl.sh` or `scripts/release.sh`, run it offline as
    The inventory unit tests cross-check all four, so a command that is missing
    from any of them fails `cargo test`.
 
-5. Add the method's row to the method table in `README.md`; the review flags a
+5. Add the method's row to the method table in `docs/user-guide/dbus.md`; the review flags a
    method the table does not list ([REVIEWING.md](REVIEWING.md#project-specific-rules)).
 
 6. Before committing, run `./scripts/build.sh validate` and every check that the

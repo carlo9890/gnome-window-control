@@ -1,8 +1,8 @@
 # Spec: rules.json
 
 Normative format and behaviour of the auto-placement rules file. This is the
-authoritative definition; `README.md` shows users how to write one and links
-here.
+authoritative definition; [the user guide](../user-guide/rules.md) shows users how to
+write one and links here.
 
 Two implementations follow it, and they are pinned to each other:
 
@@ -579,9 +579,9 @@ Defined in the file named; change them there.
 
 | Constant | Guards | File |
 |---|---|---|
-| `LATE_IDENTITY_GRACE_MS` | late Wayland app ID / title; README.md's "Resetting windows to their rules" quotes its value | `rules.js` |
+| `LATE_IDENTITY_GRACE_MS` | late Wayland app ID / title; `docs/user-guide/rules.md`'s "Resetting windows to their rules" quotes its value | `rules.js` |
 | `RELOAD_DEBOUNCE_MS` | one reload per save | `rules.js` |
-| `FOCUS_LOSS_GRACE_MS` | a focus that comes straight back, as wl-copy and wl-paste hand it; README.md's "Overlay windows" quotes its value | `overlay.js` |
+| `FOCUS_LOSS_GRACE_MS` | a focus that comes straight back, as wl-copy and wl-paste hand it; `docs/user-guide/rules.md`'s "Overlay windows" quotes its value | `overlay.js` |
 | `UNMAXIMIZE_SETTLE_MS` | a restore that reports no size change | `window-helpers.js` (`UnmaximizeWait`) |
 
 ## Capabilities
@@ -628,9 +628,9 @@ Adding a key means editing, in one commit, on BOTH sides:
 - For a key that `wctl rules add` takes as a flag: the flag in
   `cli/src/commands/rules.rs`, `cli/src/help.rs` and both files in
   `cli/completions/`.
-- This spec's rule-object and validation tables, and the README section.
+- This spec's rule-object and validation tables, and `docs/user-guide/rules.md`.
 - For a key with its own capability name, a row in [Capabilities](#capabilities)
-  and in README.md's "Keys that need a newer extension" table.
+  and in `docs/user-guide/rules.md`'s "Keys that need a newer extension" table.
 
 Run the checks that
 [TESTING.md](../TESTING.md#minimum-checks-before-a-pr) requires: the vector

@@ -63,9 +63,9 @@ gdbus call --session \
 ```
 
 The full method table and the `wctl` CLI (a friendlier front end for all
-of these methods) are documented in the project's top-level
-[README](https://github.com/carlo9890/gnome-window-control#readme), which is not
-shipped inside this extension zip.
+of these methods) are documented in the project's
+[user guide](https://github.com/carlo9890/gnome-window-control/tree/main/docs/user-guide),
+which is not shipped inside this extension zip.
 
 ## Development
 

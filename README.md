@@ -8,21 +8,43 @@ List, move and tile windows on GNOME Shell from a script, a rules file, or the
 keyboard. It works on Wayland, where `wmctrl` and `xdotool` reach only
 XWayland windows.
 
-![wctl commands, a rules.json rule, and the numpad shortcuts that tile a window on a 4x2 grid](docs/images/overview.svg)
+![A terminal types wctl commands: wctl list, then three tile commands put the logs, chat and terminal windows into a layout](docs/images/demo-wctl.gif)
+
+**What happens in the recording:**
+
+1. `wctl list` shows every window with its ID, title and WM class.
+2. `wctl tile -c logs top-right` and `wctl tile -c chat bottom-right` tile two
+   windows by their class.
+3. `wctl tile focused wide-left` tiles the terminal itself into the space that
+   is left.
 
 One GNOME Shell extension, three ways to use it:
 
-- **From a script** - `wctl`, a single static binary, or any D-Bus client such
-  as `gdbus`. See [Usage](#usage).
-- **On window creation** - rules in `rules.json` place a matching window the
-  moment it opens. See [Automatic window placement](#automatic-window-placement).
-- **From the keyboard** - `Super+Ctrl` plus a numpad key tiles the focused
-  window, and the numpad `*` applies the rules again. See
-  [Keyboard shortcuts](#keyboard-shortcuts).
+- **From a script**: `wctl`, a single static binary, or any D-Bus client such
+  as `gdbus`.
+- **On window creation**: rules in `rules.json` place a matching window the
+  moment it opens.
+- **From the keyboard**: `Super+Ctrl` plus a numpad key tiles the focused
+  window, and the numpad `*` applies the rules again.
 
 A preferences window rebinds the shortcuts and edits `rules.json` with a
-check as you type, and an optional top-bar icon applies the rules again. See
-[Preferences window and top-bar icon](#preferences-window-and-top-bar-icon).
+check as you type, and an optional top-bar icon applies the rules again.
+
+## Get started
+
+Install the extension from its
+[page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/).
+That page can be some versions behind the
+[GitHub release](https://github.com/carlo9890/gnome-window-control/releases/latest);
+[Install](docs/user-guide/install.md) has both paths.
+
+Install `wctl` into `~/.local/bin`:
+
+```bash
+curl -fsSL https://github.com/carlo9890/gnome-window-control/releases/latest/download/install-wctl.sh | bash
+```
+
+Then move a window:
 
 ```bash
 wctl list                                  # every window, with ID, class and title
@@ -31,790 +53,54 @@ wctl place focused right top 50% 100%      # right half of the workarea
 wctl minimize focused                      # minimize the focused window
 ```
 
-## What a script can do
+[Getting started](docs/user-guide/getting-started.md) takes you from here to a
+first rule and a first shortcut.
 
-- **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
-- **Window info** - Get detailed information about any window
-- **Window selectors** - Address a window by ID, `focused`, WM class, title, title substring, or PID in every `wctl` command (`activate` takes all but `focused`)
-- **Activate windows** - Focus/raise windows by ID, title, WM class, or PID
-- **Move/resize windows** - Position and size windows programmatically
-- **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
-- **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
-- **Wait for a window** - Block until a matching window is shown, without polling
+## Tile from the keyboard
 
-## Compatibility
+![The numpad keys 7, 9, 3, 1 and 5 with Super+Ctrl move a window to each corner and the center; the numpad + makes it wide](docs/images/demo-keyboard.gif)
 
-- GNOME Shell 45-50
-- Wayland and X11 sessions
+The numpad mirrors a 4x2 grid. `Super+Ctrl+7` tiles the focused window
+top-left, `Super+Ctrl+3` bottom-right, and `Super+Ctrl++` makes it three
+columns wide. [Keyboard shortcuts](docs/user-guide/shortcuts.md) has the full
+table and how to rebind a key.
 
-## Installation
+## Open every window in its place
 
-### Extension
+![Two rules are added with wctl rules add; the logs and chat windows open in place, are moved away, and Super+Ctrl+numpad * puts them back](docs/images/demo-rules.gif)
 
-#### From GitHub Releases (Recommended)
+A rule names the windows it matches and where they go. The extension places a
+matching window the moment it opens, and `Super+Ctrl+*` puts every window back
+in its place. A rule can also make a window an overlay, like a drop-down
+terminal. [Automatic window placement](docs/user-guide/rules.md) has the
+format.
 
-1. Download the latest release from the [GitHub Releases page](https://github.com/carlo9890/gnome-window-control/releases)
+## What you can do
 
-2. Install the downloaded zip file:
-   ```bash
-   gnome-extensions install window-control@carlo9890.github.io_v*.zip --force
-   ```
+- **Script any window**: list, focus, move, resize, tile, minimize, maximize,
+  fullscreen, keep on top, move to a workspace or a monitor, and wait for a
+  window to open. [Using wctl](docs/user-guide/wctl.md)
+- **Address a window by name**: by ID, `focused`, WM class, title, part of the
+  title, or PID. [Concepts](docs/user-guide/concepts.md)
+- **Keep rules per tool**: other programs add their rules as drop-in files,
+  without touching yours. [Drop-in files](docs/user-guide/rules.md#drop-in-files-rulesd)
+- **Find why a rule did not fire**: `wctl rules test` names the rule that wins
+  and the rectangle it gives. [Why did a rule not fire?](docs/user-guide/rules.md#why-did-a-rule-not-fire)
+- **Call it from any language**: the extension is a D-Bus interface.
+  [D-Bus interface](docs/user-guide/dbus.md)
 
-3. Restart GNOME Shell:
-   - On X11: Press `Alt+F2`, type `r`, and press Enter
-   - On Wayland: Log out and log back in
+## Security
 
-4. Enable the extension:
-   ```bash
-   gnome-extensions enable window-control@carlo9890.github.io
-   ```
+Any application in your session can call this interface: it can read your
+window titles and move, resize or close your windows. Read the
+[Security model](docs/user-guide/security.md) before you enable the extension.
 
-#### From extensions.gnome.org
+## Documentation
 
-Install it from the
-[Window Control page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/),
-with the browser integration or the Extension Manager app.
-
-Every upload there waits for a manual review, so that page can be several
-versions behind the GitHub release, and an older version has no rules and no
-keyboard shortcuts. Run `wctl version --json` and read `capabilities`: `rules`
-and `keybindings` are listed when the loaded extension has them. The same
-command reports `"compatible": false` for a version before v25 installed from
-that page - see [Checking the extension version](#checking-the-extension-version).
-
-#### Upgrading from window-control@hko9890
-
-The extension UUID changed to `window-control@carlo9890.github.io`. GNOME treats
-the new UUID as a separate extension, so the old one keeps running until you
-remove it. Both register the same D-Bus object, so do not leave both enabled.
-
-```bash
-gnome-extensions disable window-control@hko9890
-gnome-extensions uninstall window-control@hko9890
-gnome-extensions install window-control@carlo9890.github.io_v*.zip --force
-# restart GNOME Shell (Alt+F2 r on X11, log out and back in on Wayland)
-gnome-extensions enable window-control@carlo9890.github.io
-```
-
-#### From Source (For Development)
-
-Building and installing from source is a contributor task — see
-[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/CODING.md](docs/CODING.md).
-
-### wctl CLI (Optional)
-
-`wctl` is a statically linked binary. It needs nothing at runtime — no shell,
-no `jq`, no `gdbus`.
-
-Use the install script, which puts `wctl` in `~/.local/bin`:
-```bash
-curl -fsSL https://github.com/carlo9890/gnome-window-control/releases/latest/download/install-wctl.sh | bash
-```
-
-Piped from `curl`, the script downloads the published binary. Run from a
-checkout, it installs a local build when one exists and downloads otherwise;
-`--download` always downloads; `--local` installs the local build, and builds
-it first when there is none. `--help` shows the
-options.
-
-The script checks the download against the release's `wctl.sha256` and runs it
-once before it replaces an installed `wctl`, so a failed download keeps the old
-one. Set `WCTL_VERSION` to a release tag (`vN`) to install the `wctl` of that
-release. The installer attached to a release defaults to that release.
-Releases up to v16 have no `wctl.sha256`, so the script cannot install them.
-
-Or download `wctl` and `wctl.sha256` from the [releases page](https://github.com/carlo9890/gnome-window-control/releases)
-and put it on your PATH:
-```bash
-sha256sum -c wctl.sha256
-chmod +x wctl
-mv wctl ~/.local/bin/
-# or
-sudo mv wctl /usr/local/bin/
-```
-
-The published binary is x86_64 only; on another architecture build it from a
-checkout — see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Usage
-
-### Using wctl (Recommended)
-
-```bash
-wctl list                          # every window; --json for the full document
-                                   # (has_been_shown: false until mutter has mapped it)
-wctl focused                       # the focused window
-wctl info 12345 --json             # one window's details
-
-# Every command that takes a window accepts a selector instead of an ID:
-#   <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
-# A selector must match exactly one window. With several matches wctl lists
-# the candidates and exits 1; with none it exits 2. An empty value is refused.
-# activate takes no `focused`, and its -c/-t/-s/-p take the first match.
-wctl tile -c kitty left
-wctl close -s "Untitled"
-
-# Place with workarea-relative tokens: X/Y take pixels or left|center|right /
-# top|center|bottom; width/height take pixels or a percentage of the workarea
-# (the monitor minus panels and docks).
-wctl place 12345 center top 50% 100%
-
-# Wait for a window to be shown, then place it
-kitty &
-wctl tile "$(wctl wait -p $! --timeout 5)" right
-
-# Hide and show a window with no minimize animation, e.g. a popup
-wctl minimize -c my-popup --no-animation
-wctl unminimize -c my-popup --no-animation
-
-# Show and focus a minimized window in one call, with no animation
-wctl activate 12345 --no-animation
-
-wctl --help                        # every command, global options, and --json/--settled
-```
-
-#### Exit codes
-
-A failing `wctl` classifies itself, so a script can tell the cases apart without
-matching the message text:
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Usage error, or a failure with no more specific code below |
-| 2 | The window, workspace or monitor does not exist |
-| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, it cannot be minimized, or it is hidden and cannot take the focus |
-| 4 | Timed out waiting for a window, or for the shell to reply |
-| 5 | The extension is not usable: not running, or a version this `wctl` cannot rely on |
-
-Code 1 stays the catch-all it always was, so a script that only tests for a
-non-zero status is unaffected.
-
-#### Sizing a window before it exists
-
-`resolve-place` answers what a placement would be, without a window and without
-moving anything — so a program can be launched at its final size instead of being
-moved after it appears:
-
-```bash
-read -r w h < <(wctl resolve-place center top 50% 100% --json |
-                jq -r '.target | "\(.width) \(.height)"')
-```
-
-`place`, `tile` and `center` take `--json` too, reporting the workarea used and
-the rectangle computed. Once the window is known, every outcome is a document:
-a window or monitor that is gone gives `"placed":false` and a `message`. All of
-them report the rectangle wctl **requested**;
-mutter still clamps to size hints, and a client that quantises its own size (a
-terminal, to whole cells) settles a few pixels off, so comparing against it needs
-a tolerance.
-
-A window with a minimum size above the rectangle, such as a text editor in a
-narrow tile, grows to that minimum at the position asked for. `move-resize`,
-`place` and `tile` keep the frame on the screen, unless the window was already
-partly off it; `move` can put a window partly off it.
-
-#### Waiting for the frame to settle
-
-A geometry request is applied asynchronously, and a client may resize itself once
-more after being placed, so the frame can still be moving when `wctl` exits.
-`--settled` returns only once it has stopped. The window is placed either way: a
-frame that never settles exits 4 and still reports `"placed":true`.
-
-#### Checking the extension version
-
-```bash
-wctl version               # just this binary, no D-Bus call
-wctl version --json
-# {"wctl":"0.17.0","expects_extension":"17","min_extension":"16","extension":"17","compatible":true,"capabilities":["rules","rules-title-affix","rules-class-prefix","keybindings","no-animation","activate-no-animation"]}
-```
-
-`--json` asks the **running shell** what it has loaded. That is the useful
-question: on Wayland an install lands on disk while the shell keeps serving the
-old code until you log out, so `metadata.json` can say 10 while the answer here
-is still 9. `compatible` is true for every extension version from
-`min_extension` to `expects_extension`; outside that range the command exits 5.
-
-`capabilities` is what the extension says it supports, by name. Ask for a name
-rather than comparing version numbers: a version before v25 installed from
-extensions.gnome.org carries that site's own upload number in `extension`,
-which is not related to this project's release numbers. `no-animation` means
-the extension has `MinimizeNoAnimation` and `UnminimizeNoAnimation`, and
-`activate-no-animation` means it has `ActivateNoAnimation`. An empty list means
-the extension is too old to answer.
-When the call fails for another reason (a timeout, an extension disabled
-in between), `capabilities` is `null` and the command exits with that
-failure's code.
-
-### Using gdbus Directly
-
-```bash
-# List all windows
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.List
-
-# Get detailed JSON
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
-
-# Activate by WM class
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/WindowControl \
-  --method org.gnome.Shell.Extensions.WindowControl.ActivateByWmClass \
-  "kitty"
-```
-
-## Automatic window placement
-
-The extension can place a window the moment it is shown, so it opens where you
-want it without a `wctl` call. Rules live in
-`~/.config/gnome-window-control/rules.json`, a JSON array read at enable and
-re-read whenever the file changes (no restart needed). The file is optional; with
-no file, nothing happens. Edit it with any text editor, with
-[`wctl rules`](#managing-rules-from-the-command-line), or on the Rules page of
-the [preferences window](#preferences-window-and-top-bar-icon).
-
-Each rule names the windows it matches and one placement, in the same vocabulary
-as the `wctl` commands:
-
-```json
-[
-  { "match": { "class": "kitty" },        "tile": "left" },
-  { "match": { "substr": "Report" },      "place": ["right", "top", "50%", "100%"] },
-  { "match": { "title": "Calculator" },   "center": "both", "monitor": 1 },
-  { "match": { "class": "Slack" },        "workspace": 2 }
-]
-```
-
-- **match** — one or more of `class` (exact WM class), `title` (exact title),
-  `substr` (title contains), `title_prefix` (title starts with),
-  `title_suffix` (title ends with), `class_prefix` (WM class starts with, for
-  apps that put a per-window part in the class, such as a Chrome app window's
-  `chrome-github.com__<owner>_<repo>-Default`). Several keys must all match.
-  `match` can also hold `min_width`: see [Rules per monitor size](#rules-per-monitor-size).
-- **place** — `[X, Y, WIDTH, HEIGHT]`, the tokens of `wctl place`: X is a number
-  or `left|center|right`, Y a number or `top|center|bottom`, WIDTH/HEIGHT a
-  positive number or a percentage like `50%`.
-- **tile** — a `wctl tile` position (`left`, `top-right`, `center`, ...).
-- **center** — `horizontal`, `vertical`, or `both`; keeps the window's own size.
-- **workspace** — a workspace index; the window is moved there. An index beyond
-  the last workspace adds one workspace at the end and puts the window there;
-  the workspaces up to that index are not created.
-- **monitor** — a monitor index; the workarea that `place`/`tile`/`center`
-  resolve against, and where the window is placed. When that monitor does not
-  exist, for example on an undocked laptop, the window is not moved or placed;
-  only `workspace` and `overlay` apply.
-- **overlay** — `true` makes the window an overlay: see
-  [Overlay windows](#overlay-windows).
-
-`place`, `tile` and `center` are mutually exclusive in one rule; combine any of
-them with `workspace`, `monitor` and `overlay`. The first matching rule wins, in
-file order ([rules.json first](#drop-in-files-rulesd)), and applies once per new window; `wctl rules apply` applies the
-rules to the open windows again.
-
-On GNOME 49 and later a `place` or `tile` rule takes effect before the window
-is drawn, so it opens in place. On GNOME 45 to 48, and for `center`,
-`workspace`, an X11 application, or a window whose class or title arrives late,
-the window appears first and moves a moment later.
-
-This sets the *initial* position only: an app that resizes itself afterwards is
-left alone until you run `wctl rules apply` ([Resetting windows to their
-rules](#resetting-windows-to-their-rules)). A rule with a bad value is reported to the journal and the whole file
-is ignored until you fix it, so one typo never places a window half-right.
-
-### Drop-in files (rules.d)
-
-A tool that adds rules of its own writes them to one file in
-`~/.config/gnome-window-control/rules.d/`, for example `rules.d/revier.json`,
-and never edits `rules.json`. Each drop-in file has the format of `rules.json`.
-
-- The rules are `rules.json`, then each drop-in file in byte order of its name.
-  The first match wins, so a rule in `rules.json` wins over a drop-in rule for
-  the same window: override a tool's rule there.
-- A name is read when it is letters, digits, `.`, `_` and `-`, starts with a
-  letter or a digit, and ends in `.json`. A file that starts with `.`, ends in
-  `~` or is renamed to `.json.off` is skipped. Subfolders are not read.
-- A file with a bad value is ignored on its own; the other files still load.
-- A tool writes the file to a temporary name that starts with `.` in
-  `rules.d`, then renames it into place, so the extension never reads half a
-  file. Check it first with `wctl rules check --file <PATH>`, and check that
-  `wctl version --json` lists `rules-dropin`: an older extension ignores
-  `rules.d`.
-
-`wctl rules path --dir` prints the folder. `wctl rules add --file <PATH>`
-with a path in `rules.d` writes a drop-in file and creates a missing
-`rules.d`; `wctl rules remove --file <PATH>` removes a rule from one.
-
-### Rules per monitor size
-
-`"min_width": <pixels>` in `match` makes a rule match only when the monitor it
-places the window on is at least that many logical pixels wide. Put it before a
-rule without it, and the second rule is the fallback on a smaller monitor:
-
-```json
-[
-  { "match": { "class": "kitty", "min_width": 3000 }, "place": ["center", "top", "75%", "100%"] },
-  { "match": { "class": "kitty" },                    "place": ["center", "top", "100%", "100%"] }
-]
-```
-
-- The monitor tested is the rule's own `monitor`, else the monitor the window
-  opens on.
-- Logical width is the width after scaling: a 3840 px panel at 200% is 1920
-  wide, in a Wayland or an X11 session. `wctl monitors` shows the logical
-  width on Wayland with GNOME 50 or fractional scaling, and the physical width
-  otherwise.
-- When the rule's `monitor` does not exist, a rule with `min_width` does not
-  match, so the next rule can.
-- `wctl rules add ... --min-width 3000` writes the key.
-
-`min_width` needs a newer extension: see the
-[capability table](#keys-that-need-a-newer-extension).
-
-### Overlay windows
-
-A rule with `"overlay": true` makes each window it matches behave like a
-drop-down terminal or a launcher popup:
-
-- It stays above the other windows.
-- It is left out of Alt+Tab and the overview. The dash still shows its app.
-- It is minimized, with no animation, once another window has held the focus
-  for a quarter of a second, and when the overview has opened. A dialog of
-  the overlay itself and a shell menu leave it where it is. A click on the
-  empty desktop leaves it too, unless a desktop-icons extension (Ubuntu's
-  default) draws the desktop: then the click hides it.
-
-Show it again from a keyboard shortcut. An overlay rule needs no placement, and
-can carry one:
-
-```bash
-wctl rules add -c quake place center top 100% 40% --overlay
-# Bind this command to a key in Settings > Keyboard > Custom Shortcuts:
-sh -c 'wctl unminimize -c quake --no-animation; case $? in 0) wctl activate -c quake ;; 2) exec kitty --class quake ;; esac'
-```
-
-Give the overlay a class of its own: every window the rule matches becomes an
-overlay. Unlike a placement, the overlay part of a rule also holds for the
-windows already open when the file loads, so an overlay stays one after the
-extension is enabled again, and a window stops being one when you remove the
-rule. Match an
-overlay by class: each load checks a title rule against the title a window has
-then.
-`wctl info` lists `overlay` among a window's states, and `wctl list --json`
-reports `is_overlay`.
-
-### Managing rules from the command line
-
-`wctl` writes and reads the file, so you need not edit JSON by hand:
-
-```bash
-wctl rules add -c kitty tile left               # Tile every kitty window left
-wctl rules add -s Report place right top 50% 100%
-wctl rules add -t Calculator center both --monitor 1 --workspace 2
-wctl rules add -c Slack --workspace 2            # Only move it to a workspace
-wctl rules add -c quake --overlay                # Make it an overlay window
-wctl rules list                                 # Every rule, rules.json and rules.d
-wctl rules remove 0                             # Drop a rule by index
-wctl rules path                                 # Where the file lives
-wctl rules path --dir                           # Where rules.d lives
-```
-
-```console
-$ wctl rules list
-SOURCE               INDEX  MATCH             ACTION                     WORKSPACE  MONITOR  OVERLAY
-rules.json           0      class=kitty       tile left
-rules.json           1      substr=Report     place right top 50% 100%
-rules.json           2      title=Calculator  center both                2          1
-rules.d/revier.json  0      class=quake       place center top 100% 40%                      yes
-```
-
-`SOURCE` names the file, and `INDEX` counts within it: `remove` and
-`add --at` use that index, with `--file` for a drop-in file. A file that does
-not load is left out of the table with a warning, as the extension leaves it
-out; without a drop-in file, a broken `rules.json` is an error. `list --json`
-prints `rules.json` alone, and `--file` makes every subcommand act on that one
-file.
-
-A rule matches with `-c <CLASS>`, `-t <TITLE>`, `-s <SUBSTR>`,
-`--title-prefix <TEXT>`, `--title-suffix <TEXT>` or `--class-prefix <TEXT>`
-only. A window ID, `focused`
-and `-p <PID>` name a window that already exists, and a rule is evaluated
-against windows that do not exist yet, so those are refused.
-
-`add` validates the action through the same grammar `wctl tile` and `wctl place`
-use, appends unless `--at <N>` names a position, and writes atomically. A file
-that does not parse or does not validate is never rewritten, so a hand-edited
-file with a typo in it is not clobbered. `--dry-run` prints the document it
-would write and changes nothing. Because the first matching rule wins, `add`
-warns when an earlier rule already matches everything the new one would.
-
-If `rules.json` is a symbolic link, for example into a dotfiles repository,
-`add` and `remove` write the linked file and keep the link, and the extension
-loads the change. The extension watches the directory of `rules.json`, not the
-linked file, so an edit you make to the linked file is not seen. Run
-`touch -h ~/.config/gnome-window-control/rules.json` after such an edit, or
-disable and enable the extension, to load it.
-
-Rules are applied only by an extension that reports the `rules` capability
-(`wctl version --json` lists it). When the running shell has an older one
-loaded, `add` and `remove` still write the file but warn that no rule will be
-applied until you install the newer extension and restart the shell. With no
-shell running, and with a `--file` the extension does not read, they say
-nothing.
-
-#### Keys that need a newer extension
-
-Some keys need a capability beyond `rules`. An extension that does not report
-it refuses a file that has the key and applies no rule from that file; `add` and
-`remove` warn about that too.
-
-| Key | Capability |
-|-----|------------|
-| `title_prefix`, `title_suffix` | `rules-title-affix` |
-| `class_prefix` | `rules-class-prefix` |
-| `overlay` | `rules-overlay` |
-| `min_width` | `rules-min-width` |
-
-### Checking the file
-
-Because one bad value disables every rule, check the file rather than saving it
-and watching whether windows move:
-
-```bash
-wctl rules check                      # the configured file
-wctl rules check --file ./draft.json  # any file
-wctl rules check --json               # for a script
-```
-
-```console
-$ wctl rules check
-/home/you/.config/gnome-window-control/rules.json: 3 rules, valid
-
-$ wctl rules check
-Error: rules[1].tile: must be one of top-left, top-center, top-right, left, center, right, bottom-left, bottom-center, bottom-right, wide-left, wide-right
-```
-
-It exits 0 when the shell would load the file and 1 when it would not, and the
-message is the same one the extension writes to the journal. It reads only the
-file: no D-Bus, and it works with the extension stopped or not installed.
-
-With drop-in files and no `--file`, it checks `rules.json` and each drop-in
-file, prints one line per valid file and an `Error:` line with the path per
-broken one, and exits 1 when any file is broken. A missing `rules.json` reads
-`No rules file at <path>`. It warns when a rule of an earlier file matches
-every window a rule of a later file would. With `--json`, the top-level
-fields describe `rules.json` alone, and a `dropins` array holds each drop-in
-file's `path`, `valid` and `rules` or `error`.
-
-### Why did a rule not fire?
-
-```bash
-wctl rules test -c kitty
-```
-
-```console
-$ wctl rules test -c kitty
-Window 4152763  class=kitty  title=vim
-Matched rule 0: class=kitty -> tile left
-  rule 2 also matches but is shadowed: class=kitty -> tile right
-  monitor 0, workarea 0,27 1920x1053
-  would place at 0,27 480x1052
-```
-
-It names the rule that wins, any later rule the first-match-wins order makes
-dead, the workarea used, and the exact rectangle the action resolves to. When
-the rule names a monitor that does not exist, it says the extension skips the
-rest of the rule and exits 0; with `--json`, `workarea` and `target` are `null`
-and `"skipped"` is `"no such monitor"`. For a fullscreen window it says the
-extension skips the geometry; with `--json`, `target` is `null` and `"skipped"`
-is `"fullscreen"`. It
-needs the extension running, because it resolves a live window. It never moves
-anything. Against an extension that does not report the `rules` capability it
-exits 5 instead, because that extension ignores the file. It also exits 5 when
-the file uses a key whose capability in the
-[capability table](#keys-that-need-a-newer-extension) the extension does
-not report, because that extension refuses the whole file.
-
-Without `--file` it tests the rules of every file the extension loads. A
-drop-in rule reads `Matched rule 0 of rules.d/revier.json: ...`, and `--json`
-adds `matched_source` and `shadowed_sources`, the source of `matched` and of
-each `shadowed` index. A file that does not load is left out with a
-warning, as the extension leaves it out; without a drop-in file, a broken
-`rules.json` is still an error. A file the extension refuses for a key it does
-not know is left out with a warning too, except a refused `rules.json` that is
-the only file taking part: that still exits 5. Against an extension that does
-not report `rules-dropin`, only `rules.json` takes part, with a warning, and a
-broken `rules.json` is an error. `rules apply` checks the files the same way.
-
-### Resetting windows to their rules
-
-```bash
-wctl rules apply             # every open window
-wctl rules apply -c kitty    # one window
-```
-
-`Super+Ctrl+KP_Multiply` applies the rules to every open window from the
-keyboard, without the file check and the count (see
-[Keyboard shortcuts](#keyboard-shortcuts)).
-
-The extension applies the rules it has loaded again, as it does to a new
-window: the first matching rule wins, and `min_width` tests the monitor the
-window is on now. Use it after you moved windows by hand, or after you docked
-or undocked a laptop.
-
-- A maximized window is restored first, then placed. A shortcut or a geometry
-  command for the same window before the restore lands replaces this
-  placement: the newest request wins. A `move-to-monitor` drops it when it
-  was made for another monitor, and the window keeps its restored size there.
-- A minimized window is placed and stays minimized.
-- A fullscreen window gets its `workspace` and `monitor`, but no geometry.
-- A `workspace` that does not exist is skipped, so each apply does not add
-  one more workspace.
-- A window that no rule matches is not touched.
-- A window that opened in the last two seconds and still waits for its
-  rule is skipped.
-- A rule matches the title a window has now, which can differ from its title
-  when it opened.
-
-It prints how many windows a rule matched. It reads the rules file first and
-stops on a file the extension would refuse, as `rules check` does. It exits 5
-when the loaded extension does not report `rules-apply`, or refuses a key the
-file uses. It reads the rules the extension has
-loaded, so it takes no `--file`. A change you saved just before, with an
-editor or `wctl rules add`, is read first and then applied.
-
-The complete format, the token grammar, the tile grid and every validation rule
-are specified in [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md).
-
-## Keyboard shortcuts
-
-The extension tiles the focused window from the keyboard, to the same 4x2 grid
-`wctl tile` and a rule use. The numpad mirrors the grid; the defaults are
-`Super+Ctrl` plus the key, and they work with Num Lock on or off:
-
-| Key | Position | | Key | Position | | Key | Position |
-|---|---|---|---|---|---|---|---|
-| `7` | `top-left` | | `8` | `top-center` | | `9` | `top-right` |
-| `4` | `left` | | `5` | `center` | | `6` | `right` |
-| `1` | `bottom-left` | | `2` | `bottom-center` | | `3` | `bottom-right` |
-
-`Super+Ctrl+KP_Add` (the numpad `+`) tiles the window `wide-right`, three
-columns of four; press it again on the same window and it goes `wide-left`.
-A maximized window is unmaximized first, then placed; a fullscreen one is left
-alone. A newer shortcut, rule apply, `move`, `resize`, `move-resize`, `place`,
-`tile` or `center` for the same window replaces a placement that still waits
-for the restore. A `move-to-monitor` or a rule's `monitor` drops it when it
-was made for another monitor: the window stays on the monitor it was moved to.
-
-`Super+Ctrl+KP_Multiply` (the numpad `*`) applies the loaded rules again to
-every open window, as `wctl rules apply` does ([Resetting windows to their
-rules](#resetting-windows-to-their-rules)). It does not check the file and
-prints no count: a file with an error moves nothing, and the journal and the
-Rules page of the preferences window say why.
-
-The default needs a numpad. To use the `*` of the main keyboard, record it on
-the Shortcuts page: Super+Shift+8 on a US layout, Super+Shift+`+` on a German
-one. The page stores `<Shift><Super>asterisk`, the Shift included, and that
-works on both layouts. Do not write `<Super>asterisk` by hand: mutter binds
-the key that carries `*` without the Shift, so it fires on Super+8 (US) or
-Super+`+` (German), and on US it takes Super+8 from GNOME's "switch to
-application 8".
-
-Change a shortcut on the Shortcuts page of the
-[preferences window](#preferences-window-and-top-bar-icon). Every shortcut is
-also a GSettings key, so a script can change one:
-
-```bash
-S=org.gnome.shell.extensions.window-control
-D=~/.local/share/gnome-shell/extensions/window-control@carlo9890.github.io/schemas
-gsettings --schemadir $D list-recursively $S               # what is bound
-gsettings --schemadir $D set $S tile-left "['<Super>KP_Left']"   # rebind one
-gsettings --schemadir $D set $S cycle-wide "[]"            # unbind one
-gsettings --schemadir $D reset-recursively $S              # back to the defaults
-```
-
-The keys are `tile-<position>` for the nine positions, `cycle-wide` and
-`apply-rules`. Each
-holds a list of accelerators in GTK's `<Super><Control>KP_Home` notation, so one
-key can carry several combinations. Pick a chord nothing else binds: when two
-bindings share one, mutter gives it to either at random, and the shortcut then
-works on one machine and not on the next. `Super+Shift` on the numpad is such
-a case, since GNOME 50 uses `Super+Shift+KP_Page_Up`/`KP_Page_Down` to move a
-window between workspaces. The numpad names are the Num-Lock-off ones
-(`KP_Home`, not `KP_7`); mutter binds the physical key, so they fire in either
-state. `--schemadir` is needed because the schema ships with the extension,
-not with the system.
-
-`wctl version --json` lists `keybindings` under `capabilities` when the loaded
-extension serves the shortcuts.
-
-## Preferences window and top-bar icon
-
-Open the preferences window from the Extensions app, or with:
-
-```bash
-gnome-extensions prefs window-control@carlo9890.github.io
-```
-
-- **General** turns the top-bar icon on or off. The icon is off by default.
-  Its menu has **Apply Rules Again**, which does what the numpad `*` shortcut
-  does, and **Settings**, which opens the preferences window.
-- **Shortcuts** has one row per shortcut. Click a row and press the new key
-  combination: Backspace disables the shortcut, and Esc keeps the old one. The
-  first time, GNOME Shell asks whether the preferences window may take the
-  system shortcuts. Choose **Allow**: while that question is open, it gets the
-  keys you press. The
-  arrow button resets a row to its default. A combination that another
-  shortcut of this extension holds is refused, pressed or restored by a reset.
-  A key without a modifier other than Shift, such as Super, Ctrl or Alt, is
-  refused, because GNOME Shell would take it from every app.
-- **Rules** is a text editor for `rules.json`. It checks the text as you type,
-  with the same validation the extension uses, and underlines the line of the
-  first error: for an error in a rule, the line where that rule starts. **Save** is available only for a valid file, and the
-  extension reads the saved file at once. **Apply** applies the saved rules to
-  every open window, as `wctl rules apply` does. When another program changes
-  the file while you have changes that are not saved, the page offers to load
-  the new version. Below the editor, **Rule Files from Other Programs** lists
-  each [drop-in file](#drop-in-files-rulesd) with its rule count or its error;
-  edit those with the program that owns them.
-
-The extension only reads the rules files. The preferences window writes
-`rules.json` when you click **Save**, and never writes a drop-in file.
-
-## D-Bus Interface
-
-The extension exports its object on GNOME Shell's own bus connection, so the D-Bus
-destination is `org.gnome.Shell` (not a standalone service name).
-
-**Bus name (dest):** `org.gnome.Shell`  
-**Path:** `/org/gnome/Shell/Extensions/WindowControl`  
-**Interface:** `org.gnome.Shell.Extensions.WindowControl`
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `List` | `() -> a(tssssbiiii)` | List all windows |
-| `ListDetailed` | `() -> s` | List windows as JSON with full details |
-| `ListMonitors` | `() -> s` | List monitors as JSON |
-| `Activate` | `(t) -> b` | Activate window by ID |
-| `ActivateByTitle` | `(s) -> b` | Activate by exact title match |
-| `ActivateByTitleSubstring` | `(s) -> b` | Activate by title substring |
-| `ActivateByWmClass` | `(s) -> b` | Activate by WM_CLASS |
-| `ActivateByPid` | `(i) -> b` | Activate by process ID |
-| `Focus` | `(t) -> b` | Focus window (without raising) |
-| `Close` | `(t) -> b` | Close window (polite) |
-| `GetFocused` | `() -> (tss)` | Get focused window (id, title, class) |
-| `Move` | `(tii) -> ()` | Move window to (x, y). Raises on failure — see **Errors** below |
-| `Resize` | `(tii) -> ()` | Resize window to (width, height). Raises on failure |
-| `MoveResize` | `(tiiii) -> ()` | Move and resize window. Raises on failure |
-| `ApplyRules` | `(t) -> u` | Apply the loaded rules of rules.json and rules.d again: `0` for every open window, else that window. Returns how many windows a rule matched. Raises `NotFound` for an id no window has |
-| `GetGeometry` | `(t) -> (iiii)` | Get window geometry |
-| `GetWorkarea` | `(i) -> (iiii)` | Get a monitor's usable work area; `(-1, -1, -1, -1)` for an index that is not a monitor, and only then |
-| `GetVersion` | `() -> s` | The extension version the running shell has **loaded** (not what is on disk) |
-| `GetCapabilities` | `() -> as` | The feature names this extension supports, e.g. `['rules']` |
-| `Minimize` | `(t) -> b` | Minimize window; `false` also for a window the shell does not let minimize |
-| `Unminimize` | `(t) -> b` | Restore minimized window |
-| `MinimizeNoAnimation` | `(t) -> b` | Minimize window without the shell's minimize animation; `false` as `Minimize` reports it |
-| `UnminimizeNoAnimation` | `(t) -> b` | Restore minimized window without the animation |
-| `ActivateNoAnimation` | `(t) -> b` | Activate window by ID, restoring a minimized one without the animation |
-| `Maximize` | `(t) -> b` | Maximize window |
-| `Unmaximize` | `(t) -> b` | Restore maximized window |
-| `Fullscreen` | `(t) -> b` | Make window fullscreen |
-| `Unfullscreen` | `(t) -> b` | Exit fullscreen |
-| `SetAbove` | `(tb) -> b` | Set/unset always-on-top |
-| `SetSticky` | `(tb) -> b` | Set/unset sticky (all workspaces); false if the state did not take |
-| `ListWorkspaces` | `() -> s` | List workspaces as JSON (`index`, `name`, `is_active`, `window_count`) |
-| `ActivateWorkspace` | `(i) -> b` | Switch to a workspace. Hides the Activities overview first (the switch is ignored while it is shown) and returns whether the switch took effect |
-| `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
-| `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
-| `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
-| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms`, up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
-
-### Errors
-
-`Move`, `Resize` and `MoveResize` return nothing and raise instead;
-`ApplyRules`, `WaitForWindow` and `WaitForGeometry` raise too. The ERRORS block in
-`window-control@carlo9890.github.io/dbus-interface.js` names the extension's own
-errors and the standard `org.freedesktop.DBus.Error.*` names below that a
-handler raises, and `org.gnome.gjs.JSError.*` is the name
-GJS raises when any other method throws. Before GNOME 50, a wait method that
-throws before it starts waiting sends no reply, and the caller's D-Bus timeout
-ends the call.
-
-| Error name | Meaning |
-|------------|---------|
-| `org.gnome.Shell.Extensions.WindowControl.NotFound` | No window has that ID (also `WaitForGeometry`, if the window closes while waiting) |
-| `org.gnome.Shell.Extensions.WindowControl.Refused` | The frame is pinned by fullscreen, maximize or tiling — the message names which |
-| `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
-| `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending (a wait, or an `ApplyRules` waiting for a rules.json read) |
-| `org.freedesktop.DBus.Error.InvalidArgs` | A size or a wait time was not positive, `timeout_ms` was below `quiet_ms`, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
-| `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize` or `ApplyRules` raised something unexpected |
-| `org.gnome.gjs.JSError.*` | Any other method threw a JavaScript `Error` unexpectedly; GJS names the D-Bus error after it (`org.gnome.gjs.JSError.TypeError`) |
-
-**Breaking change in extension version 10.** Before it, those three methods
-returned `b success`. A client written against the old signature cannot parse
-the new reply, so extension and `wctl` must be upgraded together — which is what
-`wctl version --json` checks.
-
-## Security model
-
-Read this before you enable the extension.
-
-**Any application in your session can call this interface.** The object is
-exported on GNOME Shell's own bus name, and the session bus applies no access
-control between processes of the same user. Any program you run — a script, a
-package's helper daemon, anything started by your desktop — can enumerate your
-window titles and move, resize or close your windows.
-
-There is no way to fix this from inside the extension. Same-user processes have
-no trust boundary on the session bus: an allowlist keyed on the caller's PID is
-useless here (the caller is whatever program invoked the client) and defeated by
-the confused deputy, and a shared secret in a file is readable by anything that
-can read your files. Any mechanism claiming otherwise would be theater. So the
-extension does not pretend to have one — it states plainly what it exposes, and
-leaves the decision to you.
-
-What this means in practice:
-
-- **Window titles are the sensitive part.** They carry document names, URLs, and
-  message subjects. `List`, `ListDetailed` and `GetFocused` return them, and
-  `ActivateByTitleSubstring` and `WaitForWindow` leak them by probing.
-- **The extension never writes titles to the journal.** Per-call logging is
-  `console.debug()`, gated behind `G_MESSAGES_DEBUG`, and no log line contains a
-  title or a caller-supplied match string at any level. See
-  [docs/MONITORING.md](docs/MONITORING.md).
-- **The interface and the rules stay up while the session is locked.**
-  `metadata.json` declares the `unlock-dialog` session mode, so scripts keep
-  working and a window that opens while the screen is locked still gets its
-  rule. An application in your session can therefore list window titles and
-  move or close windows while you are away, as it can while you are at the
-  desk. The lock screen shows nothing from the extension, and the keyboard
-  shortcuts are off while the screen is locked or blanked. When an extension
-  loaded before this one does not run on the lock screen, the shell restarts
-  this one once, at the first lock after login: a `wctl wait` pending then
-  ends with exit 5.
-- **Disabling the extension removes the interface.** `disable()` unexports the
-  object; there are no signal handlers or timers left behind.
-- **Well-sandboxed Flatpak applications generally cannot reach it,** because the
-  portal-filtered bus does not grant them `org.gnome.Shell` by default. This is a
-  property of their sandbox, not of this extension, and it does not apply to an
-  application granted full session-bus access.
-
-If that trade is not acceptable to you, do not enable the extension. On X11 the
-same capability was available to every application with no gate at all; on
-Wayland it is off until you turn it on, and this is the switch.
-
-## Contributing & internals
-
-- Repository layout and architecture: [docs/OVERVIEW.md](docs/OVERVIEW.md)
-- Building from source, testing, contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Version numbering (`wctl --version` `0.N.0` ↔ release `vN`): [docs/RELEASING.md](docs/RELEASING.md#version-format)
+- **Users**: [docs/user-guide/](docs/user-guide/), every user page, by task.
+- **Contributors**: [CONTRIBUTING.md](CONTRIBUTING.md), building from source,
+  testing, and the doc that owns each topic.
+- **AI coding agents**: [AGENTS.md](AGENTS.md) is the routing entrypoint.
 
 ## License
 
