@@ -9,6 +9,23 @@ import Meta from 'gi://Meta';
 import Mtk from 'gi://Mtk';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+// A one-shot timeout whose ID stays in `sourceIds` while it is pending, so the
+// owner's teardown can remove it.
+export function addTimeout(sourceIds, ms, callback) {
+    const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+        sourceIds.delete(id);
+        callback();
+        return GLib.SOURCE_REMOVE;
+    });
+    sourceIds.add(id);
+    return id;
+}
+
+export function removeSource(sourceIds, id) {
+    if (sourceIds.delete(id))
+        GLib.source_remove(id);
+}
+
 // GNOME 49 dropped the Meta.MaximizeFlags argument of maximize()/unmaximize()
 // and removed get_maximized(). Its presence marks the pre-49 API, so one
 // extension serves GNOME 45-50.

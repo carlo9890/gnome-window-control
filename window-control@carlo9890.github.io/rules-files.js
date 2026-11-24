@@ -33,6 +33,11 @@ export async function readRuleFiles(cancellable) {
     return files;
 }
 
+export function stopMonitor(monitor, handlerId) {
+    monitor.disconnect(handlerId);
+    monitor.cancel();
+}
+
 // Throws for a type that is no regular file. Gio reports a link that it cannot
 // follow as a link: the open then gives the cause, which is "not found" for a
 // link without a target.

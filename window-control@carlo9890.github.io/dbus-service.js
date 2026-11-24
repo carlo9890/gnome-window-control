@@ -9,8 +9,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
-    isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, moveResizeFrame,
-    moveToMonitor, skipNextEffect, targetMonitor, unmaximizeWindow,
+    addTimeout, isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow,
+    moveResizeFrame, moveToMonitor, removeSource, skipNextEffect, targetMonitor, unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once per shell, never per enable(). GLib keys the GJS method cache by
@@ -121,18 +121,11 @@ export class WindowControlService {
     }
 
     _addTimeout(ms, callback) {
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
-            this._sourceIds.delete(id);
-            callback();
-            return GLib.SOURCE_REMOVE;
-        });
-        this._sourceIds.add(id);
-        return id;
+        return addTimeout(this._sourceIds, ms, callback);
     }
 
     _removeSource(id) {
-        if (this._sourceIds.delete(id))
-            GLib.source_remove(id);
+        removeSource(this._sourceIds, id);
     }
 
     // NORMAL windows only: every method works on these.

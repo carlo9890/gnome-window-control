@@ -10,8 +10,10 @@ import Meta from 'gi://Meta';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
-import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles } from './rules-files.js';
-import { looksUnmapped, maximizeFlags, moveResizeFrame, moveToMonitor, workareaOf } from './window-helpers.js';
+import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles, stopMonitor } from './rules-files.js';
+import {
+    addTimeout, looksUnmapped, maximizeFlags, moveResizeFrame, moveToMonitor, removeSource, workareaOf,
+} from './window-helpers.js';
 
 // A Wayland client's app_id and first real title can land after the window is
 // shown, so a shown window that matched nothing yet stays under evaluation this
@@ -147,8 +149,7 @@ export class WindowRules {
     _unwatchDropIns() {
         if (!this._dropInMonitor)
             return;
-        this._dropInMonitor.disconnect(this._dropInMonitorId);
-        this._dropInMonitor.cancel();
+        stopMonitor(this._dropInMonitor, this._dropInMonitorId);
         this._dropInMonitor = null;
         this._dropInMonitorId = 0;
     }
@@ -318,13 +319,7 @@ export class WindowRules {
     }
 
     _addTimeout(ms, callback) {
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
-            this._sourceIds.delete(id);
-            callback();
-            return GLib.SOURCE_REMOVE;
-        });
-        this._sourceIds.add(id);
-        return id;
+        return addTimeout(this._sourceIds, ms, callback);
     }
 
     _addIdle(callback) {
@@ -338,8 +333,7 @@ export class WindowRules {
     }
 
     _removeSource(id) {
-        if (this._sourceIds.delete(id))
-            GLib.source_remove(id);
+        removeSource(this._sourceIds, id);
     }
 
     // The first rule whose predicates hold for the window and whose min_width

@@ -10,7 +10,7 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import { dropInNames } from '../rules-format.js';
-import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames } from '../rules-files.js';
+import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames, stopMonitor } from '../rules-files.js';
 import { checkRules, ruleSummary, rulesLabel } from './rules-check.js';
 import { readText, writeText } from './rules-disk.js';
 
@@ -267,8 +267,7 @@ export class RulesEditor {
     _unwatchDropIns() {
         if (!this._dropInMonitor)
             return;
-        this._dropInMonitor.disconnect(this._dropInMonitorId);
-        this._dropInMonitor.cancel();
+        stopMonitor(this._dropInMonitor, this._dropInMonitorId);
         this._dropInMonitor = null;
         this._dropInMonitorId = 0;
     }
