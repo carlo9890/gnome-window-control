@@ -698,7 +698,12 @@ export class WindowControlService {
         this._removeSource(watcher.quietId);
         watcher.quietId = this._addTimeout(watcher.quietMs, () => {
             watcher.quietId = 0;
-            this._settleGeometryWatcher(watcher);
+            // A frame the window has not answered yet is not settled: the
+            // answer changes it after the reply.
+            if (this._placer.awaitsAnswer(watcher.win))
+                this._restartQuietPeriod(watcher);
+            else
+                this._settleGeometryWatcher(watcher);
         });
     }
 

@@ -332,6 +332,12 @@ export class WindowPlacer {
         this._answers.delete(win);
     }
 
+    // Whether the window has not answered yet: a restore, or a new size it has
+    // not taken. Its frame changes again when the answer comes.
+    awaitsAnswer(win) {
+        return this._pending.has(win) || this._answers.has(win);
+    }
+
     // The monitor the window's pending request puts it on, or null for none.
     pendingMonitor(win) {
         return this._pending.get(win)?.monitor ?? this._answers.get(win)?.monitor ?? null;

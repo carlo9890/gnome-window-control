@@ -1116,6 +1116,28 @@ export class PopupSeparatorMenuItem {}
         check('a dropped waiting request does not run after the answer', last() === '[0,32,480,524]',
             JSON.stringify(win.moves));
 
+        // WaitForGeometry: a frame the window has not answered is not settled,
+        // so `wctl center` after `wctl resize` reads the size it lands at.
+        service.MoveResizeAsync([61, 10, 40, 500, 400], invocation());
+        const waited = invocation();
+        service.WaitForGeometryAsync([61, 20, 2000], waited);
+        await sleep(150);
+        check('WaitForGeometry does not settle while a new size is unanswered', waited.replies === 0,
+            showReply(waited));
+        win.answer();
+        await sleep(150);
+        check('WaitForGeometry settles on the answered frame after the answer',
+            waited.replies === 1 && JSON.stringify(waited.reply.value) === '[10,40,500,400]', showReply(waited));
+        service.MoveResizeAsync([61, 0, 32, 300, 200], invocation());
+        const never = invocation();
+        service.WaitForGeometryAsync([61, 20, 150], never);
+        await sleep(300);
+        check('WaitForGeometry times out when the answer does not come',
+            never.replies === 1 && never.reply.error === 'org.gnome.Shell.Extensions.WindowControl.Timeout',
+            showReply(never));
+        win.answer();
+        await sleep(50);
+
         service.MoveResizeAsync([61, 0, 0, 300, 200], invocation());
         service.MoveAsync([61, 1, 1], invocation());
         placer.destroy();

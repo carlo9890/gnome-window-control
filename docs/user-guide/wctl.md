@@ -97,6 +97,11 @@ more after being placed, so the frame can still be moving when `wctl` exits.
 `--settled` returns only once it has stopped. The window is placed either way: a
 frame that never settles exits 4 and still reports `"placed":true`.
 
+`center` always waits for the frame to settle, up to 2 s, before it reads the
+size it centers, so `wctl resize` followed by `wctl center` centers the new
+size. A window that has not taken the new size after 2 s, such as one another
+window covers, is centered at the size it has then.
+
 ## Checking the extension version
 
 ```bash
