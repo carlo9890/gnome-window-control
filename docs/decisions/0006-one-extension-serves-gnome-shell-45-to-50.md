@@ -4,5 +4,5 @@ GNOME 49 removed part of the maximize API. The extension tests for the old API a
 code base runs on each version. shexli, the analyzer of extensions.gnome.org, reports the old calls
 as errors on each run.
 
-Rejected: narrowing `shell-version` to 45-48 to clear the findings, because it costs the users of
-GNOME 49 and 50, and `shell-version` cannot be widened again without a new review.
+Rejected: narrowing `shell-version` to 45-48 to clear the findings, because it drops the users of
+GNOME 49 and 50, and `shell-version` cannot widen again without a new review.
