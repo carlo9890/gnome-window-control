@@ -21,8 +21,7 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── prefs.js, prefs/       the preferences window (its own process)
 ├── schemas/               the GSettings schema
 ├── metadata.json          uuid, shell-version, url, version
-├── LICENSE                copy of the top-level LICENSE, shipped in the zip
-└── README.md              packaged docs, shipped in the zip
+└── LICENSE                copy of the top-level LICENSE, shipped in the zip
 cli/                       wctl, the CLI (Rust, zbus)
 ├── src/main.rs            argument dispatch, command inventory
 ├── src/dbus.rs            the D-Bus client
