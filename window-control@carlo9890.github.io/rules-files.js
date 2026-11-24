@@ -33,6 +33,14 @@ export async function readRuleFiles(cancellable) {
     return files;
 }
 
+// Throws for a type that is no regular file. Gio reports a link that it cannot
+// follow as a link: the open then gives the cause, which is "not found" for a
+// link without a target.
+export function refuseUnlessRegular(type) {
+    if (type !== Gio.FileType.REGULAR && type !== Gio.FileType.SYMBOLIC_LINK)
+        throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
+}
+
 // The text of a file under CONFIG_DIR, or null when there is none to read.
 // Only a regular file is opened: the read of a FIFO never finishes, and the
 // load would wait for it.
@@ -41,12 +49,7 @@ async function readFile(label, cancellable) {
         const file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, label]));
         const info = await file.query_info_async('standard::type', Gio.FileQueryInfoFlags.NONE,
             GLib.PRIORITY_DEFAULT, cancellable);
-        const type = info.get_file_type();
-        // Gio reports a link that it cannot follow as a link. The open then
-        // gives the cause: "not found" for a link without a target, as for
-        // wctl.
-        if (type !== Gio.FileType.REGULAR && type !== Gio.FileType.SYMBOLIC_LINK)
-            throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
+        refuseUnlessRegular(info.get_file_type());
         const [bytes] = await file.load_contents_async(cancellable);
         return new TextDecoder().decode(bytes);
     } catch (e) {
