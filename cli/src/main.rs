@@ -31,7 +31,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The extension version this build expects the shell to have loaded.
 ///
 /// `scripts/release.sh` refuses to run unless `cli/Cargo.toml` is `0.<N>.0`
-/// where N is the integer `version` in the extension's `metadata.json`. That
+/// where N is the `version-name` in the extension's `metadata.json`. That
 /// makes wctl's MINOR version the extension version it was built against --
 /// until now an implicit convention, and what `wctl version --json` now
 /// asserts as `compatible`.

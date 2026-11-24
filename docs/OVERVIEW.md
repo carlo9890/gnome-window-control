@@ -20,7 +20,7 @@ window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
 ├── window-helpers.js      the helpers shared by the modules, and WindowPlacer
 ├── prefs.js, prefs/       the preferences window (its own process)
 ├── schemas/               the GSettings schema
-├── metadata.json          uuid, shell-version, url, version
+├── metadata.json          uuid, shell-version, url, version-name
 └── LICENSE                copy of the top-level LICENSE, shipped in the zip
 cli/                       wctl, the CLI (Rust, zbus)
 ├── src/main.rs            argument dispatch, command inventory
