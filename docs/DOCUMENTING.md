@@ -1,7 +1,7 @@
 # Documenting
 
-The standard is the `instruction-writing:writing-project-docs` skill. Below is
-this repository's delta, which wins where the two disagree.
+Call the Skill tool with `instruction-writing:writing-project-docs` for the
+standard. **Local delta:** everything below wins where the two disagree.
 
 ## Four trees, four owners
 
@@ -34,8 +34,6 @@ each step and restates none.
 
 ## `docs/decisions/`
 
-- Before a merge, check that no other branch took the record's number: two
-  files with one number merge without a conflict.
 - Cite a record in `docs/` as a link with its number:
   `([0005](decisions/0005-….md))`.
 

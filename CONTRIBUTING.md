@@ -26,8 +26,8 @@ and the PR, and the rules in [docs/REVIEWING.md](docs/REVIEWING.md).
 - Using the product: [docs/user-guide/](docs/user-guide/README.md)
 - Finding your way around the source: [docs/OVERVIEW.md](docs/OVERVIEW.md)
 - Reading the extension's logs: [docs/MONITORING.md](docs/MONITORING.md)
-- Recording the demo GIFs again: the header of
-  [scripts/demo/record.sh](scripts/demo/record.sh)
+- Recording the demo GIFs again:
+  [docs/RUNNING.md](docs/RUNNING.md#record-the-demo-gifs)
 - Cutting a release: [docs/RELEASING.md](docs/RELEASING.md)
 
 ## Reporting issues

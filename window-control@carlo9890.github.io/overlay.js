@@ -10,7 +10,8 @@ import { minimizeWindow } from './window-helpers.js';
 
 // A focus change away from an overlay hides it only when the change still
 // holds this long after: wl-copy and wl-paste map a surface that takes the
-// focus for a moment and hands it back.
+// focus for a moment and hands it back. docs/user-guide/rules.md quotes this
+// value.
 const FOCUS_LOSS_GRACE_MS = 250;
 
 const SKIP_TASKBAR_NAMES = ['skip_taskbar', 'skipTaskbar'];
