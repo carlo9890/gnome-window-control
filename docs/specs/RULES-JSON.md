@@ -62,7 +62,7 @@ case-sensitively.
 `match` MUST hold at least one key of this table. `min_width`, an integer of
 at least 1, is a condition on the monitor: the rule matches only when the
 logical width of the monitor it resolves against (its `monitor`, else the
-window's) is at least the value. A monitor that does not exist fails it.
+window's) is at least the value.
 
 ## Geometry
 
@@ -79,14 +79,27 @@ Each element is a string or a number. The size resolves before the position.
 | `X` | pixels, negative allowed; or `left`, `center`, `right` |
 | `Y` | pixels, negative allowed; or `top`, `center`, `bottom` |
 
-A keyword aligns the window in the workarea. A percentage above 100 is valid.
+A keyword aligns the window in the workarea.
 A token that resolves to nothing on the real workarea skips the geometry.
 
 ### tile
 
 A span of cells of a grid of 4 columns and 2 rows; a cell is the workarea
-divided by 4 and by 2, floored. `TILE_CELLS` in `rules-format.js` lists the
-eleven values and their spans.
+divided by 4 and by 2, floored. Columns and rows count from 0.
+
+| Value | Columns | Rows |
+|---|---|---|
+| `top-left` | 0 | 0 |
+| `top-center` | 1-2 | 0 |
+| `top-right` | 3 | 0 |
+| `left` | 0 | 0-1 |
+| `center` | 1-2 | 0-1 |
+| `right` | 3 | 0-1 |
+| `bottom-left` | 0 | 1 |
+| `bottom-center` | 1-2 | 1 |
+| `bottom-right` | 3 | 1 |
+| `wide-left` | 0-2 | 0-1 |
+| `wide-right` | 1-3 | 0-1 |
 
 ## Matching and application
 

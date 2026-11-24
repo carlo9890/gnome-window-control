@@ -390,7 +390,7 @@ Extension:
 gnome-extensions install $ZIP_NAME
 \`\`\`
 
-Log out and back in (Wayland), or press Alt+F2, type \`r\`, Enter (X11), then:
+Log out and back in, then:
 
 \`\`\`bash
 gnome-extensions enable $EXTENSION_UUID

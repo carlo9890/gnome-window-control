@@ -59,6 +59,8 @@ each step and restates none.
   with `wctl --help`, except a flag a task needs.
 - `rules.md` names each key with one line, and is the only home of the table
   of keys that need a newer extension.
+- Where a page quotes a value that a source constant holds, the constant's
+  comment names the page.
 - `install.md` and `README.md` give GitHub Releases as the first install path
   and extensions.gnome.org as the second.
 
@@ -66,8 +68,8 @@ each step and restates none.
 
 - `docs/images/overview.svg` and `icon.svg`: edit and run
   `docs/images/generate.py`, as its header says, when a fact they show changes.
-- `docs/images/demo-*.gif`: record them again with `scripts/demo/record.sh`
-  after a change a GIF shows.
+- `docs/images/demo-*.gif`: record them again after a change a GIF shows, as
+  [RUNNING.md](RUNNING.md#record-the-demo-gifs) says.
 
 ## Checks
 

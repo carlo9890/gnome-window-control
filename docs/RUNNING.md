@@ -131,8 +131,7 @@ WCTL_TEST_SETTLE=1.0 ./tests/run-all-modification-tests.sh
 
 ## Record the demo GIFs
 
-Record `docs/images/demo-*.gif` again after a change that a GIF shows. Run
-`scripts/demo/record.sh` only in a throwaway VM guest's desktop session.
+Run `scripts/demo/record.sh` only in a throwaway VM guest's desktop session.
 
 Prepare the guest as above, without the reboot for the suites, then:
 
