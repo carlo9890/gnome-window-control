@@ -377,7 +377,6 @@ export class WindowRules {
         return this._overlays.has(win);
     }
 
-    // `headStart` is the window's head start, if it took one (_preplace).
     _winningIndex(win, headStart = null) {
         return win.get_window_type() === Meta.WindowType.NORMAL
             ? this._matchIndex(win, win.get_monitor(), headStart) : -1;

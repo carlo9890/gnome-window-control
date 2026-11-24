@@ -38,7 +38,6 @@ const WINDOW_FLAGS = Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNO
 const GLOBAL_FLAGS = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT;
 
 export class WindowKeybindings {
-    // `applyRules()` applies the rules again to every open window.
     constructor(placer, applyRules) {
         this._placer = placer;
         this._applyRules = applyRules;
