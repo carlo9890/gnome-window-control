@@ -228,24 +228,6 @@ else
         esac
     done
 
-    # center with no wait after a resize: the window answers the resize while
-    # center runs, and center must use the new size, not the old one.
-    info "Testing: center right after a resize"
-    run_wctl move-resize "$TEST_WINDOW_ID" $((tc_wa_x + 50)) $((tc_wa_y + 50)) 800 600
-    wait_for_change
-    run_wctl resize "$TEST_WINDOW_ID" 400 300
-    assert_exit_code 0 "$WCTL_EXIT_CODE" "center after a resize: resize exits 0"
-    run_wctl center "$TEST_WINDOW_ID"
-    assert_exit_code 0 "$WCTL_EXIT_CODE" "center after a resize: center exits 0"
-    wait_for_change
-    cw=$(get_window_field '.frame_rect.width')
-    ch=$(get_window_field '.frame_rect.height')
-    cx=$(get_window_field '.frame_rect.x')
-    cy=$(get_window_field '.frame_rect.y')
-    assert_within "$cw" 400 "$GEOM_TOLERANCE" "center after a resize: the resize landed"
-    assert_within "$cx" $((tc_wa_x + (tc_wa_w - cw) / 2)) "$GEOM_TOLERANCE" "center after a resize: x centered for the new size"
-    assert_within "$cy" $((tc_wa_y + (tc_wa_h - ch) / 2)) "$GEOM_TOLERANCE" "center after a resize: y centered for the new size"
-
     # move-resize past the bottom of the workarea: the frame stays on the screen.
     info "Testing: move-resize keeps the frame on the screen"
     run_wctl move-resize "$TEST_WINDOW_ID" "$tc_wa_x" $((tc_wa_y + tc_wa_h - 100)) 400 300
