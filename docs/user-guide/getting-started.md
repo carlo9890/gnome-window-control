@@ -14,10 +14,9 @@ install from a zip file, restart GNOME Shell and enable the extension, as steps
 
 ```bash
 wctl version --json
-# {"wctl":"0.17.0","expects_extension":"17","min_extension":"16","extension":"17","compatible":true,"capabilities":["rules","rules-title-affix","rules-class-prefix","keybindings","no-animation","activate-no-animation"]}
 ```
 
-`compatible` must be `true`,
+In its output, `compatible` must be `true`,
 and `capabilities` must list `rules` and `keybindings` (see
 [Capabilities](concepts.md#capabilities)). When the command exits 5,
 the extension is not usable: see

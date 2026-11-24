@@ -102,7 +102,7 @@ frame that never settles exits 4 and still reports `"placed":true`.
 ```bash
 wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.17.0","expects_extension":"17","min_extension":"16","extension":"17","compatible":true,"capabilities":["rules","rules-title-affix","rules-class-prefix","keybindings","no-animation","activate-no-animation"]}
+# {"wctl":"0.25.0","expects_extension":"25","min_extension":"16","extension":"25","compatible":true,"capabilities":["rules","rules-title-affix","rules-class-prefix","rules-overlay","rules-min-width","rules-apply","rules-dropin","keybindings","no-animation","activate-no-animation"]}
 ```
 
 `--json` asks the **running shell** what it has loaded. That is the useful

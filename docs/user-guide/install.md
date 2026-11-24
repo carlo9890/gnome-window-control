@@ -3,7 +3,7 @@
 ## Compatibility
 
 - GNOME Shell 45-50
-- Wayland and X11 sessions
+- Wayland sessions, and X11 sessions on GNOME Shell 45-48
 
 ## Extension
 
@@ -31,7 +31,7 @@ For the newest version, install from GitHub Releases.
    ```
 
 3. Restart GNOME Shell:
-   - On X11: Press `Alt+F2`, type `r`, and press Enter
+   - On X11 (GNOME 45-48): Press `Alt+F2`, type `r`, and press Enter
    - On Wayland: Log out and log back in
 
 4. Enable the extension:
@@ -49,7 +49,7 @@ remove it. Both register the same D-Bus object, so do not leave both enabled.
 gnome-extensions disable window-control@hko9890
 gnome-extensions uninstall window-control@hko9890
 gnome-extensions install window-control@carlo9890.github.io_v*.zip --force
-# restart GNOME Shell (Alt+F2 r on X11, log out and back in on Wayland)
+# restart GNOME Shell (Alt+F2 r on X11 with GNOME 45-48, log out and back in on Wayland)
 gnome-extensions enable window-control@carlo9890.github.io
 ```
 

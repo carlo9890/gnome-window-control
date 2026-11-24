@@ -13,6 +13,13 @@ Fix: run `wctl version --json` and read `compatible`; see
 [Checking the extension version](wctl.md#checking-the-extension-version).
 Install the extension from [Install](install.md) and enable it.
 
+With `compatible` true, `wctl rules test` and `wctl rules apply` exit 5 when
+the extension does not report a capability they need: see
+[Keys that need a newer extension](rules.md#keys-that-need-a-newer-extension)
+and [Resetting windows to their rules](rules.md#resetting-windows-to-their-rules).
+A `wctl wait` that is pending at the first lock after login can also end with
+exit 5: see [Security model](security.md).
+
 ## The extension from extensions.gnome.org has no rules or shortcuts
 
 Cause: that page can be several versions behind the GitHub release, and an

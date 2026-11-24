@@ -60,9 +60,9 @@ first rule and a first shortcut.
 
 ![The numpad keys 7, 9, 3, 1 and 5 with Super+Ctrl move a window to each corner and the center; the numpad + makes it wide](docs/images/demo-keyboard.gif)
 
-The numpad mirrors a 4x2 grid. `Super+Ctrl+7` tiles the focused window
-top-left, `Super+Ctrl+3` bottom-right, and `Super+Ctrl++` makes it three
-columns wide. [Keyboard shortcuts](docs/user-guide/shortcuts.md) has the full
+The numpad mirrors a 4x2 grid. `Super+Ctrl` plus the numpad `7` tiles the
+focused window top-left, the numpad `3` bottom-right, and the numpad `+`
+makes it three columns wide. [Keyboard shortcuts](docs/user-guide/shortcuts.md) has the full
 table and how to rebind a key.
 
 ## Open every window in its place
@@ -70,8 +70,8 @@ table and how to rebind a key.
 ![Two rules are added with wctl rules add; the logs and chat windows open in place, are moved away, and Super+Ctrl+numpad * puts them back](docs/images/demo-rules.gif)
 
 A rule names the windows it matches and where they go. The extension places a
-matching window the moment it opens, and `Super+Ctrl+*` puts every window back
-in its place. A rule can also make a window an overlay, like a drop-down
+matching window the moment it opens, and `Super+Ctrl` plus the numpad `*` puts
+every window a rule matches back in its place. A rule can also make a window an overlay, like a drop-down
 terminal. [Automatic window placement](docs/user-guide/rules.md) has the
 format.
 
