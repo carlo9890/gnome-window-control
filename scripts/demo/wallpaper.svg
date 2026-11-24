@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <!-- The desktop background of the demo GIFs: Catppuccin Mocha base fading to
+       crust, with a mauve and a blue glow. Smooth and low in detail, so the
+       256 colors of a GIF keep it clean. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e1e2e"/>
+      <stop offset="1" stop-color="#11111b"/>
+    </linearGradient>
+    <radialGradient id="mauve" cx="0.82" cy="0.12" r="0.6">
+      <stop offset="0" stop-color="#cba6f7" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#cba6f7" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blue" cx="0.08" cy="0.95" r="0.55">
+      <stop offset="0" stop-color="#89b4fa" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#89b4fa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#base)"/>
+  <rect width="1280" height="720" fill="url(#mauve)"/>
+  <rect width="1280" height="720" fill="url(#blue)"/>
+</svg>

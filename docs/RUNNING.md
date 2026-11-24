@@ -228,29 +228,32 @@ closes windows, presses the shortcuts and replaces `rules.json`. Verified
 
 Prepare the guest as above, without the reboot step for the suites, then:
 
-- Install `kitty`, `ffmpeg` and `fonts-jetbrains-mono`, the extension zip and
-  `wctl` on `PATH`.
-- Give the desktop the plain look of the GIFs, then reboot once so the shell
-  loads the extension:
+- Install `kitty`, `ffmpeg`, `fonts-jetbrains-mono` and `fonts-inter`, the
+  extension zip and `wctl` on `PATH`.
+- Give the desktop the look of the GIFs, then reboot once so the shell loads
+  the extension:
 
   ```bash
   gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf
   gsettings set org.gnome.shell disabled-extensions "['ubuntu-dock@ubuntu.com', 'ding@rastersoft.com']"
   gsettings set org.gnome.desktop.interface color-scheme prefer-dark
-  gsettings set org.gnome.desktop.background picture-options none
-  gsettings set org.gnome.desktop.background primary-color '#363a4f'
+  gsettings set org.gnome.desktop.interface accent-color purple
+  gsettings set org.gnome.desktop.background picture-uri-dark "file://$HOME/gnome-window-control/scripts/demo/wallpaper.svg"
+  gsettings set org.gnome.desktop.background picture-options zoom
   gsettings set org.gnome.desktop.notifications show-banners false
   ```
 - Stop the SPICE agent. It sets the screen back to the size of the host's
   viewer a few seconds after every change:
   `sudo systemctl stop spice-vdagentd.service spice-vdagentd.socket; pkill -x spice-vdagent`.
-- Set the screen to 1920x1080 at scale 1 (`record.sh` refuses any other size):
+- Set the screen to 1920x1080 at scale 1.5, which is 1280x720 logical
+  (`record.sh` refuses any other size). The guest offers no 1280x720 mode, and
+  the larger mode keeps the text sharp when the GIF scales it down:
 
   ```bash
   gdbus call --session --dest org.gnome.Mutter.DisplayConfig \
     --object-path /org/gnome/Mutter/DisplayConfig \
     --method org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig <SERIAL> 1 \
-    "[(0, 0, 1.0, 0, true, [('Virtual-1', '1920x1080@60.000', @a{sv} {})])]" "@a{sv} {}"
+    "[(0, 0, 1.5, 0, true, [('Virtual-1', '1920x1080@60.000', @a{sv} {})])]" "@a{sv} {}"
   ```
 
   `<SERIAL>` is the first value `GetCurrentState` on the same object returns.
