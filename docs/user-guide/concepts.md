@@ -26,26 +26,9 @@ workarea-relative tokens:
 
 ## The tile grid
 
-A tile is a cell span of a 4-column by 2-row grid over the
-[workarea](#the-workarea). Cell size floors, so a width not divisible by 4
-leaves the remainder at the right edge rather than stretching the last column.
-
-| Value | Columns | Rows |
-|---|---|---|
-| `top-left` | 0 | 0 |
-| `top-center` | 1–2 | 0 |
-| `top-right` | 3 | 0 |
-| `left` | 0 | 0–1 |
-| `center` | 1–2 | 0–1 |
-| `right` | 3 | 0–1 |
-| `bottom-left` | 0 | 1 |
-| `bottom-center` | 1–2 | 1 |
-| `bottom-right` | 3 | 1 |
-| `wide-left` | 0–2 | 0–1 |
-| `wide-right` | 1–3 | 0–1 |
-
-The normative definition is in the
-[rules.json specification](../specs/RULES-JSON.md#tile).
+A tile is a span of cells of a 4-column by 2-row grid over the
+[workarea](#the-workarea). The eleven positions and the cells each one spans
+are in the [rules.json specification](../specs/RULES-JSON.md#tile).
 
 ## Capabilities
 

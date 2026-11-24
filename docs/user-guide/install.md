@@ -13,6 +13,12 @@ Install it from the
 [Window Control page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/),
 with the browser integration or the Extension Manager app.
 
+> [!WARNING]
+> On 2026-11-24, extensions.gnome.org still served version 9 for every GNOME
+> Shell version. Version 9 has no rules and no keyboard shortcuts, and `wctl`
+> needs version 16 or later. Until that page serves the current release,
+> install [from GitHub Releases](#from-github-releases).
+
 Every upload there waits for a manual review, so that page can be several
 versions behind the GitHub release, and an older version has no rules and no
 keyboard shortcuts. Run `wctl version --json` and read `capabilities`: `rules`

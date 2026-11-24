@@ -34,9 +34,14 @@ check as you type, and an optional top-bar icon applies the rules again.
 
 Install the extension from its
 [page on extensions.gnome.org](https://extensions.gnome.org/extension/10886/window-control/).
-That page can be some versions behind the
-[GitHub release](https://github.com/carlo9890/gnome-window-control/releases/latest);
 [Install](docs/user-guide/install.md) has both paths.
+
+> [!WARNING]
+> On 2026-11-24, extensions.gnome.org still served version 9, which has no
+> rules, no keyboard shortcuts, and no support for `wctl`. Until it serves the
+> current release, install the zip from the
+> [GitHub release](https://github.com/carlo9890/gnome-window-control/releases/latest)
+> as [Install](docs/user-guide/install.md#from-github-releases) says.
 
 Install `wctl` into `~/.local/bin`:
 
