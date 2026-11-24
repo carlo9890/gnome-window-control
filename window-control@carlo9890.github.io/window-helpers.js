@@ -227,6 +227,7 @@ export class WindowPlacer {
     constructor() {
         this._pending = new Map();        // Meta.Window -> { wait, request, monitor }
         this._answers = new Map();        // Meta.Window -> { answerIds, unmanagedId, idleId, timeoutId, request, monitor }
+        this._unanswered = null;          // the window whose wait just ended without an answer
     }
 
     // Run `request()` now, or once the window's restore or its answer to a
@@ -301,7 +302,10 @@ export class WindowPlacer {
     _change(win, change, target) {
         const before = win.get_frame_rect();
         change();
-        if (win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
+        // After a wait that ended without an answer, the window is not
+        // expected to answer this one either: waiting again would only add
+        // another ANSWER_WAIT_MS.
+        if (win === this._unanswered || win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
             !sameRect(win.get_frame_rect(), before) || (target && sameRect(target, before)))
             return;
         // A newer wait replaces an older one and keeps the request it holds.
@@ -311,7 +315,7 @@ export class WindowPlacer {
             answerIds: [], unmanagedId: 0, idleId: 0, timeoutId: 0,
             request: older?.request ?? null, monitor: older?.monitor ?? null,
         };
-        const answered = () => {
+        const answered = (timedOut = false) => {
             for (const id of entry.answerIds)
                 win.disconnect(id);
             entry.answerIds = [];
@@ -326,19 +330,25 @@ export class WindowPlacer {
             entry.idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 entry.idleId = 0;
                 this._dropAnswer(win);
-                if (entry.request)
-                    this.place(win, entry.request, entry.monitor);
+                if (entry.request) {
+                    this._unanswered = timedOut ? win : null;
+                    try {
+                        this.place(win, entry.request, entry.monitor);
+                    } finally {
+                        this._unanswered = null;
+                    }
+                }
                 return GLib.SOURCE_REMOVE;
             });
         };
         entry.answerIds = [
-            win.connect('size-changed', answered),
-            win.connect('position-changed', answered),
+            win.connect('size-changed', () => answered()),
+            win.connect('position-changed', () => answered()),
         ];
         entry.unmanagedId = win.connect('unmanaged', () => this._dropAnswer(win));
         entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ANSWER_WAIT_MS, () => {
             entry.timeoutId = 0;
-            answered();
+            answered(true);
             return GLib.SOURCE_REMOVE;
         });
         this._answers.set(win, entry);

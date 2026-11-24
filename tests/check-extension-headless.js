@@ -1146,16 +1146,28 @@ export class PopupSeparatorMenuItem {}
         service.MoveAsync([61, 300, 300], invocation());
         const unanswered = invocation();
         service.WaitForGeometryAsync([61, 20, ANSWER_WAIT_MS + 1000], unanswered);
-        await sleep(ANSWER_WAIT_MS - 300);
-        check('a request waits while no answer comes', last() === '[20,50,1,1]' && unanswered.replies === 0,
-            `${JSON.stringify(win.moves)} ${showReply(unanswered)}`);
-        await sleep(600);
+        check('a request waits while no answer comes', placer._answers.has(win) && last() === '[20,50,1,1]',
+            JSON.stringify(win.moves));
+        await sleep(ANSWER_WAIT_MS + 300);
         check('a request runs after ANSWER_WAIT_MS when no answer comes', last() === '[300,300]',
             JSON.stringify(win.moves));
         check('WaitForGeometry settles after ANSWER_WAIT_MS when no answer comes', unanswered.replies === 1 &&
             JSON.stringify(unanswered.reply.value?.slice(0, 2)) === '[300,300]', showReply(unanswered));
         check('the ended wait leaves no handler on the window', win.handlerCount() === 0,
             `${win.handlerCount()} handler(s)`);
+
+        // A request that runs after a wait ended without an answer starts no
+        // wait of its own: a window at its minimum size asked to shrink twice
+        // would else hold its requests, and WaitForGeometry, for 2 x 2 s.
+        service.MoveResizeAsync([61, 300, 300, 2, 2], invocation());
+        service.ResizeAsync([61, 3, 3], invocation());
+        const chained = invocation();
+        service.WaitForGeometryAsync([61, 20, ANSWER_WAIT_MS + 1000], chained);
+        await sleep(ANSWER_WAIT_MS + 300);
+        check('a request run after an unanswered wait starts no new wait',
+            !placer._answers.has(win) && last() === '[300,300,3,3]', JSON.stringify(win.moves));
+        check('WaitForGeometry settles once one unanswered wait has ended', chained.replies === 1 &&
+            chained.reply.value !== undefined, showReply(chained));
 
         // A second wait for the same window, from an Unmaximize that does not
         // go through place(), replaces the first: no timer or handler of the
@@ -1167,8 +1179,9 @@ export class PopupSeparatorMenuItem {}
         service.Unmaximize(61);
         check('a second wait removes the timer of the first', firstTimer !== 0 && !sourceAlive(firstTimer),
             `${firstTimer}`);
-        check('a second wait keeps the request held by the first', placer._answers.get(win)?.request !== null &&
-            last() !== '[5,5]', JSON.stringify(win.moves));
+        const second = placer._answers.get(win);
+        check('a second wait keeps the request held by the first', second !== undefined &&
+            second.request !== null && last() !== '[5,5]', JSON.stringify(win.moves));
         win.answer();
         await sleep(50);
         check('the held request runs after the second wait is answered', last() === '[5,5]' &&

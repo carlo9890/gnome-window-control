@@ -69,7 +69,7 @@ gdbus call --session \
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
 | `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
 | `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
-| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms` and the window has answered any new size or restore asked of it (at most 2 s), up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
+| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms` and the window has answered the new size or restore that a geometry method, a rule or a shortcut asked of it (at most 2 s for a size, 1 s for a restore), up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
 
 ## Errors
 

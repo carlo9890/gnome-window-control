@@ -426,8 +426,10 @@ export class WindowControlService {
         });
     }
 
-    // Keeps the position the frame has when the request runs, which is after
-    // the window has answered an earlier new size (see WindowPlacer).
+    // Keeps the position the frame has when the request runs: after the
+    // window has answered an earlier new size, or after ANSWER_WAIT_MS without
+    // an answer, when the frame can still have its old position (see
+    // WindowPlacer).
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'Resize', () => {
