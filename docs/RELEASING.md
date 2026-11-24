@@ -1,167 +1,90 @@
 # Releasing
 
-**All releases MUST be created with the release script** — never by hand via
-`gh release create` or the web UI.
+Create every release with `scripts/release.sh`, never with `gh release create`
+or the web UI. `./scripts/release.sh --help` lists the assets it attaches and
+the checks it makes.
 
-```bash
-./scripts/release.sh --notes-file <path>
-```
+## What ships
 
-Prerequisites the script enforces: `gh` authenticated, `mise` installed (pinned
-Rust toolchain), clean working tree, on `main`.
-
-The script guarantees:
-
-- All four assets are attached: the extension zip, `wctl`, `wctl.sha256`, and
-  `install-wctl.sh` with its `WCTL_VERSION` default set to the tag, so the
-  installer of `vN` installs the `wctl` of `vN`.
-- The `metadata.json` and `cli/Cargo.toml` versions match
-  (`scripts/check-version.sh`, which CI also runs).
-- The tag `vN` points at HEAD, the commit the assets are built from, both
-  locally and on GitHub, so run `git push --tags` first.
-- The release has notes. The script refuses to run without them.
-- A re-run for an existing release replaces its assets and notes in place
-  (`gh release upload --clobber`, `gh release edit`). It never deletes the
-  release. `--clobber` deletes each old asset before it uploads the new one, so
-  after a failed upload, run the script again to restore the missing asset.
-
-## Release checklist
-
-The version bump goes through a PR against `main` like any other change (see
-[CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md)); the tag is cut on the merged `main`
-commit.
-
-1. Set `version-name` to the string `"N"` in
-   `window-control@carlo9890.github.io/metadata.json`.
-2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version
-   format below) — `wctl` compiles its minor version in as
-   `EXPECTED_EXTENSION_VERSION`, the top of the range `wctl version --json`
-   reports as `compatible`, and `scripts/release.sh` hard-fails on a mismatch.
-   Leave `MIN_EXTENSION_VERSION` (`cli/src/main.rs`) as it is.
-3. Refresh the lock: `(cd cli && cargo update -p wctl)` — otherwise the tag
-   ships a lock pinning the old version and the release build dirties the tree.
-4. Commit on a branch (`chore: bump version to vN`), open the PR, wait for the
-   merge.
-5. On the merged `main` commit, run every suite the "Before release" row of
-   [TESTING.md](TESTING.md#minimum-checks-before-a-pr) requires, the
-   modification suite included, against that commit's extension in a headless
-   shell or a VM guest ([RUNNING.md](RUNNING.md), hard rule 1 for consent).
-   Never run them on the real session: it holds older code,
-   and the keyboard-shortcut suite presses keys into it. Do not tag until all
-   of them pass.
-6. On the same commit: `git tag vN && git push --tags`.
-7. Write the release notes (see below) to a file outside the repository.
-8. Run: `./scripts/release.sh --notes-file <path>`.
-
-## Release notes
-
-There is no `CHANGELOG.md`. The notes are written by hand for each release and
-passed to the script, which uses them as the release body.
-
-Writing them is reading work, not scripting work. A generated list of commit
-subjects says what was committed; the notes have to say what a user gets. Read
-the release range first:
-
-```bash
-git log --oneline v8..v9        # the commits in the release
-git show <sha>                  # whenever the user impact is not obvious
-```
-
-What belongs in the notes:
-
-- What a user can do now that they could not before, written as the command
-  they would type (`wctl wait -c firefox`).
-- What a user must act on: breaking changes, a changed UUID, changed output or
-  exit codes, a new requirement.
-- Bugs a user could have hit, described by the symptom they saw, not the cause.
-
-What stays out:
-
-- Refactors, test suites, CI, doc changes, dependency and toolchain bumps.
-- Benchmarks, profiling numbers, and root-cause explanations.
-- Anything invisible from outside `wctl` and the extension.
-
-Form:
-
-- A handful of bullets under `## What's new`, and `## Fixed` when there is
-  something to put there. Under 15 lines in total.
-- One line per item. If an item needs a paragraph, it is written at the wrong
-  altitude.
-- No emojis, and no install instructions — the script appends those.
-
-Keep the notes file out of the repository (`/tmp` is the right home). The
-published release is the record; the detail behind it is in the commits.
+- The extension zip holds exactly the git-tracked files of
+  `window-control@carlo9890.github.io/`. A new file ships once it is committed,
+  and the extensions.gnome.org reviewer reads it.
+- `wctl` is a separate asset, a static x86_64 binary
+  ([0004](decisions/0004-the-wctl-release-asset-is-one-static-binary-with-no-runtime-dependencies.md)),
+  and never goes into the zip.
+- Keep the `uuid` in `metadata.json` as it is. A new UUID is a new
+  extensions.gnome.org listing and loses every existing user.
 
 ## Version format
 
-Releases and git tags use the integer form `vN` (e.g. `v7`).
-`wctl --version` reports the zero-padded `0.N.0` form (e.g. `0.7.0`) for the same
-release; `scripts/release.sh` enforces the `0.<N>.0 ↔ vN` mapping. So
-`wctl --version` reporting `0.7.0` corresponds to GitHub release/tag `v7`.
+- A release and its tag are `vN`, e.g. `v26`.
+- `metadata.json` holds `version-name` as the string `"N"`. It is what users
+  see and what `GetVersion` returns. It holds no `version` key:
+  extensions.gnome.org sets its own on upload.
+- `cli/Cargo.toml` holds `version = "0.N.0"`, so `wctl --version` prints
+  `0.26.0` for `v26`. `scripts/check-version.sh` enforces the pair in CI and in
+  `release.sh`.
 
-## Publishing to extensions.gnome.org (EGO)
+## Cut a release
 
-The listing is live at <https://extensions.gnome.org/extension/10886/window-control/>.
-Uploads go to that same listing — never create a second one, and never change the
-`uuid`.
+1. On a branch, set the [version](#version-format) in `metadata.json` and
+   `cli/Cargo.toml`, then refresh the lock, or the release build dirties the
+   tree: `(cd cli && cargo update -p wctl)`.
+2. Commit `chore: bump version to vN`, open the PR
+   ([CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md)), and wait for the merge.
+3. On the merged `main` commit, run the
+   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review). Fix
+   each violation through a PR, then start this step again on the new `main`.
+4. On the same commit, run every check the "Before release" row of
+   [TESTING.md](TESTING.md#minimum-checks-before-a-pr) requires, in a headless
+   shell or a VM guest, never in the real session
+   ([RUNNING.md](RUNNING.md) says when a shell start needs consent). Do not tag
+   until all pass.
+5. Tag that commit and push the tag: `git tag vN && git push --tags`.
+6. Write the [release notes](#release-notes) to a file outside the repository,
+   e.g. `/tmp/vN-notes.md`.
+7. Run `./scripts/release.sh --notes-file /tmp/vN-notes.md`. A re-run for an
+   existing release replaces its assets and notes in place; run it again after
+   a failed upload.
 
-EGO is a separate channel from the GitHub release. Do the GitHub release first,
-then upload the same zip.
+## Release notes
 
-1. Download the extension zip asset of the GitHub release
-   (`window-control@carlo9890.github.io_v<version>.zip`). Not a zip in `dist/`
-   or a CI artifact: a later build writes a zip of the same name from newer
-   code. The archive must have `metadata.json` at its root,
-   not inside a subdirectory — `release.sh` builds it with `build.sh`, which
-   zips the git-tracked files of the extension directory with `metadata.json`
-   at the root. An untracked or ignored file never ships; commit a new file
-   before it can. `gschemas.compiled` is
-   ignored on purpose: the review rejects a shipped compiled schema
-   (`EGO-P-006`), because extensions.gnome.org and `gnome-extensions install`
-   compile the XML.
-2. Run the
-   [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review). A
-   violation found here changes the code, so it needs a new release before
-   the upload.
-3. Upload that zip at <https://extensions.gnome.org/upload/>.
-4. Wait for the review. A human reviewer reads every line of the extension, and
-   the queue is usually weeks. Every new version needs a new upload and a new
-   review.
+Read the release range before you write: `git log --oneline v<N-1>..vN`, and
+`git show <sha>` where the user impact is not clear. Write what a user gets,
+not a commit list.
 
-### Listing images
+- Put in: what a user can do now, as the command they type
+  (`wctl wait -c firefox`); what a user must act on (a breaking change, a
+  changed output or exit code, a new requirement); a bug a user could have hit,
+  by its symptom.
+- Leave out: refactors, tests, CI, docs, dependency and toolchain bumps,
+  benchmarks, root causes, anything invisible from outside `wctl` and the
+  extension.
+- Form: bullets under `## What's new`, and `## Fixed` when it has items. One
+  line per item, under 15 lines in total. No install instructions: the script
+  appends them.
 
-The listing's screenshot and icon and the GitHub social preview are PNG renders
-of `docs/images/overview.svg` and `docs/images/icon.svg`. Both are written by
-`docs/images/generate.py`; its docstring has the render commands. Upload new
-renders by hand when a default shortcut, a tile position or `shell-version`
-changes.
+## Publish to extensions.gnome.org
 
-### Listing constraints
+The listing is <https://extensions.gnome.org/extension/10886/window-control/>.
+Upload to it only; never create a second listing.
 
-The code rules are in [REVIEWING.md](REVIEWING.md): the
-[extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) and the
-[quality rules](REVIEWING.md#quality-rules). The listing must keep satisfying:
+Upload now and then, after the maintainer has tested the release on their own
+machine.
 
-- The `uuid` is permanent. Never change it again — a new UUID is a new listing
-  and loses every existing user.
-- `wctl` is a separate asset and MUST stay out of the zip.
-- `wctl` is published as a **statically linked x86_64 binary**, built by
-  `mise run build:musl` (`cargo build --release --target
-  x86_64-unknown-linux-musl`), which `release.sh` and CI both run. The task
-  fails on a dynamically linked binary (`scripts/check-static.sh`). aarch64 is not
-  published; on other architectures users build from source
-  (`./install-wctl.sh --local`).
-- The license must be GPL-compatible. This project is MIT, which qualifies.
-- `shell-version` must list only versions the extension really supports.
+1. Download the zip asset of the GitHub release
+   (`window-control@carlo9890.github.io_v<N>.zip`). Use no zip from `dist/` or
+   CI: a later build writes a zip of the same name from newer code. The asset
+   comes from the tag the review in step 3 passed.
+2. Upload it at <https://extensions.gnome.org/upload/>. Every version needs a
+   new upload and a new human review, usually weeks.
 
-EGO sets its own integer `version` on upload, so `metadata.json` holds no
-`version` key. `version-name` is what users see, and what `GetVersion` reports.
+When a default shortcut, a tile position or `shell-version` changes, render the
+listing screenshot and icon again and upload them by hand; the docstring of
+`docs/images/generate.py` has the commands. The GitHub social preview uses the
+same renders.
 
-### If the reviewer asks about the unauthenticated interface
-
-Expect this question; it is the one substantive objection to the extension.
-Answer from `docs/user-guide/security.md` — it is the authoritative
-statement. The stance is the answer: state the exposure. Offer neither a
-caller allowlist nor a shared secret
-([0002](decisions/0002-the-d-bus-interface-has-no-access-control.md)); an
-offer invites a longer review.
+If the reviewer asks about the unauthenticated D-Bus interface, answer from
+`docs/user-guide/security.md`: state the exposure, and offer neither a caller
+allowlist nor a shared secret
+([0002](decisions/0002-the-d-bus-interface-has-no-access-control.md)).

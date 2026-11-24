@@ -1,248 +1,125 @@
 # Testing
 
-Test layers, how to run them, how to add a suite, and the CI gates. To reload
-and drive the extension by hand see [RUNNING.md](RUNNING.md).
-
-## Test layers
-
-| Layer | Suite | Needs extension? | Command |
-|-------|-------|------------------|---------|
-| Crate tests (CI gate) | `cli/src/**` + `cli/tests/cli.rs` | No — headless | `mise run ci` (`mise run test` is the inner-loop subset) |
-| Rules grammar (CI gate) | `tests/check-rules-format.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js` |
-| Preferences logic (CI gate) | `tests/check-prefs.js` | No — headless | `env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js` |
-| Extension against fake windows (CI gate) | `tests/check-extension-headless.js` | No — headless, needs the mutter typelib | `dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' \| sort -V \| tail -1) && GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js` |
-| Query (read-only) | `tests/run-all-query-tests.sh` | Yes | `./tests/run-all-query-tests.sh` |
-| Modification (state-changing) | `tests/run-all-modification-tests.sh` | Yes | `./tests/run-all-modification-tests.sh` in a headless shell or a VM guest's session only |
-| Keyboard shortcuts (state-changing, in the modification runner) | `tests/test-keybindings.sh` | Yes, plus injected keys | `./tests/test-keybindings.sh` in a headless shell or a VM guest's session (see below) |
-
-The live suites run green on GNOME Shell 46.0 (the real session of an Ubuntu
-24.04 libvirt guest, with the extension installed from the built zip) and 50.1
-(a headless shell on Ubuntu 26.04); both paths are in [RUNNING.md](RUNNING.md).
-
-## The keyboard-shortcut suite
-
-`tests/test-keybindings.sh` presses every tile shortcut and asserts the frame
-that lands, through the same oracle as the modification suite. It cannot press keys
-on the real desktop: it injects them with `tests/inject-keys.js` over mutter's
-`org.gnome.Mutter.RemoteDesktop` API, which needs a shell that has no real
-keyboard in front of it. Run it against a headless shell started with
-`scripts/start-headless.sh`, or against the real session of a VM guest over
-SSH (both in [RUNNING.md](RUNNING.md)); on this desktop's session it would
-press the keys into the shell that started it. It skips when
-the loaded extension does not report the `keybindings` capability, and it
-expects the schema defaults, so reset a rebound key first.
-
-The shell suites run the release binary at `cli/target/release/wctl`, so build it
-first (`mise run build`). Set `WCTL` to test a different one, for example the
-installed binary: `WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
-
-## Crate tests (the CI gate)
-
-`mise run ci` is the gate (see `.mise.toml`); CI runs the same command on a bare
-`ubuntu-latest` runner. None of it needs an extension, a GNOME session, or D-Bus.
-Coverage is not measured; `mise run ci`, the four release checks below and the
-suites in the minimum-checks table are the whole bar.
-
-Two kinds of test live there:
-
-- **Unit tests** in a `#[cfg(test)]` module next to the code they cover —
-  geometry, selector parsing, the rules.json grammar, table output, the command
-  inventory. Expected values are **hardcoded**, never recomputed from the
-  implementation's own formula.
-- **Argument-guard tests** (`cli/tests/cli.rs`) run the real binary with
-  `DBUS_SESSION_BUS_ADDRESS` pointed at a socket that does not exist, so any case
-  that reached the bus would report a connection error instead of the expected
-  message. That is what proves validation happens before the call.
-
-The inventory assertions in `cli/src/main.rs` and `cli/tests/cli.rs` keep the
-command list in sync across the dispatch table, the help text and both shell
-completions, so a command that is not wired into all of them fails `cargo test`.
-
-The `cli` job also runs four release checks. Run them locally before a push
-that changes a version or a dependency:
-
 ```bash
-./scripts/check-version.sh   # version-name is the string "N", and cli/Cargo.toml is 0.N.0
-./tests/check-version-refusals.sh  # check-version.sh refuses a numeric, wrong, malformed or missing version-name
-./tests/check-release-notes-path.sh  # release.sh reads a relative --notes-file from the start folder
-mise run build:musl          # the static release binary, and its linkage check
-```
-
-## The rules.json grammar check (a CI gate)
-
-```bash
-env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
-```
-
-Asserts `window-control@carlo9890.github.io/rules-format.js` — every validation
-message, the `place` token grammar, the tile grid, the centring formula and the
-match predicate — against `tests/vectors/rules-spec.json`. No GNOME session, no
-D-Bus, no mutter typelib: `rules-format.js` imports nothing, which is why the
-extension job in `.github/workflows/build.yml` can run this on `ubuntu-latest`
-with only the `gjs` package.
-
-**Every vector group MUST be read from both sides**, with the exception below,
-so `wctl rules check` and the extension cannot disagree about whether a file is
-valid, about the message text or about a rectangle. Two parts are read by the
-GJS check only, because `rules.json` has no `pid` key and the CLI builds no
-predicate from a bare kind: the `pid` cases and `match.no_predicate`. A new group gets a reader on each side in the same commit:
-a group that only one side reads pins nothing across the pair. Adding a
-validation rule means adding a case to the vectors in the same commit, and
-[specs/RULES-JSON.md](specs/RULES-JSON.md) is the normative definition both
-follow.
-
-`env -u GI_TYPELIB_PATH` is not decoration: it is what proves the module still
-loads without the typelib. Drop it and a stray `gi://` import goes unnoticed
-locally and breaks CI.
-
-## The extension check against fake windows (a CI gate)
-
-```bash
+mise run ci                                              # the crate gate: fmt, clippy, tests, build
+env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js   # rules grammar, no typelib
+env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js          # preferences logic
 dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) &&
     GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js
+./tests/run-all-query-tests.sh                           # read-only, against a running extension
+./tests/run-all-modification-tests.sh                    # state-changing: headless shell or VM guest only
 ```
 
-With several mutter typelibs installed, this picks the newest one; with none,
-it stops with `no Meta-*.typelib installed`.
+## Layers
 
-Runs the real `extension.js`, `dbus-service.js`, `rules.js`, `rules-files.js`, `overlay.js`,
-`keybindings.js` and `indicator.js` against fake windows and a fake display that count their signal handlers. No
-GNOME session, no D-Bus: the check copies the extension files into a temporary
-directory and points the shell-only imports at stubs written there (the check's header
-lists them). It needs the
-mutter typelib (`/usr/lib/x86_64-linux-gnu/mutter-14` on GNOME 46, package
-`gir1.2-mutter-14`), which the extension job in `.github/workflows/build.yml`
-installs.
+| Layer | Suite | Needs a running extension |
+|---|---|---|
+| Crate (CI) | `cli/src/**` unit tests, `cli/tests/cli.rs` | No |
+| Rules grammar (CI) | `tests/check-rules-format.js` against `tests/vectors/rules-spec.json` | No |
+| Preferences (CI) | `tests/check-prefs.js` | No |
+| Fake windows (CI) | `tests/check-extension-headless.js`: the real extension modules against a fake display | No, but the mutter typelib (`gir1.2-mutter-14` on Ubuntu 24.04) |
+| Query | `tests/run-all-query-tests.sh` | Yes |
+| Modification | `tests/run-all-modification-tests.sh`, `tests/test-keybindings.sh` included | Yes, in a headless shell or a VM guest |
 
-Each section of the check opens with a comment that says what it pins. Add a
-case there for extension logic a fake window can drive. Anything reachable
-this way must be verified this way before a shell is even considered; see the
-hard rules in [RUNNING.md](RUNNING.md).
+Coverage is not measured. The minimum-checks table below is the whole bar.
 
-Never replace a `Meta` function with a stub in a case that runs the current
-mutter's code path: the stub hides a call that throws on the real shell, and
-CI's older typelib hides a removed API too. Take such an API away for the case,
-as `hideIsWayland()` does. Stub one only in a case that runs an older mutter's
-path, as the below-50 `min_width` section does.
+## CI gate
+
+`.github/workflows/build.yml` runs two jobs on a bare `ubuntu-latest`: `extension`
+(the three headless `gjs` checks) and `cli` (`mise run ci` and the release
+checks). Run the release checks locally before a push that changes a version or
+a dependency:
+
+```bash
+./scripts/check-version.sh
+./tests/check-version-refusals.sh
+./tests/check-release-notes-path.sh
+mise run build:musl
+```
 
 ## Query and modification tests
 
-Both need the extension enabled and running, plus `jq` and `gdbus`. Query tests
-are read-only. Modification tests need `kitty` installed — they spawn a kitty
-window (found through `wctl wait -p`, which replies once the window is shown)
-and exercise every state-changing command
-(move, resize, move-resize, place, tile, center, minimize/maximize, fullscreen,
-above, sticky, activate, focus, move-to-workspace, move-to-monitor, wait, the
-selector forms, close), asserting geometry within a pixel tolerance. They
-create, move, focus and close a window and switch workspace in the session
-they run against, so never run them on your desktop's session. **Run the
-modification runner only in a headless shell or a VM guest's session** (see
-[RUNNING.md](RUNNING.md)): it includes the keyboard-shortcut suite, which
-presses keys into the shell that runs it. A nested session runs
-`tests/test-modifications.sh` directly.
+The shell suites run the release binary `cli/target/release/wctl`: build it
+first with `mise run build`. Set `WCTL` to test another binary:
+`WCTL=$(command -v wctl) ./tests/run-all-query-tests.sh`.
 
-`tests/test-workspaces-monitors.sh` (query) covers `workspaces`, `monitors`,
-the `list` filters and the read-only selector forms. Both suites need the
-extension build that has the workspace/monitor/wait methods loaded; against an
-older loaded build they fail on "No such method" rather than skipping.
+- Run the modification runner only in a headless shell or a VM guest's session
+  ([RUNNING.md](RUNNING.md)). It moves, focuses and closes windows, and the
+  keyboard-shortcut suite injects keys over `org.gnome.Mutter.RemoteDesktop`
+  into the shell that runs it.
+- In a nested session, run `tests/test-modifications.sh` directly.
+- The suites test the loaded extension. Against an older loaded build, a suite
+  fails on "No such method" instead of skipping.
+- Read the suite summary, never an assertion's exit status: an assertion records
+  a failure and returns 0.
+- Set `WCTL_TEST_SETTLE=1.5` in a nested or headless shell (default 0.5 s).
 
-If the extension is not running the suites self-skip and the runner reports
-`NO ... TESTS EXECUTED` (a distinct SKIPPED state), never a false pass.
-On a skip, or a "No such method" from an older loaded build, ask the user to
-consent to a [headless shell](RUNNING.md#headless-session-no-window-on-the-real-screen)
-and run the suites there, or use a throwaway VM (RUNNING.md hard rule 1). With
-neither, record the skip or the failure in the PR.
+## Write a test
 
-`WCTL_TEST_SETTLE` sets the settle wait before asserting (default 0.5 s); a
-nested session needs `WCTL_TEST_SETTLE=1.5`. The multi-monitor cases skip unless
-the session has two monitors (see [RUNNING.md](RUNNING.md) for faking one).
-The `rules apply` case skips unless `HEADLESS_SCRATCH` is set: it writes a rule
-into that headless shell's scratch `rules.json` (see [RUNNING.md](RUNNING.md)).
+- Pin **hardcoded** expected values in Rust unit tests. Never recompute them
+  with the implementation's own formula.
+- Put a test that proves an argument is refused before any D-Bus call in
+  `cli/tests/cli.rs`: it runs the binary against a bus that does not exist.
+- Read every group of `tests/vectors/rules-spec.json` from both sides,
+  `tests/check-rules-format.js` and `cli/src/rules.rs`, and give a new group a
+  reader on each side in the same commit. The two exceptions are read by the
+  GJS check only: the `pid` match cases (`rules.json` has no `pid` key) and
+  `match.no_predicate` (the CLI builds no predicate from a bare kind).
+- Add a case to `tests/check-extension-headless.js` for extension logic a fake
+  window can drive. Each section opens with a comment that says what it pins.
+- In the fake-windows check, stub a `Meta` function only in a case that runs an
+  older mutter's path, as the below-50 `min_width` section does. For the
+  current path, take the API away for the case, as `hideIsWayland()` does: a
+  stub hides a call that throws on the real shell.
+- Reuse the assertions and the window scaffolding of `tests/test-helper.sh`, and
+  the tile geometry of `tests/geometry-helper.sh`. `assert_tile_frame` is an
+  oracle independent of the crate, whose unit tests pin the same pixels by hand.
 
-Assertions record a failure and return 0 (`tests/test-helper.sh`) — read the
-suite summary, never an assertion's exit status.
+### Add a shell suite
 
-`tests/test-helper.sh` holds the shared assertions (`assert_equals`,
-`assert_within`, `assert_window_field_within`, `assert_contains`, ...) and the
-test-window scaffolding the state-changing suites share (`spawn_test_window`,
-`cleanup_test_window`, `wait_for_change`, `get_window_field`). Reuse them rather
-than re-implementing pass/fail logic or a window spawn in a suite.
-`tests/geometry-helper.sh` holds the expected workarea parsing and tile
-geometry, plus `assert_tile_frame`, which reads a window's frame once and
-asserts all four edges: it is an independent oracle, and the same pixels are
-pinned by hand in the crate's unit tests, so the two cannot drift silently.
-
-## Adding a suite
-
-1. Name it `tests/test-<topic>.sh` and `chmod +x` it — the query runner globs
-   executable `test-*.sh` files.
-2. Source `tests/test-helper.sh` (plus `tests/geometry-helper.sh` for geometry).
-3. End with `summary()` — the runners scrape its `Passed:` count, and a suite
-   without it contributes zero passes.
-4. A state-changing suite MUST be added to the `MODIFICATION_TESTS` array in
-   `tests/run-all-modification-tests.sh` AND to the exclusion list in
-   `tests/run-all-query-tests.sh`, or it runs in the read-only query gate.
-
-Examples: `tests/test-workspaces-monitors.sh` (query),
-`tests/test-modifications.sh` (modification).
+1. Name it `tests/test-<topic>.sh` and make it executable: the query runner
+   runs every executable `test-*.sh`.
+2. Source `tests/test-helper.sh`, and `tests/geometry-helper.sh` for geometry.
+3. End with `summary`: a runner reads its `Passed:` count.
+4. Add a state-changing suite to `MODIFICATION_TESTS` in
+   `tests/run-all-modification-tests.sh` AND to the exclusions in
+   `tests/run-all-query-tests.sh`, or it runs in the read-only gate.
 
 ## Driving install-wctl.sh and release.sh offline
 
-CI does not run `install-wctl.sh`. It runs a copy of `scripts/release.sh` only
-up to the `gh` login check, and `tests/check-release-notes-path.sh` asserts only
-how `--notes-file` resolves a path. After a change to either script, run it end
-to end with stubs first on `PATH`: no GNOME Shell and no network are needed.
+CI does not run either script end to end. After a change to one, run it with
+stubs for `gh`, `mise` and `curl` first on `PATH`, and keep `git`, `sha256sum`
+and the other local tools real. Two stub answers are not obvious from
+`release.sh`:
 
-- Set `HOME` to a scratch directory for `install-wctl.sh`: it installs to
-  `$HOME/.local/bin`.
-- Run `release.sh --notes-file <file>` in a throwaway clone on branch `main`
-  with a clean tree and tag `v<metadata.json version-name>` on `HEAD` (`git tag -f`:
-  before a version bump that tag already exists). It writes `dist/` and
-  `cli/target/` in that clone.
-- Log each stub's arguments to a file and assert the calls from that file.
-
-Stub each network and toolchain command the script calls: `curl`, `mise` and
-`gh` (read the script for the calls). `install-wctl.sh` calls `wget` only when
-no `curl` is on `PATH`: to test that path, stub `wget` and leave `curl` off
-`PATH`. With `mise` stubbed, the
-static-linkage check never runs: only the real `mise run build:musl` runs it. Keep `git`,
-`sha256sum` and the other local tools real: the scripts check their output.
-These stubs must produce output:
-
-- `gh release view <tag>`: before `gh release create`, exit non-zero, because
-  exit 0 makes `release.sh` prompt on stdin. After it, exit 0 and print `4` for
+- `gh release view <tag>` exits non-zero before `gh release create` (exit 0
+  makes `release.sh` prompt on stdin), and exits 0 after it, printing `4` for
   `--json assets -q '.assets | length'`.
-- `gh api repos/{owner}/{repo}/commits/tags/<tag> -q .sha`: print the `HEAD`
+- `gh api repos/{owner}/{repo}/commits/tags/<tag> -q .sha` prints the `HEAD`
   commit, or `release.sh` stops before the build.
-- `gh repo view --json nameWithOwner -q .nameWithOwner`: print `<owner>/<repo>`,
-  which `release.sh` puts in the release notes.
-- `mise run build:musl`: create the file `CLI_BINARY` names in `release.sh`.
-- `curl`, or `wget` with `-O`, for `install-wctl.sh --download` (without the
-  flag, a checkout with a build installs that build): write a runnable `wctl`
-  to the output path, and print its `sha256sum` line for `wctl.sha256`, which
-  the script fetches with the output path `-`.
 
 ## Minimum checks before a PR
 
-| Action | `mise run ci` | Rules grammar | Preferences | Fake windows | Query | Modification |
-|--------|---------------|---------------|-------------|--------------|-------|--------------|
-| Before commit | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
-| Before push | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | Optional |
-| Before release | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** | **MUST pass** |
+| Action | `mise run ci` | Rules grammar | Preferences | Fake windows | Query | Reload-and-run | Modification |
+|---|---|---|---|---|---|---|---|
+| Before commit or push | MUST | MUST | MUST | MUST | MUST¹ | MUST¹ | Optional |
+| Before release | MUST | MUST | MUST | MUST | MUST | MUST | MUST |
 
-The rules-grammar column applies to any change under
-`window-control@carlo9890.github.io/rules-format.js`, `cli/src/rules.rs` or
-`tests/vectors/`. The preferences column applies to any change to `prefs.js`,
-`prefs/`, `rules-files.js` or the schema. The fake-windows column applies to any change to
-`extension.js`, `dbus-service.js`, `rules.js`, `rules-files.js`, `overlay.js`,
-`keybindings.js`, `indicator.js` or `window-helpers.js`. All three are headless and take seconds, so there is no reason
-to skip them. The query column applies to any change under
-`window-control@carlo9890.github.io/`, `cli/` or `tests/`. It reads the
-extension loaded in the real session and starts no shell. For a JavaScript
-change, that extension holds the old code until the user logs out and in; only
-the reload-and-run below tests the new code.
+¹ MUST pass, or record the skip in the PR when the user gives no consent for a
+shell ([RUNNING.md](RUNNING.md#hard-rules)).
 
-Modifying JavaScript also requires `./scripts/build.sh validate` (see
-[CODING.md](CODING.md)) and a reload-and-run in a nested or headless shell or a
-VM guest (see [RUNNING.md](RUNNING.md)). RUNNING.md hard rule 1 says when that
-start needs the user's consent.
+Which change brings in which column:
+
+- Rules grammar: `rules-format.js`, `cli/src/rules.rs`, `tests/vectors/`.
+- Preferences: `prefs.js`, `prefs/`, `rules-files.js`, the schema.
+- Fake windows: `extension.js`, `dbus-service.js`, `rules.js`,
+  `rules-files.js`, `overlay.js`, `keybindings.js`, `indicator.js`,
+  `window-helpers.js`.
+- Query: anything under `window-control@carlo9890.github.io/`, `cli/` or
+  `tests/`. It reads the extension of the real session, which holds the old
+  JavaScript until the user logs out and in.
+- Reload-and-run: a JavaScript change. Reload it in a nested or headless shell
+  or a VM guest ([RUNNING.md](RUNNING.md)) and run the query suite there.
+
+A JavaScript change also passes the `node --check` gate in
+[CODING.md](CODING.md).

@@ -1,186 +1,69 @@
 # Overview
 
-GNOME Shell extension that exposes a D-Bus interface for listing and controlling
-windows on Wayland, plus `wctl`, a Rust CLI over that interface. Targets GNOME
-Shell 45-50.
+A findability map: where things live, and how to search for them. Each
+module's header comment says what it holds.
 
-## Repository layout
+## Layout
 
-```
-window-control@carlo9890.github.io/   GNOME Shell extension (dir name == uuid)
-├── extension.js           enable()/disable()
-├── dbus-service.js        the D-Bus handlers (WindowControlService)
-├── dbus-interface.js      the D-Bus interface XML
-├── rules.js               auto-placement (WindowRules)
-├── rules-files.js         reads rules.json and the rules.d drop-ins
-├── overlay.js             overlay windows (WindowOverlays)
-├── keybindings.js         the shortcuts (WindowKeybindings)
-├── indicator.js           the top-bar icon
-├── rules-format.js        the rules.json grammar; imports NOTHING
-├── window-helpers.js      the helpers shared by the modules, and WindowPlacer
-├── prefs.js, prefs/       the preferences window (its own process)
-├── schemas/               the GSettings schema
-├── metadata.json          uuid, shell-version, url, version-name
-└── LICENSE                copy of the top-level LICENSE, shipped in the zip
-cli/                       wctl, the CLI (Rust, zbus)
-├── src/main.rs            argument dispatch, command inventory
-├── src/dbus.rs            the D-Bus client
-├── src/rules.rs           the rules.json grammar, the Rust half of the pair
-├── src/commands/          one module per command group
-├── completions/           hand-written bash and zsh completions
-└── tests/cli.rs           argument-guard tests
-scripts/                   build, release, version checks, test shells
-└── demo/                  records the user guide's demo GIFs
-tests/                     test suites (see docs/TESTING.md)
-└── vectors/               shared test vectors read by GJS and Rust alike
-docs/                      developer topic docs (this directory)
-├── decisions/             the design decisions in force
-├── specs/                 normative format specs
-├── user-guide/            user docs, one page per task
-└── images/                the guide images, the demo GIFs and the listing icon
-.github/workflows/         CI (build.yml)
-dist/                      build output (generated zips)
-install-wctl.sh            wctl installer
-README.md                  the product page; links the user guide
-```
+| Path | Holds |
+|---|---|
+| `window-control@carlo9890.github.io/` | The extension. The directory name is the `uuid` in `metadata.json`. |
+| `…/extension.js` | `enable()` and `disable()`: starts and stops the parts below, and follows the lock screen. |
+| `…/dbus-interface.js` | The D-Bus interface XML, and the errors each method raises by name. |
+| `…/dbus-service.js` | `WindowControlService`: every D-Bus handler, and `CAPABILITIES`. |
+| `…/rules.js` | `WindowRules`: places each new window by the rules files. |
+| `…/rules-files.js` | Reads `rules.json` and the `rules.d` drop-ins. |
+| `…/rules-format.js` | The rules grammar and the tile grid. Imports nothing, so plain `gjs` and the preferences process load it. |
+| `…/window-helpers.js` | `WindowPlacer`, the one path for a frame request; the helpers shared by the modules above. |
+| `…/keybindings.js` | `WindowKeybindings`: the shortcuts. The keys are in `schemas/`. |
+| `…/overlay.js` | `WindowOverlays`: the windows a rule makes overlays. |
+| `…/indicator.js` | The top-bar icon. |
+| `…/prefs.js`, `…/prefs/` | The preferences window. It runs in its own process, not in GNOME Shell. |
+| `cli/src/main.rs` | `wctl` dispatch, `COMMANDS`, `MIN_EXTENSION_VERSION`. |
+| `cli/src/dbus.rs` | The D-Bus client and the map from a D-Bus error to a message and an exit code. |
+| `cli/src/selector.rs` | The window selector: parse without the bus, then look up. |
+| `cli/src/rules.rs` | The rules grammar, second implementation. |
+| `cli/src/commands/` | One module per command group. |
+| `cli/src/help.rs`, `cli/completions/` | The help text and the bash and zsh completions, written by hand. |
+| `cli/tests/cli.rs` | The argument-guard tests. |
+| `scripts/` | Build, release, version checks, the nested and headless shell starts. `demo/` records the guide's GIFs. |
+| `tests/` | The test suites. `vectors/rules-spec.json` pins the rules grammar for both implementations. |
+| `docs/decisions/` | One record per decision in force. |
+| [`docs/specs/RULES-JSON.md`](specs/RULES-JSON.md) | The rules file format. |
+| `docs/user-guide/` | The user guide. `README.md` is the product page that links it. |
+| `docs/images/` | The guide images, the demo GIFs and the listing icon. |
+| `install-wctl.sh` | The `wctl` installer. |
 
-Each module's header comment says what it holds.
+## Where each concept lives
 
-## Architecture & key concepts
-
-- The extension registers its D-Bus object on **GNOME Shell's own bus
-  connection**, so the destination is `org.gnome.Shell` (not a standalone
-  service). Path `/org/gnome/Shell/Extensions/WindowControl`, interface
-  `org.gnome.Shell.Extensions.WindowControl`. Who can call it is in
-  `docs/user-guide/security.md`.
-- **The D-Bus surface is fixed in scope**: it offers no layout, except
-  `ApplyRules`, which applies the rules files again
-  ([0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md));
-  what it must not grow is in [REVIEWING.md](REVIEWING.md#project-specific-rules).
-- `dbus-service.js` holds one `WindowControlService` class; the simple boolean
-  handlers share the `_actOnWindow(id, label, action)` helper. The interface XML
-  lives in `dbus-interface.js` and is imported into `dbus-service.js`.
-  `extension.js` only starts and stops the service, `WindowRules`,
-  `WindowKeybindings` and the `WindowPlacer` the three share, adds and removes
-  the top-bar icon (`_syncIndicator`),
-  and removes the shortcuts and the icon while the screen is locked
-  (`_syncSessionMode`); the service and the rules stay up
-  ([0003](decisions/0003-the-d-bus-interface-and-the-rules-stay-up-while-the-session-is-locked.md)).
-- `wctl` speaks D-Bus directly through **zbus's blocking API**, and its
-  release asset is a static musl binary with no runtime dependencies
-  ([0004](decisions/0004-the-wctl-release-asset-is-one-static-binary-with-no-runtime-dependencies.md)).
-  Failures funnel through `map_err`
-  (a call) and `map_connect_err` (the connection) in `dbus.rs` for a
-  consistent hint.
-- The session connection is opened **lazily**, so every argument-validation error
-  is reported without touching the bus. That is what keeps the guard tests in
-  `cli/tests/cli.rs` headless.
-- Window documents stay as `serde_json::Value` (with serde_json's
-  `preserve_order`), because `list --json` and `info --json` must emit the
-  extension's document unchanged, key order included.
-- One code base runs across GNOME 45-50 via runtime API detection for
-  the maximize path (`get_maximized()` vs `get_maximize_flags()`):
-  [0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md).
-- `WaitForWindow` and `WaitForGeometry` are the **async** handlers (the GJS
-  `...Async(params, invocation)` convention), holding the invocation in
-  `_waiters` / `_geometryWatchers`. A window satisfies a waiter only once it is
-  shown — `_isUnshown` and `_evaluateWindow` in `dbus-service.js` say why, and
-  the `disable()` teardown rule is in [CODING.md](CODING.md#javascript-the-extension).
-- **Auto-placement** lives in `rules.js` (`WindowRules`), separate from the D-Bus
-  service: it reads `~/.config/gnome-window-control/rules.json`, then the
-  drop-in files in `rules.d/` that other programs own (the order and the
-  per-file loading are in the spec), watches
-  `window-created`, and places a matching window once mutter has shown it. It
-  makes no D-Bus call; `ApplyRules` in `dbus-service.js` calls its
-  `applyRules` to place the open windows again. The GNOME-49 maximize API detection is shared with
-  `dbus-service.js` through `window-helpers.js`.
-- **The frame requests of a shown window go through one `WindowPlacer`**
-  (`window-helpers.js`): the shortcuts, a rule's geometry and the `Move`,
-  `Resize` and `MoveResize` handlers. A window has at most one placement
-  pending, and the newest of these requests wins. A move to a monitor
-  (`MoveToMonitor`, a rule's `monitor`) runs at once, outside it, and drops
-  a pending placement for another monitor. A rule's
-  first apply enters it only after the waits in
-  [RULES-JSON.md](specs/RULES-JSON.md#matching-and-application). A
-  maximized window is restored first and placed once the restore has landed
-  (`UnmaximizeWait`). `moveResizeFrame` requests a frame as the program, not
-  as the user, so a window whose minimum size is above its tile still moves.
-  On Wayland a window takes a new size only when its client answers, which
-  for a covered (suspended) window can be minutes later. A request made
-  before that answer waits for it, as one waits for a restore, so the late
-  answer cannot put the window back.
-- In `rules.js`, a geometry request only
-  sticks after the window is shown (the same constraint `WaitForWindow` documents
-  above), so a rule waits for `shown` and then applies from an idle callback; a
-  window that maps maximized is unmaximized first. On GNOME 49 and later the
-  frame also goes into the window's initial configuration (`_preplace`, the
-  `configure` signal), so the first frame is drawn in place.
-- **Overlay windows** are the one rules.json effect that outlives a window's
-  first placement: `WindowRules` decides membership at each apply and at each
-  load, for the open windows too (`_syncOverlays`), and `WindowOverlays` in
-  `overlay.js` keeps a member above, out of Alt+Tab, and minimizes it on focus
-  loss and when the overview opens.
-- **Keyboard shortcuts** live in `keybindings.js` (`WindowKeybindings`): one
-  `Main.wm.addKeybinding` per key of the schema in `schemas/`, registered
-  `PER_WINDOW` so mutter hands the handler the focused window and skips it when
-  there is none. A shortcut tiles to a position from `rules-format.js`, so a
-  key, a rule and `wctl tile` cannot disagree about a rectangle; `cycle-wide`
-  picks its position with `nextWidePosition` from the window's frame (within
-  half a cell, so a terminal snapped to its character grid still counts), not
-  from remembered state. A shortcut places through the `WindowPlacer`, as a
-  rule does. `apply-rules` is the one
-  shortcut without `PER_WINDOW`: it calls the service's `applyRulesToAll`, the
-  `ApplyRules(0)` path without a D-Bus caller. The zip ships the schema
-  XML only: every install path but a plain copy compiles it, and `build.sh
-  install` compiles it for that one.
-- **The preferences window** (`prefs.js`, `prefs/`) runs in its own process,
-  not in GNOME Shell. It writes the schema keys and `rules.json`, and only
-  lists the `rules.d` files; the
-  extension only reads them. The Rules page validates with `rules-format.js`
-  (through `prefs/rules-check.js`) and applies the rules with the
-  `ApplyRules(0)` D-Bus call. `indicator.js` is the top-bar icon that the
-  `show-indicator` key turns on; `extension.js` adds and removes it
-  (`_syncIndicator`) and removes it while the screen is locked, as the
-  shortcuts are.
-- **The rules.json grammar** is `rules-format.js`, which imports
-  **nothing**. `cli/src/rules.rs` is a second implementation of the same
-  grammar, and both are pinned to `tests/vectors/rules-spec.json`
-  ([0007](decisions/0007-the-rules-json-grammar-has-two-implementations-pinned-to-one-vector-file.md)).
-  `docs/specs/RULES-JSON.md` is normative.
-- `wctl` addresses windows through one **selector resolver** in two halves:
-  `selector::parse_exact` / `parse_min` (pure: the selector and the argument
-  count) and `selector::lookup(ctx, &selector)` (the bus: a numeric ID needs no
-  D-Bus call, `focused` costs one `GetFocused`, and `-c/-t/-s/-p` cost one
-  `ListDetailed` cached in `Ctx` for the command that follows).
+| Concept | Lives in | Decision |
+|---|---|---|
+| D-Bus surface: geometry primitives, no layout | `dbus-interface.js`, `dbus-service.js` | [0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md), [0002](decisions/0002-the-d-bus-interface-has-no-access-control.md) |
+| Errors raised by name | `dbus-interface.js` (ERRORS block), `cli/src/dbus.rs` | [0005](decisions/0005-the-geometry-methods-applyrules-and-the-wait-methods-raise-named-d-bus-errors.md) |
+| What stays up while the screen is locked | `extension.js` | [0003](decisions/0003-the-d-bus-interface-and-the-rules-stay-up-while-the-session-is-locked.md) |
+| One code base for GNOME 45-50 | `window-helpers.js` (maximize API detection) | [0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md) |
+| Frame requests of a shown window | `WindowPlacer` in `window-helpers.js` | |
+| Auto-placement | `WindowRules` in `rules.js`; `ApplyRules` calls it | [0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md) |
+| Rules grammar, two implementations | `rules-format.js`, `cli/src/rules.rs`, `tests/vectors/rules-spec.json` | [0007](decisions/0007-the-rules-json-grammar-has-two-implementations-pinned-to-one-vector-file.md) |
+| Capability names | `CAPABILITIES` in `dbus-service.js`; gates in `cli/src/commands/` | [0008](decisions/0008-a-client-learns-what-the-extension-supports-from-a-capability-name.md) |
+| `wctl` argument parsing, help, completions | `cli/src/main.rs`, `cli/src/help.rs`, `cli/completions/` | [0009](decisions/0009-wctl-parses-its-arguments-by-hand.md) |
+| `wctl` release binary | `build:musl` in `.mise.toml` | [0004](decisions/0004-the-wctl-release-asset-is-one-static-binary-with-no-runtime-dependencies.md) |
 
 ## Finding things
 
 ```bash
-# A D-Bus method's XML signature
-grep -n 'method name=' window-control@carlo9890.github.io/dbus-interface.js
-
-# A method's handler implementation
-grep -nE 'MethodName(Async)?\(' window-control@carlo9890.github.io/dbus-service.js
-
-# A wctl subcommand's implementation and its dispatch
-grep -rn '"<name>" =>' cli/src/main.rs cli/src/commands/
-
-# Every command wctl knows about
-grep -n -A32 'pub const COMMANDS' cli/src/main.rs
-
-# The pure helpers that are unit-tested headlessly
-grep -n '^pub fn' cli/src/geometry.rs cli/src/selector.rs
-
-# The method table users read (mirrors the XML above)
-sed -n '/## Methods/,/## Errors/p' docs/user-guide/dbus.md
+X=window-control@carlo9890.github.io
+grep -n 'method name=' $X/dbus-interface.js              # every D-Bus method and its signature
+grep -nE '^\s+<Method>(Async)?\(' $X/dbus-service.js     # the handler of one method
+sed -n '/pub const COMMANDS/,/^];/p' cli/src/main.rs     # every wctl command
+grep -rn '"<command>" =>' cli/src/main.rs cli/src/commands/   # a command's dispatch and its subcommands
+grep -n '^pub fn' cli/src/geometry.rs cli/src/selector.rs     # the pure helpers the unit tests cover
+grep -rn 'decisions/<NNNN>' docs $X cli                  # every citation of one record
 ```
 
-## Authoritative sources
-
-- The D-Bus surface is the interface XML in
-  `window-control@carlo9890.github.io/dbus-interface.js`. The method table in
-  `docs/user-guide/dbus.md`
-  mirrors it and is updated by hand, so trust the XML when they disagree.
+The interface XML is the D-Bus contract. The method table in
+`docs/user-guide/dbus.md` is a copy kept by hand: trust the XML when they
+disagree.
 
 ## External resources
 
@@ -189,4 +72,4 @@ sed -n '/## Methods/,/## Errors/p' docs/user-guide/dbus.md
 | Releases | https://github.com/carlo9890/gnome-window-control/releases |
 | Meta.Window API (mutter) | https://gnome.pages.gitlab.gnome.org/mutter/meta/class.Window.html |
 | GJS D-Bus (`Gio.DBusExportedObject`) | https://gjs.guide/guides/gio/dbus.html |
-| GNOME Shell extension porting notes | https://gjs.guide/extensions/ |
+| GNOME Shell extension guide and porting notes | https://gjs.guide/extensions/ |
