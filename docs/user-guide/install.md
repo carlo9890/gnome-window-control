@@ -3,7 +3,7 @@
 ## Compatibility
 
 - GNOME Shell 45-50.
-- Wayland sessions only. X11 is untested and unsupported.
+- Wayland sessions only.
 
 ## Extension
 

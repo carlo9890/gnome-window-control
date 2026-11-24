@@ -65,9 +65,10 @@ gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
   its first frame, and a window not yet shown ignores geometry requests. Use
   `wctl wait`, not a `wctl list` poll.
 - **Fake a second monitor** in a nested shell:
-  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 ./scripts/start-nested.sh`. A headless
-  shell has one virtual monitor. It is the only way to test `move-to-monitor` across monitors
-  and the `workspaces-only-on-primary` refusal.
+  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 ./scripts/start-nested.sh`. It is the
+  only way to test `move-to-monitor` across monitors and the
+  `workspaces-only-on-primary` refusal. A headless shell has one virtual
+  monitor.
 - **Dynamic workspaces shift indices.** GNOME removes an empty workspace you
   switch away from. Anchor a window on the first workspace before a workspace
   move.

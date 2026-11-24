@@ -24,6 +24,7 @@ const MIN_WIDTH_KEY = 'min_width';
 const ALL_MATCH_KEY_NAMES = `${MATCH_KEY_NAMES}, ${MIN_WIDTH_KEY}`;
 
 // A tile position as (startCol, endCol, startRow, endRow) of the 4x2 grid.
+// docs/user-guide/concepts.md quotes these positions.
 export const TILE_CELLS = {
     'top-left': [0, 0, 0, 0],
     'top-center': [1, 2, 0, 0],
