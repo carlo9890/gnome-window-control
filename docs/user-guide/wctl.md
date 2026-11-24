@@ -100,8 +100,8 @@ frame that never settles exits 4 and still reports `"placed":true`.
 `center` always waits for the frame to settle, up to 2 s, before it reads the
 size it centers, so `wctl resize` followed by `wctl center` centers the new
 size. A window that has not taken the new size after 2 s, such as one another
-window covers, is centered for the size it has then, so it is off-center once
-it takes the new size.
+window covers, is not centered reliably: when it takes the new size later, it
+can go back to where it was before `center`.
 
 ## Checking the extension version
 

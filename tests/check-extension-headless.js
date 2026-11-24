@@ -1157,9 +1157,49 @@ export class PopupSeparatorMenuItem {}
         check('the ended wait leaves no handler on the window', win.handlerCount() === 0,
             `${win.handlerCount()} handler(s)`);
 
+        // A second wait for the same window, from an Unmaximize that does not
+        // go through place(), replaces the first: no timer or handler of the
+        // first is left, and the newest request still waits.
+        service.MoveResizeAsync([61, 40, 60, 320, 240], invocation());
+        service.MoveAsync([61, 5, 5], invocation());
+        const firstTimer = placer._answers.get(win)?.timeoutId ?? 0;
+        win.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        service.Unmaximize(61);
+        check('a second wait removes the timer of the first', firstTimer !== 0 && !sourceAlive(firstTimer),
+            `${firstTimer}`);
+        check('a second wait keeps the request held by the first', placer._answers.get(win)?.request !== null &&
+            last() !== '[5,5]', JSON.stringify(win.moves));
+        win.answer();
+        await sleep(50);
+        check('the held request runs after the second wait is answered', last() === '[5,5]' &&
+            win.handlerCount() === 0, `${JSON.stringify(win.moves)} ${win.handlerCount()}`);
+
+        // The window closes after its answer, before the held request runs.
+        const closing = createWindow({ id: 62, wmClass: 'closing' });
+        closing.map();
+        await sleep(100);
+        closing.answersLate = true;
+        service.MoveResizeAsync([62, 10, 10, 300, 200], invocation());
+        service.MoveAsync([62, 77, 77], invocation());
+        closing.answer();
+        closing.emit('unmanaged');
+        await sleep(50);
+        check('a held request does not run on a window closed after its answer',
+            JSON.stringify(closing.moves.at(-1)) !== '[77,77]', JSON.stringify(closing.moves));
+
+        // A window that closes while it has not answered leaves no timer.
+        service.MoveResizeAsync([61, 50, 70, 330, 250], invocation());
+        const closedTimer = placer._answers.get(win)?.timeoutId ?? 0;
+        win.emit('unmanaged');
+        check("'unmanaged' removes the answer timer", closedTimer !== 0 && !sourceAlive(closedTimer),
+            `${closedTimer}`);
+
         service.MoveResizeAsync([61, 0, 0, 300, 200], invocation());
         service.MoveAsync([61, 1, 1], invocation());
+        const lastTimer = placer._answers.get(win)?.timeoutId ?? 0;
         placer.destroy();
+        check('WindowPlacer.destroy() removes the answer timer', lastTimer !== 0 && !sourceAlive(lastTimer),
+            `${lastTimer}`);
         check('WindowPlacer.destroy() leaves no handler on a window that has not answered',
             win.handlerCount() === 0, `${win.handlerCount()} handler(s)`);
         service.unexport();

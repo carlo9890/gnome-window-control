@@ -220,11 +220,12 @@ export class UnmaximizeWait {
 // client answers, and mutter then applies the position of that request. A
 // covered window is suspended and answers only once it is visible again, so
 // the answer can come minutes later. A request made before the answer waits
-// for it, and the newest of them runs after it.
+// for it, up to ANSWER_WAIT_MS, and the newest of them runs after it. An
+// answer after that can still undo the request.
 export class WindowPlacer {
     constructor() {
         this._pending = new Map();        // Meta.Window -> { wait, request, monitor }
-        this._answers = new Map();        // Meta.Window -> { signalIds, idleId, request, monitor }
+        this._answers = new Map();        // Meta.Window -> { answerIds, unmanagedId, idleId, timeoutId, request, monitor }
     }
 
     // Run `request()` now, or once the window's restore or its answer to a
@@ -302,40 +303,44 @@ export class WindowPlacer {
         if (win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
             !sameRect(win.get_frame_rect(), before) || (target && sameRect(target, before)))
             return;
-        const entry = { signalIds: [], idleId: 0, timeoutId: 0, request: null, monitor: null };
+        // A newer wait replaces an older one and keeps the request it holds.
+        const older = this._answers.get(win);
+        this._dropAnswer(win);
+        const entry = {
+            answerIds: [], unmanagedId: 0, idleId: 0, timeoutId: 0,
+            request: older?.request ?? null, monitor: older?.monitor ?? null,
+        };
         const answered = () => {
-            this._disconnect(win, entry);
+            for (const id of entry.answerIds)
+                win.disconnect(id);
+            entry.answerIds = [];
             if (entry.timeoutId) {
                 GLib.source_remove(entry.timeoutId);
                 entry.timeoutId = 0;
             }
             // 'size-changed' is emitted from inside mutter's own move-resize,
             // where a new request would be overwritten (see UnmaximizeWait).
+            // 'unmanaged' stays connected until then, so a window that closes
+            // first gets no request.
             entry.idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 entry.idleId = 0;
-                this._answers.delete(win);
+                this._dropAnswer(win);
                 if (entry.request)
                     this.place(win, entry.request, entry.monitor);
                 return GLib.SOURCE_REMOVE;
             });
         };
-        entry.signalIds = [
+        entry.answerIds = [
             win.connect('size-changed', answered),
             win.connect('position-changed', answered),
-            win.connect('unmanaged', () => this._dropAnswer(win)),
         ];
+        entry.unmanagedId = win.connect('unmanaged', () => this._dropAnswer(win));
         entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ANSWER_WAIT_MS, () => {
             entry.timeoutId = 0;
             answered();
             return GLib.SOURCE_REMOVE;
         });
         this._answers.set(win, entry);
-    }
-
-    _disconnect(win, entry) {
-        for (const id of entry.signalIds)
-            win.disconnect(id);
-        entry.signalIds = [];
     }
 
     _dropAnswer(win) {
@@ -346,7 +351,8 @@ export class WindowPlacer {
             GLib.source_remove(entry.idleId);
         if (entry.timeoutId)
             GLib.source_remove(entry.timeoutId);
-        this._disconnect(win, entry);
+        for (const id of [...entry.answerIds, entry.unmanagedId].filter(Boolean))
+            win.disconnect(id);
         this._answers.delete(win);
     }
 
