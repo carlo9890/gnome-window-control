@@ -46,6 +46,9 @@ content and how a doc is written.
 **Local delta:** `docs/specs/` holds normative format specifications, one file
 per format, outside the canonical topic set. A spec states what an
 implementation MUST do.
+`docs/user-guide/` holds the user docs, one page per task, under the
+`README.md` contract; `README.md` is the short product page that links them.
+Each user-facing fact has one page there.
 
 ### The rules.json auto-placement format
 
@@ -67,7 +70,7 @@ action.
 **MUST read [docs/RUNNING.md](docs/RUNNING.md) before reloading or driving the
 extension by hand (`./scripts/build.sh install` or `install-zip`,
 `gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
-`./scripts/start-*.sh`), and before starting,
+`./scripts/start-*.sh`, `./scripts/demo/record.sh`), and before starting,
 killing, or restarting any GNOME Shell, nested and headless included.** It owns the reload path, the nested-session
 setup, and the pitfalls that cost hours when met blind. **Hard rule 1 there
 says which shell starts, kills and restarts need the user's consent.**

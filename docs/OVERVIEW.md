@@ -31,16 +31,18 @@ cli/                       wctl, the CLI (Rust, zbus)
 ├── completions/           hand-written bash and zsh completions
 └── tests/cli.rs           argument-guard tests
 scripts/                   build, release, version checks, test shells
+└── demo/                  records the user guide's demo GIFs
 tests/                     test suites (see docs/TESTING.md)
 └── vectors/               shared test vectors read by GJS and Rust alike
 docs/                      developer topic docs (this directory)
 ├── decisions/             the design decisions in force
 ├── specs/                 normative format specs
-└── images/                the README image and the listing icon
+├── user-guide/            user docs, one page per task
+└── images/                the guide images, the demo GIFs and the listing icon
 .github/workflows/         CI (build.yml)
 dist/                      build output (generated zips)
 install-wctl.sh            wctl installer
-README.md                  user docs; the D-Bus method table
+README.md                  the product page; links the user guide
 ```
 
 Each module's header comment says what it holds.
@@ -51,7 +53,7 @@ Each module's header comment says what it holds.
   connection**, so the destination is `org.gnome.Shell` (not a standalone
   service). Path `/org/gnome/Shell/Extensions/WindowControl`, interface
   `org.gnome.Shell.Extensions.WindowControl`. Who can call it is in
-  README.md's "Security model".
+  `docs/user-guide/security.md`.
 - **The D-Bus surface is fixed in scope**: it offers no layout, except
   `ApplyRules`, which applies the rules files again
   ([0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md));
@@ -167,13 +169,14 @@ grep -n -A32 'pub const COMMANDS' cli/src/main.rs
 grep -n '^pub fn' cli/src/geometry.rs cli/src/selector.rs
 
 # The method table users read (mirrors the XML above)
-sed -n '/## Methods/,/## /p' README.md
+sed -n '/## Methods/,/## Errors/p' docs/user-guide/dbus.md
 ```
 
 ## Authoritative sources
 
 - The D-Bus surface is the interface XML in
-  `window-control@carlo9890.github.io/dbus-interface.js`. The README method table
+  `window-control@carlo9890.github.io/dbus-interface.js`. The method table in
+  `docs/user-guide/dbus.md`
   mirrors it and is updated by hand, so trust the XML when they disagree.
 
 ## External resources

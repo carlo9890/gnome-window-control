@@ -13,7 +13,7 @@
 // Every keysym named is pressed in order and released in reverse order, so
 // modifiers go first. Names are the xkb keysym names; the table holds the
 // modifiers the shortcuts use and each numpad key under both of its names, so
-// the README's claim that a shortcut fires with Num Lock on or off can be
+// the user guide's claim that a shortcut fires with Num Lock on or off can be
 // pressed by hand. Mutter accepts a session's calls only from the bus name
 // that created it, so the whole sequence runs on this one connection.
 

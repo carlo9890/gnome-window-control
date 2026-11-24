@@ -47,7 +47,8 @@ The regex accepted 0 despite the "must be a positive number" message.
 2. Describe what changed and the test plan (which suites you ran). Without the
    user's consent for the reload-and-run of a JavaScript change, state that it
    is not done.
-3. Update `README.md` for user-facing changes and the relevant `docs/` topic for
+3. Update the page of `docs/user-guide/` that owns a user-facing change, `README.md`
+   where the change alters what it shows, and the relevant `docs/` topic for
    procedures.
 4. Review the PR against [REVIEWING.md](REVIEWING.md): call the Skill tool with
    `worktree-flow:worktree-review` and the PR number.

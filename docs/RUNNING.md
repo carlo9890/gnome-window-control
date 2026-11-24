@@ -218,6 +218,53 @@ WCTL_TEST_SETTLE=1.0 ./tests/run-all-modification-tests.sh   # includes the keyb
 - Anchor a window on the first workspace before testing a workspace move: an
   empty one vanishes when you switch away (dynamic workspaces, above).
 
+## Record the demo GIFs
+
+`scripts/demo/record.sh` records the GIFs of the user guide
+(`docs/images/demo-*.gif`). Record them again after a change that a GIF shows.
+Run it only in a throwaway VM guest's desktop session: a scene opens, moves and
+closes windows, presses the shortcuts and replaces `rules.json`. Verified
+2026-11-24 on an Ubuntu 26.04 (GNOME Shell 50.1) guest with a desktop login.
+
+Prepare the guest as above, without the reboot step for the suites, then:
+
+- Install `kitty`, `ffmpeg` and `fonts-jetbrains-mono`, the extension zip and
+  `wctl` on `PATH`.
+- Give the desktop the plain look of the GIFs, then reboot once so the shell
+  loads the extension:
+
+  ```bash
+  gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf
+  gsettings set org.gnome.shell disabled-extensions "['ubuntu-dock@ubuntu.com', 'ding@rastersoft.com']"
+  gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+  gsettings set org.gnome.desktop.background picture-options none
+  gsettings set org.gnome.desktop.background primary-color '#363a4f'
+  gsettings set org.gnome.desktop.notifications show-banners false
+  ```
+- Stop the SPICE agent. It sets the screen back to the size of the host's
+  viewer a few seconds after every change:
+  `sudo systemctl stop spice-vdagentd.service spice-vdagentd.socket; pkill -x spice-vdagent`.
+- Set the screen to 1920x1080 at scale 1 (`record.sh` refuses any other size):
+
+  ```bash
+  gdbus call --session --dest org.gnome.Mutter.DisplayConfig \
+    --object-path /org/gnome/Mutter/DisplayConfig \
+    --method org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig <SERIAL> 1 \
+    "[(0, 0, 1.0, 0, true, [('Virtual-1', '1920x1080@60.000', @a{sv} {})])]" "@a{sv} {}"
+  ```
+
+  `<SERIAL>` is the first value `GetCurrentState` on the same object returns.
+
+Then, from the copied checkout, on the guest's session bus as in the suites
+above:
+
+```bash
+for scene in wctl keyboard rules overlay; do ./scripts/demo/record.sh --real-session-ok "$scene"; done
+```
+
+Copy `docs/images/demo-*.gif` back, and look at a few frames of each before
+you commit it.
+
 ## Check extension status
 
 ```bash

@@ -1045,7 +1045,7 @@ fn rules_test_guards_fire_before_the_bus() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// README states this: add and remove write through a symbolic link, say into
+/// The user guide states this: add and remove write through a symbolic link, say into
 /// a dotfiles repository. The link stays, unchanged, and its target gets the
 /// change.
 #[test]

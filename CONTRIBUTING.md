@@ -26,7 +26,11 @@ the `node --check` gate). The Rust toolchain for the `wctl` CLI comes from
 
 ## Where things live
 
-- Using the product (install, usage, D-Bus method table): [README.md](README.md)
+- Using the product (install, usage, D-Bus method table):
+  [docs/user-guide/](docs/user-guide/)
+- Recording the guide's demo GIFs again, after a visible change: the header of
+  [scripts/demo/record.sh](scripts/demo/record.sh) and
+  [docs/RUNNING.md](docs/RUNNING.md#record-the-demo-gifs)
 - Architecture and finding your way around: [docs/OVERVIEW.md](docs/OVERVIEW.md)
 - Cutting a release: [docs/RELEASING.md](docs/RELEASING.md)
 
