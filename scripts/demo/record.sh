@@ -10,21 +10,23 @@
 # refuses to run without --real-session-ok. The screen must be one monitor at
 # 1920x1080, scale 1.
 #
-# Needs: kitty, ffmpeg, gjs, the DejaVu fonts. Set WCTL for another wctl.
-# A scene types its commands into a terminal on screen (typist.sh); a caption
-# at the bottom names each shortcut it presses, which a GIF cannot show.
+# Needs: kitty, ffmpeg, gjs, the JetBrains Mono font. Set WCTL for another wctl.
+# Every window takes its look from kitty/kitty.conf. A scene types its commands
+# into a terminal on screen (typist.sh); a caption at the bottom names each
+# shortcut it presses, which a GIF cannot show.
 
 set -euo pipefail
 # EPOCHREALTIME takes the locale's decimal point, and awk reads only a dot.
-export LC_ALL=C
+export LC_ALL=C.UTF-8
 
 REAL_SESSION_FLAG="--real-session-ok"
 SCENES="wctl keyboard rules overlay"
 DEMO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$DEMO")")"
 WCTL=${WCTL:-wctl}
-FONT=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+FONT=/usr/share/fonts/truetype/jetbrains-mono/JetBrainsMono-Bold.ttf
 RULES="${XDG_CONFIG_HOME:-$HOME/.config}/gnome-window-control/rules.json"
+export KITTY_CONFIG_DIRECTORY="$DEMO/kitty"
 
 usage() {
     echo "Usage: $0 $REAL_SESSION_FLAG <SCENE>   SCENE: $SCENES" >&2
@@ -33,26 +35,60 @@ usage() {
 
 # --- helpers a scene uses ------------------------------------------------------
 
-# open_window <CLASS> <LABEL> <COLOR>: a kitty window that shows LABEL.
+# write_content: the files the demo windows show, in $WORK/files.
+write_content() {
+    local grey=$'\e[90m' blue=$'\e[34m' mauve=$'\e[35m' teal=$'\e[36m' yellow=$'\e[33m' off=$'\e[0m'
+    mkdir -p "$WORK/files"
+    {
+        echo "${grey}09:41${off} ${blue}listening on :8080${off}"
+        echo "${grey}09:41${off} cache warm, 412 keys"
+        echo "${grey}09:41${off} GET /api 200 3ms"
+        echo "${grey}09:41${off} ${yellow}slow query 182ms${off}"
+    } >"$WORK/files/app.log"
+    {
+        echo "${mauve}alex${off}  are the docs ready?"
+        echo "${teal}sam${off}   the new GIFs are in"
+        echo "${mauve}alex${off}  nice, ship it"
+    } >"$WORK/files/chat.txt"
+    {
+        echo "["
+        echo "  { ${blue}\"match\"${off}: { ${blue}\"class\"${off}: ${yellow}\"logs\"${off} }, ${blue}\"tile\"${off}: ${yellow}\"top-right\"${off} },"
+        echo "  { ${blue}\"match\"${off}: { ${blue}\"class\"${off}: ${yellow}\"chat\"${off} }, ${blue}\"tile\"${off}: ${yellow}\"bottom-right\"${off} }"
+        echo "]"
+    } >"$WORK/files/rules.json"
+}
+
+# log_writer: append a log line now and then, so the logs window is live.
+log_writer() {
+    local lines=("GET /api 200 2ms" "worker 3 done" "GET /health 200"
+                 "cache hit 97%" "POST /tile 204")
+    local i=0
+    while sleep 0.9; do
+        printf '\e[90m09:%02d\e[0m %s\n' $((42 + i / 6)) "${lines[i % ${#lines[@]}]}" \
+            >>"$WORK/files/app.log"
+        i=$((i + 1))
+    done
+}
+
+# The background tint of each window the script opens, so that overlapping
+# windows stand apart: Catppuccin base mixed with a little of its blue, mauve
+# or peach, and its darker mantle for the terminal. A window started from the
+# terminal keeps the plain base of kitty.conf, so its command stays short.
+declare -A TINT=([logs]="#1c2236" [chat]="#241f36" [editor]="#2a2230" [demo-term]="#181825")
+
+# open_window <CLASS> <TITLE> <COMMAND>: a kitty window that runs COMMAND in $WORK/files.
 open_window() {
-    kitty --class "$1" --title "$1" -o background="$3" -o foreground=#ffffff \
-        -o font_size=22 -o confirm_os_window_close=0 -o remember_window_size=no \
-        -o initial_window_width=720 -o initial_window_height=420 \
-        sh -c "printf '\n  %s\n' '$2'; exec sleep infinity" >/dev/null 2>&1 &
+    kitty --class "$1" --title "$2" --directory "$WORK/files" -o background="${TINT[$1]}" \
+        sh -c "$3" >/dev/null 2>&1 &
     "$WCTL" wait -c "$1" --timeout 15 >/dev/null
 }
 
 # open_terminal: the terminal that run_typed types into, focused.
-# The kitty windows it starts inherit KITTY_CONFIG_DIRECTORY: without shell
-# integration, they print no warning about the guest's bash settings into it.
 open_terminal() {
     rm -f "$WORK/fifo" "$WORK/done"
     mkfifo "$WORK/fifo" "$WORK/done"
-    mkdir -p "$WORK/kitty"
-    echo "shell_integration disabled" >"$WORK/kitty/kitty.conf"
-    KITTY_CONFIG_DIRECTORY="$WORK/kitty" kitty --class demo-term --title "Terminal" -o font_size=15 \
-        -o confirm_os_window_close=0 -o remember_window_size=no \
-        -o initial_window_width=900 -o initial_window_height=520 \
+    kitty --class demo-term --title "Terminal" --directory "$WORK/files" -o background="${TINT[demo-term]}" \
+        -o initial_window_width=960 -o initial_window_height=560 \
         bash "$DEMO/typist.sh" "$WORK/fifo" "$WORK/done" >/dev/null 2>&1 &
     "$WCTL" wait -c demo-term --timeout 15 >/dev/null
 }
@@ -88,10 +124,11 @@ elapsed() {
 # --- scenes: setup_<SCENE> runs before the recording, play_<SCENE> during it --
 
 setup_wctl() {
-    open_window logs "logs" "#1e5f74"
-    "$WCTL" move -c logs 1060 120 >/dev/null
-    open_window chat "chat" "#7a3e65"
-    "$WCTL" move -c chat 260 560 >/dev/null
+    log_writer &
+    open_window logs "logs" "tail -n 40 -f app.log"
+    "$WCTL" move -c logs 1060 140 >/dev/null
+    open_window chat "chat" "cat chat.txt; exec sleep infinity"
+    "$WCTL" move -c chat 200 560 >/dev/null
     open_terminal
     "$WCTL" center -c demo-term both >/dev/null
 }
@@ -106,7 +143,7 @@ play_wctl() {
 }
 
 setup_keyboard() {
-    open_window editor "Super + Ctrl + numpad" "#2d5a27"
+    open_window editor "rules.json" "cat rules.json; exec sleep infinity"
     "$WCTL" center -c editor both >/dev/null
 }
 
@@ -125,6 +162,7 @@ play_keyboard() {
 }
 
 setup_rules() {
+    log_writer &
     open_terminal
     "$WCTL" tile -c demo-term wide-left >/dev/null
 }
@@ -133,8 +171,8 @@ play_rules() {
     sleep 1
     run_typed "wctl rules add -c logs tile top-right"
     run_typed "wctl rules add -c chat tile bottom-right"
-    run_typed "kitty --class logs -o background=#1e5f74 &"
-    run_typed "kitty --class chat -o background=#7a3e65 &"
+    run_typed "kitty --class logs tail -f app.log &"
+    run_typed "kitty --class chat --hold cat chat.txt &"
     sleep 1
     run_typed "wctl move -c logs 700 300; wctl move -c chat 300 150; wctl move focused 600 500"
     caption "Super + Ctrl + Num *   apply the rules again"
@@ -145,7 +183,7 @@ play_rules() {
 }
 
 setup_overlay() {
-    open_window editor "editor" "#2d5a27"
+    open_window editor "rules.json" "cat rules.json; exec sleep infinity"
     "$WCTL" tile -c editor right >/dev/null
     open_terminal
     "$WCTL" tile -c demo-term wide-left >/dev/null
@@ -154,7 +192,7 @@ setup_overlay() {
 play_overlay() {
     sleep 1
     run_typed "wctl rules add -c quake place center top 100% 40% --overlay"
-    run_typed "kitty --class quake -o background=#3b3561 &"
+    run_typed "kitty --class quake &"
     sleep 1.5
     caption "focus goes to another window"
     "$WCTL" activate -c editor >/dev/null
@@ -172,7 +210,8 @@ play_overlay() {
 
 # --- recording -----------------------------------------------------------------
 
-# to_gif <VIDEO> <GIF>: 1280 wide, 15 frames a second, captions drawn in.
+# to_gif <VIDEO> <GIF>: 1280 wide, 15 frames a second, captions drawn in, one
+# palette for the whole GIF.
 to_gif() {
     local filters="fps=15,scale=1280:-1:flags=lanczos"
     local times=() texts=() i end
@@ -183,12 +222,12 @@ to_gif() {
     for ((i = 0; i < ${#times[@]}; i++)); do
         [[ -n "${texts[i]}" ]] || continue
         end=${times[i + 1]:-99999}
-        filters+=",drawtext=fontfile=$FONT:text='${texts[i]}':fontsize=34:fontcolor=white"
-        filters+=":box=1:boxcolor=black@0.75:boxborderw=18:x=(w-tw)/2:y=h-th-48"
+        filters+=",drawtext=fontfile=$FONT:text='${texts[i]}':fontsize=30:fontcolor=0xcdd6f4"
+        filters+=":box=1:boxcolor=0x181825@0.94:boxborderw=20:x=(w-tw)/2:y=h-th-48"
         filters+=":enable='between(t,${times[i]},$end)'"
     done
     ffmpeg -loglevel error -y -i "$1" -filter_complex \
-        "$filters,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+        "$filters,split[a][b];[a]palettegen=stats_mode=full[p];[b][p]paletteuse=dither=sierra2_4a" \
         "$2"
 }
 
@@ -223,7 +262,7 @@ fi
 WORK=$(mktemp -d)
 
 cleanup() {
-    pkill -P $$ kitty 2>/dev/null || true
+    kill $(jobs -p) 2>/dev/null || true
     for class in logs chat editor quake demo-term; do
         while "$WCTL" close -c "$class" >/dev/null 2>&1; do sleep 0.2; done
     done
@@ -244,6 +283,7 @@ fi
 touch "$WORK/rules.json.ours"
 echo '[]' >"$RULES"
 
+write_content
 "setup_$scene"
 sleep 2
 : >"$WORK/captions"

@@ -228,8 +228,18 @@ closes windows, presses the shortcuts and replaces `rules.json`. Verified
 
 Prepare the guest as above, without the reboot step for the suites, then:
 
-- Install `kitty` and `ffmpeg`, the extension zip and `wctl` on `PATH`, and
-  reboot once so the shell loads the extension.
+- Install `kitty`, `ffmpeg` and `fonts-jetbrains-mono`, the extension zip and
+  `wctl` on `PATH`.
+- Give the desktop the plain look of the GIFs, then reboot once so the shell
+  loads the extension:
+
+  ```bash
+  gsettings set org.gnome.shell disabled-extensions "['ubuntu-dock@ubuntu.com', 'ding@rastersoft.com']"
+  gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+  gsettings set org.gnome.desktop.background picture-options none
+  gsettings set org.gnome.desktop.background primary-color '#363a4f'
+  gsettings set org.gnome.desktop.notifications show-banners false
+  ```
 - Stop the SPICE agent. It sets the screen back to the size of the host's
   viewer a few seconds after every change:
   `sudo systemctl stop spice-vdagentd.service spice-vdagentd.socket; pkill -x spice-vdagent`.

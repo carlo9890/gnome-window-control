@@ -11,7 +11,7 @@ set -u
 
 fifo=$1
 done_fifo=$2
-prompt=$'\e[1;32m$\e[0m '
+prompt=$'\e[35m❯\e[0m '
 
 printf '%s' "$prompt"
 while IFS= read -r command <"$fifo"; do
