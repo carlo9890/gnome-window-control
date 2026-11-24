@@ -184,20 +184,13 @@ to_gif() {
         "$2"
 }
 
-if [[ "${1:-}" == "--play" ]]; then
-    WORK=$3
-    T0=$EPOCHREALTIME
-    "play_$2"
-    exit 0
-fi
-
-real_session_ok=false
+# The recording runs this script again as `--play <SCENE> <WORK>`; the opt-in
+# reaches it through DEMO_REAL_SESSION_OK, so the guard below covers it too.
+real_session_ok=${DEMO_REAL_SESSION_OK:-false}
 if [[ "${1:-}" == "$REAL_SESSION_FLAG" ]]; then
     real_session_ok=true
     shift
 fi
-[[ $# -eq 1 && " $SCENES " == *" $1 "* ]] || usage
-scene=$1
 
 if ! $real_session_ok; then
     LOGIN_BUS=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
@@ -209,6 +202,17 @@ if ! $real_session_ok; then
         exit 1
     fi
 fi
+export DEMO_REAL_SESSION_OK=$real_session_ok
+
+if [[ "${1:-}" == "--play" ]]; then
+    WORK=$3
+    T0=$EPOCHREALTIME
+    "play_$2"
+    exit 0
+fi
+
+[[ $# -eq 1 && " $SCENES " == *" $1 "* ]] || usage
+scene=$1
 
 screen=$("$WCTL" monitors | awk 'NR == 2 { print $4 "x" $5 "@" $6 }')
 if [[ "$screen" != "1920x1080@1" ]]; then
