@@ -12,7 +12,7 @@ import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
 import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles, stopMonitor } from './rules-files.js';
 import {
-    addTimeout, looksUnmapped, maximizeFlags, moveToMonitor, removeSource, workareaOf,
+    addIdle, addTimeout, looksUnmapped, maximizeFlags, moveToMonitor, removeSource, workareaOf,
 } from './window-helpers.js';
 
 // A Wayland client's app_id and first real title can land after the window is
@@ -114,8 +114,7 @@ export class WindowRules {
             callback(false);
         this._mutterSettings = null;
         if (this._fileMonitor) {
-            this._fileMonitor.disconnect(this._fileMonitorId);
-            this._fileMonitor.cancel();
+            stopMonitor(this._fileMonitor, this._fileMonitorId);
             this._fileMonitor = null;
             this._fileMonitorId = 0;
         }
@@ -323,13 +322,7 @@ export class WindowRules {
     }
 
     _addIdle(callback) {
-        const id = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            this._sourceIds.delete(id);
-            callback();
-            return GLib.SOURCE_REMOVE;
-        });
-        this._sourceIds.add(id);
-        return id;
+        return addIdle(this._sourceIds, callback);
     }
 
     _removeSource(id) {

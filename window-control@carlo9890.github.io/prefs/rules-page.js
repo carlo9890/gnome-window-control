@@ -77,8 +77,7 @@ export class RulesEditor {
             this._diskId = 0;
         }
         if (this._monitor) {
-            this._monitor.disconnect(this._monitorId);
-            this._monitor.cancel();
+            stopMonitor(this._monitor, this._monitorId);
             this._monitor = null;
         }
         this._unwatchDropIns();

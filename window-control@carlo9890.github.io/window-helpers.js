@@ -12,7 +12,16 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 // A one-shot timeout whose ID stays in `sourceIds` while it is pending, so the
 // owner's teardown can remove it.
 export function addTimeout(sourceIds, ms, callback) {
-    const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+    return trackOnce(sourceIds, done => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, done), callback);
+}
+
+// The same for an idle callback.
+export function addIdle(sourceIds, callback) {
+    return trackOnce(sourceIds, done => GLib.idle_add(GLib.PRIORITY_DEFAULT, done), callback);
+}
+
+function trackOnce(sourceIds, add, callback) {
+    const id = add(() => {
         sourceIds.delete(id);
         callback();
         return GLib.SOURCE_REMOVE;
