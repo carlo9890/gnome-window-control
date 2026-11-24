@@ -142,8 +142,9 @@ export const UNMAXIMIZE_SETTLE_MS = 1000;
 // How long the WindowPlacer waits for a Wayland window to answer a new size.
 // Mutter sends nothing to a window when it limits a request to the frame the
 // window has, such as a window at its minimum size asked to shrink, so no
-// answer comes. It is the wait of `wctl center`, so a window that answers
-// within it still lands as asked; a later answer can undo what ran after it.
+// answer comes. It is shorter than the 3 s wait of `wctl center` and
+// `--settled`, so they see it end. A window that answers within it lands as
+// asked; a later answer can undo what ran after it.
 export const ANSWER_WAIT_MS = 2000;
 
 // Unmaximize, then call `settled(true)` after the next 'size-changed' or

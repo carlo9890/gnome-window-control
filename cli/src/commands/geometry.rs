@@ -171,8 +171,10 @@ enum Settle {
 const SETTLE_QUIET_MS: i32 = 150;
 
 /// How long `--settled` waits in total before giving up. A client that keeps
-/// resizing itself past this is not going to settle.
-const SETTLE_TIMEOUT_MS: i32 = 2000;
+/// resizing itself past this is not going to settle. It is longer than the
+/// extension's wait for a window's answer (2 s) plus the quiet period, so a
+/// window that never answers still settles once that wait ends.
+const SETTLE_TIMEOUT_MS: i32 = 3000;
 
 /// Seconds the client waits beyond the extension's own settle timeout, as a
 /// guard against a shell that never replies at all. Same role as `wait`'s.
