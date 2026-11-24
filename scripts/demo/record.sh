@@ -36,7 +36,8 @@ usage() {
 
 # --- helpers a scene uses ------------------------------------------------------
 
-# write_content: the files the demo windows show, in $WORK/files.
+# write_content: the files the demo windows show, in $WORK/files. Each line
+# fits a quarter tile, 320 wide.
 write_content() {
     local grey=$'\e[90m' blue=$'\e[34m' mauve=$'\e[35m' teal=$'\e[36m' yellow=$'\e[33m' off=$'\e[0m'
     mkdir -p "$WORK/files"
@@ -68,12 +69,12 @@ log_writer() {
 # kitty --class <CLASS> ...: kitty with the background tint of CLASS, so that
 # a window has the same tint in every scene and overlapping windows stand
 # apart: Catppuccin base mixed with a little of its blue, mauve or peach, and
-# its darker mantle for the terminal. Each window fits a quarter tile, 320 wide. The terminal's shell gets this function
+# its darker mantle for the terminal. The terminal's shell gets this function
 # too (export -f), so a window typed there takes its tint and its command
 # stays short.
 kitty() {
     local tint
-    case "$2" in
+    case "${2:-}" in
         logs) tint="#1c2236" ;;
         chat) tint="#241f36" ;;
         quake) tint="#2a2230" ;;
@@ -117,7 +118,7 @@ run_typed() {
 
 # caption [KEYS [TEXT]]: show KEYS as key caps and TEXT after them in the bar
 # from now until the next caption; no argument clears it. KEYS separates the
-# keys with |. Both hold letters, digits, spaces and + - * % only: ffmpeg's
+# keys with |. Both hold letters, digits, spaces and + - * only: ffmpeg's
 # drawtext reads the rest as syntax.
 caption() {
     echo "$(elapsed);${1:-};${2:-}" >>"$WORK/captions"
@@ -235,16 +236,26 @@ declare -A TITLE=([wctl]="Tile from a terminal" [keyboard]="Tile from the keyboa
 # part of a fade's size; one palette for the whole GIF.
 to_gif() {
     local top=48 bar=64 wipe=0.8 still=2
+    local font_size=22 title_x=28 caption_x=480
+    # A key cap: a 34-high box with a 3-high darker lip at its foot, the key
+    # 12 in from its left edge and 2 above the text baseline, 10 to the next
+    # cap and 8 more to the text after the last one.
+    local cap_h=34 cap_lip=3 cap_pad=12 cap_lift=2 cap_gap=10 caps_end_gap=8
     local screen_h=$(((1080 - top) * 2 / 3))
-    local base=$((screen_h + bar / 2 + 8)) cap_y=$((screen_h + bar / 2 - 17))
-    local last offset
-    last=$(ffprobe -v error -select_streams v:0 -show_entries frame=pts_time -of csv=p=0 "$1" | tail -n 1)
-    offset=$(awk -v last="$last" -v wipe="$wipe" 'BEGIN { printf "%.2f", last - wipe }')
+    # The baseline sits 8 under the bar's middle, which centers the capitals.
+    local base=$((screen_h + bar / 2 + 8)) cap_y=$((screen_h + bar / 2 - cap_h / 2))
+    local pts first last offset
+    # ffmpeg starts the video at 0, and xfade counts its offset from there.
+    pts=$(ffprobe -v error -select_streams v:0 -show_entries frame=pts_time -of csv=p=0 "$1")
+    first=$(head -n 1 <<<"$pts")
+    last=$(tail -n 1 <<<"$pts")
+    offset=$(awk -v first="$first" -v last="$last" -v wipe="$wipe" 'BEGIN { printf "%.2f", last - first - wipe }')
     local graph="[0:v]fps=15,crop=1920:$((1080 - top)):0:$top,scale=1280:$screen_h:flags=lanczos,split[v][f];"
     graph+="[f]trim=end_frame=1,loop=loop=$((still * 15 - 1)):size=1,setpts=N/15/TB[first];"
     graph+="[v][first]xfade=transition=wipeleft:duration=$wipe:offset=$offset"
     graph+=",pad=1280:$((screen_h + bar)):0:0:color=0x11111b,drawbox=y=$screen_h:w=1280:h=1:color=0x313244:t=fill"
-    graph+=",drawtext=fontfile=$SANS:text='$3':fontsize=22:fontcolor=0xcdd6f4:x=28:y=$base:y_align=baseline"
+    graph+=",drawtext=fontfile=$SANS:text='$3':fontsize=$font_size:fontcolor=0xcdd6f4"
+    graph+=":x=$title_x:y=$base:y_align=baseline"
     local times=() keys=() texts=() i x key width when
     while IFS=';' read -r time key_list text; do
         times+=("$time")
@@ -253,21 +264,21 @@ to_gif() {
     done <"$WORK/captions"
     for ((i = 0; i < ${#times[@]}; i++)); do
         when="enable='between(t,${times[i]},${times[i + 1]:-99999})'"
-        x=480
+        x=$caption_x
         if [[ -n "${keys[i]}" ]]; then
             while IFS= read -r -d '|' key; do
-                # JetBrains Mono advances 0.6 em: 13.2 px a character at size 22.
-                width=$(( (${#key} * 132 + 9) / 10 + 24 ))
-                graph+=",drawbox=x=$x:y=$cap_y:w=$width:h=34:color=0x45475a:t=fill:$when"
-                graph+=",drawbox=x=$x:y=$cap_y:w=$width:h=31:color=0x313244:t=fill:$when"
-                graph+=",drawtext=fontfile=$MONO:text='$key':fontsize=22:fontcolor=0xcdd6f4"
-                graph+=":x=$((x + 12)):y=$((base - 2)):y_align=baseline:$when"
-                x=$((x + width + 10))
+                # JetBrains Mono advances 0.6 em a character.
+                width=$(( (${#key} * font_size * 6 + 9) / 10 + 2 * cap_pad ))
+                graph+=",drawbox=x=$x:y=$cap_y:w=$width:h=$cap_h:color=0x45475a:t=fill:$when"
+                graph+=",drawbox=x=$x:y=$cap_y:w=$width:h=$((cap_h - cap_lip)):color=0x313244:t=fill:$when"
+                graph+=",drawtext=fontfile=$MONO:text='$key':fontsize=$font_size:fontcolor=0xcdd6f4"
+                graph+=":x=$((x + cap_pad)):y=$((base - cap_lift)):y_align=baseline:$when"
+                x=$((x + width + cap_gap))
             done <<<"${keys[i]}|"
-            x=$((x + 8))
+            x=$((x + caps_end_gap))
         fi
         [[ -n "${texts[i]}" ]] || continue
-        graph+=",drawtext=fontfile=$SANS:text='${texts[i]}':fontsize=22:fontcolor=0xa6adc8"
+        graph+=",drawtext=fontfile=$SANS:text='${texts[i]}':fontsize=$font_size:fontcolor=0xa6adc8"
         graph+=":x=$x:y=$base:y_align=baseline:$when"
     done
     ffmpeg -loglevel error -y -i "$1" -filter_complex \

@@ -230,15 +230,15 @@ Prepare the guest as above, without the reboot step for the suites, then:
 
 - Install `kitty`, `ffmpeg`, `fonts-jetbrains-mono` and `fonts-inter`, the
   extension zip and `wctl` on `PATH`.
-- Give the desktop the look of the GIFs, from the copied checkout, then reboot
-  once so the shell loads the extension:
+- Give the desktop the look of the GIFs, then reboot once so the shell loads
+  the extension:
 
   ```bash
   gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf
   gsettings set org.gnome.shell disabled-extensions "['ubuntu-dock@ubuntu.com', 'ding@rastersoft.com']"
   gsettings set org.gnome.desktop.interface color-scheme prefer-dark
   gsettings set org.gnome.desktop.interface accent-color purple
-  gsettings set org.gnome.desktop.background picture-uri-dark "file://$PWD/scripts/demo/wallpaper.svg"
+  gsettings set org.gnome.desktop.background picture-uri-dark "file://$HOME/gnome-window-control/scripts/demo/wallpaper.svg"
   gsettings set org.gnome.desktop.background picture-options zoom
   gsettings set org.gnome.desktop.notifications show-banners false
   ```
