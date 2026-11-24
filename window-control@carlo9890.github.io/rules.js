@@ -10,7 +10,7 @@ import Meta from 'gi://Meta';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
-import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles, stopMonitor } from './rules-files.js';
+import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles, DirectoryWatch } from './rules-files.js';
 import {
     addIdle, addTimeout, looksUnmapped, maximizeFlags, moveToMonitor, removeSource, workareaOf,
 } from './window-helpers.js';
@@ -47,10 +47,8 @@ export class WindowRules {
         this._rules = [];
         this._windowCreatedId = 0;
         this._tracked = new Map();
-        this._fileMonitor = null;
-        this._fileMonitorId = 0;
-        this._dropInMonitor = null;
-        this._dropInMonitorId = 0;
+        this._fileWatch = new DirectoryWatch();
+        this._dropInWatch = new DirectoryWatch();
         this._reloadId = 0;
         this._loadCancellable = null;
         // A read in flight, and what waits for it (whenLoaded).
@@ -77,17 +75,12 @@ export class WindowRules {
         }
         // The directory rather than the file: a file monitor misses an editor
         // that saves by writing a new file and renaming it over the old one.
+        // Compared as files, not by name: get_basename() throws for a name
+        // that is not UTF-8.
+        const rulesFile = dir.get_child(RULES_FILE);
+        const dropInDir = dir.get_child(DROPIN_DIR);
         try {
-            this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        } catch (e) {
-            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; the rules files are read only at enable() and when rules.d changes`);
-        }
-        if (this._fileMonitor) {
-            // Compared as files, not by name: get_basename() throws for a
-            // name that is not UTF-8.
-            const rulesFile = dir.get_child(RULES_FILE);
-            const dropInDir = dir.get_child(DROPIN_DIR);
-            this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
+            this._fileWatch.start(dir, file => {
                 // A rules.d created, deleted or replaced after enable() is
                 // another folder, so its monitor is made again.
                 if (file.equal(dropInDir)) {
@@ -97,6 +90,8 @@ export class WindowRules {
                     this._scheduleReload();
                 }
             });
+        } catch (e) {
+            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; the rules files are read only at enable() and when rules.d changes`);
         }
         this._watchDropIns();
         this._load();
@@ -113,12 +108,8 @@ export class WindowRules {
         for (const callback of this._afterLoad.splice(0))
             callback(false);
         this._mutterSettings = null;
-        if (this._fileMonitor) {
-            stopMonitor(this._fileMonitor, this._fileMonitorId);
-            this._fileMonitor = null;
-            this._fileMonitorId = 0;
-        }
-        this._unwatchDropIns();
+        this._fileWatch.stop();
+        this._dropInWatch.stop();
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._overlays.destroy();
@@ -132,25 +123,16 @@ export class WindowRules {
     // The check is synchronous because monitor_directory() is: Gio has no
     // asynchronous form of it, and it looks the same path up.
     _watchDropIns() {
-        this._unwatchDropIns();
+        this._dropInWatch.stop();
         const dir = Gio.File.new_for_path(DROPIN_PATH);
         if (dir.query_file_type(Gio.FileQueryInfoFlags.NONE, null) !== Gio.FileType.DIRECTORY)
             return;
         try {
-            this._dropInMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+            this._dropInWatch.start(dir, () => this._scheduleReload());
         } catch (e) {
             console.error(`[Window Control] cannot watch ${DROPIN_PATH}: ${e.message}`);
             return;
         }
-        this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleReload());
-    }
-
-    _unwatchDropIns() {
-        if (!this._dropInMonitor)
-            return;
-        stopMonitor(this._dropInMonitor, this._dropInMonitorId);
-        this._dropInMonitor = null;
-        this._dropInMonitorId = 0;
     }
 
     _scheduleReload() {

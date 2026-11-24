@@ -1691,7 +1691,7 @@ export class PopupSeparatorMenuItem {}
             .filter(line => line.message.includes('cannot watch'));
         check('the watch failure is logged at error level', failures.length === 1 &&
             failures[0].level === GLib.LogLevelFlags.LEVEL_CRITICAL, JSON.stringify(failures));
-        check('a failed watch keeps no monitor', rules._fileMonitor === null, `${rules._fileMonitor}`);
+        check('a failed watch keeps no monitor', rules._fileWatch._monitor === null, `${rules._fileWatch._monitor}`);
         write(rulesPath, '[{"match":{"class":"app"},"tile":"left"},{"match":{"class":"b"},"tile":"right"}]');
         await sleep(300);
         check('an unwatched rules.json is not read again after a write', rules._rules.length === 1,
@@ -2290,13 +2290,13 @@ export class PopupSeparatorMenuItem {}
         const rules = new WindowRules(new WindowPlacer());
         rules.enable();
         await sleep(300);
-        check('rules.d: no folder means no monitor and no error', rules._dropInMonitor === null &&
+        check('rules.d: no folder means no monitor and no error', rules._dropInWatch._monitor === null &&
             sourcesOf(rules) === '["rules.json#0"]', sourcesOf(rules));
 
         GLib.mkdir_with_parents(dropIns, 0o755);
         await sleep(300);
-        check('rules.d: a folder created after enable() is watched', rules._dropInMonitor !== null,
-            `${rules._dropInMonitor}`);
+        check('rules.d: a folder created after enable() is watched', rules._dropInWatch._monitor !== null,
+            `${rules._dropInWatch._monitor}`);
         const SKIPPED = '[{"match":{"class":"skipped"},"tile":"left"}]';
         for (const name of ['.b.json.tmp', '.hidden.json', 'c.json~', 'c.json.off', 'c.txt'])
             write(`${dropIns}/${name}`, SKIPPED);
@@ -2446,11 +2446,12 @@ export class PopupSeparatorMenuItem {}
             loopErrors.length > 0, JSON.stringify(consoleLines.slice(linesBeforeLoop)));
         GLib.unlink(rulesJson);
 
-        const monitors = [rules._fileMonitor, rules._dropInMonitor];
-        const ids = [rules._fileMonitorId, rules._dropInMonitorId];
+        const watches = [rules._fileWatch, rules._dropInWatch];
+        const monitors = watches.map(watch => watch._monitor);
+        const ids = watches.map(watch => watch._handlerId);
         rules.disable();
         check('rules.d: disable() cancels both monitors and disconnects their handlers',
-            rules._fileMonitor === null && rules._dropInMonitor === null &&
+            watches.every(watch => watch._monitor === null) &&
             monitors.every((monitor, i) => monitor !== null && monitor.is_cancelled() &&
                 !GObject.signal_handler_is_connected(monitor, ids[i])));
         check('rules.d: disable() leaves no handler on the display and no source',

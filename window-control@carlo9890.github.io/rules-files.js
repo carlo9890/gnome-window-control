@@ -33,9 +33,29 @@ export async function readRuleFiles(cancellable) {
     return files;
 }
 
-export function stopMonitor(monitor, handlerId) {
-    monitor.disconnect(handlerId);
-    monitor.cancel();
+// One directory monitor and its 'changed' handler. start() stops an earlier
+// watch first, and stop() does nothing when nothing is watched.
+export class DirectoryWatch {
+    constructor() {
+        this._monitor = null;
+        this._handlerId = 0;
+    }
+
+    // Throws what monitor_directory() throws, and then watches nothing.
+    start(dir, changed) {
+        this.stop();
+        this._monitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+        this._handlerId = this._monitor.connect('changed', (_monitor, file) => changed(file));
+    }
+
+    stop() {
+        if (!this._monitor)
+            return;
+        this._monitor.disconnect(this._handlerId);
+        this._monitor.cancel();
+        this._monitor = null;
+        this._handlerId = 0;
+    }
 }
 
 // Throws for a type that is no regular file. Gio reports a link that it cannot
