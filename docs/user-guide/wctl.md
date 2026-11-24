@@ -61,7 +61,7 @@ matching the message text:
 | 2 | The window, workspace or monitor does not exist |
 | 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, it cannot be minimized, or it is hidden and cannot take the focus |
 | 4 | Timed out waiting for a window, or for the shell to reply |
-| 5 | The extension is not usable: not running, or a version this `wctl` cannot rely on |
+| 5 | The extension is not usable: not running, a version this `wctl` cannot rely on, or one without a capability the command needs (`rules test`, `rules apply`); also a `wctl wait` that the shell ends at the first lock after login ([Security model](security.md)) |
 
 Code 1 stays the catch-all it always was, so a script that only tests for a
 non-zero status is unaffected.

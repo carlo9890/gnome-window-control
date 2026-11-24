@@ -291,7 +291,8 @@ wctl rules apply             # every open window
 wctl rules apply -c kitty    # one window
 ```
 
-The numpad `*` shortcut does the same from the keyboard: see
+The numpad `*` shortcut applies the loaded rules again from the keyboard,
+without the file check and the count: see
 [Keyboard shortcuts](shortcuts.md#keyboard-shortcuts).
 
 The extension applies the rules it has loaded again, as it does to a new

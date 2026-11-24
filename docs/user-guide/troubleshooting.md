@@ -8,13 +8,17 @@ to.
 Cause: the extension is not usable, or it lacks a capability the command
 needs. See [Exit codes](wctl.md#exit-codes).
 
-Fix: run `wctl version --json`. When `compatible` is false, install a newer
-extension from [Install](install.md) and enable it; see
+Fix: run `wctl version --json` and read `extension`; see
 [Checking the extension version](wctl.md#checking-the-extension-version).
-When `compatible` is true, compare `capabilities` with what the command needs:
-see [Keys that need a newer extension](rules.md#keys-that-need-a-newer-extension),
-[Resetting windows to their rules](rules.md#resetting-windows-to-their-rules)
-and, for a `wctl wait` that ends at the first lock, [Security model](security.md).
+
+- `extension` is `null`: the extension is not running, or too old to answer.
+  Enable it, or install a current one from [Install](install.md).
+- `extension` is below `min_extension`: install a newer extension.
+- `extension` is above `expects_extension`: install a newer `wctl`; see
+  [wctl CLI](install.md#wctl-cli-optional).
+- `compatible` is true: compare `capabilities` with what the command needs; see
+  [Keys that need a newer extension](rules.md#keys-that-need-a-newer-extension)
+  and [Resetting windows to their rules](rules.md#resetting-windows-to-their-rules).
 
 ## The extension from extensions.gnome.org has no rules or shortcuts
 
