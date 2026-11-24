@@ -10,7 +10,7 @@ import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
     addTimeout, isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow,
-    moveResizeFrame, moveToMonitor, removeSource, skipNextEffect, targetMonitor, unmaximizeWindow,
+    moveToMonitor, removeSource, skipNextEffect, targetMonitor, unmaximizeWindow,
 } from './window-helpers.js';
 
 // Parsed once per shell, never per enable(). GLib keys the GJS method cache by
@@ -420,7 +420,7 @@ export class WindowControlService {
         this._namedErrorCall(invocation, 'Move', () => {
             const win = this._geometryTarget(windowId, 'Move');
             const { width, height } = win.get_frame_rect();
-            this._placer.place(win, () => win.move_frame(true, x, y),
+            this._placer.place(win, () => this._placer.move(win, x, y),
                 targetMonitor(win, { x, y, width, height }));
             console.debug(`[Window Control] Move(${windowId}) -> ok`);
         });
@@ -435,16 +435,13 @@ export class WindowControlService {
                     'Resize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'Resize');
-            this._placer.place(win, () => {
-                const rect = win.get_frame_rect();
-                win.move_resize_frame(true, rect.x, rect.y, width, height);
-            });
+            this._placer.place(win, () => this._placer.resize(win, width, height));
             console.debug(`[Window Control] Resize(${windowId}) -> ok`);
         });
     }
 
     // One request for both, so mutter applies them together, as the program's
-    // request (see moveResizeFrame).
+    // request (see WindowPlacer.moveResizeFrame).
     MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'MoveResize', () => {
@@ -454,7 +451,7 @@ export class WindowControlService {
             }
             const win = this._geometryTarget(windowId, 'MoveResize');
             const rect = { x, y, width, height };
-            this._placer.place(win, () => moveResizeFrame(win, rect), targetMonitor(win, rect));
+            this._placer.place(win, () => this._placer.moveResizeFrame(win, rect), targetMonitor(win, rect));
             console.debug(`[Window Control] MoveResize(${windowId}) -> ok`);
         });
     }

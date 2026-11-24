@@ -12,7 +12,7 @@ import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
 import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles, stopMonitor } from './rules-files.js';
 import {
-    addTimeout, looksUnmapped, maximizeFlags, moveResizeFrame, moveToMonitor, removeSource, workareaOf,
+    addTimeout, looksUnmapped, maximizeFlags, moveToMonitor, removeSource, workareaOf,
 } from './window-helpers.js';
 
 // A Wayland client's app_id and first real title can land after the window is
@@ -509,7 +509,7 @@ export class WindowRules {
             console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: resolves to nothing on this workarea, skipped`);
             return;
         }
-        moveResizeFrame(win, target);
+        this._placer.moveResizeFrame(win, target);
         console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: ${rule.geometry.kind} applied`);
     }
 

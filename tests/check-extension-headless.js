@@ -282,7 +282,7 @@ export class PopupSeparatorMenuItem {}
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
                 above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
-                monitor: 0,
+                monitor: 0, frame: { x: 10, y: 10, width: 400, height: 300 }, answersLate: false,
             });
         }
 
@@ -327,15 +327,28 @@ export class PopupSeparatorMenuItem {}
             }
             return false;
         }
-        get_frame_rect() { return { x: 10, y: 10, width: 400, height: 300 }; }
+        get_frame_rect() { return { ...this.frame }; }
+
+        // A window takes a requested frame at once, as on X11. One with
+        // answersLate keeps its frame until answer(), as a Wayland client
+        // that has not yet answered the resize.
         move_resize_frame(userOp, x, y, width, height) {
             this.moves.push([x, y, width, height]);
             this.userOps = [...this.userOps ?? [], userOp];
+            if (!this.answersLate)
+                this.frame = { x, y, width, height };
+        }
+
+        answer() {
+            const [x, y, width, height] = this.moves.at(-1);
+            this.frame = { x, y, width, height };
+            this.emit('size-changed');
         }
 
         move_frame(userOp, x, y) {
             this.moves.push([x, y]);
             this.userOps = [...this.userOps ?? [], userOp];
+            this.frame = { ...this.frame, x, y };
         }
         change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
         move_to_monitor(index) {
@@ -1034,6 +1047,50 @@ export class PopupSeparatorMenuItem {}
         rules.disable();
         placer.destroy();
         windows.length = 0;
+    }
+
+    // -- WindowPlacer: a move or resize while a resize is unanswered ----------------
+    //
+    // On Wayland a window takes a new size only when its client answers the
+    // resize, and mutter then applies the position of that request. Seen in a
+    // headless GNOME Shell 50.1: a tile stayed unanswered for seconds, and a
+    // Move in that time was undone by the late answer. A Move or Resize while
+    // a resize is unanswered therefore requests the whole frame again, built
+    // on the requested one, so its request replaces the unanswered one.
+
+    {
+        windows.length = 0;
+        const placer = new WindowPlacer();
+        const service = startService(placer);
+        const win = createWindow({ id: 61, wmClass: 'late' });
+        win.map();
+        await sleep(100);
+        win.answersLate = true;
+
+        service.MoveResizeAsync([61, 0, 32, 480, 524], invocation());
+        service.MoveAsync([61, 120, 140], invocation());
+        check('Move while a resize is unanswered keeps the requested size',
+            JSON.stringify(win.moves.at(-1)) === '[120,140,480,524]' && win.userOps.at(-1) === true,
+            `${JSON.stringify(win.moves)} ${win.userOps}`);
+
+        service.ResizeAsync([61, 600, 400], invocation());
+        check('Resize while a resize is unanswered keeps the requested position',
+            JSON.stringify(win.moves.at(-1)) === '[120,140,600,400]', JSON.stringify(win.moves));
+
+        win.answer();
+        check('the answer leaves no handler on the window', win.handlerCount() === 0,
+            `${win.handlerCount()} handler(s)`);
+        win.answersLate = false;
+        service.MoveAsync([61, 5, 6], invocation());
+        check('Move after the answer moves only', JSON.stringify(win.moves.at(-1)) === '[5,6]',
+            JSON.stringify(win.moves));
+
+        win.answersLate = true;
+        service.MoveResizeAsync([61, 0, 0, 300, 200], invocation());
+        placer.destroy();
+        check('WindowPlacer.destroy() leaves no handler on an unanswered window',
+            win.handlerCount() === 0, `${win.handlerCount()} handler(s)`);
+        service.unexport();
     }
 
     // -- WindowPlacer: one placement per window, the newest wins ----------------
