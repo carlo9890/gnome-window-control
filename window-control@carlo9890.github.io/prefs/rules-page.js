@@ -10,7 +10,7 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import { dropInNames } from '../rules-format.js';
-import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames } from '../rules-files.js';
+import { CONFIG_DIR, DROPIN_DIR, RULES_FILE, regularFileNames, DirectoryWatch } from '../rules-files.js';
 import { checkRules, ruleSummary, rulesLabel } from './rules-check.js';
 import { readText, writeText } from './rules-disk.js';
 
@@ -37,10 +37,8 @@ export class RulesEditor {
         this._file = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, RULES_FILE]));
         this._dropInDir = Gio.File.new_for_path(GLib.build_filenamev([CONFIG_DIR, DROPIN_DIR]));
         this._dropInRows = [];
-        this._monitor = null;
-        this._monitorId = 0;
-        this._dropInMonitor = null;
-        this._dropInMonitorId = 0;
+        this._fileWatch = new DirectoryWatch();
+        this._dropInWatch = new DirectoryWatch();
         // The text on disk, '' for no file, and the text _load put in the
         // buffer: the two differ when the file is missing and the buffer
         // holds EXAMPLE.
@@ -76,12 +74,8 @@ export class RulesEditor {
             GLib.source_remove(this._diskId);
             this._diskId = 0;
         }
-        if (this._monitor) {
-            this._monitor.disconnect(this._monitorId);
-            this._monitor.cancel();
-            this._monitor = null;
-        }
-        this._unwatchDropIns();
+        this._fileWatch.stop();
+        this._dropInWatch.stop();
     }
 
     _buildEditorGroup() {
@@ -235,42 +229,29 @@ export class RulesEditor {
             if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
                 this._toast(`Cannot create ${CONFIG_DIR}: ${e.message}`);
         }
+        // Compared as files, not by name: get_basename() throws for a name
+        // that is not UTF-8.
         try {
-            this._monitor = this._file.get_parent().monitor_directory(Gio.FileMonitorFlags.NONE, null);
+            this._fileWatch.start(this._file.get_parent(), file => {
+                if (file.equal(this._dropInDir))
+                    this._watchDropIns();
+                else if (!file.equal(this._file))
+                    return;
+                this._scheduleDiskChange();
+            });
         } catch (e) {
             this._toast(`Cannot watch ${CONFIG_DIR}: ${e.message}`);
             return;
         }
-        // Compared as files, not by name: get_basename() throws for a name
-        // that is not UTF-8.
-        this._monitorId = this._monitor.connect('changed', (_monitor, file) => {
-            if (file.equal(this._dropInDir))
-                this._watchDropIns();
-            else if (!file.equal(this._file))
-                return;
-            this._scheduleDiskChange();
-        });
         this._watchDropIns();
     }
 
     _watchDropIns() {
-        this._unwatchDropIns();
         try {
-            this._dropInMonitor = this._dropInDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+            this._dropInWatch.start(this._dropInDir, () => this._scheduleDiskChange());
         } catch (e) {
             this._toast(`Cannot watch ${DROPIN_DIR}: ${e.message}`);
-            return;
         }
-        this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleDiskChange());
-    }
-
-    _unwatchDropIns() {
-        if (!this._dropInMonitor)
-            return;
-        this._dropInMonitor.disconnect(this._dropInMonitorId);
-        this._dropInMonitor.cancel();
-        this._dropInMonitor = null;
-        this._dropInMonitorId = 0;
     }
 
     _scheduleDiskChange() {

@@ -54,8 +54,10 @@ If it fails, the code has a syntax error and must not be committed.
   the shared `_actOnWindow(windowId, label, action)` helper.
 - Every frame request (a position or a size) for a shown window, from a D-Bus
   geometry method, a rule or a shortcut, goes through `WindowPlacer.place`
-  (`window-helpers.js`), and a request that moves and resizes calls
-  `moveResizeFrame`. A request that can change monitor passes its target monitor
+  (`window-helpers.js`), and the request itself calls the placer's
+  `moveResizeFrame`, `move` or `resize`, never `Meta.Window` directly: a
+  request made before the window has answered a new size waits in the placer,
+  so the late answer cannot undo it. A request that can change monitor passes its target monitor
   as the third argument of `place`. Their comments say why. Three kinds stay
   outside:
   - a move to a monitor goes through `moveToMonitor`, which keeps the wait for

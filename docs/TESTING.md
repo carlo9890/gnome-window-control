@@ -62,8 +62,8 @@ The `cli` job also runs four release checks. Run them locally before a push
 that changes a version or a dependency:
 
 ```bash
-./scripts/check-version.sh   # cli/Cargo.toml is 0.<metadata.json version>.0, and version-name is the same N as a string
-./tests/check-version-refusals.sh  # check-version.sh refuses a numeric, wrong or missing version-name
+./scripts/check-version.sh   # version-name is the string "N", and cli/Cargo.toml is 0.N.0
+./tests/check-version-refusals.sh  # check-version.sh refuses a numeric, wrong, malformed or missing version-name
 ./tests/check-release-notes-path.sh  # release.sh reads a relative --notes-file from the start folder
 mise run build:musl          # the static release binary, and its linkage check
 ```
@@ -196,7 +196,7 @@ to end with stubs first on `PATH`: no GNOME Shell and no network are needed.
 - Set `HOME` to a scratch directory for `install-wctl.sh`: it installs to
   `$HOME/.local/bin`.
 - Run `release.sh --notes-file <file>` in a throwaway clone on branch `main`
-  with a clean tree and tag `v<metadata.json version>` on `HEAD` (`git tag -f`:
+  with a clean tree and tag `v<metadata.json version-name>` on `HEAD` (`git tag -f`:
   before a version bump that tag already exists). It writes `dist/` and
   `cli/target/` in that clone.
 - Log each stub's arguments to a file and assert the calls from that file.

@@ -16,6 +16,5 @@
   ],
   "settings-schema": "org.gnome.shell.extensions.window-control",
   "url": "https://github.com/carlo9890/gnome-window-control",
-  "version": 25,
-  "version-name": "25"
+  "version-name": "26"
 }

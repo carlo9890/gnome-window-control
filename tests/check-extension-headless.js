@@ -282,7 +282,7 @@ export class PopupSeparatorMenuItem {}
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
                 above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
-                monitor: 0,
+                monitor: 0, frame: { x: 10, y: 10, width: 400, height: 300 }, answersLate: false, constrain: null,
             });
         }
 
@@ -327,15 +327,28 @@ export class PopupSeparatorMenuItem {}
             }
             return false;
         }
-        get_frame_rect() { return { x: 10, y: 10, width: 400, height: 300 }; }
+        get_frame_rect() { return { ...this.frame }; }
+
+        // A window takes a requested frame at once, as on X11. One with
+        // answersLate keeps its frame until answer(), as a Wayland client
+        // that has not yet answered the resize.
         move_resize_frame(userOp, x, y, width, height) {
             this.moves.push([x, y, width, height]);
             this.userOps = [...this.userOps ?? [], userOp];
+            if (!this.answersLate)
+                this.frame = this.constrain?.({ x, y, width, height }) ?? { x, y, width, height };
+        }
+
+        answer() {
+            const [x, y, width, height] = this.moves.at(-1);
+            this.frame = { x, y, width, height };
+            this.emit('size-changed');
         }
 
         move_frame(userOp, x, y) {
             this.moves.push([x, y]);
             this.userOps = [...this.userOps ?? [], userOp];
+            this.frame = { ...this.frame, x, y };
         }
         change_workspace_by_index(index) { this.workspaceMoves = [...this.workspaceMoves ?? [], index]; }
         move_to_monitor(index) {
@@ -1036,6 +1049,81 @@ export class PopupSeparatorMenuItem {}
         windows.length = 0;
     }
 
+    // -- WindowPlacer: a request while a new size is unanswered ----------------
+    //
+    // On Wayland a window takes a new size only when its client answers, and
+    // mutter then applies the position of that request. Seen in a headless
+    // GNOME Shell 50.1: a covered window was suspended, its tile stayed
+    // unanswered, and a Move in that time was undone by the late answer. A
+    // request made before the answer now waits for it, the newest one runs
+    // after it, and a window that takes its frame at once makes nothing wait.
+
+    {
+        windows.length = 0;
+        const placer = new WindowPlacer();
+        const service = startService(placer);
+        const win = createWindow({ id: 61, wmClass: 'late' });
+        win.map();
+        await sleep(100);
+        const last = () => JSON.stringify(win.moves.at(-1));
+        win.answersLate = true;
+
+        service.MoveResizeAsync([61, 0, 32, 480, 524], invocation());
+        service.MoveAsync([61, 120, 140], invocation());
+        service.ResizeAsync([61, 600, 400], invocation());
+        check('a request before the answer waits for it', last() === '[0,32,480,524]',
+            JSON.stringify(win.moves));
+        win.answer();
+        await sleep(50);
+        check('the newest waiting request runs after the answer, from the answered frame',
+            last() === '[0,32,600,400]' && win.moves.length === 2, JSON.stringify(win.moves));
+        win.answer();
+        await sleep(50);
+        check('the last answer leaves no handler on the window', win.handlerCount() === 0,
+            `${win.handlerCount()} handler(s)`);
+
+        service.MoveResizeAsync([61, 0, 32, 480, 524], invocation());
+        service.MoveAsync([61, 120, 140], invocation());
+        win.answer();
+        await sleep(50);
+        check('a Move before the answer lands after it', last() === '[120,140]', JSON.stringify(win.moves));
+
+        // A window that mutter constrains inside the call, such as one whose
+        // minimum width is above its tile, has answered already.
+        win.answersLate = false;
+        win.constrain = rect => ({ ...rect, width: Math.max(rect.width, 360) });
+        service.MoveResizeAsync([61, 0, 32, 320, 524], invocation());
+        service.MoveAsync([61, 100, 100], invocation());
+        check('a frame taken inside the call makes nothing wait',
+            last() === '[100,100]' && win.handlerCount() === 0, `${JSON.stringify(win.moves)} ${win.handlerCount()}`);
+        win.constrain = null;
+
+        win.answersLate = true;
+        win.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        service.Unmaximize(61);
+        service.MoveAsync([61, 7, 8], invocation());
+        check('a Move before the answer to Unmaximize waits for it', last() === '[100,100]',
+            JSON.stringify(win.moves));
+        win.emit('size-changed');
+        await sleep(50);
+        check('the Move lands after the answer to Unmaximize', last() === '[7,8]', JSON.stringify(win.moves));
+
+        service.MoveResizeAsync([61, 0, 32, 480, 524], invocation());
+        service.MoveAsync([61, 9, 9], invocation());
+        placer.cancel(win);
+        win.answer();
+        await sleep(50);
+        check('a dropped waiting request does not run after the answer', last() === '[0,32,480,524]',
+            JSON.stringify(win.moves));
+
+        service.MoveResizeAsync([61, 0, 0, 300, 200], invocation());
+        service.MoveAsync([61, 1, 1], invocation());
+        placer.destroy();
+        check('WindowPlacer.destroy() leaves no handler on a window that has not answered',
+            win.handlerCount() === 0, `${win.handlerCount()} handler(s)`);
+        service.unexport();
+    }
+
     // -- WindowPlacer: one placement per window, the newest wins ----------------
     //
     // A shortcut, a rule and a D-Bus geometry call made while another of them
@@ -1603,7 +1691,7 @@ export class PopupSeparatorMenuItem {}
             .filter(line => line.message.includes('cannot watch'));
         check('the watch failure is logged at error level', failures.length === 1 &&
             failures[0].level === GLib.LogLevelFlags.LEVEL_CRITICAL, JSON.stringify(failures));
-        check('a failed watch keeps no monitor', rules._fileMonitor === null, `${rules._fileMonitor}`);
+        check('a failed watch keeps no monitor', rules._fileWatch._monitor === null, `${rules._fileWatch._monitor}`);
         write(rulesPath, '[{"match":{"class":"app"},"tile":"left"},{"match":{"class":"b"},"tile":"right"}]');
         await sleep(300);
         check('an unwatched rules.json is not read again after a write', rules._rules.length === 1,
@@ -2202,13 +2290,13 @@ export class PopupSeparatorMenuItem {}
         const rules = new WindowRules(new WindowPlacer());
         rules.enable();
         await sleep(300);
-        check('rules.d: no folder means no monitor and no error', rules._dropInMonitor === null &&
+        check('rules.d: no folder means no monitor and no error', rules._dropInWatch._monitor === null &&
             sourcesOf(rules) === '["rules.json#0"]', sourcesOf(rules));
 
         GLib.mkdir_with_parents(dropIns, 0o755);
         await sleep(300);
-        check('rules.d: a folder created after enable() is watched', rules._dropInMonitor !== null,
-            `${rules._dropInMonitor}`);
+        check('rules.d: a folder created after enable() is watched', rules._dropInWatch._monitor !== null,
+            `${rules._dropInWatch._monitor}`);
         const SKIPPED = '[{"match":{"class":"skipped"},"tile":"left"}]';
         for (const name of ['.b.json.tmp', '.hidden.json', 'c.json~', 'c.json.off', 'c.txt'])
             write(`${dropIns}/${name}`, SKIPPED);
@@ -2358,11 +2446,12 @@ export class PopupSeparatorMenuItem {}
             loopErrors.length > 0, JSON.stringify(consoleLines.slice(linesBeforeLoop)));
         GLib.unlink(rulesJson);
 
-        const monitors = [rules._fileMonitor, rules._dropInMonitor];
-        const ids = [rules._fileMonitorId, rules._dropInMonitorId];
+        const watches = [rules._fileWatch, rules._dropInWatch];
+        const monitors = watches.map(watch => watch._monitor);
+        const ids = watches.map(watch => watch._handlerId);
         rules.disable();
         check('rules.d: disable() cancels both monitors and disconnects their handlers',
-            rules._fileMonitor === null && rules._dropInMonitor === null &&
+            watches.every(watch => watch._monitor === null) &&
             monitors.every((monitor, i) => monitor !== null && monitor.is_cancelled() &&
                 !GObject.signal_handler_is_connected(monitor, ids[i])));
         check('rules.d: disable() leaves no handler on the display and no source',

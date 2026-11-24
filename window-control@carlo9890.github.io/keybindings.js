@@ -8,7 +8,7 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { nextWidePosition, tileRect } from './rules-format.js';
-import { moveResizeFrame, workareaOf } from './window-helpers.js';
+import { workareaOf } from './window-helpers.js';
 
 // Settings key -> tile position. The cycle key is handled apart, because its
 // position depends on where the window is. Every key named here must exist in
@@ -38,7 +38,6 @@ const WINDOW_FLAGS = Meta.KeyBindingFlags.PER_WINDOW | Meta.KeyBindingFlags.IGNO
 const GLOBAL_FLAGS = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT;
 
 export class WindowKeybindings {
-    // `applyRules()` applies the rules again to every open window.
     constructor(placer, applyRules) {
         this._placer = placer;
         this._applyRules = applyRules;
@@ -121,7 +120,7 @@ export class WindowKeybindings {
     _place(win, position, workarea) {
         const target = tileRect(position, workarea);
         this._placer.place(win, () => {
-            moveResizeFrame(win, target);
+            this._placer.moveResizeFrame(win, target);
             console.debug(`[Window Control] shortcut -> ${win.get_id()}: tile ${position}`);
         });
     }

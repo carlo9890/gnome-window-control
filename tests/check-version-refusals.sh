@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # check-version-refusals.sh - Check that scripts/check-version.sh refuses a
-# metadata.json whose version-name is a number, another N, or missing, and
-# accepts the matching string.
+# metadata.json whose version-name is a number, another N, malformed or
+# missing, and accepts the matching string.
 #
 
 set -euo pipefail
@@ -21,7 +21,7 @@ failures=0
 # expect <accept|refuse> <description> <version-name JSON member, or empty>
 expect() {
     local outcome=$1 description=$2 member=$3
-    printf '{ "version": 24%s }\n' "${member:+, $member}" > "$work/$EXTENSION_DIR/metadata.json"
+    printf '{ %s }\n' "$member" > "$work/$EXTENSION_DIR/metadata.json"
     if "$work/scripts/check-version.sh" > /dev/null 2>&1; then
         actual=accept
     else
@@ -35,9 +35,10 @@ expect() {
     fi
 }
 
-expect accept 'version-name "24" matches version 24' '"version-name": "24"'
+expect accept 'version-name "24" matches wctl 0.24.0' '"version-name": "24"'
 expect refuse 'version-name as the number 24' '"version-name": 24'
-expect refuse 'version-name "23" for version 24' '"version-name": "23"'
+expect refuse 'version-name "23" for wctl 0.24.0' '"version-name": "23"'
+expect refuse 'version-name "24a"' '"version-name": "24a"'
 expect refuse 'no version-name' ''
 
 exit $((failures > 0))

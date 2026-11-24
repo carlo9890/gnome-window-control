@@ -9,8 +9,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DBUS_INTERFACE_XML } from './dbus-interface.js';
 import { matchPredicate } from './rules-format.js';
 import {
-    isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow, moveResizeFrame,
-    moveToMonitor, skipNextEffect, targetMonitor, unmaximizeWindow,
+    addTimeout, isFullyMaximized, looksUnmapped, maximizeFlags, maximizeWindow, minimizeWindow,
+    moveToMonitor, removeSource, skipNextEffect, targetMonitor,
 } from './window-helpers.js';
 
 // Parsed once per shell, never per enable(). GLib keys the GJS method cache by
@@ -121,18 +121,11 @@ export class WindowControlService {
     }
 
     _addTimeout(ms, callback) {
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
-            this._sourceIds.delete(id);
-            callback();
-            return GLib.SOURCE_REMOVE;
-        });
-        this._sourceIds.add(id);
-        return id;
+        return addTimeout(this._sourceIds, ms, callback);
     }
 
     _removeSource(id) {
-        if (this._sourceIds.delete(id))
-            GLib.source_remove(id);
+        removeSource(this._sourceIds, id);
     }
 
     // NORMAL windows only: every method works on these.
@@ -427,13 +420,14 @@ export class WindowControlService {
         this._namedErrorCall(invocation, 'Move', () => {
             const win = this._geometryTarget(windowId, 'Move');
             const { width, height } = win.get_frame_rect();
-            this._placer.place(win, () => win.move_frame(true, x, y),
+            this._placer.place(win, () => this._placer.move(win, x, y),
                 targetMonitor(win, { x, y, width, height }));
             console.debug(`[Window Control] Move(${windowId}) -> ok`);
         });
     }
 
-    // Keeps the position the frame has when the request runs.
+    // Keeps the position the frame has when the request runs, which is after
+    // the window has answered an earlier new size (see WindowPlacer).
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'Resize', () => {
@@ -442,16 +436,13 @@ export class WindowControlService {
                     'Resize: width and height must be positive');
             }
             const win = this._geometryTarget(windowId, 'Resize');
-            this._placer.place(win, () => {
-                const rect = win.get_frame_rect();
-                win.move_resize_frame(true, rect.x, rect.y, width, height);
-            });
+            this._placer.place(win, () => this._placer.resize(win, width, height));
             console.debug(`[Window Control] Resize(${windowId}) -> ok`);
         });
     }
 
     // One request for both, so mutter applies them together, as the program's
-    // request (see moveResizeFrame).
+    // request (see WindowPlacer.moveResizeFrame).
     MoveResizeAsync([windowId, x, y, width, height], invocation) {
         console.debug(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'MoveResize', () => {
@@ -461,7 +452,7 @@ export class WindowControlService {
             }
             const win = this._geometryTarget(windowId, 'MoveResize');
             const rect = { x, y, width, height };
-            this._placer.place(win, () => moveResizeFrame(win, rect), targetMonitor(win, rect));
+            this._placer.place(win, () => this._placer.moveResizeFrame(win, rect), targetMonitor(win, rect));
             console.debug(`[Window Control] MoveResize(${windowId}) -> ok`);
         });
     }
@@ -960,7 +951,7 @@ export class WindowControlService {
     }
 
     Unmaximize(windowId) {
-        return this._actOnWindow(windowId, 'Unmaximize', win => unmaximizeWindow(win));
+        return this._actOnWindow(windowId, 'Unmaximize', win => this._placer.unmaximize(win));
     }
 
     Fullscreen(windowId) {

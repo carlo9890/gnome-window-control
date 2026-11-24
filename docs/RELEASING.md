@@ -31,7 +31,7 @@ The version bump goes through a PR against `main` like any other change (see
 [CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md)); the tag is cut on the merged `main`
 commit.
 
-1. Update both `version` and `version-name` in
+1. Set `version-name` to the string `"N"` in
    `window-control@carlo9890.github.io/metadata.json`.
 2. Bump `version` in `cli/Cargo.toml` to the matching `0.<N>.0` form (see Version
    format below) — `wctl` compiles its minor version in as
@@ -154,9 +154,8 @@ The code rules are in [REVIEWING.md](REVIEWING.md): the
 - The license must be GPL-compatible. This project is MIT, which qualifies.
 - `shell-version` must list only versions the extension really supports.
 
-EGO assigns its own integer `version` on upload and ignores the one in
-`metadata.json`; `version-name` is what users see, and what `GetVersion`
-reports, so keep it equal to `version`.
+EGO sets its own integer `version` on upload, so `metadata.json` holds no
+`version` key. `version-name` is what users see, and what `GetVersion` reports.
 
 ### If the reviewer asks about the unauthenticated interface
 

@@ -77,7 +77,7 @@ Prerequisites:
   - GitHub CLI (gh) installed and authenticated
   - Clean working directory (no uncommitted changes)
   - On main branch
-  - Git tag v<version> must exist (matching metadata.json version) and
+  - Git tag v<version> must exist (matching metadata.json version-name) and
     point at HEAD, locally and on GitHub
   - Release notes written by hand in a file (see docs/RELEASING.md)
 
@@ -89,9 +89,8 @@ Options:
     -h, --help            Show this help message
 
 Release Process:
-    1a. Update version in window-control@carlo9890.github.io/metadata.json
-        (both "version" and "version-name")
-    1b. Update version in cli/Cargo.toml to match (e.g., "0.X.0" for metadata version X)
+    1a. Set "version-name" in window-control@carlo9890.github.io/metadata.json
+    1b. Update version in cli/Cargo.toml to match (e.g., "0.X.0" for version-name "X")
     1c. Refresh cli/Cargo.lock so it agrees with the manifest:
         (cd cli && cargo update -p wctl)
         Skipping this leaves the tag shipping a lock that pins the old version,
@@ -173,7 +172,7 @@ get_version() {
         exit 1
     fi
     
-    VERSION=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version'])")
+    VERSION=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version-name'])")
     TAG="v${VERSION}"
     ZIP_NAME="${EXTENSION_UUID}_v${VERSION}.zip"
     ZIP_PATH="$DIST_DIR/$ZIP_NAME"
@@ -182,7 +181,7 @@ get_version() {
     log_info "Version: $VERSION (tag: $TAG)"
 }
 
-# Check the wctl crate version matches metadata.json version
+# Check the wctl crate version matches metadata.json version-name
 check_wctl_version() {
     log_step "Checking wctl version..."
     "$SCRIPT_DIR/check-version.sh"

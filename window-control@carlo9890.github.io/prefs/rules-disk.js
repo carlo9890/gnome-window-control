@@ -5,11 +5,10 @@
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import { refuseUnlessRegular } from '../rules-files.js';
 
 // Throws when `file` is no regular file. The open of a FIFO does not return,
-// and the window would hang. A link is followed. Gio reports a link that it
-// cannot follow as a link: the open then gives the cause, which is "not
-// found" for a link without a target.
+// and the window would hang. A link is followed.
 function refuseNonRegular(file) {
     let type;
     try {
@@ -19,8 +18,7 @@ function refuseNonRegular(file) {
             return;
         throw e;
     }
-    if (type !== Gio.FileType.REGULAR && type !== Gio.FileType.SYMBOLIC_LINK)
-        throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
+    refuseUnlessRegular(type);
 }
 
 // The text of `file`, or null when there is none.

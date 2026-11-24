@@ -140,7 +140,7 @@ build() {
     log_info "Building extension..."
     
     local version
-    version=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version'])")
+    version=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version-name'])")
     local zip_name="${EXTENSION_UUID}_v${version}.zip"
     local zip_path="$DIST_DIR/$zip_name"
     

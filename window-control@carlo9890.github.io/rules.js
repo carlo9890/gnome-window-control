@@ -10,8 +10,10 @@ import Meta from 'gi://Meta';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import { WindowOverlays } from './overlay.js';
 import { centerRect, compileRules, fitsMonitor, resolvePlaceRect, tileRect } from './rules-format.js';
-import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles } from './rules-files.js';
-import { looksUnmapped, maximizeFlags, moveResizeFrame, moveToMonitor, workareaOf } from './window-helpers.js';
+import { CONFIG_DIR, DROPIN_DIR, DROPIN_PATH, RULES_FILE, readRuleFiles, DirectoryWatch } from './rules-files.js';
+import {
+    addIdle, addTimeout, looksUnmapped, maximizeFlags, moveToMonitor, removeSource, workareaOf,
+} from './window-helpers.js';
 
 // A Wayland client's app_id and first real title can land after the window is
 // shown, so a shown window that matched nothing yet stays under evaluation this
@@ -45,10 +47,8 @@ export class WindowRules {
         this._rules = [];
         this._windowCreatedId = 0;
         this._tracked = new Map();
-        this._fileMonitor = null;
-        this._fileMonitorId = 0;
-        this._dropInMonitor = null;
-        this._dropInMonitorId = 0;
+        this._fileWatch = new DirectoryWatch();
+        this._dropInWatch = new DirectoryWatch();
         this._reloadId = 0;
         this._loadCancellable = null;
         // A read in flight, and what waits for it (whenLoaded).
@@ -75,17 +75,12 @@ export class WindowRules {
         }
         // The directory rather than the file: a file monitor misses an editor
         // that saves by writing a new file and renaming it over the old one.
+        // Compared as files, not by name: get_basename() throws for a name
+        // that is not UTF-8.
+        const rulesFile = dir.get_child(RULES_FILE);
+        const dropInDir = dir.get_child(DROPIN_DIR);
         try {
-            this._fileMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        } catch (e) {
-            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; the rules files are read only at enable() and when rules.d changes`);
-        }
-        if (this._fileMonitor) {
-            // Compared as files, not by name: get_basename() throws for a
-            // name that is not UTF-8.
-            const rulesFile = dir.get_child(RULES_FILE);
-            const dropInDir = dir.get_child(DROPIN_DIR);
-            this._fileMonitorId = this._fileMonitor.connect('changed', (monitor, file) => {
+            this._fileWatch.start(dir, file => {
                 // A rules.d created, deleted or replaced after enable() is
                 // another folder, so its monitor is made again.
                 if (file.equal(dropInDir)) {
@@ -95,6 +90,8 @@ export class WindowRules {
                     this._scheduleReload();
                 }
             });
+        } catch (e) {
+            console.error(`[Window Control] cannot watch ${CONFIG_DIR}: ${e.message}; the rules files are read only at enable() and when rules.d changes`);
         }
         this._watchDropIns();
         this._load();
@@ -111,13 +108,8 @@ export class WindowRules {
         for (const callback of this._afterLoad.splice(0))
             callback(false);
         this._mutterSettings = null;
-        if (this._fileMonitor) {
-            this._fileMonitor.disconnect(this._fileMonitorId);
-            this._fileMonitor.cancel();
-            this._fileMonitor = null;
-            this._fileMonitorId = 0;
-        }
-        this._unwatchDropIns();
+        this._fileWatch.stop();
+        this._dropInWatch.stop();
         for (const win of [...this._tracked.keys()])
             this._untrack(win);
         this._overlays.destroy();
@@ -131,26 +123,16 @@ export class WindowRules {
     // The check is synchronous because monitor_directory() is: Gio has no
     // asynchronous form of it, and it looks the same path up.
     _watchDropIns() {
-        this._unwatchDropIns();
+        this._dropInWatch.stop();
         const dir = Gio.File.new_for_path(DROPIN_PATH);
         if (dir.query_file_type(Gio.FileQueryInfoFlags.NONE, null) !== Gio.FileType.DIRECTORY)
             return;
         try {
-            this._dropInMonitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+            this._dropInWatch.start(dir, () => this._scheduleReload());
         } catch (e) {
             console.error(`[Window Control] cannot watch ${DROPIN_PATH}: ${e.message}`);
             return;
         }
-        this._dropInMonitorId = this._dropInMonitor.connect('changed', () => this._scheduleReload());
-    }
-
-    _unwatchDropIns() {
-        if (!this._dropInMonitor)
-            return;
-        this._dropInMonitor.disconnect(this._dropInMonitorId);
-        this._dropInMonitor.cancel();
-        this._dropInMonitor = null;
-        this._dropInMonitorId = 0;
     }
 
     _scheduleReload() {
@@ -318,28 +300,15 @@ export class WindowRules {
     }
 
     _addTimeout(ms, callback) {
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
-            this._sourceIds.delete(id);
-            callback();
-            return GLib.SOURCE_REMOVE;
-        });
-        this._sourceIds.add(id);
-        return id;
+        return addTimeout(this._sourceIds, ms, callback);
     }
 
     _addIdle(callback) {
-        const id = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            this._sourceIds.delete(id);
-            callback();
-            return GLib.SOURCE_REMOVE;
-        });
-        this._sourceIds.add(id);
-        return id;
+        return addIdle(this._sourceIds, callback);
     }
 
     _removeSource(id) {
-        if (this._sourceIds.delete(id))
-            GLib.source_remove(id);
+        removeSource(this._sourceIds, id);
     }
 
     // The first rule whose predicates hold for the window and whose min_width
@@ -377,7 +346,6 @@ export class WindowRules {
         return this._overlays.has(win);
     }
 
-    // `headStart` is the window's head start, if it took one (_preplace).
     _winningIndex(win, headStart = null) {
         return win.get_window_type() === Meta.WindowType.NORMAL
             ? this._matchIndex(win, win.get_monitor(), headStart) : -1;
@@ -516,7 +484,7 @@ export class WindowRules {
             console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: resolves to nothing on this workarea, skipped`);
             return;
         }
-        moveResizeFrame(win, target);
+        this._placer.moveResizeFrame(win, target);
         console.debug(`[Window Control] ${ruleName(rule)} -> ${id}: ${rule.geometry.kind} applied`);
     }
 
