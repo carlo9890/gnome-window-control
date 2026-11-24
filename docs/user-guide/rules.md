@@ -291,19 +291,20 @@ wctl rules apply             # every open window
 wctl rules apply -c kitty    # one window
 ```
 
-`Super+Ctrl+KP_Multiply` applies the rules to every open window from the
-keyboard, without the file check and the count (see
-[Keyboard shortcuts](shortcuts.md#keyboard-shortcuts)).
+The numpad `*` shortcut does the same from the keyboard: see
+[Keyboard shortcuts](shortcuts.md#keyboard-shortcuts).
 
 The extension applies the rules it has loaded again, as it does to a new
 window: the first matching rule wins, and `min_width` tests the monitor the
 window is on now. Use it after you moved windows by hand, or after you docked
 or undocked a laptop.
 
-- A maximized window is restored first, then placed. A shortcut or a geometry
-  command for the same window before the restore lands replaces this
-  placement: the newest request wins. A `move-to-monitor` drops it when it
-  was made for another monitor, and the window keeps its restored size there.
+- A maximized window is restored first, then placed. A shortcut, a rule
+  apply, or a `move`, `resize`, `move-resize`, `place`, `tile` or `center`
+  for the same window before the restore lands replaces this placement: the
+  newest request wins. A `move-to-monitor` or a rule's `monitor` drops it when
+  it was made for another monitor, and the window keeps its restored size
+  there.
 - A minimized window is placed and stays minimized.
 - A fullscreen window gets its `workspace` and `monitor`, but no geometry.
 - A `workspace` that does not exist is skipped, so each apply does not add

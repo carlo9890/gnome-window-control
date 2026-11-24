@@ -6,7 +6,7 @@
 
 - **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
 - **Window info** - Get detailed information about any window
-- **Window selectors** - Address a window by ID, `focused`, WM class, title, title substring, or PID in every `wctl` command (`activate` takes all but `focused`)
+- **Window selectors** - Address a window by a selector in every `wctl` command; see [Selectors](concepts.md#selectors)
 - **Activate windows** - Focus/raise windows by ID, title, WM class, or PID
 - **Move/resize windows** - Position and size windows programmatically
 - **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky

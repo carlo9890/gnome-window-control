@@ -20,12 +20,10 @@ with the browser integration or the Extension Manager app.
 > install [from GitHub Releases](#from-github-releases).
 
 Every upload there waits for a manual review, so that page can be several
-versions behind the GitHub release, and an older version has no rules and no
-keyboard shortcuts. Run `wctl version --json` and read `capabilities`: `rules`
+versions behind the GitHub release. Run `wctl version --json` and read `capabilities`: `rules`
 and `keybindings` are listed when the loaded extension has them. The same
 command reports `"compatible": false` for a version before v25 installed from
 that page - see [Checking the extension version](wctl.md#checking-the-extension-version).
-For the newest version, install from GitHub Releases.
 
 ### From GitHub Releases
 
