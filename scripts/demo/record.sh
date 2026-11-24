@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # Record a demo GIF of the user guide: docs/images/demo-<SCENE>.gif.
 #
-# Usage: record.sh [--real-session-ok] <SCENE>     SCENE: wctl keyboard rules overlay
+# Usage: record.sh --real-session-ok <SCENE>     SCENE: wctl keyboard rules overlay
 #
 # Run it in the desktop session of a throwaway VM guest (docs/RUNNING.md), with
 # this checkout copied there and the extension and wctl installed. A scene
 # opens kitty windows, moves them, presses the shortcuts with
 # tests/inject-keys.js and replaces rules.json for the time of the scene, so it
-# refuses the login session bus without --real-session-ok, the flag the guest
-# needs. The screen must be 1920x1080 at scale 1.
+# refuses to run without --real-session-ok. The screen must be one monitor at
+# 1920x1080, scale 1.
 #
 # Needs: kitty, ffmpeg, gjs, the DejaVu fonts. Set WCTL for another wctl.
 # A scene types its commands into a terminal on screen (typist.sh); a caption
 # at the bottom names each shortcut it presses, which a GIF cannot show.
 
 set -euo pipefail
+# EPOCHREALTIME takes the locale's decimal point, and awk reads only a dot.
+export LC_ALL=C
 
 REAL_SESSION_FLAG="--real-session-ok"
 SCENES="wctl keyboard rules overlay"
@@ -25,7 +27,7 @@ FONT=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
 RULES="${XDG_CONFIG_HOME:-$HOME/.config}/gnome-window-control/rules.json"
 
 usage() {
-    echo "Usage: $0 [$REAL_SESSION_FLAG] <SCENE>   SCENE: $SCENES" >&2
+    echo "Usage: $0 $REAL_SESSION_FLAG <SCENE>   SCENE: $SCENES" >&2
     exit 2
 }
 
@@ -56,9 +58,15 @@ open_terminal() {
 }
 
 # run_typed <COMMAND>: type COMMAND in the terminal, run it, and wait for it.
+# A command that fails stops the scene, so no broken demo is written.
 run_typed() {
+    local status
     echo "$1" >"$WORK/fifo"
-    read -r _ <"$WORK/done"
+    read -r status <"$WORK/done"
+    if [[ "$status" != 0 ]]; then
+        echo "The scene command failed with status $status: $1" >&2
+        exit 1
+    fi
     sleep 0.8
 }
 
@@ -184,25 +192,17 @@ to_gif() {
         "$2"
 }
 
-# The recording runs this script again as `--play <SCENE> <WORK>`; the opt-in
-# reaches it through DEMO_REAL_SESSION_OK, so the guard below covers it too.
-real_session_ok=${DEMO_REAL_SESSION_OK:-false}
-if [[ "${1:-}" == "$REAL_SESSION_FLAG" ]]; then
-    real_session_ok=true
-    shift
+# The opt-in is required on every bus: the rules.json a scene replaces is the
+# one of this user, which a nested or headless shell does not read but the
+# login shell does. The recording runs this script again with
+# `--real-session-ok --play <SCENE> <WORK>`.
+if [[ "${1:-}" != "$REAL_SESSION_FLAG" ]]; then
+    echo "Refusing to run without $REAL_SESSION_FLAG: a scene opens, moves and closes" >&2
+    echo "windows, presses keys and replaces $RULES." >&2
+    echo "Run it only in a throwaway VM guest's session, and pass $REAL_SESSION_FLAG there." >&2
+    exit 1
 fi
-
-if ! $real_session_ok; then
-    LOGIN_BUS=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
-    if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" || -z "$LOGIN_BUS" || "$DBUS_SESSION_BUS_ADDRESS" == "$LOGIN_BUS" ]]; then
-        echo "Refusing to run: DBUS_SESSION_BUS_ADDRESS is unset or is the login session bus," >&2
-        echo "or systemctl --user show-environment reports no login session bus to compare it with." >&2
-        echo "A scene opens, moves and closes windows and replaces rules.json." >&2
-        echo "Run it in a throwaway VM guest's session and pass $REAL_SESSION_FLAG there." >&2
-        exit 1
-    fi
-fi
-export DEMO_REAL_SESSION_OK=$real_session_ok
+shift
 
 if [[ "${1:-}" == "--play" ]]; then
     WORK=$3
@@ -214,31 +214,39 @@ fi
 [[ $# -eq 1 && " $SCENES " == *" $1 "* ]] || usage
 scene=$1
 
-screen=$("$WCTL" monitors | awk 'NR == 2 { print $4 "x" $5 "@" $6 }')
+screen=$("$WCTL" monitors | awk 'NR == 2 { s = $4 "x" $5 "@" $6 } END { print (NR == 2 ? s : NR - 1 " monitors") }')
 if [[ "$screen" != "1920x1080@1" ]]; then
     echo "The screen is $screen; a demo needs one monitor at 1920x1080, scale 1." >&2
     exit 1
 fi
 
 WORK=$(mktemp -d)
-mkdir -p "$(dirname "$RULES")"
-[[ -e "$RULES" ]] && mv "$RULES" "$WORK/rules.json.saved"
-echo '[]' >"$RULES"
 
 cleanup() {
     pkill -P $$ kitty 2>/dev/null || true
     for class in logs chat editor quake demo-term; do
         while "$WCTL" close -c "$class" >/dev/null 2>&1; do sleep 0.2; done
     done
-    rm -f "$RULES"
-    [[ -e "$WORK/rules.json.saved" ]] && mv "$WORK/rules.json.saved" "$RULES"
+    if [[ -e "$WORK/rules.json.saved" || -L "$WORK/rules.json.saved" ]]; then
+        rm -f "$RULES"
+        mv "$WORK/rules.json.saved" "$RULES"
+    elif [[ -e "$WORK/rules.json.ours" ]]; then
+        rm -f "$RULES"
+    fi
     rm -rf "$WORK"
 }
 trap cleanup EXIT
 
+mkdir -p "$(dirname "$RULES")"
+if [[ -e "$RULES" || -L "$RULES" ]]; then
+    mv "$RULES" "$WORK/rules.json.saved"
+fi
+touch "$WORK/rules.json.ours"
+echo '[]' >"$RULES"
+
 "setup_$scene"
 sleep 2
 : >"$WORK/captions"
-video=$(gjs -m "$DEMO/screencast.js" "$WORK/demo.webm" "$0" --play "$scene" "$WORK")
+video=$(gjs -m "$DEMO/screencast.js" "$WORK/demo.webm" "$DEMO/record.sh" "$REAL_SESSION_FLAG" --play "$scene" "$WORK")
 to_gif "$video" "$PROJECT_ROOT/docs/images/demo-$scene.gif"
 echo "Wrote docs/images/demo-$scene.gif"
