@@ -178,10 +178,12 @@ const SETTLE_TIMEOUT_MS: i32 = 2000;
 /// guard against a shell that never replies at all. Same role as `wait`'s.
 const SETTLE_GRACE_SECONDS: u64 = 5;
 
-/// Wait for the frame to stop changing, after a placement was applied.
+/// Wait for the frame to stop changing: after a placement for `--settled`, and
+/// before `center` reads the size it centers.
 ///
-/// A failure to SETTLE is not a failure to place: the window did move. So the
-/// caller is told both, and the exit code reports the settle timeout.
+/// After a placement, a failure to SETTLE is not a failure to place: the
+/// window did move. So the caller is told both, and the exit code reports the
+/// settle timeout.
 fn settle(ctx: &mut Ctx, id: u64) -> Result<Rect> {
     let bound =
         Duration::from_millis(SETTLE_TIMEOUT_MS as u64) + Duration::from_secs(SETTLE_GRACE_SECONDS);
@@ -508,18 +510,20 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     };
     let id = selector::lookup(ctx, &selector)?;
 
+    // A resize or a move just before can still be on its way to the client.
+    // Read the window once its frame holds still, so the size, the monitor and
+    // the workarea are the ones it lands at. A failed wait leaves the frame
+    // as it is now, which is what center used before it waited.
+    let _ = settle(ctx, id);
+    ctx.invalidate_windows();
     let (window, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
-    // A resize just before can still be on its way to the client: centre the
-    // size it lands at, not the one listed. Without the wait, the listed size.
-    let frame = settle(ctx, id).unwrap_or_else(|_| {
-        let (x, y, width, height) = model::frame_rect(&window);
-        Rect {
-            x,
-            y,
-            width,
-            height,
-        }
-    });
+    let (x, y, width, height) = model::frame_rect(&window);
+    let frame = Rect {
+        x,
+        y,
+        width,
+        height,
+    };
 
     // Size is preserved, so this is a Move.
     let target = geometry::center_rect(axis, frame, workarea);

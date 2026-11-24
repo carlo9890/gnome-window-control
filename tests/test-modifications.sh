@@ -234,7 +234,9 @@ else
     run_wctl move-resize "$TEST_WINDOW_ID" $((tc_wa_x + 50)) $((tc_wa_y + 50)) 800 600
     wait_for_change
     run_wctl resize "$TEST_WINDOW_ID" 400 300
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "center after a resize: resize exits 0"
     run_wctl center "$TEST_WINDOW_ID"
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "center after a resize: center exits 0"
     wait_for_change
     cw=$(get_window_field '.frame_rect.width')
     ch=$(get_window_field '.frame_rect.height')
