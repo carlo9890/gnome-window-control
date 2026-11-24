@@ -260,6 +260,11 @@ impl Bus {
         crate::reply_timeout(self.timeout_flag).map(|_| ())
     }
 
+    /// The reply timeout that `--timeout` or `WCTL_TIMEOUT` sets.
+    pub fn reply_timeout(&self) -> Result<Duration> {
+        crate::reply_timeout(self.timeout_flag)
+    }
+
     fn conn(&self) -> Result<&Connection> {
         if let Some(conn) = self.conn.get() {
             return Ok(conn);

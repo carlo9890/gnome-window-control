@@ -185,8 +185,15 @@ const SETTLE_GRACE_SECONDS: u64 = 5;
 /// window did move. So the caller is told both, and the exit code reports the
 /// settle timeout.
 fn settle(ctx: &mut Ctx, id: u64) -> Result<Rect> {
-    let bound =
-        Duration::from_millis(SETTLE_TIMEOUT_MS as u64) + Duration::from_secs(SETTLE_GRACE_SECONDS);
+    settle_within(ctx, id, SETTLE_BOUND)
+}
+
+/// The client bound of a settle: the extension's timeout plus the grace.
+const SETTLE_BOUND: Duration =
+    Duration::from_millis(SETTLE_TIMEOUT_MS as u64 + SETTLE_GRACE_SECONDS * 1000);
+
+/// `settle`, with the client giving up after `bound`.
+fn settle_within(ctx: &mut Ctx, id: u64, bound: Duration) -> Result<Rect> {
     let (x, y, width, height) =
         ctx.bus
             .wait_for_geometry(id, SETTLE_QUIET_MS, SETTLE_TIMEOUT_MS, bound)?;
@@ -513,8 +520,10 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // A resize or a move just before can still be on its way to the client.
     // Read the window once its frame holds still, so the size, the monitor and
     // the workarea are the ones it lands at. A failed wait leaves the frame
-    // as it is now, which is what center used before it waited.
-    let _ = settle(ctx, id);
+    // as it is now, which is what center used before it waited. The wait
+    // keeps to `--timeout`, as center's other calls do.
+    let bound = SETTLE_BOUND.min(ctx.bus.reply_timeout()?);
+    let _ = settle_within(ctx, id, bound);
     ctx.invalidate_windows();
     let (window, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
     let (x, y, width, height) = model::frame_rect(&window);

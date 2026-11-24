@@ -480,7 +480,7 @@ export class PopupSeparatorMenuItem {}
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowRules: WindowRules49 } = await import(`file://${EXT49}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
-    const { WindowPlacer } = await import(`file://${EXT}/window-helpers.js`);
+    const { ANSWER_WAIT_MS, WindowPlacer } = await import(`file://${EXT}/window-helpers.js`);
     const { WindowPlacer: WindowPlacer49 } = await import(`file://${EXT49}/window-helpers.js`);
     const Main = await import(`file://${EXT}/stub-main.js`);
 
@@ -1137,6 +1137,25 @@ export class PopupSeparatorMenuItem {}
             showReply(never));
         win.answer();
         await sleep(50);
+
+        // Mutter sends nothing to a window when it limits a request to the
+        // frame the window has, so no answer comes: seen in GNOME Shell 50.1
+        // with a window at its minimum size asked to shrink, after which every
+        // request to it waited for good. The wait ends after ANSWER_WAIT_MS.
+        service.MoveResizeAsync([61, 20, 50, 1, 1], invocation());
+        service.MoveAsync([61, 300, 300], invocation());
+        const unanswered = invocation();
+        service.WaitForGeometryAsync([61, 20, ANSWER_WAIT_MS + 1000], unanswered);
+        await sleep(ANSWER_WAIT_MS - 300);
+        check('a request waits while no answer comes', last() === '[20,50,1,1]' && unanswered.replies === 0,
+            `${JSON.stringify(win.moves)} ${showReply(unanswered)}`);
+        await sleep(600);
+        check('a request runs after ANSWER_WAIT_MS when no answer comes', last() === '[300,300]',
+            JSON.stringify(win.moves));
+        check('WaitForGeometry settles after ANSWER_WAIT_MS when no answer comes', unanswered.replies === 1 &&
+            JSON.stringify(unanswered.reply.value?.slice(0, 2)) === '[300,300]', showReply(unanswered));
+        check('the ended wait leaves no handler on the window', win.handlerCount() === 0,
+            `${win.handlerCount()} handler(s)`);
 
         service.MoveResizeAsync([61, 0, 0, 300, 200], invocation());
         service.MoveAsync([61, 1, 1], invocation());

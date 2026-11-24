@@ -139,6 +139,13 @@ export function moveToMonitor(win, placer, index) {
 // size change, so the wait has to be bounded.
 export const UNMAXIMIZE_SETTLE_MS = 1000;
 
+// How long the WindowPlacer waits for a Wayland window to answer a new size.
+// Mutter sends nothing to a window when it limits a request to the frame the
+// window has, such as a window at its minimum size asked to shrink, so no
+// answer comes. It is the wait of `wctl center`, so a window that answers
+// within it still lands as asked; a later answer can undo what ran after it.
+export const ANSWER_WAIT_MS = 2000;
+
 // Unmaximize, then call `settled(true)` after the next 'size-changed' or
 // UNMAXIMIZE_SETTLE_MS, or `settled(false)` if the window is unmanaged first.
 // destroy() gives the wait up; after it, or after `settled`, nothing is left.
@@ -295,9 +302,13 @@ export class WindowPlacer {
         if (win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
             !sameRect(win.get_frame_rect(), before) || (target && sameRect(target, before)))
             return;
-        const entry = { signalIds: [], idleId: 0, request: null, monitor: null };
+        const entry = { signalIds: [], idleId: 0, timeoutId: 0, request: null, monitor: null };
         const answered = () => {
             this._disconnect(win, entry);
+            if (entry.timeoutId) {
+                GLib.source_remove(entry.timeoutId);
+                entry.timeoutId = 0;
+            }
             // 'size-changed' is emitted from inside mutter's own move-resize,
             // where a new request would be overwritten (see UnmaximizeWait).
             entry.idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -313,6 +324,11 @@ export class WindowPlacer {
             win.connect('position-changed', answered),
             win.connect('unmanaged', () => this._dropAnswer(win)),
         ];
+        entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ANSWER_WAIT_MS, () => {
+            entry.timeoutId = 0;
+            answered();
+            return GLib.SOURCE_REMOVE;
+        });
         this._answers.set(win, entry);
     }
 
@@ -328,6 +344,8 @@ export class WindowPlacer {
             return;
         if (entry.idleId)
             GLib.source_remove(entry.idleId);
+        if (entry.timeoutId)
+            GLib.source_remove(entry.timeoutId);
         this._disconnect(win, entry);
         this._answers.delete(win);
     }

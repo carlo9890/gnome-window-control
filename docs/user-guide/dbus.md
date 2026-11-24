@@ -69,7 +69,7 @@ gdbus call --session \
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
 | `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
 | `WaitForWindow` | `(ssi) -> t` | Wait until a window matching `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown (mapped and placed), up to `timeout_ms`; returns its ID, or 0 on timeout. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
-| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms`, up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
+| `WaitForGeometry` | `(tii) -> (iiii)` | Wait until the window's frame has held still for `quiet_ms` and the window has answered any new size or restore asked of it (at most 2 s), up to `timeout_ms`, then return it. The reply is deferred, the shell is never blocked, and the call is dropped if its caller leaves the bus. |
 
 ## Errors
 
@@ -86,7 +86,7 @@ ends the call.
 |------------|---------|
 | `org.gnome.Shell.Extensions.WindowControl.NotFound` | No window has that ID (also `WaitForGeometry`, if the window closes while waiting) |
 | `org.gnome.Shell.Extensions.WindowControl.Refused` | The frame is pinned by fullscreen, maximize or tiling — the message names which |
-| `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled |
+| `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry` gave up: the frame never settled, or the window did not answer within `timeout_ms` |
 | `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled while a deferred call was pending (a wait, or an `ApplyRules` waiting for a rules.json read) |
 | `org.freedesktop.DBus.Error.InvalidArgs` | A size or a wait time was not positive, `timeout_ms` was below `quiet_ms`, or a wait selector was refused (unknown kind, empty substring, pid that is not a positive decimal integer) |
 | `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize` or `ApplyRules` raised something unexpected |
