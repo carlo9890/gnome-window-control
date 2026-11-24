@@ -331,7 +331,10 @@ export const DBUS_INTERFACE_XML = `
 
     <!--
       Replies with the frame once size-changed and position-changed have been
-      silent for quiet_ms (> 0); timeout_ms (>= quiet_ms) is when to give up.
+      silent for quiet_ms (> 0) and the window has answered the new size or
+      the restore that a geometry method, a rule or a shortcut asked of it
+      (the extension waits at most 2 s for a size and 1 s for a restore);
+      timeout_ms (>= quiet_ms) is when to give up.
       A client outside the shell cannot do this: move_resize_frame() is
       asynchronous and get_frame_rect() read straight after it still returns
       the old rect. The quiet period is not a promise: a client can resize

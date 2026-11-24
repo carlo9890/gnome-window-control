@@ -57,7 +57,7 @@ If it fails, the code has a syntax error and must not be committed.
   (`window-helpers.js`), and the request itself calls the placer's
   `moveResizeFrame`, `move` or `resize`, never `Meta.Window` directly: a
   request made before the window has answered a new size waits in the placer,
-  so the late answer cannot undo it. A request that can change monitor passes its target monitor
+  up to `ANSWER_WAIT_MS`, so an answer within that time cannot undo it. A request that can change monitor passes its target monitor
   as the third argument of `place`. Their comments say why. Three kinds stay
   outside:
   - a move to a monitor goes through `moveToMonitor`, which keeps the wait for

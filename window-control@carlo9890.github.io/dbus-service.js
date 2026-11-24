@@ -426,8 +426,10 @@ export class WindowControlService {
         });
     }
 
-    // Keeps the position the frame has when the request runs, which is after
-    // the window has answered an earlier new size (see WindowPlacer).
+    // Keeps the position the frame has when the request runs: after the
+    // window has answered an earlier new size, or after ANSWER_WAIT_MS without
+    // an answer, when the frame can still have its old position (see
+    // WindowPlacer).
     ResizeAsync([windowId, width, height], invocation) {
         console.debug(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         this._namedErrorCall(invocation, 'Resize', () => {
@@ -698,7 +700,12 @@ export class WindowControlService {
         this._removeSource(watcher.quietId);
         watcher.quietId = this._addTimeout(watcher.quietMs, () => {
             watcher.quietId = 0;
-            this._settleGeometryWatcher(watcher);
+            // A frame the window has not answered yet is not settled: the
+            // answer changes it after the reply.
+            if (this._placer.awaitsAnswer(watcher.win))
+                this._restartQuietPeriod(watcher);
+            else
+                this._settleGeometryWatcher(watcher);
         });
     }
 

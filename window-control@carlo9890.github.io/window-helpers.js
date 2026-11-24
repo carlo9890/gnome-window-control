@@ -139,6 +139,14 @@ export function moveToMonitor(win, placer, index) {
 // size change, so the wait has to be bounded.
 export const UNMAXIMIZE_SETTLE_MS = 1000;
 
+// How long the WindowPlacer waits for a Wayland window to answer a new size.
+// Mutter sends nothing to a window when it limits a request to the frame the
+// window has, such as a window at its minimum size asked to shrink, so no
+// answer comes. It is shorter than the 3 s wait of `wctl center` and
+// `--settled`, so they see it end. A window that answers within it lands as
+// asked; a later answer can undo what ran after it.
+export const ANSWER_WAIT_MS = 2000;
+
 // Unmaximize, then call `settled(true)` after the next 'size-changed' or
 // UNMAXIMIZE_SETTLE_MS, or `settled(false)` if the window is unmanaged first.
 // destroy() gives the wait up; after it, or after `settled`, nothing is left.
@@ -213,11 +221,13 @@ export class UnmaximizeWait {
 // client answers, and mutter then applies the position of that request. A
 // covered window is suspended and answers only once it is visible again, so
 // the answer can come minutes later. A request made before the answer waits
-// for it, and the newest of them runs after it.
+// for it, up to ANSWER_WAIT_MS, and the newest of them runs after it. An
+// answer after that can still undo the request.
 export class WindowPlacer {
     constructor() {
         this._pending = new Map();        // Meta.Window -> { wait, request, monitor }
-        this._answers = new Map();        // Meta.Window -> { signalIds, idleId, request, monitor }
+        this._answers = new Map();        // Meta.Window -> { answerIds, unmanagedId, idleId, timeoutId, request, monitor }
+        this._unanswered = null;          // the window whose wait just ended without an answer
     }
 
     // Run `request()` now, or once the window's restore or its answer to a
@@ -292,34 +302,56 @@ export class WindowPlacer {
     _change(win, change, target) {
         const before = win.get_frame_rect();
         change();
-        if (win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
+        // After a wait that ended without an answer, the window is not
+        // expected to answer this one either: waiting again would only add
+        // another ANSWER_WAIT_MS.
+        if (win === this._unanswered || win.get_client_type() !== Meta.WindowClientType.WAYLAND ||
             !sameRect(win.get_frame_rect(), before) || (target && sameRect(target, before)))
             return;
-        const entry = { signalIds: [], idleId: 0, request: null, monitor: null };
-        const answered = () => {
-            this._disconnect(win, entry);
+        // A newer wait replaces an older one and keeps the request it holds.
+        const older = this._answers.get(win);
+        this._dropAnswer(win);
+        const entry = {
+            answerIds: [], unmanagedId: 0, idleId: 0, timeoutId: 0,
+            request: older?.request ?? null, monitor: older?.monitor ?? null,
+        };
+        const answered = (timedOut = false) => {
+            for (const id of entry.answerIds)
+                win.disconnect(id);
+            entry.answerIds = [];
+            if (entry.timeoutId) {
+                GLib.source_remove(entry.timeoutId);
+                entry.timeoutId = 0;
+            }
             // 'size-changed' is emitted from inside mutter's own move-resize,
             // where a new request would be overwritten (see UnmaximizeWait).
+            // 'unmanaged' stays connected until then, so a window that closes
+            // first gets no request.
             entry.idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 entry.idleId = 0;
-                this._answers.delete(win);
-                if (entry.request)
-                    this.place(win, entry.request, entry.monitor);
+                this._dropAnswer(win);
+                if (entry.request) {
+                    this._unanswered = timedOut ? win : null;
+                    try {
+                        this.place(win, entry.request, entry.monitor);
+                    } finally {
+                        this._unanswered = null;
+                    }
+                }
                 return GLib.SOURCE_REMOVE;
             });
         };
-        entry.signalIds = [
-            win.connect('size-changed', answered),
-            win.connect('position-changed', answered),
-            win.connect('unmanaged', () => this._dropAnswer(win)),
+        entry.answerIds = [
+            win.connect('size-changed', () => answered()),
+            win.connect('position-changed', () => answered()),
         ];
+        entry.unmanagedId = win.connect('unmanaged', () => this._dropAnswer(win));
+        entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ANSWER_WAIT_MS, () => {
+            entry.timeoutId = 0;
+            answered(true);
+            return GLib.SOURCE_REMOVE;
+        });
         this._answers.set(win, entry);
-    }
-
-    _disconnect(win, entry) {
-        for (const id of entry.signalIds)
-            win.disconnect(id);
-        entry.signalIds = [];
     }
 
     _dropAnswer(win) {
@@ -328,8 +360,17 @@ export class WindowPlacer {
             return;
         if (entry.idleId)
             GLib.source_remove(entry.idleId);
-        this._disconnect(win, entry);
+        if (entry.timeoutId)
+            GLib.source_remove(entry.timeoutId);
+        for (const id of [...entry.answerIds, entry.unmanagedId].filter(Boolean))
+            win.disconnect(id);
         this._answers.delete(win);
+    }
+
+    // Whether the window has not answered yet: a restore, or a new size it has
+    // not taken. Its frame changes again when the answer comes.
+    awaitsAnswer(win) {
+        return this._pending.has(win) || this._answers.has(win);
     }
 
     // The monitor the window's pending request puts it on, or null for none.
