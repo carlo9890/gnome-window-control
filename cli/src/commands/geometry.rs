@@ -509,19 +509,20 @@ pub fn center(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     let id = selector::lookup(ctx, &selector)?;
 
     let (window, monitor_index, workarea) = unresolved_workarea(ctx, id, json_output)?;
-    let (win_x, win_y, win_w, win_h) = model::frame_rect(&window);
+    // A resize just before can still be on its way to the client: centre the
+    // size it lands at, not the one listed. Without the wait, the listed size.
+    let frame = settle(ctx, id).unwrap_or_else(|_| {
+        let (x, y, width, height) = model::frame_rect(&window);
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
+    });
 
     // Size is preserved, so this is a Move.
-    let target = geometry::center_rect(
-        axis,
-        Rect {
-            x: win_x,
-            y: win_y,
-            width: win_w,
-            height: win_h,
-        },
-        workarea,
-    );
+    let target = geometry::center_rect(axis, frame, workarea);
     let applied = ctx
         .bus
         .call_unit("Move", &(id, as_i32(target.x), as_i32(target.y)));
