@@ -518,12 +518,21 @@ echo "--- Selector Tests ---"
 # Every window-taking command goes through the same resolver, so one geometry
 # command per selector form is enough to prove the resolution; the geometry
 # itself is covered above.
+#
+# The activation cases above leave another window raised over the test
+# window, and focus does not raise it back. A window that is fully covered for
+# a few seconds is suspended: its client takes a new frame only once it is
+# visible again. Raise it, so the frames below land at once.
+"$WCTL" activate "$TEST_WINDOW_ID" >/dev/null 2>&1 || true
+wait_for_change
 info "Testing: tile -t <title> (title selector)"
 run_wctl tile -t "$TEST_WINDOW_TITLE" top-left
 assert_exit_code 0 "$WCTL_EXIT_CODE" "tile -t: exits 0 with a unique title"
 if [[ -n "$tc_wa" ]]; then
-    read -r exp_x exp_y exp_w exp_h <<< "$(resolve_tile_geometry top-left "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h")"
-    assert_window_field_within '.frame_rect.x' "$exp_x" "$GEOM_TOLERANCE" "tile -t: resolved the test window (x)"
+    read -r _ exp_y exp_w _ <<< "$(resolve_tile_geometry top-left "$tc_wa_x" "$tc_wa_y" "$tc_wa_w" "$tc_wa_h")"
+    # The frame before this case is at the workarea's left edge already, so x
+    # proves nothing: y and the width change with the tile.
+    assert_window_field_within '.frame_rect.y' "$exp_y" "$GEOM_TOLERANCE" "tile -t: resolved the test window (y)"
     assert_window_field_within '.frame_rect.width' "$exp_w" "$GEOM_TOLERANCE" "tile -t: resolved the test window (width)"
 fi
 
