@@ -150,8 +150,10 @@ edit, run `touch -h ~/.config/gnome-window-control/rules.json`.
 
 ### Keys that need a newer extension
 
-An extension that does not report the capability of a key does not use a file
-that has the key. `wctl version --json` lists the capabilities.
+An extension that does not report the capability of a key refuses a file that
+has the key. Without `rules-dropin` it ignores the `rules.d` folder, and without
+`rules-apply` `wctl rules apply` exits 5. `wctl version --json` lists the
+capabilities.
 
 | Key | Capability |
 |-----|------------|

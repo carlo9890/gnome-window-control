@@ -183,6 +183,9 @@ gdbus call --session --dest org.gnome.Shell \
 ./scripts/debug-dbus.sh      # every method once; refuses the login bus
 ```
 
+`debug-dbus.sh` changes the first window it lists. Its guard compares address
+strings, so export the bus address the start script printed, unchanged.
+
 To reproduce a bug or verify a change: reload the current code, open a target
 window (`kitty --title test &`), run the exact `wctl` command or D-Bus call,
 and compare `frame_rect` from `$W info <ID> --json`.

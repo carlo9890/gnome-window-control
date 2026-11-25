@@ -624,7 +624,7 @@ mod tests {
     /// Every validation case in the shared vectors, verdict and message.
     ///
     /// This is the parity gate. A message reworded here without being reworded
-    /// in rules-format.js (and in the vectors, and in the spec) fails here.
+    /// in rules-format.js (and in the vectors) fails here.
     #[test]
     fn rules_spec_vectors() {
         let vectors = vectors();

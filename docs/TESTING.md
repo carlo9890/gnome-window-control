@@ -95,21 +95,30 @@ and the other local tools real.
   `$HOME/.local/bin`.
 - Run `release.sh --notes-file <file>` only in a throwaway clone, on branch
   `main` with a clean tree and tag `v<metadata.json version-name>` on `HEAD`
-  (`git tag -f`). It tags and writes `dist/` and `cli/target/` there.
+  (`git tag -f`) first: it checks the tag, and writes `dist/` and
+  `cli/target/` there.
 
-Two stub answers are not obvious from `release.sh`:
+- With `mise` stubbed, the static-linkage check of `mise run build:musl`
+  never runs.
+- `install-wctl.sh` calls `wget` only when no `curl` is on `PATH`: to test that
+  path, stub `wget` and leave `curl` off `PATH`.
+
+These stub answers are not obvious from the scripts:
 
 - `gh release view <tag>` exits non-zero before `gh release create` (exit 0
   makes `release.sh` prompt on stdin), and exits 0 after it, printing `4` for
   `--json assets -q '.assets | length'`.
 - `gh api repos/{owner}/{repo}/commits/tags/<tag> -q .sha` prints the `HEAD`
   commit, or `release.sh` stops before the build.
+- `curl`, or `wget` with `-O`, for `install-wctl.sh --download`: write a
+  runnable `wctl` to the output path, and print its `sha256sum` line when the
+  output path is `-` (the `wctl.sha256` fetch).
 
 ## Minimum checks before a PR
 
 | Action | `mise run ci` | Rules grammar | Preferences | Fake windows | Query | Reload-and-run | Modification |
 |---|---|---|---|---|---|---|---|
-| Before commit or push | MUST | MUST | MUST | MUST | MUST¹ | MUST¹ | Optional |
+| Before commit or push | MUST | MUST | MUST | MUST | MUST | MUST¹ | Optional |
 | Before release | MUST | MUST | MUST | MUST | MUST | MUST | MUST |
 
 ¹ MUST pass, or record the skip in the PR when the user gives no consent for a

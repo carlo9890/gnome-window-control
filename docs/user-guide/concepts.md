@@ -33,7 +33,7 @@ right edge of the workarea.
 
 A tile is a span of cells of a grid of 4 columns and 2 rows over the
 [workarea](#the-workarea). `wctl tile`, a `tile` rule and the
-[shortcuts](shortcuts.md#keyboard-shortcuts) use these positions:
+[shortcuts](shortcuts.md#keyboard-shortcuts) use these positions. Columns and rows count from 1, from the top left:
 
 | Position | Columns | Rows |
 |----------|---------|------|

@@ -28,6 +28,10 @@ takes a `<WINDOW>` takes a [selector](concepts.md#selectors). `place` takes
 | `wctl center` | Center a window. |
 | `wctl resolve-place` | Compute a placement without a window, to size a program before it starts. |
 | `wctl rules` | List, check, add, remove, test and apply the rules. See [Automatic window placement](rules.md). |
+
+A window with a minimum size above the rectangle, such as a text editor in a
+narrow tile, grows to that minimum at the position asked for. `move-resize`,
+`place` and `tile` keep the window on the screen; `move` can put it partly off.
 | `wctl workspace` | Switch to a workspace. |
 | `wctl move-to-workspace` | Move a window to a workspace. |
 | `wctl move-to-monitor` | Move a window to a monitor. |

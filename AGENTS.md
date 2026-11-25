@@ -54,7 +54,7 @@ user's consent; a wrong start can log the user out.
 ### Git
 
 **MUST read [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before ANY git
-command that writes.** It sets the test bar for a commit, and only the
+command that writes, and before `gh pr create`.** It sets the test bar for a commit, and only the
 maintainer merges.
 
 ### Reviewing

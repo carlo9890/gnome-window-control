@@ -387,7 +387,7 @@ $RELEASE_NOTES
 Extension:
 
 \`\`\`bash
-gnome-extensions install $ZIP_NAME
+gnome-extensions install --force $ZIP_NAME
 \`\`\`
 
 Log out and back in, then:

@@ -7,8 +7,9 @@
 mise run ci                   # cli/: fmt, clippy, tests, build, on the toolchain .mise.toml pins
 ```
 
-Run `./scripts/build.sh validate` after every change to a `.js` file. Do not
-commit while it fails: CI runs the same check as a gate.
+Run `./scripts/build.sh validate` after every change to a `.js` file, with
+`node` installed: without it, validate skips the syntax check and still passes.
+Do not commit while it fails: CI runs the same check as a gate.
 
 After a change to `install-wctl.sh` or `scripts/release.sh`, run it offline as
 [TESTING.md](TESTING.md#driving-install-wctlsh-and-releasesh-offline) says: CI
@@ -90,8 +91,10 @@ does not run either script end to end.
 3. Add its capability name to `CAPABILITIES` in `dbus-service.js` in the same
    commit.
 4. For a method that raises named errors, follow
-   [D-Bus handlers](#d-bus-handlers) and call it from Rust with `call_unit`,
-   not `call_bool`.
+   [D-Bus handlers](#d-bus-handlers): write a `<Method>Async` handler whose body
+   runs through the named-error helper, or one that calls
+   `invocation.return_dbus_error`. A synchronous handler cannot raise a named
+   error. Call it from Rust with `call_unit`, not `call_bool`.
 5. Add the command. A window-only boolean action needs no new function: add a
    match arm in `cli/src/main.rs` that calls `state::simple`, as `close` does.
    Otherwise write the function in the module of its group in
