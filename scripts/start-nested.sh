@@ -16,7 +16,7 @@
 # otherwise shares the real dconf database, and `gnome-extensions enable` there
 # makes the REAL shell react. Enable through the shell's D-Bus API instead.
 #
-# See the hard rules at the top of docs/RUNNING.md, which this script implements.
+# docs/RUNNING.md hard rule 3 sends every nested start through this script.
 # scripts/start-headless.sh starts a headless shell with the same env line;
 # change the two together.
 

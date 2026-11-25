@@ -1,18 +1,16 @@
 # Reviewing
 
-Project-specific review rules; this file records only the local delta over
-the generic review. An agent runs the generic review by calling the Skill tool
-with `project-review:project-review-change` (or `worktree-flow:worktree-review`
-for a PR whose fixes it pushes). Where this file conflicts with a skill's
-default, this file wins.
+Call the Skill tool with `project-review:project-review-change` for the rules
+review, or with `worktree-flow:worktree-review` to review a PR and push the
+fixes. **Local delta:** the rules below, which win where they disagree with the
+skill.
 
 ## extensions.gnome.org review
 
-Required for every review that touches `window-control@carlo9890.github.io/`.
-A human reviewer on extensions.gnome.org reads every file of each upload and
+Run it first on every review that touches `window-control@carlo9890.github.io/`.
+A human reviewer on extensions.gnome.org reads every file of an upload and
 rejects it at the first violation; a rejection costs a release and weeks in the
-queue. This review runs first, so that one passes. Do every step, on every such
-review:
+queue.
 
 1. Fetch the
    [review guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html)
@@ -22,117 +20,92 @@ review:
 2. Check every `.js` file under `window-control@carlo9890.github.io/` against
    every rule on both pages, the files the change leaves untouched included:
    the reviewer rejects the upload, not the diff.
-3. Read every comment as that reviewer does: it reads as a human maintainer
-   wrote it, by the
+3. Read every comment as that reviewer does, by the
    [AI-generated](https://gjs.guide/extensions/review-guidelines/review-guidelines.html#extensions-must-not-be-ai-generated)
    and [Comments](https://gjs.guide/extensions/review-guidelines/best-practices.html#comments)
    rules.
-4. Run shexli, GNOME's own analyzer, from the repo root. Pin `tree-sitter`:
-   shexli 0.2.1 pins neither dependency, and tree-sitter 0.26.0 segfaults it
-   before any output. Pass the absolute path; a relative one fails with a
-   `ValueError`.
+4. Run shexli, the analyzer of extensions.gnome.org, from the repo root. Pin
+   `tree-sitter`, because 0.26.0 segfaults shexli 0.2.1; pass an absolute path,
+   because a relative one fails with a `ValueError`:
 
    ```bash
    pip install -U shexli 'tree-sitter==0.25.2'
    shexli "$PWD/window-control@carlo9890.github.io"
    ```
 
-5. Where the pages reject a pattern, they win over everything in this
-   repository: this file, CODING.md, a code comment, existing code and a test.
-   A quality rule below that is stricter than the pages still applies. A test that pins a pattern the
-   pages reject is wrong; change the test with the code.
+5. Where the pages reject a pattern, they win over this repository: its docs,
+   a code comment, existing code and a test. A test that pins a rejected
+   pattern changes with the code.
 6. Each guideline violation, and each shexli finding that
-   [Out of scope](#out-of-scope--non-blocking) does not list, blocks the
-   merge. Its fix is a code change in the same PR. A follow-up, a "not
-   applied" outcome, or a prepared answer for the extensions.gnome.org
-   reviewer leaves it open.
-7. Out of scope is the maintainer's: a change that adds an entry there, for a
-   guideline point or a shexli finding, fails this review.
+   [Out of scope](#out-of-scope--non-blocking) does not list, blocks the merge.
+   Fix it in the same PR. A follow-up, a "not applied" outcome or a prepared
+   answer for the reviewer leaves it open.
+7. Out of scope belongs to the maintainer. Flag a change that adds an entry
+   there.
 
 The review is done when the extensions.gnome.org reviewer could read every file
-and find nothing to reject. "Probably" is not done.
+and find nothing to reject.
 
 ## Quality rules
 
-How finished code must look. Each rule is a condition to check on the diff, with
-the correct form.
+How finished code must look. Each rule is a condition to check on the diff,
+with the correct form.
 
-- **SPDX header**: a new `.js` or `.rs` file starts with the two SPDX lines —
-  `// SPDX-FileCopyrightText: 2026 hko9890` and `// SPDX-License-Identifier: MIT`.
-  Flag a new file without them; no gate catches a missing header.
-- **Log levels**: per-call handler logging uses `console.debug()`; `console.log()`
-  appears only in the enable/disable lifecycle; `console.warn()` appears only
-  where the extension turns a feature off and keeps running: a rules file that
-  fails validation (`WindowRules._compile`, see
-  [RULES-JSON.md](specs/RULES-JSON.md)) and a shortcut that cannot be registered
-  (`WindowKeybindings.enable`); `console.error()` appears ONLY in a catch block.
-  Flag each other use. `console.log()` is visible by default
-  (journald priority 5, see [MONITORING.md](MONITORING.md)), so a per-call
-  `console.log()` leaves a journal line per `wctl` invocation that outlives the
-  session.
-- **Log content**: no log line, at any level, holds window content or a
-  caller-supplied match value — not a title, and not a WM class. A line logs the
-  method name and the outcome. A keyword argument (`WaitForWindow`'s `kind`) is
-  fine **once it has been validated** against the four keywords — flag one that is
-  logged before that: it lets any process on the session bus write arbitrary
-  text, newlines included, into the journal. The value it matches against is
-  never logged.
+- **SPDX header**: a new `.js` or `.rs` file starts with
+  `// SPDX-FileCopyrightText: 2026 hko9890` and
+  `// SPDX-License-Identifier: MIT`. No gate checks it; flag a new file without
+  them.
+- **Log levels**: a per-call handler logs with `console.debug()`.
+  `console.log()` is for the enable/disable lifecycle only, because it is
+  visible by default and a per-call line outlives the session
+  ([MONITORING.md](MONITORING.md)). `console.warn()` is for a feature the
+  extension turns off while it keeps running: a rules file that fails
+  validation, a shortcut that cannot be registered. `console.error()` is for a
+  catch block only. Flag each other use.
+- **Log content**: a log line holds the method name and the outcome, never a
+  title, a WM class or another caller-supplied match value. A keyword argument,
+  such as `WaitForWindow`'s `kind`, may be logged once it has been validated;
+  flag one logged before that, because any process on the session bus could
+  write text into the journal.
 - **No dynamic code or processes**: extension code calls no `eval()` or
-  `Function()` and starts no process itself, through `GLib.spawn*`,
-  `Gio.Subprocess`, `Util.spawn*`, a `Gio.AppInfo` launch or any other way,
-  and the zip ships no generated code. `openPreferences()` asks the shell to
-  open the preferences window and is allowed. Flag each use. The correct form does the work in-process
-  through the Meta and Gio APIs; work that needs a process goes in `wctl`,
-  outside the zip. The extensions.gnome.org guidelines allow a carefully
-  spawned process and well-formatted transpiled code, and this project does
-  not.
-- **Client text in plain output**: a window field a client sets (a title, a
-  `wm_class`, any other window field) that `wctl` prints outside `--json` goes
-  through `table::sanitize` in `cli/src/table.rs`. `table::render` already
-  sanitizes every cell; flag a field printed by any other path without it. A
-  raw newline in a title forges a row or a field of the output.
+  `Function()` and starts no process (`GLib.spawn*`, `Gio.Subprocess`,
+  `Util.spawn*`, a `Gio.AppInfo` launch or any other way), and the zip ships no
+  generated code. `openPreferences()` is allowed. The correct form does the
+  work in-process through Meta and Gio; work that needs a process goes in
+  `wctl`. This is stricter than the extensions.gnome.org guidelines on purpose.
+- **Client text in plain output**: a window field a client sets, such as a title
+  or a `wm_class`, that `wctl` prints outside `--json` goes through
+  `table::sanitize` in `cli/src/table.rs`; `table::render` already does. Flag a
+  field printed another way: a raw newline in it forges a row.
 
 ## Project-specific rules
 
-- **Scope.** Flag each of these; it blocks the merge until the maintainer
-  approves it on the PR:
-  - extension code, in any module, that reads pixels, injects input or ends
-    a window's client by any means (`kill()`, a signal to its PID);
-  - a D-Bus method, new or changed, that lays out windows; `ApplyRules` is
-    the one exception
+- **Scope.** Each of these blocks the merge until the maintainer approves it on
+  the PR:
+  - extension code that reads pixels, injects input or ends a window's client
+    (`kill()`, a signal to its PID);
+  - a new or changed D-Bus method that lays out windows, `ApplyRules` excepted
     ([0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md));
-  - a new property in the `ListDetailed` window document, or window data
-    that any other method returns and `ListDetailed` does not hold;
-  - any other D-Bus addition that does not act on a window's geometry,
-    state, workspace, focus or close, such as one that starts a process or
-    reads the clipboard.
+  - a new property in the `ListDetailed` window document, or window data that
+    another method returns and `ListDetailed` does not;
+  - any other D-Bus addition that does not act on a window's geometry, state,
+    workspace, focus or close.
 
   The correct forms: `wctl tile` and `wctl center` compose a layout from
   `Move`, `MoveResize` and `GetWorkarea`; rules and shortcuts take their
-  rectangles from `rules-format.js` without D-Bus, and `ApplyRules` only
-  starts that rules path; `Close` goes through
-  `Meta.Window.delete`.
-- A new D-Bus method comes with its row in the method table in
-  `docs/user-guide/dbus.md` — flag
-  a method in `dbus-interface.js` that the table does not list.
-- A script under `scripts/` that sends a state-changing call to `org.gnome.Shell`
-  refuses to run on the login session bus unless the caller opts in. Flag one
-  without that guard; `scripts/debug-dbus.sh` is the correct form: it compares
-  `DBUS_SESSION_BUS_ADDRESS` with the bus `systemctl --user show-environment`
-  reports, and `--real-session-ok` is the opt-in.
+  rectangles from `rules-format.js`; `Close` uses `Meta.Window.delete`.
+- A D-Bus method in `dbus-interface.js` has its row in the method table of
+  `docs/user-guide/dbus.md`. Flag a method the table does not list.
+- A script under `scripts/` that sends a state-changing call to
+  `org.gnome.Shell` refuses the login session bus unless the caller opts in.
+  `scripts/debug-dbus.sh` and its `--real-session-ok` flag are the correct form.
 
 ## Out of scope / non-blocking
 
-- These shexli findings are no defect; do not "fix" them. Answer the
-  extensions.gnome.org reviewer with the reason each one gives:
-  - `EGO-C49-003` / `EGO-C49-004` (errors): `Meta.MaximizeFlags` and
-    `get_maximized()` are reported as removed-on-49 API. `get_maximized()` and
-    the `maximize()` / `unmaximize()` calls that pass a flags argument sit behind
-    the `typeof win.get_maximized === 'function'` feature detection in
-    `maximizeFlags` / `maximizeWindow` / `unmaximizeWindow`
-    (`window-helpers.js`), so none of them runs on GNOME 49. The
-    `Meta.MaximizeFlags` enum itself is still there on 49 and later, as the type
-    `get_maximize_flags()` returns; `isFullyMaximized` (`window-helpers.js`) and
-    `_frameRefusal` (`dbus-service.js`) compare against it on every version. Answer
-    the reviewer with the guard and the enum. `shell-version` stays 45-50:
-    [0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md).
+- shexli `EGO-C49-003` and `EGO-C49-004` (removed-on-49 API) are no defect; do
+  not "fix" them. Answer the extensions.gnome.org reviewer: every call to
+  `get_maximized()`, and every `maximize()` or `unmaximize()` with a flags
+  argument, sits behind the feature test in `window-helpers.js` and does not run
+  on GNOME 49; the `Meta.MaximizeFlags` enum still exists on 49 and later as the
+  type `get_maximize_flags()` returns
+  ([0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md)).

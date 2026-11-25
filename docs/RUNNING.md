@@ -1,188 +1,105 @@
 # Running
 
-How an agent installs, reloads, and drives the extension and `wctl` by hand to
-reproduce a bug or verify a change. For the automated suites and CI gates see
-[TESTING.md](TESTING.md); for logs see [MONITORING.md](MONITORING.md). Call the
-Skill tool with `run` for the generic launch-and-drive flow. This file is the
-local delta over it.
+Call the Skill tool with `run` for the generic launch-and-drive flow.
+**Local delta:** everything below wins where the two disagree. The automated
+suites are [TESTING.md](TESTING.md)'s; logs are [MONITORING.md](MONITORING.md)'s.
 
-## Hard rules for an agent (read before anything else in this file)
+The project supports Wayland only.
 
-These exist because of a real incident, recorded at the end of this file.
+## Hard rules
 
-1. **Never start, kill, or restart any GNOME Shell without the user's explicit
-   consent for that specific run.** A nested shell counts. "Verify the change
-   in a running shell" is not consent; ask, name the exact command, and wait.
-   One approval covers one start. A second start needs a second approval.
-   The one exception is a throwaway VM made for the current task. A guest
-   that is kept needs consent for each run, its reboot included.
-2. **Never `pkill`/`killall` a shell.** Record the PID when you start a nested
-   shell and stop that PID only, with a plain `kill <pid>`.
-3. **Log every nested run to a new file** (for example a timestamped name).
-   Never redirect a run's output over the previous run's log: the log of the
-   run that logged the user out was destroyed exactly that way.
-4. **Isolate more than the bus.** `dbus-run-session` gives the nested shell its
-   own session bus, but the nested shell still inherits `SESSION_MANAGER`,
-   `GNOME_SHELL_SESSION_MODE`, `XDG_SESSION_ID`, `INVOCATION_ID`, `MANAGERPID`
-   and `JOURNAL_STREAM` from the real session. Mutter's nested backend uses
-   `SESSION_MANAGER` to register with the *real* gnome-session as an XSMP
-   client at startup (mutter 46 `src/x11/session.c`, called from
-   `meta_context_main_notify_ready`). Start it with those variables removed and
-   with `--sm-disable`, mutter's own switch for the XSMP client. Mutter 50 has
-   no XSMP client and rejects the flag, so the scripts pass it only where
-   `gnome-shell --help-all` lists it.
-
-   `scripts/start-nested.sh` does all of that, and rules 2 and 3 with it — use
-   it rather than assembling the command by hand. This hardened form has never
-   started a shell; treat the first run as an experiment the user has agreed
-   to. GNOME Shell 50.1 has no `--nested`: the script refuses to start there.
-   Use the headless session on such a shell.
-5. **Prefer not to run a shell at all.** Pure logic is checked headlessly with
-   `gjs -m`: the rules grammar (`tests/check-rules-format.js`, without the
-   mutter typelib) and the extension against fake windows
-   (`tests/check-extension-headless.js`, with `GI_TYPELIB_PATH` pointed at the
-   mutter typelib directory). [TESTING.md](TESTING.md) has the commands. Only
-   behaviour that needs a compositor needs a shell.
+1. **Ask the user's explicit consent before each start, kill or restart of a
+   GNOME Shell**, nested and headless included. Name the exact command and
+   wait. One approval covers one start. "Verify the change in a running shell"
+   is not consent. The one exception is a throwaway VM made for the current
+   task; a guest that is kept needs consent for each run, its reboot included.
+2. **Never `pkill`, `killall` or kill a shell by name**: the pattern matches the
+   real shell. Stop only the PID the start script printed, with `kill <pid>`;
+   for a headless shell, that is `HEADLESS_SHELL_PID`.
+3. **Start a nested shell only with `scripts/start-nested.sh`**, and a headless
+   one only with `scripts/start-headless.sh`. A hand-started mutter registers
+   with the real session and can log the user out.
+4. **Never reproduce a nested-shell logout on a machine with open work.** Use a
+   throwaway VM.
+5. **Check headlessly first.** Extension logic that a fake window can drive is
+   verified by the `gjs -m` checks in [TESTING.md](TESTING.md). Start a shell
+   only for behaviour that needs a compositor.
 
 ## Reload after a code change (required)
 
-**`gnome-extensions disable`/`enable` does NOT reload JavaScript from disk** — it
-only re-runs `disable()`/`enable()` on the already-loaded code. Any change to a
-`.js` file of the extension, `metadata.json`, or a new file needs a real reload:
+`gnome-extensions disable`/`enable` does NOT reload JavaScript from disk. A
+change to the extension's `*.js`, `metadata.json` or a new file needs a new
+shell. A change under `cli/` needs `mise run build` only.
 
-| Change | Reload |
-|--------|--------|
-| the extension's `*.js` / `metadata.json` / new files | **Required** |
-| `cli/` (wctl) | Rebuild: `mise run build` |
-| tests / scripts | None (run fresh each invocation) |
+The real session loads new code only after the user logs out and in. Ask the
+user to do it: a logout also ends the agent's session.
 
-Reload without logging out via a **nested GNOME Shell session** (runs in a window,
-isolated from your main session; its logs go to the launching terminal and a
-per-run log file), or,
-on a shell without `--nested`, via the [headless session](#headless-session-no-window-on-the-real-screen):
+To test new code without a logout, with consent under hard rule 1:
 
 ```bash
-./scripts/build.sh install     # copy updated files into the extensions dir
-./scripts/start-nested.sh      # launch a nested shell; prints its PID and log path
-# from a second terminal on the nested session's bus (see "Reach the nested
-# session" below):
-gdbus call --session --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell --method org.gnome.Shell.Extensions.EnableExtension \
-  window-control@carlo9890.github.io
+./scripts/build.sh install
+./scripts/start-nested.sh      # prints the PID, the log, the display and the bus address
+# in a second terminal, after exporting what the script printed:
+gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+  --method org.gnome.Shell.Extensions.EnableExtension window-control@carlo9890.github.io
 ```
 
-`start-nested.sh` implements hard rules 2-4: it strips the six inherited session
-variables, passes `--sm-disable` where it exists, sets `GSETTINGS_BACKEND=memory`,
-writes one `nested-<timestamp>.log` per run in the current directory, and
-prints the PID to `kill`.
-Starting it still needs the user's consent under hard rule 1.
+- Enable over D-Bus. `gnome-extensions enable` writes the real dconf, the real
+  shell reacts, and it has left the real session's extension INACTIVE.
+- A shell without `--nested` (GNOME 50) makes `start-nested.sh` refuse: use the
+  [headless session](#headless-session-no-window-on-the-real-screen).
+- To get the nested bus address again, read it from the process:
+  `tr '\0' '\n' < /proc/$(pgrep -f '^gnome-shell --nested')/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p'`.
 
-Enable through the D-Bus call above rather than `gnome-extensions enable`: that
-CLI writes `org.gnome.shell enabled-extensions` to dconf whatever shell asked,
-the real shell reacts to the write, and a `disable`/`enable` cycle in a nested
-session has left the outer session's extension INACTIVE.
+### Pitfalls in a nested or headless shell
 
-The memory-backed shell boots with no extensions enabled, which is why the
-enable step is separate. `dbus-run-session` gives it its own session bus, so its
-`org.gnome.Shell` does not collide with the outer one.
-
-Without a nested or headless session, the real shell loads new code only after
-a restart: log out/in on Wayland, `Alt+F2` → `r` → Enter on X11. Ask the user
-to do it. An agent never restarts the real shell, and a logout also ends the
-agent's session.
-
-### Reach the nested session
-
-A second terminal needs the nested display and the nested bus. `start-nested.sh`
-prints both. To get the bus address again later, read it from the nested
-process in `/proc`:
-
-```bash
-nested=$(pgrep -f '^gnome-shell --nested')
-export WAYLAND_DISPLAY=wayland-1     # the value start-nested.sh printed
-export DBUS_SESSION_BUS_ADDRESS=$(
-  tr '\0' '\n' < /proc/$nested/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
-```
-
-### Nested-session pitfalls
-
-All observed on GNOME 46:
-
-- **A fresh nested shell starts in the Activities overview.** Window
-  activation does not close it, and `Meta.Workspace.activate()` is ignored
-  while it is open (the extension hides it in `ActivateWorkspace`, but other
-  behaviour differs from a normal desktop). Close it before testing:
+- **It starts in the Activities overview**, where workspace activation is
+  ignored. Close it before testing:
 
   ```bash
   gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
     --method org.freedesktop.DBus.Properties.Set org.gnome.Shell OverviewActive '<false>'
   ```
 
-- **Clients are slow under software rendering.** kitty takes 1-6 s to show its
-  first frame in a nested session, and a window that exists but is not yet
-  shown ignores geometry requests (mutter's initial placement overrides them).
-  Use `wctl wait` rather than polling `wctl list`. Run
-  `tests/test-modifications.sh` with the nested settle value from [TESTING.md](TESTING.md).
-
-- **A second monitor can be faked:**
-  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 ./scripts/start-nested.sh`
-  — the only way to reach `move-to-monitor` across monitors and the
-  `workspaces-only-on-primary` refusal in `move-to-workspace`.
-
-- **Dynamic workspaces shift indices.** Switching away from an empty
-  workspace lets GNOME remove it, so the index you switched to can change a
-  moment later. This is normal desktop behaviour, not an extension bug.
+- **Clients are slow under software rendering.** kitty takes up to 6 s to show
+  its first frame, and a window not yet shown ignores geometry requests. Use
+  `wctl wait`, not a `wctl list` poll.
+- **Fake a second monitor** in a nested shell:
+  `MUTTER_DEBUG_NUM_DUMMY_MONITORS=2 ./scripts/start-nested.sh`. It is the
+  only way to test `move-to-monitor` across monitors and the
+  `workspaces-only-on-primary` refusal. A headless shell has one virtual
+  monitor.
+- **Dynamic workspaces shift indices.** GNOME removes an empty workspace you
+  switch away from. Anchor a window on the first workspace before a workspace
+  move.
 
 ## Headless session: no window on the real screen
 
 ```bash
-./scripts/start-headless.sh 1920x1080    # prints PID, log, WAYLAND_DISPLAY, bus address
+./scripts/start-headless.sh 1920x1080
 ```
 
-`gnome-shell --headless` with a virtual monitor. It runs the same isolation as
-`start-nested.sh` and two more steps: `XDG_DATA_HOME` and `XDG_CONFIG_HOME`
-point at a scratch directory, so the shell loads the extension from a copy of
-**this checkout** (with the schema compiled) and never reads the installed
-copy or the user's `rules.json`. Nothing appears on the real screen. Starting
-it needs consent under hard rule 1 like any other shell.
-
-The script prints the variables a second terminal needs. Export the bus
-address, `WAYLAND_DISPLAY` and `HEADLESS_SCRATCH` from its output (without
-`HEADLESS_SCRATCH`, the modification suite skips its `rules apply` check,
-which writes a rule into the scratch `rules.json`), then enable the extension over
-D-Bus and close the overview as for a nested session. Clients (`kitty`) connect
-to the printed display; run the suites with `WCTL_TEST_SETTLE=1.5`. The
-read-only query suites need at least one window open, so spawn one first.
-
-Keys are injected with `tests/inject-keys.js` (mutter's RemoteDesktop API on
-that bus): `gjs -m tests/inject-keys.js Super_L Control_L KP_Home` presses the
-chord on the focused window. `wtype` and `ydotool` do not work here: mutter has
-no virtual-keyboard protocol, and the headless backend sees no evdev device.
-
-Verified on GNOME Shell 46 and 50.1: the shell started, the suites ran, and the
-real session was untouched. Stop it with `kill <HEADLESS_SHELL_PID>`, the
-shell's own PID as printed: killing the `dbus-run-session` runner leaves the
-shell alive.
+- Export every variable the script prints, `HEADLESS_SCRATCH` included, in the
+  terminal that runs the suites.
+- Enable the extension over D-Bus and close the overview, as above.
+- Open one window first (`kitty &`): the query suites need one.
+- Inject keys with `tests/inject-keys.js`. `wtype` and `ydotool` do not work:
+  mutter has no virtual-keyboard protocol, and the headless backend sees no
+  evdev device.
 
 ## Real session in a VM guest
 
-The one path that exercises the install itself (`gnome-extensions install`,
-the schema compile, `gnome-extensions enable`, a real session with the
-distribution's own extensions loaded) and another GNOME version, without
-touching this desktop. Verified 2026-09-27 on Ubuntu 24.04 (GNOME Shell 46.0)
-and Ubuntu 26.04 (50.1) libvirt guests reached over SSH.
+The one path that tests the install itself and another GNOME version without
+touching this desktop.
 
 Prepare the guest once:
 
-- Install `openssh-server`, `kitty`, `jq`.
-- Auto-login: `AutomaticLoginEnable=true` and `AutomaticLogin=<user>` under
-  `[daemon]` in `/etc/gdm3/custom.conf`, so a session exists after every boot.
-- `gsettings set org.gnome.desktop.session idle-delay 0` and
-  `gsettings set org.gnome.desktop.screensaver lock-enabled false`: the lock
-  screen removes the keyboard shortcuts, and an idle guest then fails the
-  keybinding suite. An installed extension whose `metadata.json` does not
-  declare the `unlock-dialog` session mode stops entirely there, and the guest
-  reports "extension is not running".
+- Install `openssh-server`, `kitty` and `jq`.
+- Set `AutomaticLoginEnable=true` and `AutomaticLogin=<user>` under `[daemon]`
+  in `/etc/gdm3/custom.conf`, so a session exists after each boot.
+- Run `gsettings set org.gnome.desktop.session idle-delay 0` and
+  `gsettings set org.gnome.desktop.screensaver lock-enabled false`. The lock
+  screen removes the keyboard shortcuts, and the keybinding suite then fails.
 
 Per run, from this checkout (`<guest>` is the SSH host):
 
@@ -191,47 +108,37 @@ Per run, from this checkout (`<guest>` is the SSH host):
 rsync -a --exclude .git --exclude cli/target ./ <guest>:~/gnome-window-control/
 rsync -aR cli/target/release/wctl <guest>:~/gnome-window-control/   # -R creates the excluded path
 ssh <guest> 'cd gnome-window-control && gnome-extensions install --force dist/window-control@carlo9890.github.io_v*.zip'
-ssh <guest> sudo systemctl reboot     # a JS or schema change needs a new session (reload table above)
+ssh <guest> sudo systemctl reboot     # a JS or schema change needs a new session
 ```
 
-Without sudo in the guest, reboot through its session instead:
-`gdbus call --session --dest org.gnome.SessionManager --object-path /org/gnome/SessionManager --method org.gnome.SessionManager.Reboot`
-on the session bus below.
+Without sudo in the guest, reboot through its session bus:
+`gdbus call --session --dest org.gnome.SessionManager --object-path /org/gnome/SessionManager --method org.gnome.SessionManager.Reboot`.
 
-Then on the guest, against the real session:
+Then on the guest:
 
 ```bash
 export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus \
        WAYLAND_DISPLAY=wayland-0 PATH=/usr/bin:$PATH
-gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf, so this is fine here
-kitty --title probe &                                        # the query suites need one window
+gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf
+kitty --title probe &
 WCTL_TEST_SETTLE=1.0 ./tests/run-all-query-tests.sh
-WCTL_TEST_SETTLE=1.0 ./tests/run-all-modification-tests.sh   # includes the keybinding suite
+WCTL_TEST_SETTLE=1.0 ./tests/run-all-modification-tests.sh
 ```
 
-- `PATH=/usr/bin:$PATH` puts the system `jq` before a mise shim, which refuses
-  to run inside the copied checkout (its `.mise.toml` is untrusted there) and
-  fails every JSON assertion.
-- Key injection works on the guest's real session: it is disposable.
-- The host's `wctl` build runs unchanged when the guest's glibc is not older
-  than the host's; otherwise build in the guest.
-- Anchor a window on the first workspace before testing a workspace move: an
-  empty one vanishes when you switch away (dynamic workspaces, above).
+- `PATH=/usr/bin:$PATH` puts the system `jq` first. A mise shim refuses to run
+  in the copied checkout, whose `.mise.toml` is untrusted, and every JSON
+  assertion fails.
+- Build `wctl` in the guest when its glibc is older than the host's.
 
 ## Record the demo GIFs
 
-`scripts/demo/record.sh` records the GIFs of the user guide
-(`docs/images/demo-*.gif`). Record them again after a change that a GIF shows.
-Run it only in a throwaway VM guest's desktop session: a scene opens, moves and
-closes windows, presses the shortcuts and replaces `rules.json`. Verified
-2026-11-24 on an Ubuntu 26.04 (GNOME Shell 50.1) guest with a desktop login.
+Run `scripts/demo/record.sh` only in a throwaway VM guest's desktop session.
 
-Prepare the guest as above, without the reboot step for the suites, then:
+Prepare the guest as above, without the reboot for the suites, then:
 
-- Install `kitty`, `ffmpeg`, `fonts-jetbrains-mono` and `fonts-inter`, the
-  extension zip and `wctl` on `PATH`.
-- Give the desktop the look of the GIFs, then reboot once so the shell loads
-  the extension:
+- Install the tools the header of `record.sh` names (fonts:
+  `fonts-jetbrains-mono`, `fonts-inter`), the extension zip, and `wctl` on `PATH`.
+- Give the desktop the look of the GIFs, then reboot once:
 
   ```bash
   gnome-extensions enable window-control@carlo9890.github.io   # the guest's own dconf
@@ -242,12 +149,11 @@ Prepare the guest as above, without the reboot step for the suites, then:
   gsettings set org.gnome.desktop.background picture-options zoom
   gsettings set org.gnome.desktop.notifications show-banners false
   ```
-- Stop the SPICE agent. It sets the screen back to the size of the host's
-  viewer a few seconds after every change:
+
+- Stop the SPICE agent, which resets the screen size to the host viewer's:
   `sudo systemctl stop spice-vdagentd.service spice-vdagentd.socket; pkill -x spice-vdagent`.
-- Set the screen to 1920x1080 at scale 1.5, which is 1280x720 logical
-  (`record.sh` refuses any other size). The guest offers no 1280x720 mode, and
-  the larger mode keeps the text sharp when the GIF scales it down:
+- Set the screen to 1920x1080 at scale 1.5. The guest offers no 1280x720 mode.
+  `<SERIAL>` is the first value `GetCurrentState` on the same object returns:
 
   ```bash
   gdbus call --session --dest org.gnome.Mutter.DisplayConfig \
@@ -256,95 +162,30 @@ Prepare the guest as above, without the reboot step for the suites, then:
     "[(0, 0, 1.5, 0, true, [('Virtual-1', '1920x1080@60.000', @a{sv} {})])]" "@a{sv} {}"
   ```
 
-  `<SERIAL>` is the first value `GetCurrentState` on the same object returns.
-
-Then, from the copied checkout, on the guest's session bus as in the suites
-above:
+Then, on the guest's session bus as for the suites:
 
 ```bash
 for scene in wctl keyboard rules overlay; do ./scripts/demo/record.sh --real-session-ok "$scene"; done
 ```
 
-Copy `docs/images/demo-*.gif` back, and look at a few frames of each before
-you commit it.
-
-## Check extension status
-
-```bash
-gnome-extensions info window-control@carlo9890.github.io    # installed / enabled?
-gnome-extensions list | grep window-control     # if absent, ask the user to log out and in
-```
+Copy the GIFs back and look at a few frames of each before you commit them.
 
 ## Drive it
 
-Via `wctl` (build it first with `mise run build`):
-
 ```bash
+gnome-extensions info window-control@carlo9890.github.io   # installed and enabled?
 W=cli/target/release/wctl
-$W list              # enumerate windows
-$W focused           # focused-window details
-$W move <ID> 100 100
-$W tile <ID> top-left
-```
-
-Or call the D-Bus interface directly (destination `org.gnome.Shell`):
-
-```bash
+$W list
+$W info <ID> --json          # read the state back after a command
 gdbus call --session --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/WindowControl \
   --method org.gnome.Shell.Extensions.WindowControl.ListDetailed
+./scripts/debug-dbus.sh      # every method once; refuses the login bus
 ```
 
-Run `./scripts/debug-dbus.sh` on the nested or headless session's bus for a
-one-shot sweep of every method. It changes the first window it lists, so it
-exits 1 before any D-Bus call when `DBUS_SESSION_BUS_ADDRESS` is unset, when
-`systemctl --user show-environment` reports no `DBUS_SESSION_BUS_ADDRESS`, or
-when the two are equal. The check compares address strings, so export the
-address the start script printed, unchanged. Pass `--real-session-ok` to run it
-on the login bus anyway. It writes `output/debug-<timestamp>.txt`, which names
-windows by id only: no title and no WM class.
+`debug-dbus.sh` changes the first window it lists. Its guard compares address
+strings, so export the bus address the start script printed, unchanged.
 
-## Reproduce a reported bug
-
-1. Reload the current code as above (a nested session keeps it off your main
-   desktop).
-2. Spawn a target window if needed (`kitty --title test &`), find its id with
-   `$W list --json`.
-3. Replay the exact `wctl` command / D-Bus call from the report and read the
-   window state back with `$W info <ID> --json`.
-
-## Verify a change
-
-Re-run the affected command against a live window and confirm the observed
-geometry/state, e.g. after a `tile`/`place`/`move`, read `$W info <ID> --json`
-and compare `frame_rect`. For a full sweep, run the modification tests the way
-[TESTING.md](TESTING.md#query-and-modification-tests) says for your session. They spawn their own window and assert geometry within a
-tolerance.
-
-## Incident 2026-09-11: nested shell start logged the user out
-
-What happened. During one session an agent cycled a nested shell six times
-(start, test, `pkill -f '^gnome-shell --nested'`, reinstall, start again) to
-verify extension changes. Three seconds after the sixth start, at 11:15:15,
-the real session's `systemd --user` activated `exit.target`, the real GNOME
-Shell shut down, logind removed the login session, and GDM started a fresh
-one. Every process of the login session died with it: all terminals, and
-thirteen Claude Code sessions in other repositories, one of them mid-workflow.
-
-What the evidence shows.
-
-- The user manager's log line is `Activating special unit exit.target`
-  from `manager_start_special`. For a user manager that follows a SIGTERM,
-  a SIGINT (which would have been logged at info level and was not), or a
-  D-Bus `Exit()`. No gnome-session logout path was logged (no
-  `gnome-session-shutdown.target`, no "Unrecoverable failure").
-- In the two minutes before, the agent's own command was the only one in any
-  Claude session that contained a kill-type command.
-- The trigger coincides with the sixth nested shell reaching startup
-  completion, the moment mutter registers with the real gnome-session over
-  `SESSION_MANAGER`. The five earlier starts used the identical command and
-  were harmless, so the exact in-process mechanism is not proven.
-- The nested shell's own log for that run was overwritten by the next run,
-  so the last piece of evidence is gone. Rule 3 above exists for that reason.
-
-Do not try to reproduce this on a machine that has anything open.
+To reproduce a bug or verify a change: reload the current code, open a target
+window (`kitty --title test &`), run the exact `wctl` command or D-Bus call,
+and compare `frame_rect` from `$W info <ID> --json`.

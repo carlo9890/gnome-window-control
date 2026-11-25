@@ -4,8 +4,8 @@
 //! rules.json, then the drop-in files in rules.d.
 //!
 //! The files are local and so is the grammar (`crate::rules`), and the
-//! extension picks a change up on its own through the file monitor described in
-//! docs/specs/RULES-JSON.md. `check`, `list` and `path` never open the bus.
+//! extension picks a change up on its own through its directory monitor
+//! (rules.js). `check`, `list` and `path` never open the bus.
 //! `add` and `remove` open it only after a file the extension reads is
 //! written, to warn that the loaded extension does not report the `rules`
 //! capability. `test` opens it to resolve a live window, and refuses an
@@ -228,7 +228,7 @@ struct Source {
 }
 
 impl Source {
-    /// The source label of docs/specs/RULES-JSON.md.
+    /// The label a message names the file by: rules.json, or rules.d/<name>.
     fn label(&self) -> String {
         match &self.name {
             None => USER_LABEL.to_string(),
@@ -411,6 +411,13 @@ fn read_file(path: &Path) -> Result<Loaded> {
 
 /// Parse the file text, reporting a syntax error the way the extension's load
 /// failure reads: the file is refused whole.
+///
+/// serde_json refuses some text the extension's `JSON.parse` loads: a number
+/// too large for a double such as `1e400` (the extension then gives the key's
+/// own message), a lone surrogate escape, and arrays nested past the recursion
+/// limit. A byte sequence that is not UTF-8 already fails `read_to_string` in
+/// `read_file`; the extension loads it with U+FFFD. `wctl rules add` never
+/// writes any of these.
 fn parse(text: &str, path: &Path) -> Result<Value> {
     serde_json::from_str(text)
         .map_err(|e| Fail::error(format!("{}: not valid JSON: {e}", path.display())))
@@ -641,7 +648,8 @@ fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Ve
 /// Serialise to a temp file in the SAME directory and rename over the target.
 /// A rename within a directory is atomic, so a reader never sees a half-written
 /// file -- and the extension watches the directory rather than the file for
-/// exactly this pattern (see docs/specs/RULES-JSON.md), so the reload fires.
+/// exactly this pattern (see the directory monitor in rules.js), so the reload
+/// fires.
 ///
 /// A symlinked `path`, say into a dotfiles repository, is written through: the
 /// file it points to is replaced, then the link is replaced by an identical one.

@@ -369,7 +369,7 @@ GEOM_TOLERANCE=10
 # has acked the new size, so every assertion needs a settle first. 0.5 s is
 # enough on a real desktop. Under the software rendering of a nested session it
 # is not, and the geometry assertions fail at random -- set WCTL_TEST_SETTLE=1.5
-# there (see docs/RUNNING.md).
+# there (see docs/TESTING.md).
 wait_for_change() {
     sleep "${WCTL_TEST_SETTLE:-0.5}"
 }

@@ -2,100 +2,48 @@
 
 ![A terminal types wctl commands: wctl list, then three tile commands put the logs, chat and terminal windows into a layout](../images/demo-wctl.gif)
 
-## What a script can do
+`wctl help` gives the usage and the options of every command. A command that
+takes a `<WINDOW>` takes a [selector](concepts.md#selectors). `place` takes
+[workarea](concepts.md#the-workarea)-relative tokens, and `tile` a position of
+[the tile grid](concepts.md#the-tile-grid).
 
-- **List windows** - Enumerate all windows with their metadata (ID, title, WM class, workspace, monitor, etc.), with optional workspace, monitor, and class filters
-- **Window info** - Get detailed information about any window
-- **Window selectors** - Address a window by a selector in every `wctl` command; see [Selectors](concepts.md#selectors)
-- **Activate windows** - Focus/raise windows by ID, title, WM class, or PID
-- **Move/resize windows** - Position and size windows programmatically
-- **Window state control** - Minimize, maximize, fullscreen, always-on-top, sticky
-- **Workspaces and monitors** - List them, switch workspace, move a window to a workspace or monitor
-- **Wait for a window** - Block until a matching window is shown, without polling
+## Commands
 
-## Examples
-
-```bash
-wctl list                          # every window; --json for the full document
-                                   # (has_been_shown: false until mutter has mapped it)
-wctl focused                       # the focused window
-wctl info 12345 --json             # one window's details
-```
-
-The next commands use a selector instead of an ID; see
-[Selectors](concepts.md#selectors).
-
-```bash
-wctl tile -c kitty left
-wctl close -s "Untitled"
-```
-
-`place` takes workarea-relative tokens; see [The workarea](concepts.md#the-workarea).
-
-```bash
-wctl place 12345 center top 50% 100%
-
-# Wait for a window to be shown, then place it
-kitty &
-wctl tile "$(wctl wait -p $! --timeout 5)" right
-
-# Hide and show a window with no minimize animation, e.g. a popup
-wctl minimize -c my-popup --no-animation
-wctl unminimize -c my-popup --no-animation
-
-# Show and focus a minimized window in one call, with no animation
-wctl activate 12345 --no-animation
-
-wctl --help                        # every command, global options, and --json/--settled
-```
-
-## Exit codes
-
-A failing `wctl` classifies itself, so a script can tell the cases apart without
-matching the message text:
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Usage error, or a failure with no more specific code below |
-| 2 | The window, workspace or monitor does not exist |
-| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, it cannot be minimized, or it is hidden and cannot take the focus |
-| 4 | Timed out waiting for a window, or for the shell to reply |
-| 5 | The extension is not usable: not running, a version this `wctl` cannot rely on, or one without a capability the command needs (`rules test`, `rules apply`); also a `wctl wait` that the shell ends at the first lock after login ([Security model](security.md)) |
-
-Code 1 stays the catch-all it always was, so a script that only tests for a
-non-zero status is unaffected.
-
-## Sizing a window before it exists
-
-`resolve-place` answers what a placement would be, without a window and without
-moving anything — so a program can be launched at its final size instead of being
-moved after it appears:
-
-```bash
-read -r w h < <(wctl resolve-place center top 50% 100% --json |
-                jq -r '.target | "\(.width) \(.height)"')
-```
-
-`place`, `tile` and `center` take `--json` too, reporting the workarea used and
-the rectangle computed. Once the window is known, every outcome is a document:
-a window or monitor that is gone gives `"placed":false` and a `message`. All of
-them report the rectangle wctl **requested**;
-mutter still clamps to size hints, and a client that quantises its own size (a
-terminal, to whole cells) settles a few pixels off, so comparing against it needs
-a tolerance.
+| Command | Does |
+|---|---|
+| `wctl list` | List every window, with ID, title and WM class. |
+| `wctl focused` | Show the focused window. |
+| `wctl info` | Show one window. |
+| `wctl workspaces` | List the workspaces. |
+| `wctl monitors` | List the monitors. |
+| `wctl workarea` | Show the usable area of a monitor. |
+| `wctl activate` | Raise and focus a window, and restore it from minimize. |
+| `wctl focus` | Focus a window without raising it. |
+| `wctl wait` | Wait until a matching window is shown, and print its ID. |
+| `wctl move` | Move a window. |
+| `wctl resize` | Resize a window. |
+| `wctl move-resize` | Move and resize a window in one request. |
+| `wctl place` | Place a window with pixels and workarea tokens. |
+| `wctl tile` | Tile a window to a grid position. |
+| `wctl center` | Center a window. |
+| `wctl resolve-place` | Compute a placement without a window, to size a program before it starts. |
+| `wctl rules` | List, check, add, remove, test and apply the rules. See [Automatic window placement](rules.md). |
+| `wctl workspace` | Switch to a workspace. |
+| `wctl move-to-workspace` | Move a window to a workspace. |
+| `wctl move-to-monitor` | Move a window to a monitor. |
+| `wctl minimize` / `unminimize` | Minimize a window, or restore it. |
+| `wctl maximize` / `unmaximize` | Maximize a window, or restore it. |
+| `wctl fullscreen` / `unfullscreen` | Make a window fullscreen, or end it. |
+| `wctl above` | Keep a window on top, or stop it. |
+| `wctl sticky` | Show a window on all workspaces, or stop it. |
+| `wctl close` | Ask a window to close. |
+| `wctl version` | Show the `wctl` version, and with `--json` the loaded extension. |
+| `wctl help` | Show the usage. |
+| `wctl completion` | Print the bash or zsh completion script. |
 
 A window with a minimum size above the rectangle, such as a text editor in a
 narrow tile, grows to that minimum at the position asked for. `move-resize`,
-`place` and `tile` keep the frame on the screen, unless the window was already
-partly off it; `move` can put a window partly off it.
-
-## Waiting for the frame to settle
-
-A geometry request is applied asynchronously, and a client may resize itself once
-more after being placed, so the frame can still be moving when `wctl` exits.
-`--settled` returns only once it has stopped. The window is placed either way: a
-frame that never settles exits 4 and still reports `"placed":true`.
+`place` and `tile` keep the window on the screen; `move` can put it partly off.
 
 `center` always waits for the frame to settle, up to 3 s or the `--timeout`
 if that is shorter, before it reads the size it centers, so `wctl resize`
@@ -104,21 +52,43 @@ new size after 2 s, such as one another window covers, is not centered
 reliably: when it takes the new size later, it can go back to where it was
 before `center`.
 
+## Examples
+
+```bash
+# Start a program, wait for its window, then tile it
+kitty &
+wctl tile "$(wctl wait -p $! --timeout 5)" right
+
+# Hide and show a popup with no minimize animation
+wctl minimize -c my-popup --no-animation
+wctl unminimize -c my-popup --no-animation
+
+# Read the size a placement would give, before the window exists
+read -r w h < <(wctl resolve-place center top 50% 100% --json |
+                jq -r '.target | "\(.width) \(.height)"')
+```
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Usage error, or any failure without a specific code |
+| 2 | The window, workspace or monitor does not exist |
+| 3 | The shell refused: the frame is pinned by maximize, fullscreen or tiling, the window is held on all workspaces, it cannot be minimized, or it is hidden and cannot take the focus |
+| 4 | Timed out waiting for a window, or for the shell to reply |
+| 5 | The extension is not usable: not running, a version this `wctl` cannot rely on, or one without a capability the command needs. Also a `wctl wait` that is pending when GNOME Shell restarts the extension at the first screen lock after login. |
+
 ## Checking the extension version
 
 ```bash
-wctl version               # just this binary, no D-Bus call
 wctl version --json
-# {"wctl":"0.25.0","expects_extension":"25","min_extension":"16","extension":"25","compatible":true,"capabilities":["rules","rules-title-affix","rules-class-prefix","rules-overlay","rules-min-width","rules-apply","rules-dropin","keybindings","no-animation","activate-no-animation"]}
+# {"wctl":"0.<N>.0","expects_extension":"<N>","min_extension":"<M>","extension":"<N>","compatible":true,"capabilities":["rules","keybindings","..."]}
 ```
 
-`--json` asks the **running shell** what it has loaded. That is the useful
-question: on Wayland an install lands on disk while the shell keeps serving the
-old code until you log out, so `metadata.json` can say 10 while the answer here
-is still 9. `compatible` is true for every extension version from
-`min_extension` to `expects_extension`; outside that range the command exits 5.
+`--json` asks the running GNOME Shell what it has loaded. After an install, log
+out and back in first; see [Install](install.md#from-github-releases).
 
-For what `capabilities` lists, see [Capabilities](concepts.md#capabilities).
-When the call fails for another reason (a timeout, an extension disabled
-in between), `capabilities` is `null` and the command exits with that
-failure's code.
+`compatible` is `true` for an extension from `min_extension` to
+`expects_extension`; outside that range the command exits 5. What
+`capabilities` lists is in [Capabilities](concepts.md#capabilities).

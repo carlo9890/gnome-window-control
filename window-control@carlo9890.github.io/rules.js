@@ -146,6 +146,8 @@ export class WindowRules {
     // Asynchronous, so the read never blocks the compositor. A newer read
     // and disable() both cancel the one in flight, and a cancelled read changes
     // nothing. The rule set is replaced once, after every file has been read.
+    // Until the first read lands the rule set is empty, so a window created
+    // between enable() and then is not placed.
     _load() {
         this._loadCancellable?.cancel();
         this._loading = true;
@@ -409,6 +411,10 @@ export class WindowRules {
             // A rule that took the head start resolves against the same
             // monitor again: literal coordinates can have put the frame on
             // another one, and its workarea would resize the window.
+            // The head start cannot be taken back: when the title changes
+            // before 'shown' and another rule, or none, wins, the window keeps
+            // the first rule's frame unless the winner has a place or a tile.
+            // A winning center keeps the size the first rule set.
             const headStartMonitor = entry.headStart?.rule === rule ? entry.headStart.monitor : null;
             // The match ends the grace period: a grace timer due in the same
             // main loop iteration would untrack the window before the apply
@@ -442,7 +448,9 @@ export class WindowRules {
 
     // `again` is an apply to a window placed before (applyRules). With it, a
     // rule workspace that does not exist is skipped: mutter would append one
-    // at each apply.
+    // at each apply. On a first apply, for an index past the last workspace,
+    // mutter appends one workspace and moves the window there; it creates none
+    // between, so the window does not land on the rule's index.
     _apply(win, rule, headStartMonitor, again = false) {
         const id = win.get_id();
         // A load between the match and this call has decided the open

@@ -1,7 +1,8 @@
 {
   "comment": [
-    "Shared test vectors for the rules.json format. Derived from",
-    "docs/specs/RULES-JSON.md, which stays the normative definition.",
+    "Shared test vectors for the rules.json format. The spec",
+    "docs/specs/RULES-JSON.md states the format; this file pins the exact",
+    "messages and the edge cases both implementations must produce.",
     "",
     "Two implementations read this file and must agree on every case:",
     "  tests/check-rules-format.js   the extension's grammar (rules-format.js)",

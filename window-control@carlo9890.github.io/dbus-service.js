@@ -20,6 +20,8 @@ const DBUS_INTERFACE_INFO = Gio.DBusInterfaceInfo.new_for_xml(DBUS_INTERFACE_XML
 
 // Reported by GetCapabilities, without 'keybindings' when the shortcuts could
 // not be registered; a caller gates a newer feature on its name.
+// docs/user-guide/rules.md, concepts.md and getting-started.md quote these
+// names.
 const CAPABILITIES = [
     'rules', 'rules-title-affix', 'rules-class-prefix', 'rules-overlay', 'rules-min-width', 'rules-apply',
     'rules-dropin',

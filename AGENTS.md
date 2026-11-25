@@ -2,103 +2,71 @@
 
 ## Repository purpose
 
-A GNOME Shell extension exposing a D-Bus interface for listing and controlling
-windows on Wayland, plus `wctl`, a CLI over that interface. Extension code is
-GJS; the CLI is Rust (crate in `cli/`); targets GNOME Shell 45-50.
+A GNOME Shell extension that lists and controls windows on Wayland over D-Bus,
+and `wctl`, a Rust CLI (`cli/`) over that interface.
 
 ## Use-case routing
 
-Every route below is mandatory, not advisory. Load the document BEFORE the first
-action of that kind — loading it afterwards does not count, and no route becomes
-skippable because the task looks small.
+Every route below is **mandatory, not advisory**. Load the document BEFORE the
+first action of that kind — loading it afterwards does not count, and no route
+becomes skippable because the task looks small.
 
-### Research, planning, analysis
+### Research and planning
 
-**MUST read [docs/OVERVIEW.md](docs/OVERVIEW.md) before your first `grep`, `rg`,
-Glob, or file Read in this repository.** It is the map — layout, architecture,
-the D-Bus and selector concepts, and the expressions that locate a method or a
-command fast.
+**MUST read [docs/OVERVIEW.md](docs/OVERVIEW.md) before your first search or
+file Read in this repository.** One method spans the D-Bus XML, its handler and
+its `wctl` command, and no name links the three.
 
-### Coding and file changes
+### Coding
 
-**MUST read [docs/CODING.md](docs/CODING.md) before creating or editing ANY file
-under `window-control@carlo9890.github.io/`, `cli/`, `scripts/` or `tests/`,
-or `install-wctl.sh`, `.mise.toml` or a file under `.github/workflows/`.**
-It owns the mandatory `node --check` gate, the build commands, the mechanisms a
-handler or a command must use, and the recipe for adding a D-Bus method end to
-end.
+**MUST read [docs/CODING.md](docs/CODING.md) before creating or editing ANY file under
+`window-control@carlo9890.github.io/`, `cli/`, `scripts/`, `tests/` or
+`.github/workflows/`, or `install-wctl.sh` or `.mise.toml`.** No compiler checks
+the GJS code.
 
-### Changing a decided design
+### Decisions in force
 
 **MUST read the records in [docs/decisions/](docs/decisions/) that bear on the
 change before editing a file under `window-control@carlo9890.github.io/`,
-`cli/` or `tests/vectors/`, or `tests/check-rules-format.js`,
-`scripts/release.sh`, `scripts/check-static.sh`, `.mise.toml` or
-`.github/workflows/build.yml`.** Each holds a decision in
-force, and a change against one is the user's call — name the record and ask.
+`cli/` or `tests/`, or `scripts/release.sh`, `scripts/check-static.sh`,
+`.mise.toml` or `.github/workflows/build.yml`.** A change against a record is
+the user's call: name the record and ask.
 
-### Documentation changes
+### Writing docs
 
-**MUST load the `instruction-writing:writing-project-docs` skill before creating
-or editing ANY `*.md` file in this repository.** It owns which file holds which
-content and how a doc is written.
+**MUST call the Skill tool with `instruction-writing:writing-project-docs` AND
+read [docs/DOCUMENTING.md](docs/DOCUMENTING.md) before creating or editing ANY `*.md`
+file.** Each doc tree has its own owner and reader.
 
-**Local delta:** `docs/specs/` holds normative format specifications, one file
-per format, outside the canonical topic set. A spec states what an
-implementation MUST do.
-`docs/user-guide/` holds the user docs, one page per task, under the
-`README.md` contract; `README.md` is the short product page that links them.
-Each user-facing fact has one page there.
+### Testing
 
-### The rules.json auto-placement format
+**MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test, before
+your first `mise run`, `gjs -m tests/…` or `./tests/*.sh`, and before you report
+a change as verified.** Some suites move windows and press keys.
 
-**MUST read [docs/specs/RULES-JSON.md](docs/specs/RULES-JSON.md) before editing
-`rules-format.js`, `rules.js`, `cli/src/rules.rs` or `tests/vectors/`, or
-changing what the rules file accepts or how a rule is applied.** It is the
-normative format: the key set, the token grammar, the tile grid, every
-validation message, and the show/unmaximize timing a placement depends on.
+### Running the extension by hand
 
-### Testing and verification
+**MUST read [docs/RUNNING.md](docs/RUNNING.md) before `./scripts/build.sh
+install` or `install-zip`, `gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
+`./scripts/start-*.sh` or `./scripts/demo/record.sh`, and before you start, kill or restart any GNOME Shell.** Each start needs the
+user's consent; a wrong start can log the user out.
 
-**MUST read [docs/TESTING.md](docs/TESTING.md) before writing a test, and before
-your first `mise run test`, `mise run ci`, `gjs -m tests/…`, or `./tests/*.sh`
-invocation.** It owns the test layers, the CI gate, and the minimum checks per
-action.
-
-### Run the extension to reproduce a bug or verify a change
-
-**MUST read [docs/RUNNING.md](docs/RUNNING.md) before reloading or driving the
-extension by hand (`./scripts/build.sh install` or `install-zip`,
-`gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
-`./scripts/start-*.sh`, `./scripts/demo/record.sh`), and before starting,
-killing, or restarting any GNOME Shell, nested and headless included.** It owns the reload path, the nested-session
-setup, and the pitfalls that cost hours when met blind. **Hard rule 1 there
-says which shell starts, kills and restarts need the user's consent.**
-
-### Analyze logs
-
-**MUST read [docs/MONITORING.md](docs/MONITORING.md) before your first
-`journalctl` or other log-reading command against the extension** — where the
-lines land, which levels are visible, and what a silent no-op means.
-
-### Commit, branch, PR workflow
+### Git
 
 **MUST read [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before ANY git
-operation** — commit, branch, worktree, push, or opening a PR.
+command that writes, and before `gh pr create`.** It sets the test bar for a commit, and only the
+maintainer merges.
 
-### Reviewing changes
+### Reviewing
 
-**MUST read [docs/REVIEWING.md](docs/REVIEWING.md) before you start a review
-skill, and before your first `gh pr view`, `gh pr diff` or `git diff` read to
-review a PR or a local change.** It carries the quality rules a finished change is held to — the
-extensions.gnome.org review guidelines, the SPDX header, log levels and log
-content.
+**MUST read [docs/REVIEWING.md](docs/REVIEWING.md) before you invoke a review
+skill or read a diff under review.** No tool checks the extensions.gnome.org
+review rules.
 
-### Release
+### Releasing
 
-**MUST read [docs/RELEASING.md](docs/RELEASING.md) before cutting a release or
-changing what the project ships, and before editing `metadata.json`, the `version` in `cli/Cargo.toml`,
-`scripts/build.sh`, `scripts/release.sh`, `scripts/check-version.sh`,
-`scripts/check-static.sh`, the `build:musl` task in `.mise.toml`,
-`install-wctl.sh` or `.gitignore`, and before adding or removing a tracked file
-under `window-control@carlo9890.github.io/`.**
+**MUST read [docs/RELEASING.md](docs/RELEASING.md) before tagging, before
+editing `metadata.json`, the `version` in `cli/Cargo.toml`, `install-wctl.sh`,
+`.gitignore`, `scripts/build.sh`, `scripts/release.sh`, `scripts/check-*.sh` or
+the `build:musl` task, and before adding or removing a tracked file in the
+extension directory.** The zip ships the tracked files.

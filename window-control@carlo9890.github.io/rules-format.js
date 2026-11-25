@@ -3,6 +3,7 @@
 // The rules.json grammar: the token vocabulary, the tile grid, the match
 // predicate, and the validation that turns a parsed document into rules.
 // It imports nothing, so plain `gjs` can load it without the mutter typelib.
+// The format contract is docs/specs/RULES-JSON.md.
 
 // rules.json match key -> matchPredicate() kind.
 export const MATCH_KINDS = {
@@ -23,6 +24,7 @@ const MIN_WIDTH_KEY = 'min_width';
 const ALL_MATCH_KEY_NAMES = `${MATCH_KEY_NAMES}, ${MIN_WIDTH_KEY}`;
 
 // A tile position as (startCol, endCol, startRow, endRow) of the 4x2 grid.
+// docs/user-guide/concepts.md quotes these positions, counted from 1.
 export const TILE_CELLS = {
     'top-left': [0, 0, 0, 0],
     'top-center': [1, 2, 0, 0],
@@ -201,7 +203,8 @@ export function centerRect(axis, frame, workarea) {
 
 // A key as a message shows it. The key is text of the file, and the message
 // goes to the journal and to a terminal: a newline in it forges a line.
-// The set is the one of table::sanitize in wctl (RULES-JSON.md).
+// The set is the one of table::sanitize in wctl;
+// tests/vectors/rules-spec.json pins it.
 function shownKey(key) {
     return key.replace(/[\p{Cc}\u2028\u2029\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu, '?');
 }

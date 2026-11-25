@@ -1,44 +1,64 @@
 # Concepts
 
-This page explains the terms that the other pages of this guide use.
+The other pages of this guide use these terms.
 
 ## Selectors
 
-Every command that takes a window accepts a selector instead of an ID:
+A command that takes a window accepts a selector in place of an ID:
 
 ```
 <ID> | focused | -c <CLASS> | -t <TITLE> | -s <SUBSTR> | -p <PID>
 ```
 
-- A selector must match exactly one window.
-- With several matches wctl lists the candidates and exits 1; with none it
-  exits 2. See [Exit codes](wctl.md#exit-codes).
-- An empty value is refused.
-- `activate` takes no `focused`, and its `-c/-t/-s/-p` take the first match.
+- A selector must match exactly one window. For the exit status when it
+  matches more or none, see [Exit codes](wctl.md#exit-codes).
+- `activate` takes no `focused`. Its `-c`, `-t`, `-s` and `-p` take the first
+  window that matches.
 
 ## The workarea
 
-The workarea is the monitor minus panels and docks. `place` takes
-workarea-relative tokens:
+The workarea is the monitor minus panels and docks. `wctl place` and a `place`
+rule take four tokens, `X Y WIDTH HEIGHT`, relative to the workarea:
 
-- X/Y take pixels or `left|center|right` / `top|center|bottom`.
-- width/height take pixels or a percentage of the workarea.
+| Token | Value |
+|-------|-------|
+| `X` | Pixels, which can be negative, or `left`, `center` or `right` |
+| `Y` | Pixels, which can be negative, or `top`, `center` or `bottom` |
+| `WIDTH`, `HEIGHT` | Positive pixels, or a percentage of the workarea, such as `50%` |
+
+A keyword aligns the window by its size: `right` puts its right edge on the
+right edge of the workarea.
 
 ## The tile grid
 
-A tile is a span of cells of a 4-column by 2-row grid over the
-[workarea](#the-workarea). The eleven positions and the cells each one spans
-are in the [rules.json specification](../specs/RULES-JSON.md#tile).
+A tile is a span of cells of a grid of 4 columns and 2 rows over the
+[workarea](#the-workarea). `wctl tile`, a `tile` rule and the
+[shortcuts](shortcuts.md#keyboard-shortcuts) use these positions. Columns and rows count from 1, from the top left:
+
+| Position | Columns | Rows |
+|----------|---------|------|
+| `top-left` | 1 | 1 |
+| `top-center` | 2-3 | 1 |
+| `top-right` | 4 | 1 |
+| `left` | 1 | 1-2 |
+| `center` | 2-3 | 1-2 |
+| `right` | 4 | 1-2 |
+| `bottom-left` | 1 | 2 |
+| `bottom-center` | 2-3 | 2 |
+| `bottom-right` | 4 | 2 |
+| `wide-left` | 1-3 | 1-2 |
+| `wide-right` | 2-4 | 1-2 |
 
 ## Capabilities
 
-`wctl version --json` reports a `capabilities` list; see
-[Checking the extension version](wctl.md#checking-the-extension-version).
+A capability is the name of a feature the extension supports.
+`wctl version --json` lists them in `capabilities`; see
+[Checking the extension version](wctl.md#checking-the-extension-version). An
+empty list means that the extension is too old to tell.
 
-`capabilities` is what the extension says it supports, by name. Ask for a name
-rather than comparing version numbers: a version before v25 installed from
-extensions.gnome.org carries that site's own upload number in `extension`,
-which is not related to this project's release numbers. `no-animation` means
-the extension has `MinimizeNoAnimation` and `UnminimizeNoAnimation`, and
-`activate-no-animation` means it has `ActivateNoAnimation`. An empty list means
-the extension is too old to answer.
+Test for a capability, not for a version number: an extension before v25 from
+extensions.gnome.org shows the upload number of that site, which is not a
+release number of this project. The rule keys that need a capability are in
+[Keys that need a newer extension](rules.md#keys-that-need-a-newer-extension).
+`no-animation` means `minimize` and `unminimize` take `--no-animation`;
+`activate-no-animation` means `activate` takes it.

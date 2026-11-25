@@ -1,70 +1,53 @@
-# Change Workflow
-
-Call the Skill tool with `commit-commands:commit` or
-`commit-commands:commit-push-pr` for the standard flow. This file is the local
-delta over them.
-
-## Pre-handoff gates
-
-Before committing or opening a PR:
-
-- The suites required for this kind of change pass — the minimum-checks table in
-  [TESTING.md](TESTING.md#minimum-checks-before-a-pr), and the reload-and-run
-  below it, are the bar.
-- A change under `window-control@carlo9890.github.io/` passes the
-  [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review).
+# Change workflow
 
 ## Commits
 
-- One logical change per commit.
-- In a PR with several fixes, each fix commit carries its own test. When the
-  fixes share a new test harness, land the harness in an earlier commit.
+Call the Skill tool with `commit-commands:commit` for the standard flow.
+
+**Local delta:**
+
+- One logical change per commit. In a PR with several fixes, each fix commit
+  carries its own test; a test harness the fixes share lands in an earlier
+  commit.
 - A change to what a spec in `docs/specs/` requires lands in the same commit as
   the code and the tests that pin it. A spec edit that changes no requirement
   can land alone.
-- Message format: `<type>: <short description>`, where `<type>` is `feat`, `fix`,
-  `docs`, `test`, `build`, `refactor`, or `chore`. Append `!` to the type for a
-  breaking change (`feat!: ...`).
-- No emojis in commit messages.
-
-Example:
-
-```
-fix: reject width/height of 0 in wctl resize
-
-The regex accepted 0 despite the "must be a positive number" message.
-```
+- Subject: `<type>: <short description>`, with `<type>` one of `feat`, `fix`,
+  `docs`, `test`, `build`, `refactor`, `chore`. Append `!` for a breaking
+  change: `feat!: ...`.
+- No emojis in commit messages, PR titles or PR bodies.
 
 ## Branches
 
-- Branch from `main`; never commit directly to `main`. A release version bump
-  goes through a PR like any other change — see [RELEASING.md](RELEASING.md).
+- Branch from `main`. Commit nothing directly to `main`, a release version bump
+  included.
 - Prefix: `feat/`, `fix/`, `docs/`, `test/`, `build/`, `refactor/`, `chore/`.
+
+## Before opening a PR
+
+- Run the checks of the
+  [minimum-checks table](TESTING.md#minimum-checks-before-a-pr). The PR's test
+  plan names each check run and each check skipped.
+- A change under `window-control@carlo9890.github.io/` passes the
+  [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review).
+- A user-facing change updates its page in `docs/user-guide/`, and `README.md`
+  where the change alters what it shows.
 
 ## Pull requests
 
-1. Open the PR against `main`.
-2. Describe what changed and the test plan (which suites you ran). Without the
-   user's consent for the reload-and-run of a JavaScript change, state that it
-   is not done.
-3. Update the page of `docs/user-guide/` that owns a user-facing change, `README.md`
-   where the change alters what it shows, and the relevant `docs/` topic for
-   procedures.
-4. Review the PR against [REVIEWING.md](REVIEWING.md): call the Skill tool with
+1. Open the PR against `main` with `gh pr create`. Its body says what changed
+   and has the test plan: each check run and each check skipped (see
+   [Before opening a PR](#before-opening-a-pr)).
+2. Review it against [REVIEWING.md](REVIEWING.md): call the Skill tool with
    `worktree-flow:worktree-review` and the PR number.
+3. Stop once the PR is open and its checks are green. The maintainer merges.
 
-The maintainer merges. An agent stops once the PR is open and its checks are
-green.
+## CI
 
-## CI — required checks
+`.github/workflows/build.yml` runs the jobs `extension` and `cli` as two PR
+checks. Every gate in them runs locally from the
+[minimum-checks table](TESTING.md#minimum-checks-before-a-pr).
 
-`.github/workflows/build.yml` runs two jobs — `extension` and `cli` — which
-appear as two checks on the PR. Read the workflow for the steps; both run on a
-bare `ubuntu-latest` and every gate in them is reproducible locally from the
-minimum-checks table in [TESTING.md](TESTING.md).
-
-A PR that touches no path in the `on.pull_request.paths` filter of
-`build.yml`, for example a docs-only PR, reports **no checks at all**. No branch protection is configured,
-so it is still mergeable — a green tick is not evidence a docs PR was tested.
-
-Releases are a separate flow — see [RELEASING.md](RELEASING.md).
+A PR that touches no path in the `on.pull_request.paths` filter of `build.yml`,
+a docs-only PR for example, reports no checks. No branch protection is set, so
+it can still merge: a missing tick is not a passed check.

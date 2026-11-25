@@ -1,183 +1,127 @@
 # Coding
 
-What a change needs in order to work: the mandatory syntax validation, the
-mechanisms a handler or a command must use, building, and how to add a new D-Bus
-method end-to-end.
-
-## JavaScript syntax validation (CRITICAL)
-
-When modifying any JavaScript file you **MUST** validate its syntax before
-finishing:
-
 ```bash
-./scripts/build.sh validate      # node --check on every *.js in the extension dir
+./scripts/build.sh validate   # node --check on every extension *.js, uuid, interface XML, schema
+./scripts/build.sh all        # validate, then build the zip into dist/
+./scripts/build.sh install    # copy the extension into place; the reload is in RUNNING.md
+mise run ci                   # cli/: fmt, clippy, tests, build, on the toolchain .mise.toml pins
 ```
 
-If it fails, the code has a syntax error and must not be committed.
-`.github/workflows/build.yml` runs the same check as a hard CI gate.
-
-## JavaScript (the extension)
-
-- Use ES module (ESM) syntax.
-- Read the GNOME guidelines that the
-  [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) links
-  before you write extension code, and write the code and its comments to them:
-  a human reviewer reads every line of each upload, and a violation costs a new
-  release.
-- `Move`, `Resize`, `MoveResize`, `ApplyRules`, `WaitForWindow` and
-  `WaitForGeometry` raise named D-Bus errors instead of reporting a boolean
-  (`WaitForWindow` returns 0 on timeout); a new method that can fail for more
-  than one reason does the same
-  ([0005](decisions/0005-the-geometry-methods-applyrules-and-the-wait-methods-raise-named-d-bus-errors.md)).
-  The reason each method raises is in the
-  ERRORS block in `dbus-interface.js`. A new name goes into that block, a
-  `DBUS_ERROR_*` constant in `dbus-service.js`, the Errors section of
-  `docs/user-guide/dbus.md`, and an `ERROR_*` constant in `cli/src/dbus.rs` that `map_err`
-  maps to its exit code: a match arm of its own, or `is_extension_not_running`
-  for a name that means the extension is not there. Only a body that
-  `_namedErrorCall` runs can throw it as a `NamedError`; an `...Async` handler
-  outside that body sends it with `invocation.return_dbus_error`.
-- A synchronous handler has no try/catch. GJS answers an unexpected JavaScript
-  `Error` with `org.gnome.gjs.JSError.<name>` and logs `Exception in method call:
-  <Method>`; a thrown `GLib.Error` goes out as its GError, with no log line.
-  The two wait handlers have no try/catch either. The three geometry handlers
-  and `ApplyRules` run their body through `_namedErrorCall`, which answers with
-  the body's `GLib.Variant` (an empty reply for none), a `NamedError` by its
-  name, and any other throw with `Failed`. Before GNOME 50, GJS sends no reply
-  for a throw from an `...Async` handler.
-- Two processes load the code. `extension.js` and the modules it imports run
-  in GNOME Shell and never import `Gtk`, `Gdk` or `Adw`. `prefs.js` and
-  `prefs/` run in the preferences process and never import `Meta`, `St`,
-  `Clutter` or `Shell`. A module that both load (`rules-format.js`) imports
-  none of them. A module that only `prefs.js` loads goes in `prefs/`.
-- Simple "find window by id, do one action, return bool" handlers go through
-  the shared `_actOnWindow(windowId, label, action)` helper.
-- Every frame request (a position or a size) for a shown window, from a D-Bus
-  geometry method, a rule or a shortcut, goes through `WindowPlacer.place`
-  (`window-helpers.js`), and the request itself calls the placer's
-  `moveResizeFrame`, `move` or `resize`, never `Meta.Window` directly: a
-  request made before the window has answered a new size waits in the placer,
-  up to `ANSWER_WAIT_MS`, so an answer within that time cannot undo it. A request that can change monitor passes its target monitor
-  as the third argument of `place`. Their comments say why. Three kinds stay
-  outside:
-  - a move to a monitor goes through `moveToMonitor`, which keeps the wait for
-    a pending restore, so a newer request still waits;
-  - the maximize and fullscreen methods set a state;
-  - `_preplace` in `rules.js` must set the frame inside the `configure` emission.
-- `disable()` MUST undo everything `enable()` did; extensions.gnome.org rejects
-  an upload that does not ([REVIEWING.md](REVIEWING.md#extensionsgnomeorg-review)).
-  That covers every signal handler, GLib source, bus-name watch, file monitor,
-  cancellable, keybinding and pending `...Async` invocation. Keep each ID where
-  the teardown reaches it; in `rules.js` and `dbus-service.js`, add a timeout
-  through `_addTimeout` and cancel it with `_removeSource`, which keep its ID in
-  the `_sourceIds` set that `disable()` and `unexport()` empty. In `overlay.js`
-  a grace timer's ID lives in its window's entry, which every release clears.
-  `tests/check-extension-headless.js` checks only the handlers and sources it is
-  told about: add a case there for each new one.
-
-## Rust (cli/)
-
-- The toolchain is pinned in `.mise.toml`. Run the gates through mise:
-  `mise run fmt`, `mise run lint`, `mise run test`, `mise run build`, or
-  `mise run ci` for all of them (see [TESTING.md](TESTING.md)).
-- Validate arguments before any D-Bus call. The session connection is opened
-  lazily in `dbus.rs`, so a usage error must never reach it — that is what keeps
-  the guard tests headless. Parse the selector with `selector::parse_exact`
-  (or `parse_min`), validate every argument after `selector.shift`, and only
-  then call `selector::lookup` — that one may hit the bus.
-- Report failure through `Fail` (`cli/src/fail.rs`): `Fail::error` for the
-  `Error: ...` on stderr, `Fail::plain` for the extension-said-no message on
-  stdout. Every command ends in `report()` so they all behave the same way.
-- Keep pure, testable logic (geometry math, token resolution, selector parsing)
-  in `geometry.rs` and `selector.rs` with `#[cfg(test)]` unit tests that pin
-  **hardcoded** expected values.
-- A limit that the extension enforces too (a range, a keyword set, a message)
-  has one value, in a vector file under `tests/vectors/`, and a test on each
-  side asserts it: a GJS check and a Rust test, as `tests/vectors/rules-spec.json`
-  does for the rules grammar ([TESTING.md](TESTING.md#the-rulesjson-grammar-check-a-ci-gate),
-  [0007](decisions/0007-the-rules-json-grammar-has-two-implementations-pinned-to-one-vector-file.md)).
-- `wctl` works with every extension version from `MIN_EXTENSION_VERSION`
-  (`cli/src/main.rs`) up. Gate a call to a method or a behavior newer than that
-  version on its capability name from `GetCapabilities`, as `commands/rules.rs`
-  does with `NEWER_MATCH_KEYS`
-  ([0008](decisions/0008-a-client-learns-what-the-extension-supports-from-a-capability-name.md)).
-  Only the maintainer raises the baseline.
-- The CLI grammar is a frozen contract: output strings, usage text and exit
-  codes are asserted by the live suites. Do not reword a message without
-  changing the suite that pins it. Write argument parsing, help and
-  completions by hand: [0009](decisions/0009-wctl-parses-its-arguments-by-hand.md).
-
-## Building
-
-```bash
-./scripts/build.sh all         # clean, validate (incl. node --check), build zip
-./scripts/build.sh install     # copy the extension into place — see RUNNING.md for the reload
-```
-
-The extension directory name must stay identical to the `uuid` in
-`metadata.json` — `build.sh validate` hard-fails if they diverge. The zip and
-what it ships are described in [RELEASING.md](RELEASING.md).
+Run `./scripts/build.sh validate` after every change to a `.js` file, with
+`node` installed: without it, validate skips the syntax check and still passes.
+Do not commit while it fails: CI runs the same check as a gate.
 
 After a change to `install-wctl.sh` or `scripts/release.sh`, run it offline as
-[TESTING.md](TESTING.md#driving-install-wctlsh-and-releasesh-offline) describes.
+[TESTING.md](TESTING.md#driving-install-wctlsh-and-releasesh-offline) says: CI
+does not run either script end to end.
 
-## Adding a new D-Bus method
+## The extension
 
-1. Add the method signature to the interface XML in
-   `window-control@carlo9890.github.io/dbus-interface.js`:
+- Read the GNOME guidelines that the
+  [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review) links
+  before you write extension code. A human reviews every line of each upload,
+  and a violation costs a release.
+- Use ES modules.
+- Keep each module in its process. `extension.js` and its imports run in GNOME
+  Shell and never import `Gtk`, `Gdk` or `Adw`. `prefs.js` and `prefs/` run in
+  the preferences process and never import `Meta`, `St`, `Clutter` or `Shell`.
+  `rules-format.js` loads in both and imports nothing. Put a module that only
+  `prefs.js` loads in `prefs/`.
+- Make `disable()` undo everything `enable()` did: every signal handler, GLib
+  source, bus-name watch, file monitor, cancellable, keybinding and pending
+  `...Async` invocation. extensions.gnome.org rejects an upload that does not.
+  Keep each ID where the teardown reaches it. Create a new timeout with
+  `addTimeout` and end it with `removeSource` from `window-helpers.js`, on a
+  `sourceIds` set that `disable()` or `unexport()` empties, as `rules.js` and
+  `dbus-service.js` do. `overlay.js` and `WindowPlacer` keep a timer ID on the
+  object their teardown clears. Add a case
+  to `tests/check-extension-headless.js` for each new handler or source: it
+  checks only those it is told about.
+- Send every frame request (a position or a size) for a shown window through
+  `WindowPlacer.place` in `window-helpers.js`, and call the placer's
+  `moveResizeFrame`, `move` or `resize` inside it, never `Meta.Window`
+  directly. Pass the target monitor as the third argument when the request can
+  change monitor. Three kinds stay outside, as the comments there say: a move
+  to a monitor (`moveToMonitor`), the maximize and fullscreen state methods,
+  and the rule frame set inside mutter's `configure` signal in `rules.js`.
 
-   ```xml
-   <method name="YourNewMethod">
-     <arg type="t" direction="in" name="window_id"/>
-     <arg type="b" direction="out" name="success"/>
-   </method>
-   ```
+## D-Bus handlers
 
-2. Add the implementation in the `WindowControlService` class in `dbus-service.js`.
-   For a simple boolean action, reuse `_actOnWindow`:
+- Write no try/catch in a synchronous handler: GJS answers the caller for a
+  throw. What the caller then sees is in
+  [MONITORING.md](MONITORING.md#what-a-wctl-error-means).
+- Raise a named D-Bus error, and declare no `success` out-argument, in a method
+  that can fail for more than one reason
+  ([0005](decisions/0005-the-geometry-methods-applyrules-and-the-wait-methods-raise-named-d-bus-errors.md)
+  lists the methods that do).
+- In `Move`, `Resize`, `MoveResize` and `ApplyRules`, run the body through the
+  named-error helper in `dbus-service.js`: throw a `NamedError` there. The
+  wait handlers send their error with `invocation.return_dbus_error`.
+- Put a new error name in the ERRORS block of `dbus-interface.js`, a
+  `DBUS_ERROR_*` constant in `dbus-service.js`, the Errors section of
+  `docs/user-guide/dbus.md`, and an `ERROR_*` constant in `cli/src/dbus.rs`
+  that `map_err` maps to an exit code.
 
-   ```javascript
-   YourNewMethod(windowId) {
-       return this._actOnWindow(windowId, 'YourNewMethod', win => win.someAction());
-   }
-   ```
+## wctl (cli/)
 
-   > GJS quirk: D-Bus `t` (uint64) args arrive as plain JS numbers, which lose
-   > precision above 2^53. Mutter window IDs are well within that range, but if a
-   > method ever handles larger uint64 values, use `BigInt`/`GLib.Variant`.
+- Validate every argument before the first D-Bus call. Parse with
+  `selector::parse_exact` or `parse_min`, validate the arguments after the
+  selector, and only then call `selector::lookup`, which may use the bus.
+- Report failure through `Fail` in `cli/src/fail.rs` and end each command in
+  `report()`.
+- Put pure logic (geometry, tokens, selector parsing) in `geometry.rs` or
+  `selector.rs`, with unit tests as [TESTING.md](TESTING.md#write-a-test) says.
+- Gate a call to a method or behaviour newer than `MIN_EXTENSION_VERSION`
+  (`cli/src/main.rs`) on its capability name from `GetCapabilities`, as
+  `NEWER_MATCH_KEYS` in `cli/src/commands/rules.rs` does
+  ([0008](decisions/0008-a-client-learns-what-the-extension-supports-from-a-capability-name.md)).
+  Only the maintainer raises that baseline.
+- Change no output string, usage text or exit code without the suite that pins
+  it. Write argument parsing, help and completions by hand
+  ([0009](decisions/0009-wctl-parses-its-arguments-by-hand.md)).
+- Give a limit that the extension enforces too (a range, a keyword set, a
+  message) one value, in a file under `tests/vectors/`, read by both sides
+  ([0007](decisions/0007-the-rules-json-grammar-has-two-implementations-pinned-to-one-vector-file.md)).
 
-   > Add a capability name for the method to `CAPABILITIES` in `dbus-service.js`,
-   > which `GetCapabilities` reports, in the same commit, so that `wctl` can gate
-   > its call on it (see the Rust section above).
+## Add a D-Bus method
 
-   > A method that can fail for more than one reason should raise a named error
-   > (see the JavaScript section above) and declare no `success` out-arg. Add the
-   > name in every place the JavaScript section lists, and call it with
-   > `call_unit` rather than `call_bool`.
+1. Add the method to the interface XML in `dbus-interface.js`.
+2. Add the handler to `WindowControlService` in `dbus-service.js`. For an
+   action on one window that returns a boolean, copy the form of `Close`.
+3. Add its capability name to `CAPABILITIES` in `dbus-service.js` in the same
+   commit.
+4. For a method that raises named errors, follow
+   [D-Bus handlers](#d-bus-handlers): write a `<Method>Async` handler whose body
+   runs through the named-error helper, or one that calls
+   `invocation.return_dbus_error`. A synchronous handler cannot raise a named
+   error. Call it from Rust with `call_unit`, not `call_bool`.
+5. Add the command. A window-only boolean action needs no new function: add a
+   match arm in `cli/src/main.rs` that calls `state::simple`, as `close` does.
+   Otherwise write the function in the module of its group in
+   `cli/src/commands/`.
+6. Add the command to `COMMANDS` in `cli/src/main.rs`, to `cli/src/help.rs`,
+   and to both scripts in `cli/completions/`. The inventory tests fail
+   `cargo test` when one is missing.
+7. Add the method's row to the method table in `docs/user-guide/dbus.md`, and
+   the command's line to `docs/user-guide/wctl.md`.
+8. Run the checks in [TESTING.md](TESTING.md#minimum-checks-before-a-pr).
 
-3. Add the corresponding command to the crate, reusing the shared helpers.
-   A simple boolean action is one line in `cli/src/commands/state.rs`:
+## Change the rules format
 
-   ```rust
-   pub fn your_new_command(ctx: &mut Ctx, args: &[String]) -> Result<()> {
-       let selector = selector::parse_exact(0, "Usage: wctl your-new-command <WINDOW>", args)?;
-       // Validate any argument after selector.shift HERE, before lookup().
-       let id = selector::lookup(ctx, &selector)?;
-       let ok = ctx.bus.call_bool("YourNewMethod", &(id,))?;
-       report(ok, "Did the thing", not_found(id))
-   }
-   ```
+Change all of these in one commit:
 
-   Wire it into the `match` in `cli/src/main.rs`.
-
-4. Add it to `COMMANDS` in `cli/src/main.rs`, to the help text in
-   `cli/src/help.rs`, and to **both** completion scripts in `cli/completions/`.
-   The inventory unit tests cross-check all four, so a command that is missing
-   from any of them fails `cargo test`.
-
-5. Add the method's row to the method table in `docs/user-guide/dbus.md`; the review flags a
-   method the table does not list ([REVIEWING.md](REVIEWING.md#project-specific-rules)).
-
-6. Before committing, run `./scripts/build.sh validate` and every check that the
-   [minimum-checks table](TESTING.md#minimum-checks-before-a-pr) requires. The
-   change to `dbus-service.js` brings in the fake-windows check.
+1. [docs/specs/RULES-JSON.md](specs/RULES-JSON.md): read it first; change it
+   where the change alters what an implementation MUST do.
+2. `rules-format.js`: `RULE_KEYS` and `compileRule` for a rule key,
+   `MATCH_KINDS` and `matchPredicate` for a match key. How a rule key is
+   applied is in `rules.js`.
+3. `cli/src/rules.rs`: `RULE_KEYS` and `compile_rule`, or `MATCH_KEYS` and
+   `Rule::matches_window`; a rule key also in `Rule::resolve`; a match key
+   also in `shadows` in `cli/src/commands/rules.rs`.
+4. `tests/vectors/rules-spec.json`: a case for each new value and each new
+   message.
+5. For a new key: its capability name in `CAPABILITIES` in `dbus-service.js`
+   and in `NEWER_MATCH_KEYS` or `NEWER_RULE_KEYS` in
+   `cli/src/commands/rules.rs`; a `wctl rules add` flag also in `help.rs` and
+   `cli/completions/`; its line in the key table of `docs/user-guide/rules.md`
+   and its row in "Keys that need a newer extension".

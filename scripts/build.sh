@@ -84,7 +84,7 @@ validate() {
         exit 1
     fi
 
-    # Syntax-check every JS source. docs/CODING.md marks this CRITICAL; run it here
+    # Syntax-check every JS source. docs/CODING.md makes this a gate; run it here
     # so `build.sh all` (and therefore CI) fails on a syntax error before packaging.
     if command -v node >/dev/null 2>&1; then
         local js
