@@ -60,7 +60,7 @@ gdbus call --session \
 | `MoveToWorkspace` | `(ti) -> b` | Move window to a workspace |
 | `MoveToMonitor` | `(ti) -> b` | Move window to a monitor |
 | `WaitForWindow` | `(ssi) -> t` | Wait up to `timeout_ms` until a window that matches `kind` (`class`, `title`, `substring`, `pid`) and `value` is shown. Returns its ID, or 0 on timeout. The shell does not block |
-| `WaitForGeometry` | `(tii) -> (iiii)` | Wait up to `timeout_ms` until the frame of the window has not changed for `quiet_ms`, then return it. The shell does not block |
+| `WaitForGeometry` | `(tii) -> (iiii)` | Wait up to `timeout_ms` until the frame of the window has not changed for `quiet_ms` and the window has answered the new size or restore that a geometry method, a rule or a shortcut asked of it (at most 2 s for a size, 1 s for a restore), then return it. The shell does not block |
 
 ## Errors
 
@@ -71,7 +71,7 @@ gdbus call --session \
 |------------|---------|
 | `org.gnome.Shell.Extensions.WindowControl.NotFound` | No window has that ID, or the window closed during `WaitForGeometry` |
 | `org.gnome.Shell.Extensions.WindowControl.Refused` | Fullscreen, maximize or tiling holds the frame; the message names which |
-| `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry`: the frame did not settle |
+| `org.gnome.Shell.Extensions.WindowControl.Timeout` | `WaitForGeometry`: the frame did not settle, or the window did not answer within `timeout_ms` |
 | `org.gnome.Shell.Extensions.WindowControl.Disabled` | The extension was disabled during a wait, or while `ApplyRules` waited for a rules read |
 | `org.freedesktop.DBus.Error.InvalidArgs` | A size or wait time that is not positive, `timeout_ms` below `quiet_ms`, or a wait selector that is not valid |
 | `org.freedesktop.DBus.Error.Failed` | `Move`, `Resize`, `MoveResize` or `ApplyRules` failed in an unexpected way |

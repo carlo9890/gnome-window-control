@@ -28,10 +28,6 @@ takes a `<WINDOW>` takes a [selector](concepts.md#selectors). `place` takes
 | `wctl center` | Center a window. |
 | `wctl resolve-place` | Compute a placement without a window, to size a program before it starts. |
 | `wctl rules` | List, check, add, remove, test and apply the rules. See [Automatic window placement](rules.md). |
-
-A window with a minimum size above the rectangle, such as a text editor in a
-narrow tile, grows to that minimum at the position asked for. `move-resize`,
-`place` and `tile` keep the window on the screen; `move` can put it partly off.
 | `wctl workspace` | Switch to a workspace. |
 | `wctl move-to-workspace` | Move a window to a workspace. |
 | `wctl move-to-monitor` | Move a window to a monitor. |
@@ -44,6 +40,17 @@ narrow tile, grows to that minimum at the position asked for. `move-resize`,
 | `wctl version` | Show the `wctl` version, and with `--json` the loaded extension. |
 | `wctl help` | Show the usage. |
 | `wctl completion` | Print the bash or zsh completion script. |
+
+A window with a minimum size above the rectangle, such as a text editor in a
+narrow tile, grows to that minimum at the position asked for. `move-resize`,
+`place` and `tile` keep the window on the screen; `move` can put it partly off.
+
+`center` always waits for the frame to settle, up to 3 s or the `--timeout`
+if that is shorter, before it reads the size it centers, so `wctl resize`
+followed by `wctl center` centers the new size. A window that has not taken the
+new size after 2 s, such as one another window covers, is not centered
+reliably: when it takes the new size later, it can go back to where it was
+before `center`.
 
 ## Examples
 

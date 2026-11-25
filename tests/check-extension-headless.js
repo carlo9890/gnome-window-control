@@ -480,7 +480,7 @@ export class PopupSeparatorMenuItem {}
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowRules: WindowRules49 } = await import(`file://${EXT49}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
-    const { WindowPlacer } = await import(`file://${EXT}/window-helpers.js`);
+    const { ANSWER_WAIT_MS, WindowPlacer } = await import(`file://${EXT}/window-helpers.js`);
     const { WindowPlacer: WindowPlacer49 } = await import(`file://${EXT49}/window-helpers.js`);
     const Main = await import(`file://${EXT}/stub-main.js`);
 
@@ -1116,9 +1116,103 @@ export class PopupSeparatorMenuItem {}
         check('a dropped waiting request does not run after the answer', last() === '[0,32,480,524]',
             JSON.stringify(win.moves));
 
+        // WaitForGeometry: a frame the window has not answered is not settled,
+        // so `wctl center` after `wctl resize` reads the size it lands at.
+        service.MoveResizeAsync([61, 10, 40, 500, 400], invocation());
+        const waited = invocation();
+        service.WaitForGeometryAsync([61, 20, 2000], waited);
+        await sleep(150);
+        check('WaitForGeometry does not settle while a new size is unanswered', waited.replies === 0,
+            showReply(waited));
+        win.answer();
+        await sleep(150);
+        check('WaitForGeometry settles on the answered frame after the answer',
+            waited.replies === 1 && JSON.stringify(waited.reply.value) === '[10,40,500,400]', showReply(waited));
+        service.MoveResizeAsync([61, 0, 32, 300, 200], invocation());
+        const never = invocation();
+        service.WaitForGeometryAsync([61, 20, 150], never);
+        await sleep(300);
+        check('WaitForGeometry times out when the answer does not come',
+            never.replies === 1 && never.reply.error === 'org.gnome.Shell.Extensions.WindowControl.Timeout',
+            showReply(never));
+        win.answer();
+        await sleep(50);
+
+        // Mutter sends nothing to a window when it limits a request to the
+        // frame the window has, so no answer comes: seen in GNOME Shell 50.1
+        // with a window at its minimum size asked to shrink, after which every
+        // request to it waited for good. The wait ends after ANSWER_WAIT_MS.
+        service.MoveResizeAsync([61, 20, 50, 1, 1], invocation());
+        service.MoveAsync([61, 300, 300], invocation());
+        const unanswered = invocation();
+        service.WaitForGeometryAsync([61, 20, ANSWER_WAIT_MS + 1000], unanswered);
+        check('a request waits while no answer comes', placer._answers.has(win) && last() === '[20,50,1,1]',
+            JSON.stringify(win.moves));
+        await sleep(ANSWER_WAIT_MS + 300);
+        check('a request runs after ANSWER_WAIT_MS when no answer comes', last() === '[300,300]',
+            JSON.stringify(win.moves));
+        check('WaitForGeometry settles after ANSWER_WAIT_MS when no answer comes', unanswered.replies === 1 &&
+            JSON.stringify(unanswered.reply.value?.slice(0, 2)) === '[300,300]', showReply(unanswered));
+        check('the ended wait leaves no handler on the window', win.handlerCount() === 0,
+            `${win.handlerCount()} handler(s)`);
+
+        // A request that runs after a wait ended without an answer starts no
+        // wait of its own: a window at its minimum size asked to shrink twice
+        // would else hold its requests, and WaitForGeometry, for 2 x 2 s.
+        service.MoveResizeAsync([61, 300, 300, 2, 2], invocation());
+        service.ResizeAsync([61, 3, 3], invocation());
+        const chained = invocation();
+        service.WaitForGeometryAsync([61, 20, ANSWER_WAIT_MS + 1000], chained);
+        await sleep(ANSWER_WAIT_MS + 300);
+        check('a request run after an unanswered wait starts no new wait',
+            !placer._answers.has(win) && last() === '[300,300,3,3]', JSON.stringify(win.moves));
+        check('WaitForGeometry settles once one unanswered wait has ended', chained.replies === 1 &&
+            chained.reply.value !== undefined, showReply(chained));
+
+        // A second wait for the same window, from an Unmaximize that does not
+        // go through place(), replaces the first: no timer or handler of the
+        // first is left, and the newest request still waits.
+        service.MoveResizeAsync([61, 40, 60, 320, 240], invocation());
+        service.MoveAsync([61, 5, 5], invocation());
+        const firstTimer = placer._answers.get(win)?.timeoutId ?? 0;
+        win.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        service.Unmaximize(61);
+        check('a second wait removes the timer of the first', firstTimer !== 0 && !sourceAlive(firstTimer),
+            `${firstTimer}`);
+        const second = placer._answers.get(win);
+        check('a second wait keeps the request held by the first', second !== undefined &&
+            second.request !== null && last() !== '[5,5]', JSON.stringify(win.moves));
+        win.answer();
+        await sleep(50);
+        check('the held request runs after the second wait is answered', last() === '[5,5]' &&
+            win.handlerCount() === 0, `${JSON.stringify(win.moves)} ${win.handlerCount()}`);
+
+        // The window closes after its answer, before the held request runs.
+        const closing = createWindow({ id: 62, wmClass: 'closing' });
+        closing.map();
+        await sleep(100);
+        closing.answersLate = true;
+        service.MoveResizeAsync([62, 10, 10, 300, 200], invocation());
+        service.MoveAsync([62, 77, 77], invocation());
+        closing.answer();
+        closing.emit('unmanaged');
+        await sleep(50);
+        check('a held request does not run on a window closed after its answer',
+            JSON.stringify(closing.moves.at(-1)) !== '[77,77]', JSON.stringify(closing.moves));
+
+        // A window that closes while it has not answered leaves no timer.
+        service.MoveResizeAsync([61, 50, 70, 330, 250], invocation());
+        const closedTimer = placer._answers.get(win)?.timeoutId ?? 0;
+        win.emit('unmanaged');
+        check("'unmanaged' removes the answer timer", closedTimer !== 0 && !sourceAlive(closedTimer),
+            `${closedTimer}`);
+
         service.MoveResizeAsync([61, 0, 0, 300, 200], invocation());
         service.MoveAsync([61, 1, 1], invocation());
+        const lastTimer = placer._answers.get(win)?.timeoutId ?? 0;
         placer.destroy();
+        check('WindowPlacer.destroy() removes the answer timer', lastTimer !== 0 && !sourceAlive(lastTimer),
+            `${lastTimer}`);
         check('WindowPlacer.destroy() leaves no handler on a window that has not answered',
             win.handlerCount() === 0, `${win.handlerCount()} handler(s)`);
         service.unexport();
