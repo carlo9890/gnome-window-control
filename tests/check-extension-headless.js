@@ -1613,7 +1613,8 @@ export class PopupSeparatorMenuItem {}
             check('disable() leaves no shortcut', adds() === 0, `${adds()} bound`);
             check('disable() leaves no handler on a window with a pending placement',
                 maximized.handlerCount() === 0, `${maximized.handlerCount()} handler(s)`);
-            check('disable() leaves no UnmaximizeWait timer', !sourceAlive(pendingTimer), `source ${pendingTimer}`);
+            check('extension disable() ends the UnmaximizeWait timer', !sourceAlive(pendingTimer),
+                `source ${pendingTimer}`);
             await sleep(1200);   // past UNMAXIMIZE_SETTLE_MS
             check('a placement cancelled by disable() never lands', maximized.moves.length === 0,
                 JSON.stringify(maximized.moves));
@@ -2573,14 +2574,16 @@ export class PopupSeparatorMenuItem {}
         const watches = [rules._fileWatch, rules._dropInWatch];
         const monitors = watches.map(watch => watch._monitor);
         const ids = watches.map(watch => watch._handlerId);
+        rules._scheduleReload();
+        const reloadId = rules._reloadId;
         rules.disable();
         check('rules.d: disable() cancels both monitors and disconnects their handlers',
             watches.every(watch => watch._monitor === null) &&
             monitors.every((monitor, i) => monitor !== null && monitor.is_cancelled() &&
                 !GObject.signal_handler_is_connected(monitor, ids[i])));
-        check('rules.d: disable() leaves no handler on the display and no reload timer',
-            display.handlerCount() === 0 && rules._reloadId === 0,
-            `${display.handlerCount()} handler(s), reload ${rules._reloadId}`);
+        check('rules.d: disable() leaves no handler on the display and ends the reload timer',
+            display.handlerCount() === 0 && reloadId !== 0 && !sourceAlive(reloadId),
+            `${display.handlerCount()} handler(s), reload ${reloadId}`);
         GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(dropIns)} ${GLib.shell_quote(`${configDir}/g-target.json`)}`);
         // The block broke rules.json on purpose; the next block starts valid.
         write(`${configDir}/rules.json`, '[]');

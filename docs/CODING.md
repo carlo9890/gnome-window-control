@@ -32,8 +32,9 @@ does not run either script end to end.
   `...Async` invocation. extensions.gnome.org rejects an upload that does not.
   In `extension.js` and its imports, start every timeout and idle with
   `addTimeout` or `addIdle` from `window-helpers.js`, never `GLib` directly,
-  and end one early with `removeSource`. `disable()` ends all that are left
-  with `removeAllSources()`. Add a case
+  and end one early with `removeSource`. Each owner removes its own sources
+  in its own teardown, which also runs while the extension stays enabled;
+  `removeAllSources()` in `disable()` ends what is left. Add a case
   to `tests/check-extension-headless.js` for each new handler or source: it
   checks only those it is told about.
 - Send every frame request (a position or a size) for a shown window through
