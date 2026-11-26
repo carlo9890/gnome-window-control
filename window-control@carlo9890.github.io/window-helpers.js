@@ -338,6 +338,7 @@ export class WindowPlacer {
             // where a new request would be overwritten (see UnmaximizeWait).
             // 'unmanaged' stays connected until then, so a window that closes
             // first gets no request.
+            removeSource(entry.idleId);
             entry.idleId = addIdle(() => {
                 entry.idleId = 0;
                 this._dropAnswer(win);

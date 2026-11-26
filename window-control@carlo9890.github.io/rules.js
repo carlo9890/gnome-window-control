@@ -410,6 +410,7 @@ export class WindowRules {
             // does not. One trip through the main loop is enough. The
             // 'unmanaged' handler stays connected until then, so a window
             // that closes first is never touched.
+            removeSource(entry.applyId);
             entry.applyId = addIdle(() => {
                 entry.applyId = 0;
                 this._untrack(win);
