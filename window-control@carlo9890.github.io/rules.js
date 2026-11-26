@@ -57,9 +57,6 @@ export class WindowRules {
         // org.gnome.mutter, read for the layout mode below mutter 50.
         this._mutterSettings = null;
         this._overlays = null;
-        // The pending reload debounce, and the grace and apply sources of
-        // every tracked window; disable() removes them.
-        this._sourceIds = new Set();
     }
 
     enable() {
@@ -98,9 +95,7 @@ export class WindowRules {
     }
 
     disable() {
-        for (const id of this._sourceIds)
-            GLib.source_remove(id);
-        this._sourceIds.clear();
+        removeSource(this._reloadId);
         this._reloadId = 0;
         this._loadCancellable.cancel();
         this._loadCancellable = null;
@@ -136,8 +131,8 @@ export class WindowRules {
     }
 
     _scheduleReload() {
-        this._removeSource(this._reloadId);
-        this._reloadId = this._addTimeout(RELOAD_DEBOUNCE_MS, () => {
+        removeSource(this._reloadId);
+        this._reloadId = addTimeout(RELOAD_DEBOUNCE_MS, () => {
             this._reloadId = 0;
             this._load();
         });
@@ -296,21 +291,9 @@ export class WindowRules {
             return;
         for (const id of entry.ids)
             win.disconnect(id);
-        this._removeSource(entry.graceId);
-        this._removeSource(entry.applyId);
+        removeSource(entry.graceId);
+        removeSource(entry.applyId);
         this._tracked.delete(win);
-    }
-
-    _addTimeout(ms, callback) {
-        return addTimeout(this._sourceIds, ms, callback);
-    }
-
-    _addIdle(callback) {
-        return addIdle(this._sourceIds, callback);
-    }
-
-    _removeSource(id) {
-        removeSource(this._sourceIds, id);
     }
 
     // The first rule whose predicates hold for the window and whose min_width
@@ -419,7 +402,7 @@ export class WindowRules {
             // The match ends the grace period: a grace timer due in the same
             // main loop iteration would untrack the window before the apply
             // runs, and the rule would be lost.
-            this._removeSource(entry.graceId);
+            removeSource(entry.graceId);
             entry.graceId = 0;
             // Not from inside the 'shown' emission: mutter is still applying
             // the client's first committed size there, and a frame requested
@@ -427,7 +410,7 @@ export class WindowRules {
             // does not. One trip through the main loop is enough. The
             // 'unmanaged' handler stays connected until then, so a window
             // that closes first is never touched.
-            entry.applyId = this._addIdle(() => {
+            entry.applyId = addIdle(() => {
                 entry.applyId = 0;
                 this._untrack(win);
                 this._apply(win, rule, headStartMonitor);
@@ -439,8 +422,8 @@ export class WindowRules {
         // keeps changing its title is still given up on in time.
         const now = GLib.get_monotonic_time() / 1000;
         entry.graceEnd ||= now + LATE_IDENTITY_GRACE_MS;
-        this._removeSource(entry.graceId);
-        entry.graceId = this._addTimeout(Math.max(0, Math.ceil(entry.graceEnd - now)), () => {
+        removeSource(entry.graceId);
+        entry.graceId = addTimeout(Math.max(0, Math.ceil(entry.graceEnd - now)), () => {
             entry.graceId = 0;
             this._untrack(win);
         });

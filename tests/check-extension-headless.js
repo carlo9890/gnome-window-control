@@ -480,7 +480,9 @@ export class PopupSeparatorMenuItem {}
     const { WindowRules } = await import(`file://${EXT}/rules.js`);
     const { WindowRules: WindowRules49 } = await import(`file://${EXT49}/rules.js`);
     const { WindowKeybindings } = await import(`file://${EXT}/keybindings.js`);
-    const { ANSWER_WAIT_MS, WindowPlacer } = await import(`file://${EXT}/window-helpers.js`);
+    const {
+        ANSWER_WAIT_MS, WindowPlacer, addIdle, addTimeout, removeAllSources, removeSource,
+    } = await import(`file://${EXT}/window-helpers.js`);
     const { WindowPlacer: WindowPlacer49 } = await import(`file://${EXT49}/window-helpers.js`);
     const Main = await import(`file://${EXT}/stub-main.js`);
 
@@ -736,9 +738,6 @@ export class PopupSeparatorMenuItem {}
         ];
         check('the pending waits armed their timers', sources.length === 3 && sources.every(sourceAlive),
             `${sources}`);
-        check('the pending waits tracked their timers for unexport()',
-            sources.every(id => service._sourceIds.has(id)) && service._sourceIds.size === sources.length,
-            `tracked ${[...service._sourceIds]}, armed ${sources}`);
         const unshownConnects = unshown._nextId;
         const linesBeforeUnexport = consoleLines.length;
         service.unexport();
@@ -758,8 +757,6 @@ export class PopupSeparatorMenuItem {}
             `display ${display.handlerCount()}, window ${win.handlerCount()}, ` +
             `unshown ${unshown.handlerCount()}, watches ${bus.watches.size}`);
         check('unexport() leaves no timer', !sources.some(sourceAlive), `${sources.filter(sourceAlive)}`);
-        check('unexport() leaves no tracked timer', service._sourceIds.size === 0,
-            `${[...service._sourceIds]}`);
         windows.length = 0;
     }
 
@@ -1467,6 +1464,34 @@ export class PopupSeparatorMenuItem {}
         check('a key the schema lacks serves no shortcut', !keybindings.registered);
     }
 
+    // -- the source registry in window-helpers.js ---------------------------------
+    //
+    // Every timeout and idle of the extension goes through it, so disable()
+    // can end them all with one removeAllSources().
+
+    {
+        const linesBefore = consoleLines.length;
+        let fired = 0;
+        const firing = addIdle(() => fired++);
+        await sleep(50);
+        check('an idle source runs once', fired === 1 && !sourceAlive(firing), `${fired} run(s)`);
+        removeSource(firing);
+        removeSource(0);
+        const cancelled = addTimeout(60000, () => fired++);
+        removeSource(cancelled);
+        removeSource(cancelled);
+        check('removeSource() ends a pending source', !sourceAlive(cancelled), `source ${cancelled}`);
+        const left = [addTimeout(60000, () => fired++), addIdle(() => fired++)];
+        removeAllSources();
+        check('removeAllSources() ends every pending source', !left.some(sourceAlive),
+            `${left.filter(sourceAlive)}`);
+        removeAllSources();
+        await sleep(50);
+        check('a removed source never runs', fired === 1, `${fired} run(s)`);
+        check('the registry removes no source twice', unknownSourceRemovals(linesBefore) === 0,
+            `${unknownSourceRemovals(linesBefore)} removal(s)`);
+    }
+
     // -- enable() when the D-Bus export fails -------------------------------------
     //
     // The shell calls no disable() for an extension whose enable() threw, so the
@@ -1574,7 +1599,15 @@ export class PopupSeparatorMenuItem {}
             const pendingTimer = extension._placer._pending.get(maximized)?.wait?._timeoutId ?? 0;
             check('a shortcut on a maximized window leaves a placement pending', pendingTimer !== 0,
                 `source ${pendingTimer}`);
+            // A source whose owner keeps no teardown of its own still ends
+            // with disable().
+            const unowned = [addTimeout(60000, () => {}), addIdle(() => {})];
+            const linesBeforeExtensionDisable = consoleLines.length;
             extension.disable();
+            check('disable() removes every source left in the registry', !unowned.some(sourceAlive),
+                `${unowned.filter(sourceAlive)}`);
+            check('disable() removes no source twice', unknownSourceRemovals(linesBeforeExtensionDisable) === 0,
+                `${unknownSourceRemovals(linesBeforeExtensionDisable)} removal(s)`);
             check('disable() leaves no sessionMode handler', Main.sessionMode.handlerCount() === 0,
                 `${Main.sessionMode.handlerCount()} handler(s)`);
             check('disable() leaves no shortcut', adds() === 0, `${adds()} bound`);
@@ -1713,7 +1746,7 @@ export class PopupSeparatorMenuItem {}
         early.type = Meta.WindowType.NORMAL;
         early.emit('notify::window-type');
         check('a match within the grace period ends the grace timer', earlyGraceId !== 0 &&
-            !sourceAlive(earlyGraceId) && !rules._sourceIds.has(earlyGraceId), `source ${earlyGraceId}`);
+            !sourceAlive(earlyGraceId), `source ${earlyGraceId}`);
         await sleep(2000);   // 2.5 s after shown, past LATE_IDENTITY_GRACE_MS
         check('a retype to NORMAL within the grace period gets the rule',
             JSON.stringify(early.moves) === '[[0,0,480,1080]]', JSON.stringify(early.moves));
@@ -1739,14 +1772,11 @@ export class PopupSeparatorMenuItem {}
         pending.map();
         const graceId = rules._tracked.get(pending)?.graceId ?? 0;
         check('a shown dialog arms the grace timer', sourceAlive(graceId), `source ${graceId}`);
-        check('the grace timer is tracked for disable()',
-            rules._sourceIds.has(graceId) && rules._sourceIds.size === 1, `tracked ${[...rules._sourceIds]}`);
         const linesBeforeDisable = consoleLines.length;
         rules.disable();
         check('WindowRules.disable() leaves no handler on the display', display.handlerCount() === 0,
             `${display.handlerCount()} handler(s)`);
-        check('WindowRules.disable() leaves no grace timer',
-            !sourceAlive(graceId) && rules._sourceIds.size === 0, `source ${graceId}`);
+        check('WindowRules.disable() leaves no grace timer', !sourceAlive(graceId), `source ${graceId}`);
         check('WindowRules.disable() removes no source twice', unknownSourceRemovals(linesBeforeDisable) === 0,
             `${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
     }
@@ -1800,9 +1830,9 @@ export class PopupSeparatorMenuItem {}
         check('disable() after a failed watch throws nothing', error === null, `${error}`);
         check('disable() after a failed watch leaves no handler on the display',
             display.handlerCount() === 0, `${display.handlerCount()} handler(s)`);
-        check('disable() after a failed watch leaves no source and removes none twice',
-            rules._sourceIds.size === 0 && unknownSourceRemovals(linesBeforeDisable) === 0,
-            `tracked ${[...rules._sourceIds]}, ${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
+        check('disable() after a failed watch removes no source twice',
+            unknownSourceRemovals(linesBeforeDisable) === 0,
+            `${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
     }
 
     // -- WindowRules: overlay windows -------------------------------------------
@@ -2360,7 +2390,7 @@ export class PopupSeparatorMenuItem {}
             pending.reply.error === DBUS_ERROR_DISABLED, showReply(pending));
         service.unexport();
         check('ApplyRules leaves no handler behind after disable()',
-            display.handlerCount() === 0 && maximized.handlerCount() === 0 && rules._sourceIds.size === 0,
+            display.handlerCount() === 0 && maximized.handlerCount() === 0,
             `display ${display.handlerCount()}, window ${maximized.handlerCount()}`);
     }
 
@@ -2548,9 +2578,9 @@ export class PopupSeparatorMenuItem {}
             watches.every(watch => watch._monitor === null) &&
             monitors.every((monitor, i) => monitor !== null && monitor.is_cancelled() &&
                 !GObject.signal_handler_is_connected(monitor, ids[i])));
-        check('rules.d: disable() leaves no handler on the display and no source',
-            display.handlerCount() === 0 && rules._sourceIds.size === 0,
-            `${display.handlerCount()} handler(s), tracked ${[...rules._sourceIds]}`);
+        check('rules.d: disable() leaves no handler on the display and no reload timer',
+            display.handlerCount() === 0 && rules._reloadId === 0,
+            `${display.handlerCount()} handler(s), reload ${rules._reloadId}`);
         GLib.spawn_command_line_sync(`rm -rf ${GLib.shell_quote(dropIns)} ${GLib.shell_quote(`${configDir}/g-target.json`)}`);
         // The block broke rules.json on purpose; the next block starts valid.
         write(`${configDir}/rules.json`, '[]');

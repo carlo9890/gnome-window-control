@@ -10,29 +10,48 @@ import Meta from 'gi://Meta';
 import Mtk from 'gi://Mtk';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-// A one-shot timeout whose ID stays in `sourceIds` while it is pending, so the
-// owner's teardown can remove it.
-export function addTimeout(sourceIds, ms, callback) {
-    return trackOnce(sourceIds, done => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, done), callback);
+// The ID of every pending timeout and idle source of the extension. Every
+// module starts its sources with addTimeout() or addIdle(), and disable()
+// removes all that are left with removeAllSources().
+const pendingSourceIds = [];
+
+// A one-shot timeout. Its ID leaves pendingSourceIds when it fires.
+export function addTimeout(ms, callback) {
+    return trackOnce(done => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, done), callback);
 }
 
-// The same for an idle callback.
-export function addIdle(sourceIds, callback) {
-    return trackOnce(sourceIds, done => GLib.idle_add(GLib.PRIORITY_DEFAULT, done), callback);
+// A one-shot idle callback. Its ID leaves pendingSourceIds when it runs.
+export function addIdle(callback) {
+    return trackOnce(done => GLib.idle_add(GLib.PRIORITY_DEFAULT, done), callback);
 }
 
-function trackOnce(sourceIds, add, callback) {
+function trackOnce(add, callback) {
     const id = add(() => {
-        sourceIds.delete(id);
+        forgetSource(id);
         callback();
         return GLib.SOURCE_REMOVE;
     });
-    sourceIds.add(id);
+    pendingSourceIds.push(id);
     return id;
 }
 
-export function removeSource(sourceIds, id) {
-    if (sourceIds.delete(id))
+function forgetSource(id) {
+    const index = pendingSourceIds.indexOf(id);
+    if (index === -1)
+        return false;
+    pendingSourceIds.splice(index, 1);
+    return true;
+}
+
+// Removes a pending source. An ID of 0, or of a source that already fired or
+// was removed, is ignored.
+export function removeSource(id) {
+    if (forgetSource(id))
+        GLib.source_remove(id);
+}
+
+export function removeAllSources() {
+    for (const id of pendingSourceIds.splice(0))
         GLib.source_remove(id);
 }
 
@@ -165,23 +184,18 @@ export class UnmaximizeWait {
             win.connect('size-changed', () => this._settleFromIdle()),
             win.connect('unmanaged', () => this._finish(false)),
         ];
-        this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, UNMAXIMIZE_SETTLE_MS, () => {
+        this._timeoutId = addTimeout(UNMAXIMIZE_SETTLE_MS, () => {
             this._timeoutId = 0;
             this._settleFromIdle();
-            return GLib.SOURCE_REMOVE;
         });
         unmaximizeWindow(win);
     }
 
     destroy() {
-        if (this._timeoutId) {
-            GLib.source_remove(this._timeoutId);
-            this._timeoutId = 0;
-        }
-        if (this._idleId) {
-            GLib.source_remove(this._idleId);
-            this._idleId = 0;
-        }
+        removeSource(this._timeoutId);
+        this._timeoutId = 0;
+        removeSource(this._idleId);
+        this._idleId = 0;
         for (const id of this._signalIds)
             this._win.disconnect(id);
         this._signalIds = [];
@@ -196,10 +210,9 @@ export class UnmaximizeWait {
     _settleFromIdle() {
         if (this._idleId)
             return;
-        this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        this._idleId = addIdle(() => {
             this._idleId = 0;
             this._finish(true);
-            return GLib.SOURCE_REMOVE;
         });
     }
 }
@@ -319,15 +332,13 @@ export class WindowPlacer {
             for (const id of entry.answerIds)
                 win.disconnect(id);
             entry.answerIds = [];
-            if (entry.timeoutId) {
-                GLib.source_remove(entry.timeoutId);
-                entry.timeoutId = 0;
-            }
+            removeSource(entry.timeoutId);
+            entry.timeoutId = 0;
             // 'size-changed' is emitted from inside mutter's own move-resize,
             // where a new request would be overwritten (see UnmaximizeWait).
             // 'unmanaged' stays connected until then, so a window that closes
             // first gets no request.
-            entry.idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            entry.idleId = addIdle(() => {
                 entry.idleId = 0;
                 this._dropAnswer(win);
                 if (entry.request) {
@@ -338,7 +349,6 @@ export class WindowPlacer {
                         this._unanswered = null;
                     }
                 }
-                return GLib.SOURCE_REMOVE;
             });
         };
         entry.answerIds = [
@@ -346,10 +356,9 @@ export class WindowPlacer {
             win.connect('position-changed', () => answered()),
         ];
         entry.unmanagedId = win.connect('unmanaged', () => this._dropAnswer(win));
-        entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ANSWER_WAIT_MS, () => {
+        entry.timeoutId = addTimeout(ANSWER_WAIT_MS, () => {
             entry.timeoutId = 0;
             answered(true);
-            return GLib.SOURCE_REMOVE;
         });
         this._answers.set(win, entry);
     }
@@ -358,10 +367,8 @@ export class WindowPlacer {
         const entry = this._answers.get(win);
         if (!entry)
             return;
-        if (entry.idleId)
-            GLib.source_remove(entry.idleId);
-        if (entry.timeoutId)
-            GLib.source_remove(entry.timeoutId);
+        removeSource(entry.idleId);
+        removeSource(entry.timeoutId);
         for (const id of [...entry.answerIds, entry.unmanagedId].filter(Boolean))
             win.disconnect(id);
         this._answers.delete(win);

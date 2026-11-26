@@ -4,9 +4,8 @@
 // the overview, and minimized when focus moves away or the overview opens.
 // rules.js decides which windows are overlays.
 
-import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { minimizeWindow } from './window-helpers.js';
+import { addTimeout, minimizeWindow, removeSource } from './window-helpers.js';
 
 // A focus change away from an overlay hides it only when the change still
 // holds this long after: wl-copy and wl-paste map a surface that takes the
@@ -123,12 +122,11 @@ export class WindowOverlays {
             if (!focus)
                 continue;
             this._removeGrace(entry);
-            entry.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FOCUS_LOSS_GRACE_MS, () => {
+            entry.graceId = addTimeout(FOCUS_LOSS_GRACE_MS, () => {
                 entry.graceId = 0;
                 const now = global.display.focus_window;
                 if (now && !this._holdsFocus(win, now))
                     this._hide(win, 'focus moved to another window');
-                return GLib.SOURCE_REMOVE;
             });
         }
     }
@@ -153,9 +151,7 @@ export class WindowOverlays {
     }
 
     _removeGrace(entry) {
-        if (entry.graceId) {
-            GLib.source_remove(entry.graceId);
-            entry.graceId = 0;
-        }
+        removeSource(entry.graceId);
+        entry.graceId = 0;
     }
 }
