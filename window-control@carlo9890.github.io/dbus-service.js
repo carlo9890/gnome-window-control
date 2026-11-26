@@ -117,17 +117,6 @@ export class WindowControlService {
         this._windowCreatedId = 0;
         // WaitForGeometry state, one entry per pending call.
         this._geometryWatchers = [];
-        // Every pending timeout source of both wait methods; unexport()
-        // removes them.
-        this._sourceIds = new Set();
-    }
-
-    _addTimeout(ms, callback) {
-        return addTimeout(this._sourceIds, ms, callback);
-    }
-
-    _removeSource(id) {
-        removeSource(this._sourceIds, id);
     }
 
     // NORMAL windows only: every method works on these.
@@ -638,7 +627,7 @@ export class WindowControlService {
         }
 
         const waiter = { predicate, invocation, timeoutId: 0, callerWatch: null };
-        waiter.timeoutId = this._addTimeout(timeoutMs, () => {
+        waiter.timeoutId = addTimeout(timeoutMs, () => {
             waiter.timeoutId = 0;
             console.debug(`[Window Control] WaitForWindow(${kind}) -> 0 (timeout)`);
             this._finishWaiter(waiter, 0);
@@ -690,7 +679,7 @@ export class WindowControlService {
         // that come ready together in attach order, and timeout_ms may equal
         // quiet_ms. Starting it now also lets an already still frame settle.
         this._restartQuietPeriod(watcher);
-        watcher.timeoutId = this._addTimeout(timeoutMs, () => {
+        watcher.timeoutId = addTimeout(timeoutMs, () => {
             watcher.timeoutId = 0;
             console.debug(`[Window Control] WaitForGeometry(${windowId}) -> Timeout`);
             this._failGeometryWatcher(watcher, DBUS_ERROR_TIMEOUT,
@@ -699,8 +688,8 @@ export class WindowControlService {
     }
 
     _restartQuietPeriod(watcher) {
-        this._removeSource(watcher.quietId);
-        watcher.quietId = this._addTimeout(watcher.quietMs, () => {
+        removeSource(watcher.quietId);
+        watcher.quietId = addTimeout(watcher.quietMs, () => {
             watcher.quietId = 0;
             // A frame the window has not answered yet is not settled: the
             // answer changes it after the reply.
@@ -719,9 +708,9 @@ export class WindowControlService {
         if (index === -1)
             return false;
         this._geometryWatchers.splice(index, 1);
-        this._removeSource(watcher.quietId);
+        removeSource(watcher.quietId);
         watcher.quietId = 0;
-        this._removeSource(watcher.timeoutId);
+        removeSource(watcher.timeoutId);
         watcher.timeoutId = 0;
         for (const id of watcher.signalIds)
             watcher.win.disconnect(id);
@@ -889,7 +878,7 @@ export class WindowControlService {
     // A waiter whose caller left the bus is only retired: there is no one to
     // reply to. The last waiter gone ends the watch.
     _retireWaiter(waiter) {
-        this._removeSource(waiter.timeoutId);
+        removeSource(waiter.timeoutId);
         waiter.timeoutId = 0;
         this._unwatchCaller(waiter);
         this._waiters = this._waiters.filter(w => w !== waiter);
@@ -897,13 +886,15 @@ export class WindowControlService {
             this._stopWatching();
     }
 
-    // Fail every pending WaitForWindow call and drop all signal handlers and
-    // caller watches. Called from unexport(), after it has removed the timeout
-    // sources; leaves nothing behind.
+    // Fail every pending WaitForWindow call and remove its timeout and caller
+    // watch, then every per-window handler and first-show watch. Called from
+    // unexport(); leaves nothing behind.
     _cancelWaiters() {
         const pending = this._waiters;
         this._waiters = [];
         for (const waiter of pending) {
+            removeSource(waiter.timeoutId);
+            waiter.timeoutId = 0;
             this._unwatchCaller(waiter);
             waiter.invocation.return_dbus_error(DBUS_ERROR_DISABLED, 'Window Control extension disabled');
         }
@@ -1006,9 +997,6 @@ export class WindowControlService {
     unexport() {
         global.display.disconnect(this._windowCreatedId);
         this._windowCreatedId = 0;
-        for (const id of this._sourceIds)
-            GLib.source_remove(id);
-        this._sourceIds.clear();
         this._cancelWaiters();
         this._cancelGeometryWatchers();
         this._dbusImpl.unexport();

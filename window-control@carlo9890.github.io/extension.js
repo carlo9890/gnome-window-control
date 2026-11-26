@@ -9,7 +9,7 @@ import { DBUS_OBJECT_PATH, WindowControlService } from './dbus-service.js';
 import { WindowRules } from './rules.js';
 import { WindowKeybindings } from './keybindings.js';
 import { WindowControlIndicator } from './indicator.js';
-import { WindowPlacer } from './window-helpers.js';
+import { WindowPlacer, removeAllSources } from './window-helpers.js';
 
 const SHOW_INDICATOR_KEY = 'show-indicator';
 
@@ -62,6 +62,7 @@ export default class WindowControlExtension extends Extension {
         this._placer.destroy();
         this._placer = null;
         this._settings = null;
+        removeAllSources();
         console.log(`[${this.metadata.name}] D-Bus service unregistered`);
     }
 
