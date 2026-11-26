@@ -886,9 +886,8 @@ export class WindowControlService {
             this._stopWatching();
     }
 
-    // Fail every pending WaitForWindow call and drop all signal handlers and
-    // caller watches. Called from unexport(), after it has removed the timeout
-    // sources; leaves nothing behind.
+    // Fail every pending WaitForWindow call, and remove its timeout, signal
+    // handlers and caller watch. Called from unexport(); leaves nothing behind.
     _cancelWaiters() {
         const pending = this._waiters;
         this._waiters = [];

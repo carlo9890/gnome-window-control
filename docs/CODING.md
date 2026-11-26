@@ -30,10 +30,10 @@ does not run either script end to end.
 - Make `disable()` undo everything `enable()` did: every signal handler, GLib
   source, bus-name watch, file monitor, cancellable, keybinding and pending
   `...Async` invocation. extensions.gnome.org rejects an upload that does not.
-  Start every timeout and idle with `addTimeout` or `addIdle` from
-  `window-helpers.js`, never `GLib` directly, and end one early with
-  `removeSource`. `disable()` ends all that are left with `removeAllSources()`,
-  the one cleanup an extensions.gnome.org reviewer asked for. Add a case
+  In `extension.js` and its imports, start every timeout and idle with
+  `addTimeout` or `addIdle` from `window-helpers.js`, never `GLib` directly,
+  and end one early with `removeSource`. `disable()` ends all that are left
+  with `removeAllSources()`. Add a case
   to `tests/check-extension-headless.js` for each new handler or source: it
   checks only those it is told about.
 - Send every frame request (a position or a size) for a shown window through
