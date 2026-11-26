@@ -93,7 +93,7 @@ def overview():
     ]
     card, _ = terminal(56, 164 + height + 24, 520, "On window creation: rules.json", rule)
     svg.append(card)
-    svg.append(f'<text x="56" y="588" font-family="{SANS}" font-size="16" fill="{MUTED}">GNOME Shell 45 to 50  ·  a shell extension and the wctl command  ·  MIT</text>')
+    svg.append(f'<text x="56" y="588" font-family="{SANS}" font-size="16" fill="{MUTED}">GNOME Shell 45 to 51  ·  a shell extension and the wctl command  ·  MIT</text>')
 
     # Right column: the numpad.
     left, top, tile_w, tile_h, gap, cell = 640, 164, 188, 118, 12, 30
