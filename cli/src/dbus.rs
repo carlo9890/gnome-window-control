@@ -60,9 +60,13 @@ pub const DEFAULT_TIMEOUT_SECONDS: u64 = 25;
 fn error_reply(err: &zbus::Error) -> Option<(String, Option<String>)> {
     match err {
         zbus::Error::MethodError(name, detail, _) => Some((name.to_string(), detail.clone())),
-        zbus::Error::FDO(fdo) => {
-            Some((fdo.name().to_string(), fdo.description().map(String::from)))
-        }
+        // zbus gives an FDO reply without a message an empty description.
+        zbus::Error::FDO(fdo) => Some((
+            fdo.name().to_string(),
+            fdo.description()
+                .filter(|detail| !detail.is_empty())
+                .map(String::from),
+        )),
         _ => None,
     }
 }
@@ -467,20 +471,23 @@ mod tests {
 
     use crate::fail::EXIT_ERROR;
 
-    fn method_error(name: &str, detail: &str) -> zbus::Error {
-        let reply = zbus::Message::method_call(PATH, "Probe")
+    /// An error reply as zbus gives it to a caller: a real error message,
+    /// converted on the path zbus takes for a received reply.
+    fn reply_error<B>(name: &str, body: &B) -> zbus::Error
+    where
+        B: serde::ser::Serialize + DynamicType,
+    {
+        let call = zbus::Message::method_call(PATH, "Probe")
             .build(&())
             .expect("an empty body");
-        let reply = zbus::Error::MethodError(
-            zbus::names::ErrorName::try_from(name)
-                .expect("a valid error name")
-                .into(),
-            Some(detail.to_string()),
-            reply,
-        );
-        // The conversion zbus applies to every error reply it receives: a name
-        // that zbus::fdo::Error defines becomes Error::FDO.
-        zbus::fdo::Error::from(reply).into()
+        let reply = zbus::Message::error(&call.header(), name)
+            .build(body)
+            .expect("a valid error name");
+        zbus::Error::from(reply)
+    }
+
+    fn method_error(name: &str, detail: &str) -> zbus::Error {
+        reply_error(name, &(detail,))
     }
 
     #[test]
@@ -525,6 +532,16 @@ mod tests {
             "Objekt existiert nicht im Pfad \u{bb}/org/gnome/Shell/Extensions/WindowControl\u{ab}",
             "Keine derartige Methode \u{bb}GetCapabilities\u{ab}",
         ]
+    }
+
+    #[test]
+    fn a_reply_without_a_message_is_reported_by_its_name() {
+        for name in [ERROR_UNKNOWN_METHOD, ERROR_NOT_FOUND] {
+            assert_eq!(
+                error_reply(&reply_error(name, &())),
+                Some((name.to_string(), None))
+            );
+        }
     }
 
     #[test]

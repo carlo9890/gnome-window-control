@@ -11,8 +11,9 @@ PROJECT_ROOT="$(dirname "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")"
 INTERFACE="$PROJECT_ROOT/window-control@carlo9890.github.io/dbus-interface.js"
 GUIDE="$PROJECT_ROOT/docs/user-guide/dbus.md"
 
-interface_methods=$(grep -oP '<method name="\K[A-Za-z]+' "$INTERFACE" | sort)
-table_methods=$(sed -n '/^## Methods$/,/^## /p' "$GUIDE" | grep -oP '^\| `\K[A-Za-z]+(?=` \|)' | sort)
+# A grep with no match ends the script under set -e: the test below reports it.
+interface_methods=$(grep -oP '<method name="\K[A-Za-z]+' "$INTERFACE" | sort || true)
+table_methods=$(sed -n '/^## Methods$/,/^## /p' "$GUIDE" | grep -oP '^\| `\K[A-Za-z]+(?=` \|)' | sort || true)
 
 if [[ -z "$interface_methods" || -z "$table_methods" ]]; then
     echo "Error: no method found in $INTERFACE or in the Methods table of $GUIDE" >&2

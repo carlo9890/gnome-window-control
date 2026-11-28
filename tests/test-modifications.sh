@@ -515,7 +515,7 @@ if [[ -n "$other_id" ]]; then
     "$WCTL" activate "$other_id" 2>/dev/null || true
     wait_for_change
 fi
-set_overview_active true
+set_overview_active true || true
 wait_for_change
 if [[ "$(overview_active)" == "true" ]]; then
     run_wctl activate "$TEST_WINDOW_ID"
@@ -525,7 +525,7 @@ if [[ "$(overview_active)" == "true" ]]; then
 else
     skip "activate from the overview: the shell did not open the overview"
 fi
-set_overview_active false
+set_overview_active false || true
 wait_for_change
 
 # Test: focus
