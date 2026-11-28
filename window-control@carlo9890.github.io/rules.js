@@ -268,7 +268,8 @@ export class WindowRules {
     // initial configuration (see _preplace).
     _track(win) {
         const entry = {
-            ids: [], actor: null, actorIds: [], graceId: 0, graceEnd: 0, applyId: 0, shown: false, headStart: null,
+            ids: [], actor: null, actorIds: [], waitsForFirstFrame: false,
+            graceId: 0, graceEnd: 0, applyId: 0, shown: false, headStart: null,
         };
         const evaluate = () => this._evaluate(win);
         const shown = () => {
@@ -286,6 +287,7 @@ export class WindowRules {
         // map emits no 'shown'. Its actor draws the first frame only after
         // the placement. Mutter can destroy the actor before 'unmanaged'.
         if (win.get_client_type() === Meta.WindowClientType.X11) {
+            entry.waitsForFirstFrame = true;
             entry.actor = win.get_compositor_private();
             entry.actorIds = [
                 entry.actor.connect('first-frame', shown),
@@ -400,9 +402,8 @@ export class WindowRules {
         if (!entry || entry.applyId)
             return;
         // Tracked since creation, so "never seen unhidden and 'shown' not yet
-        // fired" is exactly "mutter has not placed it yet". An X11 window
-        // tells it by its first frame alone (see _track).
-        if (!entry.shown && (entry.actorIds.length > 0 || win.is_hidden()))
+        // fired" is exactly "mutter has not placed it yet".
+        if (!entry.shown && (entry.waitsForFirstFrame || win.is_hidden()))
             return;
         entry.shown = true;
         // A shown window that is not NORMAL matches nothing, so it gets the
