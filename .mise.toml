@@ -1,5 +1,7 @@
 [tools]
 rust = "1.98.0"
+# The mise registry has no cargo-audit; its release tags carry this prefix.
+"github:rustsec/rustsec" = { version = "0.23.0", version_prefix = "cargo-audit/v", bin = "cargo-audit" }
 
 # rustup's minimal profile ships neither clippy nor rustfmt, and which profile a
 # machine installed with is not something the pin controls. Adding them is
@@ -44,9 +46,16 @@ depends = ["components"]
 dir = "{{config_root}}/cli"
 run = "cargo build --release"
 
+# It fetches the advisory database on each run, so it needs the network, and a
+# new advisory can fail it with no change here.
+[tasks.audit]
+description = "Check the dependencies against the RustSec advisory database"
+dir = "{{config_root}}/cli"
+run = "cargo-audit audit --deny warnings"
+
 [tasks.ci]
 description = "Everything CI gates on"
-depends = ["fmt:check", "lint", "test", "build"]
+depends = ["fmt:check", "lint", "test", "build", "audit"]
 
 # The release asset: a static x86_64 binary that runs on any distribution
 # without matching a glibc version. CI and release.sh both build it here.

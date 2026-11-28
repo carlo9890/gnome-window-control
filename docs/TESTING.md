@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-mise run ci                                              # the crate gate: fmt, clippy, tests, build
+mise run ci                                              # the crate gate: fmt, clippy, tests, build, cargo audit
 env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js   # rules grammar, no typelib
 env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js          # preferences logic
 dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) &&

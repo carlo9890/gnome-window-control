@@ -4,7 +4,7 @@
 ./scripts/build.sh validate   # node --check on every extension *.js, uuid, interface XML, schema
 ./scripts/build.sh all        # validate, then build the zip into dist/
 ./scripts/build.sh install    # copy the extension into place; the reload is in RUNNING.md
-mise run ci                   # cli/: fmt, clippy, tests, build, on the toolchain .mise.toml pins
+mise run ci                   # cli/: fmt, clippy, tests, build, cargo audit, on the tools .mise.toml pins
 ```
 
 Run `./scripts/build.sh validate` after every change to a `.js` file, with
