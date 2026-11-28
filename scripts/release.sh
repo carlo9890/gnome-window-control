@@ -93,8 +93,8 @@ Release Process:
     1b. Update version in cli/Cargo.toml to match (e.g., "0.X.0" for version-name "X")
     1c. Refresh cli/Cargo.lock so it agrees with the manifest:
         (cd cli && cargo update -p wctl)
-        Skipping this leaves the tag shipping a lock that pins the old version,
-        and the release build rewrites it afterwards, dirtying the tree.
+        The cargo tasks build with --locked, so CI and the release build refuse
+        a lock that still pins the old version.
     2. Commit: git commit -am "chore: bump version to vX"
     3. Create tag: git tag vX
     4. Push: git push && git push --tags
@@ -172,7 +172,7 @@ get_version() {
         exit 1
     fi
     
-    VERSION=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version-name'])")
+    VERSION=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['version-name'])" "$EXTENSION_DIR/metadata.json")
     TAG="v${VERSION}"
     ZIP_NAME="${EXTENSION_UUID}_v${VERSION}.zip"
     ZIP_PATH="$DIST_DIR/$ZIP_NAME"

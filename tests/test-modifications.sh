@@ -607,12 +607,15 @@ WAIT_TITLE="auto-test:wait-target"
 wait_started=$(date +%s%N)
 kitty -o remember_window_size=no --title "$WAIT_TITLE" &
 WAIT_KITTY_PID=$!
+# This kitty inherits the suite's stdout, so while it runs the runner's
+# capture never ends: an exit before the kill below must end it too.
+trap 'kill "$WAIT_KITTY_PID" 2>/dev/null || true; cleanup_test_window' EXIT
 run_wctl wait -p "$WAIT_KITTY_PID" --timeout 10
 wait_elapsed_ms=$(( ($(date +%s%N) - wait_started) / 1000000 ))
 assert_exit_code 0 "$WCTL_EXIT_CODE" "wait -p: exits 0 once the window appears (${wait_elapsed_ms} ms)"
 assert_matches "$WCTL_OUTPUT" "^[0-9]+$" "wait -p: prints a numeric window id"
 WAIT_WINDOW_ID="$WCTL_OUTPUT"
-wait_title=$("$WCTL" info "$WAIT_WINDOW_ID" --json 2>/dev/null | jq -r '.title')
+wait_title=$("$WCTL" info "$WAIT_WINDOW_ID" --json 2>/dev/null | jq -r '.title') || true
 assert_equals "$wait_title" "$WAIT_TITLE" "wait -p: the id belongs to the window that appeared"
 
 info "Testing: wait -t for an already existing window returns at once"
@@ -622,6 +625,7 @@ assert_equals "$WCTL_OUTPUT" "$WAIT_WINDOW_ID" "wait -t existing: prints the sam
 
 "$WCTL" close "$WAIT_WINDOW_ID" >/dev/null 2>&1 || true
 kill "$WAIT_KITTY_PID" 2>/dev/null || true
+trap cleanup_test_window EXIT
 wait_for_change
 
 echo ""

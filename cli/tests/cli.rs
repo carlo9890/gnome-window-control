@@ -1656,7 +1656,7 @@ fn bash_completions(line: &[&str]) -> Vec<String> {
 source <(wctl completion bash)
 COMP_WORDS=({words}); COMP_CWORD={cword}
 _wctl
-printf '%s\n' "${{COMPREPLY[@]}}""#,
+[[ ${{#COMPREPLY[@]}} -eq 0 ]] || printf '%s\n' "${{COMPREPLY[@]}}""#,
         words = line
             .iter()
             .map(|word| format!("'{word}'"))
@@ -1698,6 +1698,148 @@ fn bash_completion_offers_what_each_position_accepts() {
     // --no-animation may come before the window.
     let offered = bash_completions(&["wctl", "minimize", "--no-animation", ""]);
     assert!(offered.iter().any(|word| word == "focused"), "{offered:?}");
+    // A flag already given is not offered again.
+    assert_eq!(bash_completions(&["wctl", "info", "111", ""]), ["--json"]);
+    assert!(bash_completions(&["wctl", "info", "111", "--json", ""]).is_empty());
+
+    // The value of an option is the user's own word: nothing is offered.
+    for line in [
+        &["wctl", "tile", "-c", ""][..],
+        &["wctl", "wait", "-c", ""],
+        &["wctl", "list", "--class", ""],
+        &["wctl", "resolve-place", "--monitor", ""],
+        &["wctl", "rules", "test", "-c", ""],
+    ] {
+        let offered = bash_completions(line);
+        assert!(offered.is_empty(), "{line:?} offered {offered:?}");
+    }
+    // A flag takes no position, on either side of the selector, and a
+    // selector with its value fills the <WINDOW> slot.
+    assert_eq!(
+        bash_completions(&["wctl", "place", "--json", "111", ""]),
+        ["left", "center", "right"]
+    );
+    assert_eq!(
+        bash_completions(&["wctl", "tile", "--settled", ""]),
+        ["focused", "-c", "-t", "-s", "-p"]
+    );
+    assert_eq!(
+        bash_completions(&["wctl", "tile", "--json", "-c", "kitty", ""]),
+        [
+            "top-left",
+            "top-center",
+            "top-right",
+            "left",
+            "center",
+            "right",
+            "bottom-left",
+            "bottom-center",
+            "bottom-right",
+            "wide-left",
+            "wide-right"
+        ]
+    );
+}
+
+/// `script` run by `shell` with `flags`, in a new, empty home folder, with
+/// this wctl first on PATH: stdout and stderr, or None when the shell is not
+/// installed.
+fn run_in_new_home(
+    tag: &str,
+    shell: &str,
+    flags: &[&str],
+    script: &str,
+) -> Option<(String, String)> {
+    let home = std::env::temp_dir().join(format!("wctl-home-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).expect("home folder");
+    let binary = cargo_bin("wctl");
+    let path = format!(
+        "{}:{}",
+        binary.parent().expect("binary directory").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new(shell)
+        .args(flags)
+        .args(["-c", script])
+        .env("HOME", &home)
+        .env("PATH", path)
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output();
+    std::fs::remove_dir_all(&home).ok();
+    let Ok(output) = output else {
+        eprintln!("skipping: {shell} is not installed");
+        return None;
+    };
+    Some((
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    ))
+}
+
+/// The bash lines of `wctl help` work as written on an account that has no
+/// completions folder yet.
+#[test]
+fn bash_completion_installs_as_the_help_says() {
+    let install = [
+        "mkdir -p ~/.local/share/bash-completion/completions",
+        "wctl completion bash > ~/.local/share/bash-completion/completions/wctl",
+    ];
+    let (help, _) = wctl(&["help"]);
+    for line in install {
+        assert!(help.contains(line), "help has no {line:?}");
+    }
+    let (script, _) = wctl(&["completion", "bash"]);
+    let check = format!(
+        "{}\ncat ~/.local/share/bash-completion/completions/wctl",
+        install.join("\n")
+    );
+    if let Some((stdout, stderr)) =
+        run_in_new_home("bash-install", "bash", &["--norc", "--noprofile"], &check)
+    {
+        assert_eq!(stderr, "");
+        assert_eq!(stdout, script);
+    }
+}
+
+/// The zsh lines of `wctl help` work as written on an account that has no
+/// site-functions folder yet: compinit finds `_wctl` and registers it for
+/// wctl, and the first call of the autoloaded function completes. Sourced
+/// after compinit, the script registers itself and completes nothing.
+#[test]
+fn zsh_completion_installs_as_the_help_says() {
+    let install = [
+        "mkdir -p ~/.local/share/zsh/site-functions",
+        "wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl",
+    ];
+    let before_compinit = "fpath=(~/.local/share/zsh/site-functions $fpath)";
+    let (help, _) = wctl(&["help"]);
+    for line in install.iter().chain([&before_compinit]) {
+        assert!(help.contains(line), "help has no {line:?}");
+    }
+    // A stand-in _arguments shows that the autoloaded body called the
+    // completion rather than compdef: the real one needs a completion widget.
+    let autoloaded = format!(
+        "{}\n{before_compinit}\nautoload -Uz compinit\ncompinit -D -u\n\
+         print -r -- \"registered: ${{_comps[wctl]-}}\"\n\
+         _arguments() {{ print -r -- completes }}\n_wctl",
+        install.join("\n")
+    );
+    let sourced = "autoload -Uz compinit\ncompinit -D -u\nsource <(wctl completion zsh)\n\
+         print -r -- \"registered: ${_comps[wctl]-}\"";
+    for (tag, script, expected) in [
+        (
+            "zsh-fpath",
+            autoloaded.as_str(),
+            "registered: _wctl\ncompletes\n",
+        ),
+        ("zsh-source", sourced, "registered: _wctl\n"),
+    ] {
+        if let Some((stdout, stderr)) = run_in_new_home(tag, "zsh", &["-f"], script) {
+            assert_eq!(stderr, "", "{tag}");
+            assert_eq!(stdout, expected, "{tag}");
+        }
+    }
 }
 
 /// `wctl` with XDG_CONFIG_HOME at `config`, so the default rules file and
@@ -1706,6 +1848,7 @@ fn wctl_config(config: &Path, args: &[&str]) -> (String, String, i32) {
     let output = Command::new(cargo_bin("wctl"))
         .args(args)
         .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .env("HOME", config)
         .env("XDG_CONFIG_HOME", config)
         .env_remove("WCTL_TIMEOUT")
         .output()
@@ -2382,5 +2525,159 @@ fn rules_add_into_rules_d_prints_no_refused_key_text() {
     assert_eq!(out, format!("Added rule 0 to {tool}\n"));
     assert_eq!(err, "");
 
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rule added ahead of a narrower rule of the same file takes its windows:
+/// `rules add --at` names the rule it turns off.
+#[test]
+fn rules_add_at_warns_about_the_later_rule_it_shadows() {
+    let config = rules_config("rules-add-at-shadow", "[]", &[]);
+    let user = config.join("gnome-window-control/rules.json");
+
+    let (stdout, stderr, code) = wctl_config(
+        &config,
+        &[
+            "rules",
+            "add",
+            "-c",
+            "kitty",
+            "place",
+            "center",
+            "top",
+            "75%",
+            "100%",
+            "--min-width",
+            "3000",
+        ],
+    );
+    assert_eq!(
+        (stdout, stderr.as_str(), code),
+        (format!("Added rule 0 to {}\n", user.display()), "", 0)
+    );
+
+    let (stdout, stderr, code) = wctl_config(
+        &config,
+        &[
+            "rules", "add", "-c", "kitty", "place", "center", "top", "100%", "100%", "--at", "0",
+        ],
+    );
+    assert_eq!(
+        (stdout, stderr.as_str(), code),
+        (
+            format!("Added rule 0 to {}\n", user.display()),
+            "Warning: this rule matches every window rule 1 would, \
+             and the first match wins, so rule 1 will never fire.\n",
+            0
+        )
+    );
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A later rule that a rule of an earlier file turns off already is not one
+/// the new rule turns off.
+#[test]
+fn rules_add_at_names_no_later_rule_an_earlier_file_shadows() {
+    let config = rules_config(
+        "rules-add-at-earlier-file",
+        r#"[{"match":{"class":"kitty"},"tile":"left"}]"#,
+        &[(
+            "50-x.json",
+            r#"[{"match":{"class":"kitty","title":"vim"},"center":"both"}]"#,
+        )],
+    );
+    let drop_in = config.join("gnome-window-control/rules.d/50-x.json");
+    let drop_in_arg = drop_in.display().to_string();
+
+    let (stdout, stderr, code) = wctl_config(
+        &config,
+        &[
+            "rules",
+            "add",
+            "--file",
+            &drop_in_arg,
+            "--at",
+            "0",
+            "-c",
+            "kitty",
+            "tile",
+            "right",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(stdout, format!("Added rule 0 to {}\n", drop_in.display()));
+    assert_eq!(
+        stderr,
+        "Warning: rule 0 of rules.json already matches every window this rule would, \
+         and the first match wins, so the new rule will never fire.\n"
+    );
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rewrite would put U+FFFD over a byte that is not UTF-8, so `rules add`
+/// and `rules remove` refuse the file and leave it as it is.
+#[test]
+fn rules_add_and_remove_refuse_a_file_that_is_not_utf8() {
+    let config = rules_config("rules-not-utf8", "", &[]);
+    let user = config.join("gnome-window-control/rules.json");
+    // "Café" in Latin-1: e9 alone is no UTF-8 sequence.
+    let latin1 = b"[{\"match\":{\"title\":\"Caf\xe9\"},\"tile\":\"left\"}]\n";
+    std::fs::write(&user, latin1).expect("write rules.json");
+    let refusal = format!(
+        "Error: Cannot rewrite {}: it has bytes that are not UTF-8, and they would be lost. \
+         Save the file as UTF-8 first.\n",
+        user.display()
+    );
+
+    for args in [
+        &["rules", "add", "-c", "kitty", "tile", "right"][..],
+        &["rules", "remove", "0"],
+    ] {
+        assert_eq!(
+            wctl_config(&config, args),
+            (String::new(), refusal.clone(), 1),
+            "{args:?}"
+        );
+        assert_eq!(std::fs::read(&user).expect("read rules.json"), latin1);
+    }
+    std::fs::remove_dir_all(&config).ok();
+}
+
+/// A rules.json with a second name is refused with nothing changed: a rename
+/// would leave the other name on the old rules.
+#[cfg(unix)]
+#[test]
+fn rules_add_and_remove_refuse_a_hard_linked_file() {
+    use std::os::unix::fs::MetadataExt;
+
+    let rule = r#"[{"match": {"class": "foot"}, "tile": "right"}]"#;
+    let config = rules_config("rules-hard-link", rule, &[]);
+    let user = config.join("gnome-window-control/rules.json");
+    let second_name = config.join("second-name.json");
+    std::fs::hard_link(&user, &second_name).expect("hard link");
+    let inode = std::fs::metadata(&user).expect("stat rules.json").ino();
+    let refusal = format!(
+        "Error: Cannot rewrite {}: it has a second hard link, which the rewrite would cut off. \
+         Replace the hard link with a symlink, or edit the file by hand.\n",
+        user.display()
+    );
+
+    for args in [
+        &["rules", "add", "-c", "kitty", "tile", "left"][..],
+        &["rules", "remove", "0"][..],
+    ] {
+        let (stdout, stderr, code) = wctl_config(&config, args);
+        assert_eq!(
+            (stdout.as_str(), stderr.as_str(), code),
+            ("", refusal.as_str(), 1),
+            "{args:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&user).expect("read rules.json"),
+            rule
+        );
+        let metadata = std::fs::metadata(&user).expect("stat rules.json");
+        assert_eq!((metadata.ino(), metadata.nlink()), (inode, 2));
+    }
     std::fs::remove_dir_all(&config).ok();
 }

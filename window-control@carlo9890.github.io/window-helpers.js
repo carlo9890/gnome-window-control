@@ -13,7 +13,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 // The ID of every pending timeout and idle source of the extension. Every
 // module starts its sources with addTimeout() or addIdle(), and disable()
 // removes all that are left with removeAllSources().
-const pendingSourceIds = [];
+const pendingSourceIds = new Set();
 
 // A one-shot timeout. Its ID leaves pendingSourceIds when it fires.
 export function addTimeout(ms, callback) {
@@ -27,31 +27,25 @@ export function addIdle(callback) {
 
 function trackOnce(add, callback) {
     const id = add(() => {
-        forgetSource(id);
+        pendingSourceIds.delete(id);
         callback();
         return GLib.SOURCE_REMOVE;
     });
-    pendingSourceIds.push(id);
+    pendingSourceIds.add(id);
     return id;
-}
-
-function forgetSource(id) {
-    const index = pendingSourceIds.indexOf(id);
-    if (index === -1)
-        return false;
-    pendingSourceIds.splice(index, 1);
-    return true;
 }
 
 // Removes a pending source. An ID of 0, or of a source that already fired or
 // was removed, is ignored.
 export function removeSource(id) {
-    if (forgetSource(id))
+    if (pendingSourceIds.delete(id))
         GLib.source_remove(id);
 }
 
 export function removeAllSources() {
-    for (const id of pendingSourceIds.splice(0))
+    const ids = [...pendingSourceIds];
+    pendingSourceIds.clear();
+    for (const id of ids)
         GLib.source_remove(id);
 }
 
@@ -150,7 +144,11 @@ export function moveToMonitor(win, placer, index) {
     const pending = placer.pendingMonitor(win);
     if (pending !== null && pending !== index)
         placer.cancel(win);
-    win.move_to_monitor(index);
+    // From mutter 49.1 on, move_to_monitor() puts a hidden window (minimized,
+    // or on another workspace) at the origin of the monitor's workarea, also
+    // when the window is on that monitor already.
+    if (win.get_monitor() !== index || !win.is_hidden())
+        win.move_to_monitor(index);
 }
 
 // How long to wait for an unmaximize to land before placing the frame anyway.
@@ -217,6 +215,16 @@ export class UnmaximizeWait {
     }
 }
 
+// Whether a held request is still the newest request of the window, which
+// had the maximize flags `heldFlags` when the request was held. A maximize,
+// a tile or a fullscreen since then is newer. The flags it was held with are
+// not: place() restores the window from them first. No caller holds a
+// request for a fullscreen window.
+function heldRequestIsNewest(win, heldFlags) {
+    const flags = maximizeFlags(win);
+    return !win.is_fullscreen() && (flags === 0 || flags === heldFlags);
+}
+
 // The one owner of the frame requests of a shown window: the shortcuts, a
 // rule's geometry and the D-Bus geometry methods all place through it, so a
 // window has at most one placement pending and the newest request wins.
@@ -239,7 +247,7 @@ export class UnmaximizeWait {
 export class WindowPlacer {
     constructor() {
         this._pending = new Map();        // Meta.Window -> { wait, request, monitor }
-        this._answers = new Map();        // Meta.Window -> { answerIds, unmanagedId, idleId, timeoutId, request, monitor }
+        this._answers = new Map();        // Meta.Window -> { answerIds, unmanagedId, idleId, timeoutId, request, monitor, heldFlags }
         this._unanswered = null;          // the window whose wait just ended without an answer
     }
 
@@ -249,7 +257,7 @@ export class WindowPlacer {
     place(win, request, monitor = win.get_monitor()) {
         const answer = this._answers.get(win);
         if (answer) {
-            Object.assign(answer, { request, monitor });
+            Object.assign(answer, { request, monitor, heldFlags: maximizeFlags(win) });
             return;
         }
         const pending = this._pending.get(win);
@@ -267,8 +275,9 @@ export class WindowPlacer {
         const entry = { wait: null, request, monitor };
         entry.wait = new UnmaximizeWait(win, landed => {
             this._pending.delete(win);
-            // Maximized again since: that maximize is the newest request.
-            if (landed && maximizeFlags(win) === 0)
+            // A flag set since the restore cleared them is newer than the
+            // held request: place() replaces it only while they are clear.
+            if (landed && heldRequestIsNewest(win, 0))
                 entry.request();
         });
         this._pending.set(win, entry);
@@ -326,7 +335,7 @@ export class WindowPlacer {
         this._dropAnswer(win);
         const entry = {
             answerIds: [], unmanagedId: 0, idleId: 0, timeoutId: 0,
-            request: older?.request ?? null, monitor: older?.monitor ?? null,
+            request: older?.request ?? null, monitor: older?.monitor ?? null, heldFlags: older?.heldFlags ?? 0,
         };
         const answered = (timedOut = false) => {
             for (const id of entry.answerIds)
@@ -342,7 +351,7 @@ export class WindowPlacer {
             entry.idleId = addIdle(() => {
                 entry.idleId = 0;
                 this._dropAnswer(win);
-                if (entry.request) {
+                if (entry.request && heldRequestIsNewest(win, entry.heldFlags)) {
                     this._unanswered = timedOut ? win : null;
                     try {
                         this.place(win, entry.request, entry.monitor);

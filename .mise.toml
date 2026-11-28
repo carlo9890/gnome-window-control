@@ -26,23 +26,30 @@ depends = ["components"]
 dir = "{{config_root}}/cli"
 run = "cargo fmt --check"
 
+# --locked on every task that resolves dependencies: a Cargo.lock that
+# disagrees with Cargo.toml, as after a version bump without
+# `cargo update -p wctl`, fails the task. Without it cargo rewrites the lock in
+# place, which CI never sees and which happens after release.sh has checked
+# for a clean tree, so the tag ships the stale lock.
 [tasks.lint]
 description = "Clippy with warnings as errors"
 depends = ["components"]
 dir = "{{config_root}}/cli"
-run = "cargo clippy --all-targets -- -D warnings"
+run = "cargo clippy --locked --all-targets -- -D warnings"
 
 [tasks.test]
 description = "Unit and argument-guard tests (no extension needed)"
 depends = ["components"]
 dir = "{{config_root}}/cli"
-run = "cargo test"
+run = "cargo test --locked"
 
+# --target-dir, as build:musl has: install-wctl.sh --local and the shell suites
+# take cli/target/release/wctl.
 [tasks.build]
 description = "Build the release binary"
 depends = ["components"]
 dir = "{{config_root}}/cli"
-run = "cargo build --release"
+run = "cargo build --release --locked --target-dir target"
 
 # It fetches the advisory database on each run, so it needs the network, and a
 # new advisory can fail it with no change here.
@@ -63,12 +70,16 @@ depends = ["fmt:check", "lint", "test", "build", "audit"]
 
 # The release asset: a static x86_64 binary that runs on any distribution
 # without matching a glibc version. CI and release.sh both build it here.
+#
+# --target-dir, because release.sh and CI take the binary from cli/target: with
+# CARGO_TARGET_DIR or build.target-dir set, cargo would write it elsewhere and
+# leave an older build there to be checked and published.
 [tasks."build:musl"]
 description = "Build the static x86_64 release binary and check its linkage"
 depends = ["components"]
 dir = "{{config_root}}/cli"
 run = [
   "rustup target add x86_64-unknown-linux-musl",
-  "cargo build --release --target x86_64-unknown-linux-musl",
+  "cargo build --release --locked --target x86_64-unknown-linux-musl --target-dir target",
   "../scripts/check-static.sh target/x86_64-unknown-linux-musl/release/wctl",
 ]

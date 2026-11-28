@@ -7,8 +7,9 @@
 //
 //     gjs -m tests/check-rules-format.js
 //
-// It loads rules-format.js, which imports nothing, so no mutter typelib and no
-// GNOME session are needed -- that is what lets CI run it on a bare runner.
+// It loads rules-format.js, which imports nothing, and rules-files.js, which
+// imports Gio and GLib only, so no mutter typelib and no GNOME session are
+// needed -- that is what lets CI run it on a bare runner.
 // Verify that property stays true with:
 //
 //     env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js
@@ -209,6 +210,17 @@ for (const vector of VECTORS.dropins.names) {
     const sorted = dropInNames(VECTORS.dropins.order.input);
     check('drop-in order: byte order', JSON.stringify(sorted) === JSON.stringify(VECTORS.dropins.order.output),
         `got ${JSON.stringify(sorted)}`);
+}
+
+// -- the bytes of a rules file: tests/vectors/rules-spec.json "decoding" -----
+
+{
+    const { decode } = await import(
+        GLib.filename_to_uri(`${ROOT}/window-control@carlo9890.github.io/rules-files.js`, null));
+    for (const vector of VECTORS.decoding.cases) {
+        const text = decode(Uint8Array.from(vector.bytes.split(' '), byte => parseInt(byte, 16)));
+        check(`decoding: ${vector.name}`, text === vector.text, `got ${JSON.stringify(text)}`);
+    }
 }
 
 // -- report ----------------------------------------------------------------

@@ -71,14 +71,14 @@ validate() {
     fi
     
     # Validate JSON syntax
-    if ! python3 -c "import json; json.load(open('$EXTENSION_DIR/metadata.json'))" 2>/dev/null; then
+    if ! python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$EXTENSION_DIR/metadata.json" 2>/dev/null; then
         log_error "metadata.json is not valid JSON!"
         exit 1
     fi
     
     # Check UUID matches directory name
     local uuid
-    uuid=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['uuid'])")
+    uuid=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['uuid'])" "$EXTENSION_DIR/metadata.json")
     if [[ "$uuid" != "$EXTENSION_UUID" ]]; then
         log_error "UUID mismatch: expected $EXTENSION_UUID, got $uuid"
         exit 1
@@ -106,10 +106,10 @@ validate() {
     # extension then reports state ERROR and serves nothing. Two delimiters are
     # expected; anything else is the bug.
     #
-    # grep -o, not grep -c: -c counts matching LINES, so a second backtick on
-    # either delimiter line would leave the count at 2 and pass a broken file.
+    # Characters, not lines: a second backtick on either delimiter line must
+    # count too.
     local ticks
-    ticks=$(grep -o '`' "$EXTENSION_DIR/dbus-interface.js" | wc -l)
+    ticks=$(tr -cd '`' < "$EXTENSION_DIR/dbus-interface.js" | wc -c)
     if [[ "$ticks" -ne 2 ]]; then
         log_error "dbus-interface.js has $ticks backtick(s), expected 2 (the template delimiters)."
         log_error "A backtick inside the XML ends the template literal early; use a single quote."
@@ -140,7 +140,7 @@ build() {
     log_info "Building extension..."
     
     local version
-    version=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version-name'])")
+    version=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['version-name'])" "$EXTENSION_DIR/metadata.json")
     local zip_name="${EXTENSION_UUID}_v${version}.zip"
     local zip_path="$DIST_DIR/$zip_name"
     

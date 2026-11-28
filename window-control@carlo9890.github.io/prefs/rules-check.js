@@ -26,15 +26,26 @@ export function checkRules(text) {
     }
 }
 
+// The line ends of the editor's GtkTextBuffer. JSON.parse counts the same,
+// except U+2029, which a string can hold.
+const LINE_END = /\r\n|[\r\n\u2029]/g;
+const JSON_LINE_END = /\r\n|[\r\n]/g;
+
+function lineAt(text, offset) {
+    return (text.slice(0, offset).match(LINE_END)?.length ?? 0) + 1;
+}
+
 function errorLine(text, message) {
-    const json = /at line (\d+) column \d+/.exec(message);
-    if (json)
-        return Number(json[1]);
+    const json = /at line (\d+) column (\d+)/.exec(message);
+    if (json) {
+        const lineStarts = [0, ...[...text.matchAll(JSON_LINE_END)].map(end => end.index + end[0].length)];
+        return lineAt(text, lineStarts[Number(json[1]) - 1] + Number(json[2]) - 1);
+    }
     const rule = /^rules\[(\d+)\]/.exec(message);
     if (rule) {
         const offset = elementOffsets(text)[Number(rule[1])];
         if (offset !== undefined)
-            return text.slice(0, offset).split('\n').length;
+            return lineAt(text, offset);
     }
     return null;
 }

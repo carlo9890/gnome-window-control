@@ -281,8 +281,9 @@ export class PopupSeparatorMenuItem {}
             super();
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
-                above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
+                above: false, fullscreen: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
                 monitor: 0, frame: { x: 10, y: 10, width: 400, height: 300 }, answersLate: false, constrain: null,
+                clientType: Meta.WindowClientType.WAYLAND, actor: this,
             });
         }
 
@@ -305,7 +306,17 @@ export class PopupSeparatorMenuItem {}
             this.emit('notify::above');
         }
 
-        get_compositor_private() { return this; }
+        make_fullscreen() {
+            this.fullscreen = true;
+            this.emit('notify::fullscreen');
+        }
+
+        unmake_fullscreen() {
+            this.fullscreen = false;
+            this.emit('notify::fullscreen');
+        }
+
+        get_compositor_private() { return this.actor; }
         is_on_all_workspaces() { return false; }
         is_skip_taskbar() { return false; }
         get_title() { return this.title ?? ''; }
@@ -313,8 +324,9 @@ export class PopupSeparatorMenuItem {}
         get_window_type() { return this.type; }
         is_hidden() { return this.hidden; }
         located_on_workspace() { return this.onActiveWorkspace; }
-        get_client_type() { return Meta.WindowClientType.WAYLAND; }
-        is_fullscreen() { return false; }
+        get_client_type() { return this.clientType; }
+        is_fullscreen() { return this.fullscreen; }
+        maximize() { this.maximizeFlags = Meta.MaximizeFlags.BOTH; }
         unmaximize() { this.maximizeFlags = 0; }
         get_monitor() { return this.monitor; }
         get_workspace() { return workspace; }
@@ -1271,6 +1283,98 @@ export class PopupSeparatorMenuItem {}
         service.unexport();
     }
 
+    // -- WindowPlacer: a maximize or fullscreen newer than a held request -------
+    //
+    // A request held for the window's answer or for its restore does not run
+    // when the window was maximized, tiled or made fullscreen after it was
+    // held: that change is the newest request. A request held while the window
+    // was maximized already is newer than that maximize, so it still restores
+    // the window and lands.
+
+    {
+        windows.length = 0;
+        monitors.push({ x: 1920, y: 0, width: 1920, height: 1080, scale: 1 });
+        const placer = new WindowPlacer();
+        const service = startService(placer);
+        const keybindings = new WindowKeybindings(placer, () => {});
+        let nextId = 100;
+        const slowWindow = () => {
+            const win = createWindow({ id: nextId++, wmClass: 'slow' });
+            win.map();
+            win.answersLate = true;
+            return win;
+        };
+        const show = win => `flags ${win.maximizeFlags}, monitor moves ${JSON.stringify(win.monitorMoves)}, ` +
+            `moves ${JSON.stringify(win.moves)}`;
+
+        const maximized = slowWindow();
+        service.ResizeAsync([maximized.id, 800, 600], invocation());
+        service.MoveAsync([maximized.id, 100, 100], invocation());
+        service.Maximize(maximized.id);
+        maximized.answer();
+        await sleep(50);
+        check('a Maximize after a held Move stays when the window answers',
+            maximized.maximizeFlags === Meta.MaximizeFlags.BOTH &&
+            JSON.stringify(maximized.moves) === '[[10,10,800,600]]', show(maximized));
+
+        // Mutter's own maximize shortcut does not pass through the extension.
+        const tiled = slowWindow();
+        keybindings._tile('tile-left', tiled, 'left');
+        keybindings._tile('tile-right', tiled, 'right');
+        tiled.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        tiled.answer();
+        await sleep(50);
+        check('a maximize after two tile shortcuts stays',
+            tiled.maximizeFlags === Meta.MaximizeFlags.BOTH && JSON.stringify(tiled.moves) === '[[0,0,480,1080]]',
+            show(tiled));
+
+        const fullscreen = slowWindow();
+        service.MoveResizeAsync([fullscreen.id, 0, 0, 480, 540], invocation());
+        service.MoveResizeAsync([fullscreen.id, 2000, 100, 800, 600], invocation());
+        service.Fullscreen(fullscreen.id);
+        fullscreen.answer();
+        await sleep(50);
+        check('a window made fullscreen after a held MoveResize to another monitor stays on its monitor',
+            fullscreen.monitorMoves === undefined && JSON.stringify(fullscreen.moves) === '[[0,0,480,540]]',
+            show(fullscreen));
+
+        const restoring = createWindow({ id: nextId++, wmClass: 'slow', maximizeFlags: Meta.MaximizeFlags.BOTH });
+        restoring.map();
+        keybindings._tile('tile-left', restoring, 'left');
+        const restorePending = placer._pending.has(restoring);
+        service.Fullscreen(restoring.id);
+        restoring.emit('size-changed');
+        await sleep(50);
+        check('a window made fullscreen while its restore is pending gets no frame request',
+            restorePending && restoring.moves.length === 0, show(restoring));
+
+        const newer = slowWindow();
+        service.ResizeAsync([newer.id, 800, 600], invocation());
+        newer.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        keybindings._tile('tile-left', newer, 'left');
+        newer.answer();
+        await sleep(50);
+        newer.emit('size-changed');   // the restore lands
+        await sleep(50);
+        check('a tile held while the window is maximized restores the window and lands',
+            newer.maximizeFlags === 0 && JSON.stringify(newer.moves) === '[[10,10,800,600],[0,0,480,1080]]',
+            show(newer));
+
+        const unanswered = slowWindow();
+        service.ResizeAsync([unanswered.id, 800, 600], invocation());
+        service.MoveAsync([unanswered.id, 200, 200], invocation());
+        service.Maximize(unanswered.id);
+        await sleep(ANSWER_WAIT_MS + 300);
+        check('a Maximize after a held Move stays when no answer comes',
+            unanswered.maximizeFlags === Meta.MaximizeFlags.BOTH &&
+            JSON.stringify(unanswered.moves) === '[[10,10,800,600]]', show(unanswered));
+
+        monitors.pop();
+        service.unexport();
+        placer.destroy();
+        windows.length = 0;
+    }
+
     // -- WindowPlacer: one placement per window, the newest wins ----------------
     //
     // A shortcut, a rule and a D-Bus geometry call made while another of them
@@ -1391,6 +1495,27 @@ export class PopupSeparatorMenuItem {}
             JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]', `${showMonitorMoves()}, moves ${moves}`);
         toMonitor0();
 
+        // From mutter 49.1 on, move_to_monitor() puts a hidden window at the
+        // origin of the workarea, also on the monitor it is on already.
+        win.minimize();
+        const movedToOwnMonitor = service.MoveToMonitor(60, 0);
+        check('MoveToMonitor to its own monitor leaves a minimized window where it is',
+            movedToOwnMonitor && win.monitorMoves === undefined, `reply ${movedToOwnMonitor}, ${showMonitorMoves()}`);
+        toMonitor0();
+        service.MoveToMonitor(60, 1);
+        check('MoveToMonitor still moves a minimized window to another monitor',
+            JSON.stringify(win.monitorMoves) === '[1]', showMonitorMoves());
+        toMonitor0();
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":0}]' }]);
+        const appliedToMinimized = invocation();
+        service.ApplyRulesAsync([60], appliedToMinimized);
+        check('a rule\'s monitor leaves a minimized window on that monitor where it is',
+            showReply(appliedToMinimized) === '{"value":[1]}' && win.monitorMoves === undefined,
+            `${showReply(appliedToMinimized)}, ${showMonitorMoves()}`);
+        toMonitor0();
+        win.minimized = false;
+        win.hidden = false;
+
         rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":1}]' }]);
         maximize();
         keybindings._tile('tile-left', win, 'left');
@@ -1433,6 +1558,80 @@ export class PopupSeparatorMenuItem {}
         keybindings._tile('tile-left', win, 'left');
         check('a request with no restore pending runs at once', JSON.stringify(win.moves) === LEFT,
             JSON.stringify(win.moves));
+
+        service.unexport();
+        rules.disable();
+        placer.destroy();
+        windows.length = 0;
+    }
+
+    // -- A fullscreen window gets no frame request -------------------------------
+    //
+    // Mutter drops a frame request on a fullscreen window. So the geometry
+    // methods raise Refused, a shortcut does nothing, and a rule skips its
+    // geometry, at the head start too, but still does its other steps.
+
+    {
+        windows.length = 0;
+        const placer = new WindowPlacer();
+        const rules = new WindowRules(placer);
+        rules.enable();
+        await sleep(300);
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"full"},"workspace":0,"tile":"left"}]' }]);
+        const service = startService(placer);
+        service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
+        service.whenRulesLoaded = callback => rules.whenLoaded(callback);
+        const keybindings = new WindowKeybindings(placer, () => service.applyRulesToAll());
+        const win = createWindow({ id: 110, wmClass: 'full' });
+        win.map();
+        await sleep(100);
+        win.moves.length = 0;
+        win.workspaceMoves = undefined;
+        service.Fullscreen(110);
+
+        const calls = [['Move', [110, 5, 5]], ['Resize', [110, 300, 200]], ['MoveResize', [110, 5, 5, 300, 200]]]
+            .map(([method, args]) => {
+                const call = invocation();
+                service[`${method}Async`](args, call);
+                return call;
+            });
+        check('Move, Resize and MoveResize raise Refused on a fullscreen window',
+            calls.every(call => call.reply?.error === 'org.gnome.Shell.Extensions.WindowControl.Refused' &&
+                call.reply.message.includes('fullscreen')) && win.moves.length === 0,
+            `${calls.map(showReply).join(' ')} moves ${JSON.stringify(win.moves)}`);
+
+        win.moves.length = 0;
+        keybindings._tile('tile-left', win, 'left');
+        keybindings._cycleWide(win);
+        check('a shortcut leaves a fullscreen window alone', win.moves.length === 0 && !placer.awaitsAnswer(win),
+            JSON.stringify(win.moves));
+
+        win.moves.length = 0;
+        const applied = invocation();
+        service.ApplyRulesAsync([110], applied);
+        await sleep(100);
+        check('ApplyRules skips the geometry of a fullscreen window and still does its other steps',
+            showReply(applied) === '{"value":[1]}' && win.moves.length === 0 &&
+            JSON.stringify(win.workspaceMoves) === '[0]',
+            `${showReply(applied)} moves ${JSON.stringify(win.moves)} workspace moves ${JSON.stringify(win.workspaceMoves)}`);
+
+        const early = createWindow({ id: 111, wmClass: 'full' });
+        early.make_fullscreen();
+        const config = {
+            get_is_initial: () => true,
+            set_position(x, y) { this.position = [x, y]; },
+            set_size(width, height) { this.size = [width, height]; },
+        };
+        rules._preplace(early, config);
+        check('a window fullscreen before its first frame gets no head start',
+            config.position === undefined && config.size === undefined,
+            `position ${JSON.stringify(config.position)}, size ${JSON.stringify(config.size)}`);
+
+        service.Unfullscreen(110);
+        win.moves.length = 0;
+        keybindings._tile('tile-left', win, 'left');
+        check('a shortcut tiles the window again once it leaves fullscreen',
+            JSON.stringify(win.moves) === '[[0,0,480,1080]]', JSON.stringify(win.moves));
 
         service.unexport();
         rules.disable();
@@ -1836,6 +2035,61 @@ export class PopupSeparatorMenuItem {}
         check('WindowRules.disable() leaves no grace timer', !sourceAlive(graceId), `source ${graceId}`);
         check('WindowRules.disable() removes no source twice', unknownSourceRemovals(linesBeforeDisable) === 0,
             `${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
+    }
+
+    // -- WindowRules: an X11 window ------------------------------------------------
+    //
+    // An X11 window is not hidden when it is created, and mutter places it
+    // after that without a 'shown'. Its rule waits for the first frame of its
+    // actor. Mutter can destroy the actor before 'unmanaged', and a destroyed
+    // actor takes no disconnect.
+
+    {
+        windows.length = 0;
+        const rules = new WindowRules(new WindowPlacer());
+        rules.enable();
+        await sleep(300);
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"xapp"},"tile":"left"}]' }]);
+        const x11Window = id => {
+            const win = new FakeWindow({ id, wmClass: 'xapp' });
+            Object.assign(win, { clientType: Meta.WindowClientType.X11, hidden: false, actor: new Emitter() });
+            windows.push(win);
+            display.emit('window-created', win);
+            return win;
+        };
+
+        const xterm = x11Window(80);
+        await sleep(100);
+        check('an X11 window gets no rule before its first frame', xterm.moves.length === 0,
+            JSON.stringify(xterm.moves));
+        xterm.actor.emit('first-frame');
+        await sleep(100);
+        check('an X11 window gets its rule after its first frame',
+            JSON.stringify(xterm.moves) === '[[0,0,480,1080]]', JSON.stringify(xterm.moves));
+        check('a placed X11 window keeps no handler', xterm.handlerCount() === 0 && xterm.actor.handlerCount() === 0,
+            `${xterm.handlerCount()} on the window, ${xterm.actor.handlerCount()} on the actor`);
+
+        const closed = x11Window(81);
+        closed.actor.emit('destroy');
+        closed.actor.disconnect = () => {
+            throw new Error('disconnect on a destroyed actor');
+        };
+        let closeError = null;
+        try {
+            closed.emit('unmanaged');
+        } catch (e) {
+            closeError = e;
+        }
+        check('an X11 window whose actor went first is untracked without a disconnect on the actor',
+            closeError === null && !rules._tracked.has(closed) && closed.handlerCount() === 0,
+            `${closeError?.message}, ${closed.handlerCount()} handler(s)`);
+
+        const waiting = x11Window(82);
+        rules.disable();
+        check('WindowRules.disable() leaves no handler on an X11 window that waits for its first frame',
+            waiting.handlerCount() === 0 && waiting.actor.handlerCount() === 0,
+            `${waiting.handlerCount()} on the window, ${waiting.actor.handlerCount()} on the actor`);
+        windows.length = 0;
     }
 
     // -- WindowRules: a config directory that cannot be watched -------------------

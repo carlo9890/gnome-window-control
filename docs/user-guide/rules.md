@@ -202,7 +202,9 @@ Matched rule 0: class=kitty -> tile left
 ```
 
 It shows the rule that wins, the later rules that also match and thus never
-apply, the workarea, and the rectangle. It moves nothing. The extension must
+apply, the workarea, and the rectangle. For a `center` rule that first
+restores a maximized window or moves it to another monitor, it says so instead
+of a rectangle. It moves nothing. The extension must
 run.
 
 `wctl rules test` and `wctl rules apply` exit 5 when the extension lacks the

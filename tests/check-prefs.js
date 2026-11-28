@@ -68,6 +68,21 @@ GLib.log_set_writer_func((level, fields) => {
         !rule.ok && rule.message.startsWith('rules[1].tile: must be one of'), JSON.stringify(rule));
     check('a rule error names the line its rule starts on', rule.line === 4, JSON.stringify(rule));
 
+    // The editor's GtkTextBuffer ends a line at \n, \r\n, \r and U+2029, not
+    // at U+2028. JSON.parse counts no U+2029. Rule b is on line 3 of each
+    // text, and on line 4 after a U+2029.
+    const lines = (end, title) => ['[', `{ "match": { "title": "${title}" }, "tile": "left" },`,
+        '{ "match": { "class": "b" }, "tile": "middle" }', ']'].join(end);
+    const syntaxError = text => text.replace('}, "tile": "middle"', '} "tile": "middle"');
+    for (const [name, end, title, line] of [['LF', '\n', 'a', 3], ['CRLF', '\r\n', 'a', 3], ['CR', '\r', 'a', 3],
+        ['U+2029 in a string', '\n', 'a\u2029b', 4], ['U+2028 in a string', '\n', 'a\u2028b', 3]]) {
+        const ruleError = checkRules(lines(end, title));
+        check(`a rule error names the editor's line with ${name}`, ruleError.line === line, JSON.stringify(ruleError));
+        const jsonError = checkRules(syntaxError(lines(end, title)));
+        check(`a JSON syntax error names the editor's line with ${name}`,
+            jsonError.message.startsWith('JSON.parse') && jsonError.line === line, JSON.stringify(jsonError));
+    }
+
     const top = checkRules('{"match": {}}');
     check('an error with no place in the text has no line',
         !top.ok && top.line === null && top.message === 'the top-level value must be an array of rules',
@@ -117,6 +132,17 @@ GLib.log_set_writer_func((level, fields) => {
     check('no rules.json reads as null', readText(file) === null);
     GLib.file_set_contents(file.get_path(), '[]');
     check('a rules.json reads as its text', readText(file) === '[]');
+
+    // A lenient decoder reads U+FFFD in place of the Latin-1 é, and a save
+    // writes that back.
+    GLib.file_set_contents(file.get_path(), new Uint8Array([0x5b, 0x22, 0x43, 0x61, 0x66, 0xe9, 0x22, 0x5d]));
+    let undecodable = null;
+    try {
+        readText(file);
+    } catch (e) {
+        undecodable = e;
+    }
+    check('a rules.json that is not UTF-8 is an error, not text', undecodable !== null, `${undecodable}`);
     GLib.unlink(file.get_path());
 
     // Without the type check this read never returns: nothing writes to the FIFO.
@@ -136,7 +162,7 @@ GLib.log_set_writer_func((level, fields) => {
     link.make_symbolic_link('rules.json', null);
     const refusals = [file, link].map(target => {
         try {
-            writeText(target, '[]');
+            writeText(target, '[]', '');
             return null;
         } catch (e) {
             return e;
@@ -180,13 +206,31 @@ GLib.log_set_writer_func((level, fields) => {
     const isLink = () => file.query_info('standard::is-symlink',
         Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
 
-    writeText(file, 'new');
+    // Given the link itself, Gio writes in place and empties the target at
+    // the open, and a crash before the write left it empty.
+    const writeAll = Gio.OutputStream.prototype.write_all;
+    let atFirstWrite = null;
+    Gio.OutputStream.prototype.write_all = function (...args) {
+        atFirstWrite ??= read(target);
+        return writeAll.apply(this, args);
+    };
+    try {
+        writeText(file, 'new', 'old');
+    } finally {
+        Gio.OutputStream.prototype.write_all = writeAll;
+    }
+    check('a save through a symlink keeps the old target until the new text is complete',
+        atFirstWrite === 'old', JSON.stringify(atFirstWrite));
     check('a save through a symlink writes the target', read(target) === 'new', read(target));
     check('a save through a symlink leaves a symlink', isLink());
     const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
         Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
     check('a save leaves no temporary link behind', JSON.stringify(entries) === '["rules.json"]',
         JSON.stringify(entries));
+    const targetEntries = [...Gio.File.new_for_path(`${SCRATCH}/dotfiles`).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
+    check('a save through a symlink leaves no temporary file beside the target',
+        JSON.stringify(targetEntries) === '["rules.json"]', JSON.stringify(targetEntries));
 
     // The folder takes no new entry, so the new link cannot be made. The
     // target is still writable: a save that reports a failure must not
@@ -198,7 +242,7 @@ GLib.log_set_writer_func((level, fields) => {
     let failure = null;
     try {
         if (readOnly)
-            writeText(file, 'lost');
+            writeText(file, 'lost', 'new');
     } catch (e) {
         failure = e;
     }
@@ -211,10 +255,10 @@ GLib.log_set_writer_func((level, fields) => {
     }
 
     const plain = Gio.File.new_for_path(`${config}/plain.json`);
-    writeText(plain, 'text');
+    writeText(plain, 'text', '');
     check('a save of a new regular file writes it', read(plain.get_path()) === 'text');
     const criticalsBefore = criticals.length;
-    writeText(plain, 'again');
+    writeText(plain, 'again', 'text');
     check('a save over a regular file writes it', read(plain.get_path()) === 'again');
     check('a save over a regular file logs no critical', criticals.length === criticalsBefore,
         JSON.stringify(criticals.slice(criticalsBefore)));
@@ -228,10 +272,10 @@ GLib.log_set_writer_func((level, fields) => {
     GLib.mkdir_with_parents(config, 0o755);
     GLib.mkdir_with_parents(real, 0o755);
     const file = Gio.File.new_for_path(`${config}/rules.json`);
-    const saveError = linkTarget => {
+    const saveError = (linkTarget, lastRead = '') => {
         file.make_symbolic_link(linkTarget, null);
         try {
-            writeText(file, 'new');
+            writeText(file, 'new', lastRead);
             return null;
         } catch (e) {
             return e;
@@ -253,7 +297,7 @@ GLib.log_set_writer_func((level, fields) => {
     const W_OK = 2;
     if (GLib.access(target, W_OK) !== 0) {
         check('a save to a read-only target reports permission denied',
-            failsWith(saveError('../causes-real/rules.json'), Gio.IOErrorEnum.PERMISSION_DENIED));
+            failsWith(saveError('../causes-real/rules.json', 'old'), Gio.IOErrorEnum.PERMISSION_DENIED));
         const [, bytes] = GLib.file_get_contents(target);
         check('a refused save leaves the read-only target as it was',
             new TextDecoder().decode(bytes) === 'old');
@@ -263,6 +307,54 @@ GLib.log_set_writer_func((level, fields) => {
     const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
         Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
     check('a failed save leaves no temporary link', entries.length === 0, JSON.stringify(entries));
+}
+
+// -- a save refuses a file that changed since it was read --------------------
+
+{
+    const folder = `${SCRATCH}/changed`;
+    GLib.mkdir_with_parents(`${folder}/config`, 0o755);
+    GLib.mkdir_with_parents(`${folder}/dotfiles`, 0o755);
+    const path = `${folder}/config/rules.json`;
+    const read = p => new TextDecoder().decode(GLib.file_get_contents(p)[1]);
+    const saveError = (savedPath, lastRead) => {
+        try {
+            writeText(Gio.File.new_for_path(savedPath), 'edited', lastRead);
+            return null;
+        } catch (e) {
+            return e;
+        }
+    };
+    const refusedAsChanged = error => error?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.WRONG_ETAG) === true;
+
+    GLib.file_set_contents(path, 'from another program');
+    check('a save refuses a file that changed since it was read', refusedAsChanged(saveError(path, 'old')));
+    check('a refused save keeps the changed file', read(path) === 'from another program', read(path));
+    check('a save refuses a file created since a read that found none', refusedAsChanged(saveError(path, '')));
+    GLib.unlink(path);
+    check('a save refuses a file deleted since it was read', refusedAsChanged(saveError(path, 'old')));
+    check('a refused save does not bring a deleted file back', !GLib.file_test(path, GLib.FileTest.EXISTS));
+
+    // No event in the watched folder reports a change to the target.
+    const target = `${folder}/dotfiles/rules.json`;
+    const link = `${folder}/config/linked.json`;
+    GLib.file_set_contents(target, 'from another program');
+    Gio.File.new_for_path(link).make_symbolic_link('../dotfiles/rules.json', null);
+    check('a save through a symlink refuses a target that changed since it was read',
+        refusedAsChanged(saveError(link, 'old')));
+    check('a refused save keeps the changed target', read(target) === 'from another program', read(target));
+    const linkNames = [...Gio.File.new_for_path(`${folder}/config`).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name()).filter(name => name.includes('linked.json'));
+    check('a save refused through a symlink leaves no temporary link', JSON.stringify(linkNames) === '["linked.json"]',
+        JSON.stringify(linkNames));
+
+    // The editor read no text from it, so it has none to compare.
+    const undecodable = `${folder}/config/latin1.json`;
+    const latin1 = new Uint8Array([0x5b, 0x22, 0x43, 0x61, 0x66, 0xe9, 0x22, 0x5d]);
+    GLib.file_set_contents(undecodable, latin1);
+    check('a save refuses to overwrite a file that is not UTF-8', saveError(undecodable, '') !== null);
+    check('a refused save keeps the bytes of a file that is not UTF-8',
+        JSON.stringify([...GLib.file_get_contents(undecodable)[1]]) === JSON.stringify([...latin1]));
 }
 
 // -- a write that fails partway leaves the old text ----------------------------
@@ -279,8 +371,14 @@ GLib.log_set_writer_func((level, fields) => {
         import Gio from 'gi://Gio';
         import GLib from 'gi://GLib';
         import System from 'system';
-        const { writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
+        const { readText, writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
         const [path, other, otherPath, during] = System.programArgs;
+        const file = Gio.File.new_for_path(path);
+        // As the page does after a failed read.
+        let lastRead = '';
+        try {
+            lastRead = readText(file) ?? '';
+        } catch {}
         if (during) {
             const writeAll = Gio.OutputStream.prototype.write_all;
             let fired = false;
@@ -298,7 +396,7 @@ GLib.log_set_writer_func((level, fields) => {
             };
         }
         try {
-            writeText(Gio.File.new_for_path(path), 'n'.repeat(65536));
+            writeText(file, 'n'.repeat(65536), lastRead);
             print('saved');
         } catch {
             print('failed');
@@ -395,6 +493,63 @@ GLib.log_set_writer_func((level, fields) => {
     }
 }
 
+// -- a close that fails after an in-place write puts the old text back -------
+
+{
+    // A cancelled cancellable fails the close of Gio's stream after its
+    // fsync, where a disk error fails it: the whole new text is written.
+    const folder = `${SCRATCH}/close`;
+    GLib.mkdir_with_parents(folder, 0o755);
+    const read = path => new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+    const names = () => [...Gio.File.new_for_path(folder).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name()).sort();
+    const saveWithFailingClose = (path, beforeClose = () => {}) => {
+        const close = Gio.OutputStream.prototype.close;
+        Gio.OutputStream.prototype.close = function () {
+            Gio.OutputStream.prototype.close = close;
+            beforeClose();
+            const cancelled = new Gio.Cancellable();
+            cancelled.cancel();
+            return close.call(this, cancelled);
+        };
+        try {
+            writeText(Gio.File.new_for_path(path), 'new', 'old');
+            return null;
+        } catch (e) {
+            return e;
+        } finally {
+            Gio.OutputStream.prototype.close = close;
+        }
+    };
+
+    const plain = `${folder}/plain.json`;
+    GLib.file_set_contents(plain, 'old');
+    check('a save whose close fails reports a failure', saveWithFailingClose(plain) !== null);
+    check('a failed close keeps the old text of a regular file', read(plain) === 'old', read(plain));
+    check('a failed close leaves no temporary file', JSON.stringify(names()) === '["plain.json"]',
+        JSON.stringify(names()));
+
+    // Gio writes a hard link in place.
+    const regular = `${folder}/rules.json`;
+    const hard = `${folder}/hard.json`;
+    GLib.file_set_contents(regular, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(regular)} ${GLib.shell_quote(hard)}`);
+    const failure = saveWithFailingClose(regular);
+    check('a failed close of a hard link reports a failure', failure !== null);
+    check('a failed close puts the old text back in a hard link',
+        read(regular) === 'old' && read(hard) === 'old', `${read(regular)} / ${read(hard)}`);
+    check('a failed close with the old text back does not report it lost',
+        !`${failure}`.includes('could not be written back'), `${failure}`);
+
+    // GLib.file_set_contents() renames a new file over the path.
+    const renamed = `${folder}/renamed.json`;
+    GLib.file_set_contents(renamed, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(renamed)} ${GLib.shell_quote(`${folder}/renamed-hard.json`)}`);
+    saveWithFailingClose(renamed, () => GLib.file_set_contents(renamed, 'from another program'));
+    check('a failed close keeps a file renamed over the path during the save',
+        read(renamed) === 'from another program', read(renamed));
+}
+
 // -- a save keeps the file's mode, and follows every link ----------------------
 
 {
@@ -409,10 +564,10 @@ GLib.log_set_writer_func((level, fields) => {
     GLib.file_set_contents(plain, 'old');
     for (const mode of [0o600, 0o664]) {
         GLib.chmod(plain, mode);
-        writeText(Gio.File.new_for_path(plain), 'new');
+        writeText(Gio.File.new_for_path(plain), 'new', read(plain));
         check(`a save keeps mode ${mode.toString(8)}`, modeOf(plain) === mode, modeOf(plain).toString(8));
     }
-    writeText(Gio.File.new_for_path(plain), '');
+    writeText(Gio.File.new_for_path(plain), '', 'new');
     check('a save can write an empty text', read(plain) === '');
 
     // `..` after a linked folder is the parent of the real folder. A chain of
@@ -424,7 +579,7 @@ GLib.log_set_writer_func((level, fields) => {
     middle.make_symbolic_link('deep/../rules.json', null);
     const first = Gio.File.new_for_path(`${folder}/config/rules.json`);
     first.make_symbolic_link('middle.json', null);
-    writeText(first, 'new');
+    writeText(first, 'new', 'old');
     check('a save through a chain of links writes the last target', read(end) === 'new', read(end));
     const isLink = file => file.query_info('standard::is-symlink',
         Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
@@ -435,7 +590,7 @@ GLib.log_set_writer_func((level, fields) => {
     const other = `${folder}/real/other.json`;
     GLib.file_set_contents(shared, 'old');
     GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(shared)} ${GLib.shell_quote(other)}`);
-    writeText(Gio.File.new_for_path(shared), 'new');
+    writeText(Gio.File.new_for_path(shared), 'new', 'old');
     check('a save keeps a hard link', read(other) === 'new', read(other));
 
     // A writable file in a read-only folder still saves.
@@ -448,7 +603,7 @@ GLib.log_set_writer_func((level, fields) => {
     const lockedFolder = GLib.access(lockedDir, 2) !== 0;
     try {
         if (lockedFolder)
-            writeText(Gio.File.new_for_path(locked), 'new');
+            writeText(Gio.File.new_for_path(locked), 'new', 'old');
     } finally {
         GLib.chmod(lockedDir, 0o755);
     }
@@ -460,14 +615,14 @@ GLib.log_set_writer_func((level, fields) => {
     // A link whose name is not UTF-8 is followed.
     const rawDir = GLib.shell_quote(`${folder}/config`);
     GLib.spawn_command_line_sync(`bash -c "printf old > ${rawDir}/$'bad\\377.json'; ln -s $'bad\\377.json' ${rawDir}/raw-middle.json; ln -s raw-middle.json ${rawDir}/raw.json"`);
-    writeText(Gio.File.new_for_path(`${folder}/config/raw.json`), 'new');
+    writeText(Gio.File.new_for_path(`${folder}/config/raw.json`), 'new', 'old');
     check('a save follows a link to a name that is not UTF-8',
         read(`${folder}/config/raw-middle.json`) === 'new');
 
     // A link without a target names the file to create.
     const dangling = Gio.File.new_for_path(`${folder}/config/dangling.json`);
     dangling.make_symbolic_link('../real/created.json', null);
-    writeText(dangling, 'made');
+    writeText(dangling, 'made', '');
     check('a save through a link without a target creates it',
         read(`${folder}/real/created.json`) === 'made' && isLink(dangling));
 }

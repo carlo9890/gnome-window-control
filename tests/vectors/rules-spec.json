@@ -951,5 +951,29 @@
       "input": ["a.json", "9-b.json", "a_b.json", "B.json", "10-a.json", "a-b.json"],
       "output": ["10-a.json", "9-b.json", "B.json", "a-b.json", "a.json", "a_b.json"]
     }
+  },
+
+  "decoding": {
+    "comment": [
+      "The bytes of a rules file, in hex, and the text both sides read from them:",
+      "the extension with a non-fatal TextDecoder (rules-files.js), wctl with",
+      "decode in cli/src/rules.rs. A file that is not UTF-8 is not refused: each",
+      "invalid sequence is one U+FFFD. A byte order mark stays, and the JSON",
+      "parser of each side then refuses the file.",
+      "",
+      "The lead bytes F5, F6 and F7 have no case: before continuation bytes, GJS",
+      "gives one U+FFFD for the run and the Rust standard library one per byte."
+    ],
+    "cases": [
+      { "name": "UTF-8", "bytes": "43 61 66 c3 a9", "text": "Caf\u00e9" },
+      { "name": "Latin-1", "bytes": "43 61 66 e9", "text": "Caf\ufffd" },
+      { "name": "a sequence cut at the end", "bytes": "e2 82", "text": "\ufffd" },
+      { "name": "a sequence cut by ASCII", "bytes": "41 e2 82 42", "text": "A\ufffdB" },
+      { "name": "a lone continuation byte", "bytes": "41 80 42", "text": "A\ufffdB" },
+      { "name": "a surrogate", "bytes": "ed a0 80", "text": "\ufffd\ufffd\ufffd" },
+      { "name": "an overlong form", "bytes": "c0 af", "text": "\ufffd\ufffd" },
+      { "name": "past U+10FFFF", "bytes": "f4 90 80 80", "text": "\ufffd\ufffd\ufffd\ufffd" },
+      { "name": "a byte order mark", "bytes": "ef bb bf 5b 5d", "text": "\ufeff[]" }
+    ]
   }
 }

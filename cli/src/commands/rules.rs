@@ -381,7 +381,7 @@ enum Loaded {
     /// The file does not exist. Not an error: an absent file means no rules.
     Absent,
     Present {
-        text: String,
+        bytes: Vec<u8>,
     },
 }
 
@@ -402,8 +402,8 @@ fn read_file(path: &Path) -> Result<Loaded> {
         }
         _ => {}
     }
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(Loaded::Present { text }),
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Loaded::Present { bytes }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Loaded::Absent),
         Err(e) => Err(Fail::error(format!("Cannot read {}: {e}", path.display()))),
     }
@@ -415,9 +415,7 @@ fn read_file(path: &Path) -> Result<Loaded> {
 /// serde_json refuses some text the extension's `JSON.parse` loads: a number
 /// too large for a double such as `1e400` (the extension then gives the key's
 /// own message), a lone surrogate escape, and arrays nested past the recursion
-/// limit. A byte sequence that is not UTF-8 already fails `read_to_string` in
-/// `read_file`; the extension loads it with U+FFFD. `wctl rules add` never
-/// writes any of these.
+/// limit. `wctl rules add` never writes any of these.
 fn parse(text: &str, path: &Path) -> Result<Value> {
     serde_json::from_str(text)
         .map_err(|e| Fail::error(format!("{}: not valid JSON: {e}", path.display())))
@@ -614,21 +612,45 @@ fn cross_file_shadows(files: &[RuleFile]) -> Vec<(&str, usize, &str, usize)> {
 /// themselves rather than a verdict.
 ///
 /// An absent file is `(Vec::new(), Vec::new())`, not an error. A file that does
-/// not parse or does not validate IS an error: `add` and `remove` rewrite the
-/// whole document, so acting on a file we could not read correctly would
-/// discard whatever the user actually wrote.
+/// not parse or does not validate IS an error.
 fn load(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
     Ok(read_rules(path, false)?.unwrap_or_default())
+}
+
+/// `load` for `add` and `remove`, which rewrite the whole document: acting on
+/// a file we could not read correctly would discard whatever the user
+/// actually wrote. So a file that is not UTF-8 is refused here, though the
+/// extension loads it: the rewrite would put U+FFFD over those bytes.
+fn load_to_rewrite(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
+    let Loaded::Present { bytes } = read_file(path)? else {
+        return Ok(Default::default());
+    };
+    let text = String::from_utf8(bytes).map_err(|_| {
+        Fail::error(format!(
+            "Cannot rewrite {}: it has bytes that are not UTF-8, and they would be lost. \
+             Save the file as UTF-8 first.",
+            path.display()
+        ))
+    })?;
+    compile_text(&text, path, false)
 }
 
 /// The rules of the file, or None when it does not exist. `name_the_file`
 /// puts the path before a validation message, which names no file of its own;
 /// a read or parse failure names it already.
 fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Vec<rules::Rule>)>> {
-    let Loaded::Present { text } = read_file(path)? else {
+    let Loaded::Present { bytes } = read_file(path)? else {
         return Ok(None);
     };
-    let document = parse(&text, path)?;
+    compile_text(&rules::decode(&bytes), path, name_the_file).map(Some)
+}
+
+fn compile_text(
+    text: &str,
+    path: &Path,
+    name_the_file: bool,
+) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
+    let document = parse(text, path)?;
     let compiled = rules::compile_rules(&document).map_err(|message| {
         if name_the_file {
             Fail::error(format!("{}: {message}", path.display()))
@@ -640,7 +662,7 @@ fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Ve
         .as_array()
         .expect("compile_rules refuses a non-array")
         .clone();
-    Ok(Some((raw, compiled)))
+    Ok((raw, compiled))
 }
 
 /// Write the document, atomically.
@@ -657,13 +679,18 @@ fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Ve
 /// writing only the target would raise no event in the watched directory. A
 /// dangling link names the file to create. The new link is made before the
 /// target is touched, so a link that cannot be made changes nothing.
-fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
+///
+/// A file with a second hard link, say a dotfiles copy, is refused
+/// (`Links::Refuse`): the rename would leave the other name on the old text,
+/// and a write in place that fails half way leaves both names cut off. A
+/// drop-in is always renamed, as docs/specs/RULES-JSON.md requires.
+fn write_atomically(path: &Path, document: &[Value], links: Links) -> Result<()> {
     let text = format!(
         "{}\n",
         serde_json::to_string_pretty(document).map_err(|e| Fail::error(e.to_string()))?
     );
     let Ok(link) = std::fs::read_link(path) else {
-        return replace_file(path, &text);
+        return replace_file(path, &text, links);
     };
     let link_directory = path.parent().unwrap_or(Path::new("."));
     let target = match std::fs::canonicalize(path) {
@@ -681,22 +708,43 @@ fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
     let _ = std::fs::remove_file(&temporary_link);
     std::os::unix::fs::symlink(&link, &temporary_link)
         .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary_link.display())))?;
-    if let Err(failure) = replace_file(&target, &text) {
+    if let Err(failure) = replace_file(&target, &text, links) {
         let _ = std::fs::remove_file(&temporary_link);
         return Err(failure);
     }
     rename_over(&temporary_link, path)
 }
 
+/// What a write does with a file that has a second hard link.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Links {
+    /// Change nothing and fail.
+    Refuse,
+    /// Rename a new file over the name; the other names keep the old text.
+    Cut,
+}
+
 /// Replace the regular file at `path` with `text` through a temporary file in
 /// its directory.
-fn replace_file(path: &Path, text: &str) -> Result<()> {
+fn replace_file(path: &Path, text: &str, links: Links) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+
+    if links == Links::Refuse && std::fs::metadata(path).is_ok_and(|metadata| metadata.nlink() > 1)
+    {
+        return Err(Fail::error(format!(
+            "Cannot rewrite {}: it has a second hard link, which the rewrite would cut off. \
+             Replace the hard link with a symlink, or edit the file by hand.",
+            path.display()
+        )));
+    }
     let directory = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(directory)
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
 
     let temporary = directory.join(temporary_name(path, ""));
-    std::fs::write(&temporary, text).map_err(|e| {
+    // Synced before the rename: some file systems commit the rename before
+    // the data, and a power loss between the two leaves the rules file empty.
+    write_synced(std::fs::File::create(&temporary), text.as_bytes()).map_err(|e| {
         // A write that fails after creating the file (a full disk) must not
         // leave it next to the rules file.
         let _ = std::fs::remove_file(&temporary);
@@ -707,6 +755,14 @@ fn replace_file(path: &Path, text: &str) -> Result<()> {
         let _ = std::fs::set_permissions(&temporary, metadata.permissions());
     }
     rename_over(&temporary, path)
+}
+
+fn write_synced(file: std::io::Result<std::fs::File>, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut file = file?;
+    file.write_all(bytes)?;
+    file.sync_all()
 }
 
 /// `.<name of path><infix>.<pid>`. The leading dot keeps the extension from
@@ -975,6 +1031,27 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
         })
 }
 
+/// The rules after `position` that the rule there shadows and that no other
+/// rule before them shadows, in this file or in `earlier_files`: the ones a
+/// rule inserted there turns off.
+fn newly_shadowed(
+    earlier_files: &[&rules::Rule],
+    rules: &[rules::Rule],
+    position: usize,
+) -> Vec<usize> {
+    let added = &rules[position];
+    (position + 1..rules.len())
+        .filter(|&later| {
+            shadows(added, &rules[later])
+                && !earlier_files
+                    .iter()
+                    .any(|earlier| shadows(earlier, &rules[later]))
+                && !(0..later)
+                    .any(|earlier| earlier != position && shadows(&rules[earlier], &rules[later]))
+        })
+        .collect()
+}
+
 /// What the extension makes of the file `add` or `remove` writes.
 enum Target {
     /// rules.json: no `--file`, or one that names it.
@@ -1026,6 +1103,13 @@ impl Target {
             Target::DropIn(name)
         } else {
             Target::SkippedName(name)
+        }
+    }
+
+    fn links(&self) -> Links {
+        match self {
+            Target::DropIn(_) => Links::Cut,
+            Target::User | Target::SkippedName(_) | Target::Other => Links::Refuse,
         }
     }
 
@@ -1189,7 +1273,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // `--file` earns neither them nor the bus call they cost.
     let target = Target::of(file.as_deref());
     let path = rules_path(file)?;
-    let (mut raw, compiled) = load(&path)?;
+    let (mut raw, compiled) = load_to_rewrite(&path)?;
 
     let position = match at {
         None => raw.len(),
@@ -1234,6 +1318,13 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
              and the first match wins, so the new rule will never fire."
         );
     }
+    let earlier_file_rules: Vec<_> = before.iter().flat_map(|file| &file.compiled).collect();
+    for index in newly_shadowed(&earlier_file_rules, &recompiled, position) {
+        eprintln!(
+            "Warning: this rule matches every window rule {index} would, \
+             and the first match wins, so rule {index} will never fire."
+        );
+    }
     for file in &after {
         for (index, later) in file.compiled.iter().enumerate() {
             if shadows(added, later) {
@@ -1255,7 +1346,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
 
     raw.insert(position, rule);
-    write_atomically(&path, &raw)?;
+    write_atomically(&path, &raw, target.links())?;
     println!("Added rule {position} to {}", path.display());
     target.warn_after_write(ctx, &raw);
     Ok(())
@@ -1274,7 +1365,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
     let target = Target::of(file.as_deref());
     let path = rules_path(file)?;
-    let (mut raw, _) = load(&path)?;
+    let (mut raw, _) = load_to_rewrite(&path)?;
     // A number too large for usize is past the end like any other.
     let Some(index) = index.parse().ok().filter(|index| *index < raw.len()) else {
         return Err(Fail::error(format!(
@@ -1291,7 +1382,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         );
         return Ok(());
     }
-    write_atomically(&path, &raw)?;
+    write_atomically(&path, &raw, target.links())?;
     println!("Removed rule {index} from {}", path.display());
     target.warn_after_write(ctx, &raw);
     Ok(())
@@ -1386,9 +1477,12 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // rules.js skips the geometry of a fullscreen window.
     let fullscreen =
         model::flag(&window, "is_fullscreen") && winner.is_some_and(|rule| rule.action.is_some());
+    let frame_change = winner.and_then(|rule| {
+        frame_changes_first(rule, model::flag(&window, "is_maximized"), window_monitor)
+    });
     let target = winner
         .zip(workarea)
-        .filter(|_| !fullscreen)
+        .filter(|_| !fullscreen && frame_change.is_none())
         .and_then(|(rule, workarea)| rule.resolve(workarea, frame));
 
     if json {
@@ -1413,6 +1507,8 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             report["skipped"] = serde_json::json!(SKIPPED_NO_SUCH_MONITOR);
         } else if fullscreen {
             report["skipped"] = serde_json::json!(SKIPPED_FULLSCREEN);
+        } else if let Some(change) = frame_change {
+            report["target_depends_on"] = serde_json::json!(change.json());
         }
         if merged {
             report["matched_source"] =
@@ -1472,6 +1568,10 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         println!("  the window is fullscreen; the geometry would be skipped");
         return Ok(());
     }
+    if let Some(change) = frame_change {
+        println!("{}", change.line());
+        return Ok(());
+    }
     match target {
         Some(rect) => println!(
             "  would place at {},{} {}x{}",
@@ -1481,6 +1581,59 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         None => println!("  the action resolves to nothing on this workarea; it would be skipped"),
     }
     Ok(())
+}
+
+/// What rules.js does to the window before a `center` rule reads its frame.
+/// The frame it centres is then not the listed one, and `ListDetailed` gives
+/// no other, so `test` has no rectangle to name.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum FrameChange {
+    Restore,
+    MonitorMove,
+}
+
+impl FrameChange {
+    fn line(self) -> &'static str {
+        match self {
+            FrameChange::Restore => {
+                "  the window is maximized; the extension would restore it and center the frame it has then"
+            }
+            FrameChange::MonitorMove => {
+                "  the extension would move the window to the monitor first and center the frame it has there"
+            }
+        }
+    }
+
+    fn json(self) -> &'static str {
+        match self {
+            FrameChange::Restore => "restored frame",
+            FrameChange::MonitorMove => "frame after the monitor move",
+        }
+    }
+}
+
+/// A maximized window is restored first. A move to the rule's monitor changes
+/// the position, which a rule that centers on one axis keeps on the other; a
+/// rule that centers on both reads only the size.
+fn frame_changes_first(
+    rule: &rules::Rule,
+    maximized: bool,
+    window_monitor: i64,
+) -> Option<FrameChange> {
+    let Some(rules::Action::Center(axis)) = &rule.action else {
+        return None;
+    };
+    if maximized {
+        Some(FrameChange::Restore)
+    } else if axis != "both"
+        && rule
+            .monitor
+            .is_some_and(|monitor| monitor != window_monitor)
+    {
+        Some(FrameChange::MonitorMove)
+    } else {
+        None
+    }
 }
 
 /// A rule of `test`'s output. A rule of rules.json reads as it did before
@@ -2122,6 +2275,200 @@ mod tests {
              and its own rule is still on the way"
         );
         assert_eq!(applied_line(7, 1), "Applied a rule to window 7");
+    }
+
+    fn compiled(document: Value) -> Vec<rules::Rule> {
+        rules::compile_rules(&document).expect("a valid document")
+    }
+
+    /// `rules add --at` names each later rule of the file that the new rule
+    /// turns off, and none that an earlier rule had turned off already.
+    #[test]
+    fn newly_shadowed_names_the_later_rules_the_inserted_rule_turns_off() {
+        let general_first = compiled(json!([
+            {"match": {"class": "kitty"}, "tile": "left"},
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+            {"match": {"class": "foot"}, "tile": "right"},
+            {"match": {"class": "kitty", "title": "vim"}, "center": "both"},
+        ]));
+        assert_eq!(newly_shadowed(&[], &general_first, 0), vec![1, 3]);
+
+        // Rule 1 shadows rule 2 already, and rule 0 is narrower than rule 1.
+        let already_off = compiled(json!([
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+            {"match": {"class": "kitty"}, "tile": "left"},
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+        ]));
+        assert_eq!(newly_shadowed(&[], &already_off, 0), Vec::<usize>::new());
+
+        let appended = compiled(json!([
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+            {"match": {"class": "kitty"}, "tile": "left"},
+        ]));
+        assert_eq!(newly_shadowed(&[], &appended, 1), Vec::<usize>::new());
+
+        // A rule of an earlier file shadows rule 1 already.
+        let earlier_file = compiled(json!([{"match": {"class": "kitty"}, "tile": "left"}]));
+        let drop_in = compiled(json!([
+            {"match": {"class": "kitty"}, "tile": "right"},
+            {"match": {"class": "kitty", "title": "vim"}, "center": "both"},
+        ]));
+        assert_eq!(
+            newly_shadowed(&[&earlier_file[0]], &drop_in, 0),
+            Vec::<usize>::new()
+        );
+    }
+
+    /// `rules test` names no rectangle where rules.js changes the frame
+    /// before a center rule reads it.
+    #[test]
+    fn frame_changes_first_for_a_center_rule_only() {
+        let rule = |action: Value, monitor: Option<i64>| {
+            let mut rule = json!({"match": {"class": "kitty"}});
+            for (key, value) in action.as_object().unwrap() {
+                rule[key] = value.clone();
+            }
+            if let Some(monitor) = monitor {
+                rule["monitor"] = json!(monitor);
+            }
+            rules::compile_rule(&rule, 0).expect("a valid rule")
+        };
+        let center = |axis: &str, monitor| rule(json!({"center": axis}), monitor);
+        let cases = [
+            (center("both", None), true, 0, Some(FrameChange::Restore)),
+            (
+                center("horizontal", None),
+                true,
+                0,
+                Some(FrameChange::Restore),
+            ),
+            (center("both", Some(1)), true, 0, Some(FrameChange::Restore)),
+            (center("both", None), false, 0, None),
+            (center("both", Some(1)), false, 0, None),
+            (center("vertical", Some(1)), false, 1, None),
+            (center("vertical", None), false, 1, None),
+            (
+                center("vertical", Some(1)),
+                false,
+                0,
+                Some(FrameChange::MonitorMove),
+            ),
+            (
+                center("horizontal", Some(0)),
+                false,
+                1,
+                Some(FrameChange::MonitorMove),
+            ),
+            (rule(json!({"tile": "left"}), Some(1)), true, 0, None),
+            (
+                rule(json!({"place": ["0", "0", "50%", "50%"]}), None),
+                true,
+                0,
+                None,
+            ),
+            (rule(json!({"workspace": 1}), Some(1)), true, 0, None),
+        ];
+        for (rule, maximized, window_monitor, expected) in cases {
+            assert_eq!(
+                frame_changes_first(&rule, maximized, window_monitor),
+                expected,
+                "{rule:?}, maximized {maximized}, on monitor {window_monitor}"
+            );
+        }
+        assert_eq!(
+            FrameChange::Restore.line(),
+            "  the window is maximized; the extension would restore it and center the frame it has then"
+        );
+        assert_eq!(
+            FrameChange::MonitorMove.line(),
+            "  the extension would move the window to the monitor first and center the frame it has there"
+        );
+        assert_eq!(FrameChange::Restore.json(), "restored frame");
+        assert_eq!(
+            FrameChange::MonitorMove.json(),
+            "frame after the monitor move"
+        );
+    }
+
+    fn scratch_folder(name: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("wctl-{name}-{}", std::process::id()));
+        std::fs::remove_dir_all(&folder).ok();
+        std::fs::create_dir_all(&folder).expect("a scratch folder");
+        folder
+    }
+
+    /// A dotfiles copy kept as a hard link is refused with nothing changed; a
+    /// drop-in is renamed into place whatever its links.
+    #[test]
+    fn a_write_refuses_a_hard_link_unless_the_file_is_a_drop_in() {
+        use std::os::unix::fs::MetadataExt;
+
+        let folder = scratch_folder("hard-link");
+        let (file, other_name) = (folder.join("rules.json"), folder.join("dotfiles.json"));
+        let document = [json!({"match": {"class": "foot"}, "tile": "right"})];
+        let written = "[\n  {\n    \"match\": {\n      \"class\": \"foot\"\n    },\n    \"tile\": \"right\"\n  }\n]\n";
+
+        std::fs::write(&file, "[]\n").unwrap();
+        std::fs::hard_link(&file, &other_name).unwrap();
+        let inode = std::fs::metadata(&file).unwrap().ino();
+        let refused = write_atomically(&file, &document, Links::Refuse)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("it has a second hard link"), "{refused}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "[]\n");
+        assert_eq!(std::fs::metadata(&file).unwrap().ino(), inode);
+
+        write_atomically(&file, &document, Links::Cut).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), written);
+        assert_eq!(std::fs::read_to_string(&other_name).unwrap(), "[]\n");
+
+        // With one name left, the rename is not refused.
+        write_atomically(&file, &[], Links::Refuse).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "[]\n");
+        let names: Vec<_> = std::fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 2, "left behind: {names:?}");
+
+        assert_eq!(Target::User.links(), Links::Refuse);
+        assert_eq!(Target::Other.links(), Links::Refuse);
+        assert_eq!(Target::DropIn("a.json".to_string()).links(), Links::Cut);
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
+    /// The extension loads a file that is not UTF-8, so `check`, `list` and
+    /// `test` read it as the extension does; `add` and `remove` would write
+    /// U+FFFD over the bytes, and refuse it.
+    #[test]
+    fn a_file_that_is_not_utf8_loads_and_is_not_rewritten() {
+        let folder = scratch_folder("latin-1");
+        let file = folder.join("rules.json");
+        std::fs::write(
+            &file,
+            b"[{\"match\":{\"title\":\"Caf\xe9\"},\"tile\":\"left\"}]",
+        )
+        .unwrap();
+
+        let (raw, compiled) = load(&file).expect("the extension loads it");
+        assert_eq!(
+            raw,
+            vec![json!({"match": {"title": "Caf\u{fffd}"}, "tile": "left"})]
+        );
+        assert_eq!(compiled.len(), 1);
+
+        let Err(refusal) = load_to_rewrite(&file) else {
+            panic!("a rewrite would lose the bytes");
+        };
+        assert_eq!(
+            refusal.to_string(),
+            format!(
+                "Cannot rewrite {}: it has bytes that are not UTF-8, and they would be lost. \
+                 Save the file as UTF-8 first.",
+                file.display()
+            )
+        );
+        std::fs::remove_dir_all(&folder).ok();
     }
 
     #[test]
