@@ -110,9 +110,10 @@ These stub answers are not obvious from the scripts:
   `--json assets -q '.assets | length'`.
 - `gh api repos/{owner}/{repo}/commits/tags/<tag> -q .sha` prints the `HEAD`
   commit, or `release.sh` stops before the build.
-- `curl`, or `wget` with `-O`, for `install-wctl.sh --download`: write a
-  runnable `wctl` to the output path, and print its `sha256sum` line when the
-  output path is `-` (the `wctl.sha256` fetch).
+- `curl`, or `wget` with `-O -`, for `install-wctl.sh --download`: print a
+  runnable `wctl` for the `wctl` URL and its `sha256sum` line for the
+  `wctl.sha256` URL. To stand in for the snap `curl`, exit 23 when `-o` names
+  a file.
 
 ## Minimum checks before a PR
 

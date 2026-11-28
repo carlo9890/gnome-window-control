@@ -112,12 +112,13 @@ build_local() {
     (cd "$SCRIPT_DIR" && mise run build)
 }
 
-# fetch <url> <file>: "-" as the file writes to stdout
+# fetch <url>: the download on stdout. The caller's shell opens the file: curl
+# from the snap store may not create one under a hidden folder such as ~/.local.
 fetch() {
     if command -v curl &> /dev/null; then
-        curl -fsSL "$1" -o "$2"
+        curl -fsSL "$1"
     else
-        wget -q "$1" -O "$2"
+        wget -q "$1" -O -
     fi
 }
 
@@ -171,12 +172,12 @@ if [[ "$WCTL_SOURCE" == "download" ]]; then
     tmp=$(mktemp -p "$INSTALL_DIR" .wctl.XXXXXX)
     trap 'rm -f "$tmp"' EXIT
 
-    if ! fetch "$RELEASE_URL/wctl" "$tmp"; then
+    if ! fetch "$RELEASE_URL/wctl" > "$tmp"; then
         echo -e "${RED}Error:${RESET} Failed to download wctl from $RELEASE_URL"
         echo "Check your internet connection or try: curl -fsSL $RELEASE_URL/wctl"
         exit 1
     fi
-    if ! checksum=$(fetch "$RELEASE_URL/wctl.sha256" -); then
+    if ! checksum=$(fetch "$RELEASE_URL/wctl.sha256"); then
         echo -e "${RED}Error:${RESET} Failed to download $RELEASE_URL/wctl.sha256"
         echo "Releases up to v16 have no wctl.sha256; set WCTL_VERSION to a later one."
         exit 1
