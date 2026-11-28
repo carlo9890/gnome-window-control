@@ -134,7 +134,7 @@ try {
 let nextId = 1;
 export const overview = {
     visible: false,
-    hide() {},
+    hide() { this.visible = false; },
     connect(name, callback) {
         handlers.set(nextId, [name, callback]);
         return nextId++;
@@ -682,6 +682,36 @@ export class PopupSeparatorMenuItem {}
             JSON.stringify(types));
         check('ListDetailed reports an XWayland client as x11', types[17] === 'x11',
             JSON.stringify(types));
+        service.unexport();
+        windows.length = 0;
+    }
+
+    // -- Activate: the Activities overview --------------------------------------
+    //
+    // Meta.Window.activate() leaves the overview open over the window, so every
+    // activate method hides it first.
+
+    {
+        const win = createWindow({ id: 18, wmClass: 'A' });
+        win.title = 'A title';
+        const service = startService();
+        const calls = [
+            ['Activate', () => service.Activate(18)],
+            ['ActivateNoAnimation', () => service.ActivateNoAnimation(18)],
+            ['ActivateByTitle', () => service.ActivateByTitle('A title')],
+            ['ActivateByTitleSubstring', () => service.ActivateByTitleSubstring('title')],
+            ['ActivateByWmClass', () => service.ActivateByWmClass('A')],
+            ['ActivateByPid', () => service.ActivateByPid(1)],
+        ];
+        for (const [method, call] of calls) {
+            let overviewAtActivate = null;
+            win.activate = () => { overviewAtActivate = Main.overview.visible; };
+            Main.overview.visible = true;
+            const ok = call();
+            check(`${method} hides the overview before it activates the window`,
+                ok === true && overviewAtActivate === false && !Main.overview.visible,
+                `ok ${ok}, overview at activate ${overviewAtActivate}, after ${Main.overview.visible}`);
+        }
         service.unexport();
         windows.length = 0;
     }

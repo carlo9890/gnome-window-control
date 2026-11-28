@@ -61,6 +61,15 @@ function _timestamp() {
     return global.display.get_current_time_roundtrip();
 }
 
+// Meta.Window.activate() focuses and raises the window but leaves the
+// Activities overview open over it, so the overview is hidden first, as in
+// ActivateWorkspace.
+function _activate(win) {
+    if (Main.overview.visible)
+        Main.overview.hide();
+    win.activate(_timestamp());
+}
+
 function _workspaceIndex(win) {
     return win.is_on_all_workspaces() ? -1 : (win.get_workspace()?.index() ?? -1);
 }
@@ -245,7 +254,7 @@ export class WindowControlService {
         const predicate = this._matchPredicate(kind, value);
         const win = predicate ? this._findWindowByPredicate(predicate) : null;
         if (win) {
-            win.activate(_timestamp());
+            _activate(win);
             console.debug(`[Window Control] ${label} -> true`);
             return true;
         }
@@ -352,7 +361,7 @@ export class WindowControlService {
 
     Activate(windowId) {
         return this._actOnWindow(windowId, 'Activate',
-            win => win.activate(_timestamp()));
+            win => _activate(win));
     }
 
     ActivateByTitle(title) {
@@ -944,7 +953,7 @@ export class WindowControlService {
                 skipNextEffect(win);
             for (let parent = win.get_transient_for(); parent; parent = parent.get_transient_for())
                 this._skipUnminimizeEffect(parent);
-            win.activate(_timestamp());
+            _activate(win);
         });
     }
 
