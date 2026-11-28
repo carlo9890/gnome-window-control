@@ -13,7 +13,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 // The ID of every pending timeout and idle source of the extension. Every
 // module starts its sources with addTimeout() or addIdle(), and disable()
 // removes all that are left with removeAllSources().
-const pendingSourceIds = new Set();
+const pendingSourceIds = [];
 
 // A one-shot timeout. Its ID leaves pendingSourceIds when it fires.
 export function addTimeout(ms, callback) {
@@ -27,25 +27,31 @@ export function addIdle(callback) {
 
 function trackOnce(add, callback) {
     const id = add(() => {
-        pendingSourceIds.delete(id);
+        forgetSource(id);
         callback();
         return GLib.SOURCE_REMOVE;
     });
-    pendingSourceIds.add(id);
+    pendingSourceIds.push(id);
     return id;
+}
+
+function forgetSource(id) {
+    const index = pendingSourceIds.indexOf(id);
+    if (index === -1)
+        return false;
+    pendingSourceIds.splice(index, 1);
+    return true;
 }
 
 // Removes a pending source. An ID of 0, or of a source that already fired or
 // was removed, is ignored.
 export function removeSource(id) {
-    if (pendingSourceIds.delete(id))
+    if (forgetSource(id))
         GLib.source_remove(id);
 }
 
 export function removeAllSources() {
-    const ids = [...pendingSourceIds];
-    pendingSourceIds.clear();
-    for (const id of ids)
+    for (const id of pendingSourceIds.splice(0))
         GLib.source_remove(id);
 }
 
