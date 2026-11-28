@@ -204,11 +204,12 @@ fn settle_within(ctx: &mut Ctx, id: u64, bound: Duration) -> Result<Rect> {
 
 /// Report a geometry command that resolved a rectangle first.
 ///
-/// Under `--json` stdout carries a document on every outcome the extension
-/// reports once the window is known (see `unresolved` for the failures before
-/// this), so a caller never has to parse an English sentence off the same
-/// stream; the exit code still classifies the failure. A failure of the bus
-/// itself stays an error, as in `unresolved_workarea`. Without `--json`,
+/// Under `--json` stdout carries a document when the window is placed, when
+/// the settle wait after the placement fails, and when the extension refuses
+/// the placement as not found or refused (see `unresolved` for the failures
+/// before this); the exit code still classifies the failure. Any other failure
+/// of the placement, such as a reply that never came or a failure of the bus
+/// itself, stays an error, as in `unresolved_workarea`. Without `--json`,
 /// nothing about the existing output moves.
 fn report_placement(
     ctx: &mut Ctx,
