@@ -10,8 +10,7 @@ have a capability the command needs. Run `wctl version --json` and read
 [Checking the extension version](wctl.md#checking-the-extension-version).
 
 - `extension` is `null` and `message` starts with "Cannot connect to the
-  session bus": the extension can be fine. Run `wctl` as your own user in the
-  graphical session, without `sudo`.
+  session bus": the extension can be fine. Follow the message, without `sudo`.
 - `extension` is `null` with any other `message`: enable the extension, or
   install a current one; see [Install](install.md).
 - `extension` is below `min_extension`: install a newer extension.
