@@ -68,6 +68,21 @@ GLib.log_set_writer_func((level, fields) => {
         !rule.ok && rule.message.startsWith('rules[1].tile: must be one of'), JSON.stringify(rule));
     check('a rule error names the line its rule starts on', rule.line === 4, JSON.stringify(rule));
 
+    // The editor's GtkTextBuffer ends a line at \n, \r\n, \r and U+2029, not
+    // at U+2028. JSON.parse counts no U+2029. Rule b is on line 3 of each
+    // text, and on line 4 after a U+2029.
+    const lines = (end, title) => ['[', `{ "match": { "title": "${title}" }, "tile": "left" },`,
+        '{ "match": { "class": "b" }, "tile": "middle" }', ']'].join(end);
+    const syntaxError = text => text.replace('}, "tile": "middle"', '} "tile": "middle"');
+    for (const [name, end, title, line] of [['LF', '\n', 'a', 3], ['CRLF', '\r\n', 'a', 3], ['CR', '\r', 'a', 3],
+        ['U+2029 in a string', '\n', 'a\u2029b', 4], ['U+2028 in a string', '\n', 'a\u2028b', 3]]) {
+        const ruleError = checkRules(lines(end, title));
+        check(`a rule error names the editor's line with ${name}`, ruleError.line === line, JSON.stringify(ruleError));
+        const jsonError = checkRules(syntaxError(lines(end, title)));
+        check(`a JSON syntax error names the editor's line with ${name}`,
+            jsonError.message.startsWith('JSON.parse') && jsonError.line === line, JSON.stringify(jsonError));
+    }
+
     const top = checkRules('{"match": {}}');
     check('an error with no place in the text has no line',
         !top.ok && top.line === null && top.message === 'the top-level value must be an array of rules',
