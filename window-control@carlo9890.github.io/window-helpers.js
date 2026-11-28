@@ -144,7 +144,11 @@ export function moveToMonitor(win, placer, index) {
     const pending = placer.pendingMonitor(win);
     if (pending !== null && pending !== index)
         placer.cancel(win);
-    win.move_to_monitor(index);
+    // From mutter 49.1 on, move_to_monitor() puts a hidden window (minimized,
+    // or on another workspace) at the origin of the monitor's workarea, also
+    // when the window is on that monitor already.
+    if (win.get_monitor() !== index || !win.is_hidden())
+        win.move_to_monitor(index);
 }
 
 // How long to wait for an unmaximize to land before placing the frame anyway.

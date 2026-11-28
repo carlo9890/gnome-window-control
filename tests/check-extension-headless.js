@@ -1439,6 +1439,27 @@ export class PopupSeparatorMenuItem {}
             JSON.stringify(win.monitorMoves) === '[1]' && moves === '[]', `${showMonitorMoves()}, moves ${moves}`);
         toMonitor0();
 
+        // From mutter 49.1 on, move_to_monitor() puts a hidden window at the
+        // origin of the workarea, also on the monitor it is on already.
+        win.minimize();
+        const movedToOwnMonitor = service.MoveToMonitor(60, 0);
+        check('MoveToMonitor to its own monitor leaves a minimized window where it is',
+            movedToOwnMonitor && win.monitorMoves === undefined, `reply ${movedToOwnMonitor}, ${showMonitorMoves()}`);
+        toMonitor0();
+        service.MoveToMonitor(60, 1);
+        check('MoveToMonitor still moves a minimized window to another monitor',
+            JSON.stringify(win.monitorMoves) === '[1]', showMonitorMoves());
+        toMonitor0();
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":0}]' }]);
+        const appliedToMinimized = invocation();
+        service.ApplyRulesAsync([60], appliedToMinimized);
+        check('a rule\'s monitor leaves a minimized window on that monitor where it is',
+            showReply(appliedToMinimized) === '{"value":[1]}' && win.monitorMoves === undefined,
+            `${showReply(appliedToMinimized)}, ${showMonitorMoves()}`);
+        toMonitor0();
+        win.minimized = false;
+        win.hidden = false;
+
         rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"race"},"monitor":1}]' }]);
         maximize();
         keybindings._tile('tile-left', win, 'left');
