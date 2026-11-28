@@ -1227,6 +1227,98 @@ export class PopupSeparatorMenuItem {}
         service.unexport();
     }
 
+    // -- WindowPlacer: a maximize or fullscreen newer than a held request -------
+    //
+    // A request held for the window's answer or for its restore does not run
+    // when the window was maximized, tiled or made fullscreen after it was
+    // held: that change is the newest request. A request held while the window
+    // was maximized already is newer than that maximize, so it still restores
+    // the window and lands.
+
+    {
+        windows.length = 0;
+        monitors.push({ x: 1920, y: 0, width: 1920, height: 1080, scale: 1 });
+        const placer = new WindowPlacer();
+        const service = startService(placer);
+        const keybindings = new WindowKeybindings(placer, () => {});
+        let nextId = 100;
+        const slowWindow = () => {
+            const win = createWindow({ id: nextId++, wmClass: 'slow' });
+            win.map();
+            win.answersLate = true;
+            return win;
+        };
+        const show = win => `flags ${win.maximizeFlags}, monitor moves ${JSON.stringify(win.monitorMoves)}, ` +
+            `moves ${JSON.stringify(win.moves)}`;
+
+        const maximized = slowWindow();
+        service.ResizeAsync([maximized.id, 800, 600], invocation());
+        service.MoveAsync([maximized.id, 100, 100], invocation());
+        service.Maximize(maximized.id);
+        maximized.answer();
+        await sleep(50);
+        check('a Maximize after a held Move stays when the window answers',
+            maximized.maximizeFlags === Meta.MaximizeFlags.BOTH &&
+            JSON.stringify(maximized.moves) === '[[10,10,800,600]]', show(maximized));
+
+        // Mutter's own maximize shortcut does not pass through the extension.
+        const tiled = slowWindow();
+        keybindings._tile('tile-left', tiled, 'left');
+        keybindings._tile('tile-right', tiled, 'right');
+        tiled.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        tiled.answer();
+        await sleep(50);
+        check('a maximize after two tile shortcuts stays',
+            tiled.maximizeFlags === Meta.MaximizeFlags.BOTH && JSON.stringify(tiled.moves) === '[[0,0,480,1080]]',
+            show(tiled));
+
+        const fullscreen = slowWindow();
+        service.MoveResizeAsync([fullscreen.id, 0, 0, 480, 540], invocation());
+        service.MoveResizeAsync([fullscreen.id, 2000, 100, 800, 600], invocation());
+        service.Fullscreen(fullscreen.id);
+        fullscreen.answer();
+        await sleep(50);
+        check('a window made fullscreen after a held MoveResize to another monitor stays on its monitor',
+            fullscreen.monitorMoves === undefined && JSON.stringify(fullscreen.moves) === '[[0,0,480,540]]',
+            show(fullscreen));
+
+        const restoring = createWindow({ id: nextId++, wmClass: 'slow', maximizeFlags: Meta.MaximizeFlags.BOTH });
+        restoring.map();
+        keybindings._tile('tile-left', restoring, 'left');
+        const restorePending = placer._pending.has(restoring);
+        service.Fullscreen(restoring.id);
+        restoring.emit('size-changed');
+        await sleep(50);
+        check('a window made fullscreen while its restore is pending gets no frame request',
+            restorePending && restoring.moves.length === 0, show(restoring));
+
+        const newer = slowWindow();
+        service.ResizeAsync([newer.id, 800, 600], invocation());
+        newer.maximizeFlags = Meta.MaximizeFlags.BOTH;
+        keybindings._tile('tile-left', newer, 'left');
+        newer.answer();
+        await sleep(50);
+        newer.emit('size-changed');   // the restore lands
+        await sleep(50);
+        check('a tile held while the window is maximized restores the window and lands',
+            newer.maximizeFlags === 0 && JSON.stringify(newer.moves) === '[[10,10,800,600],[0,0,480,1080]]',
+            show(newer));
+
+        const unanswered = slowWindow();
+        service.ResizeAsync([unanswered.id, 800, 600], invocation());
+        service.MoveAsync([unanswered.id, 200, 200], invocation());
+        service.Maximize(unanswered.id);
+        await sleep(ANSWER_WAIT_MS + 300);
+        check('a Maximize after a held Move stays when no answer comes',
+            unanswered.maximizeFlags === Meta.MaximizeFlags.BOTH &&
+            JSON.stringify(unanswered.moves) === '[[10,10,800,600]]', show(unanswered));
+
+        monitors.pop();
+        service.unexport();
+        placer.destroy();
+        windows.length = 0;
+    }
+
     // -- WindowPlacer: one placement per window, the newest wins ----------------
     //
     // A shortcut, a rule and a D-Bus geometry call made while another of them

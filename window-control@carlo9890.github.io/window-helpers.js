@@ -211,6 +211,16 @@ export class UnmaximizeWait {
     }
 }
 
+// Whether a held request is still the newest request of the window, which
+// had the maximize flags `heldFlags` when the request was held. A maximize,
+// a tile or a fullscreen since then is newer. The flags it was held with are
+// not: place() restores the window from them first. No caller holds a
+// request for a fullscreen window.
+function heldRequestIsNewest(win, heldFlags) {
+    const flags = maximizeFlags(win);
+    return !win.is_fullscreen() && (flags === 0 || flags === heldFlags);
+}
+
 // The one owner of the frame requests of a shown window: the shortcuts, a
 // rule's geometry and the D-Bus geometry methods all place through it, so a
 // window has at most one placement pending and the newest request wins.
@@ -233,7 +243,7 @@ export class UnmaximizeWait {
 export class WindowPlacer {
     constructor() {
         this._pending = new Map();        // Meta.Window -> { wait, request, monitor }
-        this._answers = new Map();        // Meta.Window -> { answerIds, unmanagedId, idleId, timeoutId, request, monitor }
+        this._answers = new Map();        // Meta.Window -> { answerIds, unmanagedId, idleId, timeoutId, request, monitor, heldFlags }
         this._unanswered = null;          // the window whose wait just ended without an answer
     }
 
@@ -243,7 +253,7 @@ export class WindowPlacer {
     place(win, request, monitor = win.get_monitor()) {
         const answer = this._answers.get(win);
         if (answer) {
-            Object.assign(answer, { request, monitor });
+            Object.assign(answer, { request, monitor, heldFlags: maximizeFlags(win) });
             return;
         }
         const pending = this._pending.get(win);
@@ -261,8 +271,9 @@ export class WindowPlacer {
         const entry = { wait: null, request, monitor };
         entry.wait = new UnmaximizeWait(win, landed => {
             this._pending.delete(win);
-            // Maximized again since: that maximize is the newest request.
-            if (landed && maximizeFlags(win) === 0)
+            // A flag set since the restore cleared them is newer than the
+            // held request: place() replaces it only while they are clear.
+            if (landed && heldRequestIsNewest(win, 0))
                 entry.request();
         });
         this._pending.set(win, entry);
@@ -320,7 +331,7 @@ export class WindowPlacer {
         this._dropAnswer(win);
         const entry = {
             answerIds: [], unmanagedId: 0, idleId: 0, timeoutId: 0,
-            request: older?.request ?? null, monitor: older?.monitor ?? null,
+            request: older?.request ?? null, monitor: older?.monitor ?? null, heldFlags: older?.heldFlags ?? 0,
         };
         const answered = (timedOut = false) => {
             for (const id of entry.answerIds)
@@ -336,7 +347,7 @@ export class WindowPlacer {
             entry.idleId = addIdle(() => {
                 entry.idleId = 0;
                 this._dropAnswer(win);
-                if (entry.request) {
+                if (entry.request && heldRequestIsNewest(win, entry.heldFlags)) {
                     this._unanswered = timedOut ? win : null;
                     try {
                         this.place(win, entry.request, entry.monitor);
