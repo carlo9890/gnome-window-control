@@ -2,7 +2,7 @@
 
 ## Compatibility
 
-- GNOME Shell 45-50.
+- GNOME Shell 45-51.
 - Wayland sessions only.
 
 ## Extension

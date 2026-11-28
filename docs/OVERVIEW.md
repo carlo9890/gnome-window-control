@@ -41,7 +41,7 @@ module's header comment says what it holds.
 | D-Bus surface: geometry primitives, no layout | `dbus-interface.js`, `dbus-service.js` | [0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md), [0002](decisions/0002-the-d-bus-interface-has-no-access-control.md) |
 | Errors raised by name | `dbus-interface.js` (ERRORS block), `cli/src/dbus.rs` | [0005](decisions/0005-the-geometry-methods-applyrules-and-the-wait-methods-raise-named-d-bus-errors.md) |
 | What stays up while the screen is locked | `extension.js` | [0003](decisions/0003-the-d-bus-interface-and-the-rules-stay-up-while-the-session-is-locked.md) |
-| One code base for GNOME 45-50 | `window-helpers.js` (maximize API detection) | [0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md) |
+| One code base for GNOME 45-51 | `window-helpers.js` (maximize API detection) | [0006](decisions/0006-one-extension-serves-gnome-shell-45-to-51.md) |
 | Frame requests of a shown window | `WindowPlacer` in `window-helpers.js` | |
 | Auto-placement | `WindowRules` in `rules.js`; `ApplyRules` calls it | [0001](decisions/0001-the-d-bus-interface-offers-geometry-primitives-and-no-layout.md) |
 | Rules grammar, two implementations | `rules-format.js`, `cli/src/rules.rs`, `tests/vectors/rules-spec.json` | [0007](decisions/0007-the-rules-json-grammar-has-two-implementations-pinned-to-one-vector-file.md) |

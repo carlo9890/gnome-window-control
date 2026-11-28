@@ -55,7 +55,7 @@ function sameRect(a, b) {
 
 // GNOME 49 dropped the Meta.MaximizeFlags argument of maximize()/unmaximize()
 // and removed get_maximized(). Its presence marks the pre-49 API, so one
-// extension serves GNOME 45-50.
+// extension serves GNOME 45-51.
 export function maximizeFlags(win) {
     if (typeof win.get_maximized === 'function') {
         return win.get_maximized();                                  // GNOME <= 48

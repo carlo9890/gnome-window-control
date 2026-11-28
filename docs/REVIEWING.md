@@ -112,4 +112,4 @@ with the correct form.
   argument, sits behind the feature test in `window-helpers.js` and does not run
   on GNOME 49; the `Meta.MaximizeFlags` enum still exists on 49 and later as the
   type `get_maximize_flags()` returns
-  ([0006](decisions/0006-one-extension-serves-gnome-shell-45-to-50.md)).
+  ([0006](decisions/0006-one-extension-serves-gnome-shell-45-to-51.md)).
