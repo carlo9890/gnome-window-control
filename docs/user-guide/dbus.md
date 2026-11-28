@@ -26,7 +26,7 @@ gdbus call --session \
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `List` | `() -> a(tssssbiiii)` | List all windows |
-| `ListDetailed` | `() -> s` | List windows as JSON with full details |
+| `ListDetailed` | `() -> s` | List windows as JSON with full details. `client_type` is `x11` for an XWayland window, else `wayland` |
 | `ListMonitors` | `() -> s` | List monitors as JSON |
 | `Activate` | `(t) -> b` | Activate window by ID |
 | `ActivateByTitle` | `(s) -> b` | Activate by exact title |

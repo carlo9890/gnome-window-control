@@ -307,6 +307,8 @@ export class WindowControlService {
                 pid: win.get_pid(),
                 window_type: windowType,
                 window_type_name: WINDOW_TYPE_NAMES[windowType] || 'unknown',
+                // 'x11' is an XWayland client: the session is always Wayland.
+                client_type: win.get_client_type() === Meta.WindowClientType.X11 ? 'x11' : 'wayland',
                 frame_rect: {
                     x: frameRect.x,
                     y: frameRect.y,

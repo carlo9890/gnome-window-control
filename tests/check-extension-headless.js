@@ -667,6 +667,25 @@ export class PopupSeparatorMenuItem {}
         windows.length = 0;
     }
 
+    // -- ListDetailed: client_type ----------------------------------------------
+    //
+    // A script tells an XWayland window from a native Wayland one by this key.
+
+    {
+        createWindow({ id: 16, wmClass: 'W' });
+        const xwayland = createWindow({ id: 17, wmClass: 'X' });
+        xwayland.get_client_type = () => Meta.WindowClientType.X11;
+        const service = startService();
+        const types = Object.fromEntries(JSON.parse(service.ListDetailed())
+            .map(doc => [doc.id, doc.client_type]));
+        check('ListDetailed reports a Wayland client as wayland', types[16] === 'wayland',
+            JSON.stringify(types));
+        check('ListDetailed reports an XWayland client as x11', types[17] === 'x11',
+            JSON.stringify(types));
+        service.unexport();
+        windows.length = 0;
+    }
+
     // -- WaitForWindow / WaitForGeometry: the caller leaves the bus ---------------
     //
     // A killed caller's wait is dropped at once, with no reply and nothing left
