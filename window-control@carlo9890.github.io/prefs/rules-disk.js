@@ -87,8 +87,12 @@ function restoreInPlace(stream, old) {
     }
 }
 
-// Gio's replace keeps the owner, the group and a hard link. The etag makes it
-// refuse a file that another program changed after the load. Gio reports a
+// A file that no longer holds `lastRead` is refused with WRONG_ETAG, as Gio's
+// own etag check refuses one that changes between the load and the replace:
+// no event reports a change to a link's target, and the page reads a change
+// only after its debounce.
+//
+// Gio's replace keeps the owner, the group and a hard link. Gio reports a
 // failed open through a link as a link loop: a plain read-write open creates
 // nothing and throws the real cause.
 //
@@ -96,8 +100,10 @@ function restoreInPlace(stream, old) {
 // a hard link or a read-only folder. The stream is then open on the loaded
 // file, and a failed write has cut it. Otherwise a cancelled close drops any
 // temporary file; replace_contents() would put it in place.
-function replaceFile(file, bytes) {
+function replaceFile(file, bytes, lastRead) {
     const old = loadOld(file);
+    if ((old === null ? '' : decode(old.bytes)) !== lastRead)
+        throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.WRONG_ETAG, 'The file was changed since it was read');
     const cancellable = new Gio.Cancellable();
     let stream;
     try {
@@ -126,11 +132,13 @@ function replaceFile(file, bytes) {
     }
 }
 
+// `lastRead` is the text the caller read from `file`, '' when it found none.
+//
 // A write through a symlink changes its target and raises no event on the
 // watched directory, so a new link is renamed over the old one, as wctl
 // does. The new link is made first: when the folder takes no new entry, the
 // save fails before the target has changed.
-export function writeText(file, text) {
+export function writeText(file, text, lastRead) {
     refuseNonRegular(file);
     let target = null;
     try {
@@ -144,13 +152,13 @@ export function writeText(file, text) {
     }
     const bytes = new TextEncoder().encode(text);
     if (!target) {
-        replaceFile(file, bytes);
+        replaceFile(file, bytes, lastRead);
         return;
     }
     const link = file.get_parent().get_child(`.${file.get_basename()}.link.${GLib.uuid_string_random()}`);
     link.make_symbolic_link(target, null);
     try {
-        replaceFile(file, bytes);
+        replaceFile(file, bytes, lastRead);
         link.move(file, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, null, null);
     } catch (e) {
         try {

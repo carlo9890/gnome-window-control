@@ -208,9 +208,14 @@ export class RulesEditor {
     _save() {
         const text = this._buffer.text;
         try {
-            writeText(this._file, text);
+            writeText(this._file, text, this._savedText);
         } catch (e) {
-            this._toast(`Cannot save ${RULES_FILE}: ${e.message}`);
+            // Changed since the page read it, which the monitor may not
+            // report at all.
+            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.WRONG_ETAG))
+                this._onDiskChange();
+            else
+                this._toast(`Cannot save ${RULES_FILE}: ${e.message}`);
             return;
         }
         this._savedText = text;

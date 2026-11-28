@@ -147,7 +147,7 @@ GLib.log_set_writer_func((level, fields) => {
     link.make_symbolic_link('rules.json', null);
     const refusals = [file, link].map(target => {
         try {
-            writeText(target, '[]');
+            writeText(target, '[]', '');
             return null;
         } catch (e) {
             return e;
@@ -191,7 +191,7 @@ GLib.log_set_writer_func((level, fields) => {
     const isLink = () => file.query_info('standard::is-symlink',
         Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
 
-    writeText(file, 'new');
+    writeText(file, 'new', 'old');
     check('a save through a symlink writes the target', read(target) === 'new', read(target));
     check('a save through a symlink leaves a symlink', isLink());
     const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
@@ -209,7 +209,7 @@ GLib.log_set_writer_func((level, fields) => {
     let failure = null;
     try {
         if (readOnly)
-            writeText(file, 'lost');
+            writeText(file, 'lost', 'new');
     } catch (e) {
         failure = e;
     }
@@ -222,10 +222,10 @@ GLib.log_set_writer_func((level, fields) => {
     }
 
     const plain = Gio.File.new_for_path(`${config}/plain.json`);
-    writeText(plain, 'text');
+    writeText(plain, 'text', '');
     check('a save of a new regular file writes it', read(plain.get_path()) === 'text');
     const criticalsBefore = criticals.length;
-    writeText(plain, 'again');
+    writeText(plain, 'again', 'text');
     check('a save over a regular file writes it', read(plain.get_path()) === 'again');
     check('a save over a regular file logs no critical', criticals.length === criticalsBefore,
         JSON.stringify(criticals.slice(criticalsBefore)));
@@ -239,10 +239,10 @@ GLib.log_set_writer_func((level, fields) => {
     GLib.mkdir_with_parents(config, 0o755);
     GLib.mkdir_with_parents(real, 0o755);
     const file = Gio.File.new_for_path(`${config}/rules.json`);
-    const saveError = linkTarget => {
+    const saveError = (linkTarget, lastRead = '') => {
         file.make_symbolic_link(linkTarget, null);
         try {
-            writeText(file, 'new');
+            writeText(file, 'new', lastRead);
             return null;
         } catch (e) {
             return e;
@@ -264,7 +264,7 @@ GLib.log_set_writer_func((level, fields) => {
     const W_OK = 2;
     if (GLib.access(target, W_OK) !== 0) {
         check('a save to a read-only target reports permission denied',
-            failsWith(saveError('../causes-real/rules.json'), Gio.IOErrorEnum.PERMISSION_DENIED));
+            failsWith(saveError('../causes-real/rules.json', 'old'), Gio.IOErrorEnum.PERMISSION_DENIED));
         const [, bytes] = GLib.file_get_contents(target);
         check('a refused save leaves the read-only target as it was',
             new TextDecoder().decode(bytes) === 'old');
@@ -274,6 +274,54 @@ GLib.log_set_writer_func((level, fields) => {
     const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
         Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
     check('a failed save leaves no temporary link', entries.length === 0, JSON.stringify(entries));
+}
+
+// -- a save refuses a file that changed since it was read --------------------
+
+{
+    const folder = `${SCRATCH}/changed`;
+    GLib.mkdir_with_parents(`${folder}/config`, 0o755);
+    GLib.mkdir_with_parents(`${folder}/dotfiles`, 0o755);
+    const path = `${folder}/config/rules.json`;
+    const read = p => new TextDecoder().decode(GLib.file_get_contents(p)[1]);
+    const saveError = (savedPath, lastRead) => {
+        try {
+            writeText(Gio.File.new_for_path(savedPath), 'edited', lastRead);
+            return null;
+        } catch (e) {
+            return e;
+        }
+    };
+    const refusedAsChanged = error => error?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.WRONG_ETAG) === true;
+
+    GLib.file_set_contents(path, 'from another program');
+    check('a save refuses a file that changed since it was read', refusedAsChanged(saveError(path, 'old')));
+    check('a refused save keeps the changed file', read(path) === 'from another program', read(path));
+    check('a save refuses a file created since a read that found none', refusedAsChanged(saveError(path, '')));
+    GLib.unlink(path);
+    check('a save refuses a file deleted since it was read', refusedAsChanged(saveError(path, 'old')));
+    check('a refused save does not bring a deleted file back', !GLib.file_test(path, GLib.FileTest.EXISTS));
+
+    // No event in the watched folder reports a change to the target.
+    const target = `${folder}/dotfiles/rules.json`;
+    const link = `${folder}/config/linked.json`;
+    GLib.file_set_contents(target, 'from another program');
+    Gio.File.new_for_path(link).make_symbolic_link('../dotfiles/rules.json', null);
+    check('a save through a symlink refuses a target that changed since it was read',
+        refusedAsChanged(saveError(link, 'old')));
+    check('a refused save keeps the changed target', read(target) === 'from another program', read(target));
+    const linkNames = [...Gio.File.new_for_path(`${folder}/config`).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name()).filter(name => name.includes('linked.json'));
+    check('a save refused through a symlink leaves no temporary link', JSON.stringify(linkNames) === '["linked.json"]',
+        JSON.stringify(linkNames));
+
+    // The editor read no text from it, so it has none to compare.
+    const undecodable = `${folder}/config/latin1.json`;
+    const latin1 = new Uint8Array([0x5b, 0x22, 0x43, 0x61, 0x66, 0xe9, 0x22, 0x5d]);
+    GLib.file_set_contents(undecodable, latin1);
+    check('a save refuses to overwrite a file that is not UTF-8', saveError(undecodable, '') !== null);
+    check('a refused save keeps the bytes of a file that is not UTF-8',
+        JSON.stringify([...GLib.file_get_contents(undecodable)[1]]) === JSON.stringify([...latin1]));
 }
 
 // -- a write that fails partway leaves the old text ----------------------------
@@ -290,8 +338,14 @@ GLib.log_set_writer_func((level, fields) => {
         import Gio from 'gi://Gio';
         import GLib from 'gi://GLib';
         import System from 'system';
-        const { writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
+        const { readText, writeText } = await import(${JSON.stringify(GLib.filename_to_uri(`${PREFS}/rules-disk.js`, null))});
         const [path, other, otherPath, during] = System.programArgs;
+        const file = Gio.File.new_for_path(path);
+        // As the page does after a failed read.
+        let lastRead = '';
+        try {
+            lastRead = readText(file) ?? '';
+        } catch {}
         if (during) {
             const writeAll = Gio.OutputStream.prototype.write_all;
             let fired = false;
@@ -309,7 +363,7 @@ GLib.log_set_writer_func((level, fields) => {
             };
         }
         try {
-            writeText(Gio.File.new_for_path(path), 'n'.repeat(65536));
+            writeText(file, 'n'.repeat(65536), lastRead);
             print('saved');
         } catch {
             print('failed');
@@ -420,10 +474,10 @@ GLib.log_set_writer_func((level, fields) => {
     GLib.file_set_contents(plain, 'old');
     for (const mode of [0o600, 0o664]) {
         GLib.chmod(plain, mode);
-        writeText(Gio.File.new_for_path(plain), 'new');
+        writeText(Gio.File.new_for_path(plain), 'new', read(plain));
         check(`a save keeps mode ${mode.toString(8)}`, modeOf(plain) === mode, modeOf(plain).toString(8));
     }
-    writeText(Gio.File.new_for_path(plain), '');
+    writeText(Gio.File.new_for_path(plain), '', 'new');
     check('a save can write an empty text', read(plain) === '');
 
     // `..` after a linked folder is the parent of the real folder. A chain of
@@ -435,7 +489,7 @@ GLib.log_set_writer_func((level, fields) => {
     middle.make_symbolic_link('deep/../rules.json', null);
     const first = Gio.File.new_for_path(`${folder}/config/rules.json`);
     first.make_symbolic_link('middle.json', null);
-    writeText(first, 'new');
+    writeText(first, 'new', 'old');
     check('a save through a chain of links writes the last target', read(end) === 'new', read(end));
     const isLink = file => file.query_info('standard::is-symlink',
         Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
@@ -446,7 +500,7 @@ GLib.log_set_writer_func((level, fields) => {
     const other = `${folder}/real/other.json`;
     GLib.file_set_contents(shared, 'old');
     GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(shared)} ${GLib.shell_quote(other)}`);
-    writeText(Gio.File.new_for_path(shared), 'new');
+    writeText(Gio.File.new_for_path(shared), 'new', 'old');
     check('a save keeps a hard link', read(other) === 'new', read(other));
 
     // A writable file in a read-only folder still saves.
@@ -459,7 +513,7 @@ GLib.log_set_writer_func((level, fields) => {
     const lockedFolder = GLib.access(lockedDir, 2) !== 0;
     try {
         if (lockedFolder)
-            writeText(Gio.File.new_for_path(locked), 'new');
+            writeText(Gio.File.new_for_path(locked), 'new', 'old');
     } finally {
         GLib.chmod(lockedDir, 0o755);
     }
@@ -471,14 +525,14 @@ GLib.log_set_writer_func((level, fields) => {
     // A link whose name is not UTF-8 is followed.
     const rawDir = GLib.shell_quote(`${folder}/config`);
     GLib.spawn_command_line_sync(`bash -c "printf old > ${rawDir}/$'bad\\377.json'; ln -s $'bad\\377.json' ${rawDir}/raw-middle.json; ln -s raw-middle.json ${rawDir}/raw.json"`);
-    writeText(Gio.File.new_for_path(`${folder}/config/raw.json`), 'new');
+    writeText(Gio.File.new_for_path(`${folder}/config/raw.json`), 'new', 'old');
     check('a save follows a link to a name that is not UTF-8',
         read(`${folder}/config/raw-middle.json`) === 'new');
 
     // A link without a target names the file to create.
     const dangling = Gio.File.new_for_path(`${folder}/config/dangling.json`);
     dangling.make_symbolic_link('../real/created.json', null);
-    writeText(dangling, 'made');
+    writeText(dangling, 'made', '');
     check('a save through a link without a target creates it',
         read(`${folder}/real/created.json`) === 'made' && isLink(dangling));
 }
