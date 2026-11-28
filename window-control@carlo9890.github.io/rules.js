@@ -267,18 +267,33 @@ export class WindowRules {
     // mutter's initial placement overrides it. The one earlier way in is the
     // initial configuration (see _preplace).
     _track(win) {
-        const entry = { ids: [], graceId: 0, graceEnd: 0, applyId: 0, shown: false, headStart: null };
+        const entry = {
+            ids: [], actor: null, actorIds: [], graceId: 0, graceEnd: 0, applyId: 0, shown: false, headStart: null,
+        };
         const evaluate = () => this._evaluate(win);
+        const shown = () => {
+            entry.shown = true;
+            evaluate();
+        };
         entry.ids = [
             win.connect('notify::wm-class', evaluate),
             win.connect('notify::title', evaluate),
             win.connect('notify::window-type', evaluate),
-            win.connect('shown', () => {
-                entry.shown = true;
-                evaluate();
-            }),
+            win.connect('shown', shown),
             win.connect('unmanaged', () => this._untrack(win)),
         ];
+        // An X11 window is not hidden before mutter places it, and its first
+        // map emits no 'shown'. Its actor draws the first frame only after
+        // the placement. Mutter can destroy the actor before 'unmanaged'.
+        if (win.get_client_type() === Meta.WindowClientType.X11) {
+            entry.actor = win.get_compositor_private();
+            entry.actorIds = [
+                entry.actor.connect('first-frame', shown),
+                entry.actor.connect('destroy', () => {
+                    entry.actor = null;
+                }),
+            ];
+        }
         if (PLACES_BEFORE_FIRST_FRAME)
             entry.ids.push(win.connect('configure', (w, config) => this._preplace(win, config)));
         this._tracked.set(win, entry);
@@ -291,6 +306,10 @@ export class WindowRules {
             return;
         for (const id of entry.ids)
             win.disconnect(id);
+        if (entry.actor) {
+            for (const id of entry.actorIds)
+                entry.actor.disconnect(id);
+        }
         removeSource(entry.graceId);
         removeSource(entry.applyId);
         this._tracked.delete(win);
@@ -381,8 +400,9 @@ export class WindowRules {
         if (!entry || entry.applyId)
             return;
         // Tracked since creation, so "never seen unhidden and 'shown' not yet
-        // fired" is exactly "mutter has not placed it yet".
-        if (!entry.shown && win.is_hidden())
+        // fired" is exactly "mutter has not placed it yet". An X11 window
+        // tells it by its first frame alone (see _track).
+        if (!entry.shown && (entry.actorIds.length > 0 || win.is_hidden()))
             return;
         entry.shown = true;
         // A shown window that is not NORMAL matches nothing, so it gets the

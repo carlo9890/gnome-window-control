@@ -1907,6 +1907,61 @@ export class PopupSeparatorMenuItem {}
             `${unknownSourceRemovals(linesBeforeDisable)} removal(s)`);
     }
 
+    // -- WindowRules: an X11 window ------------------------------------------------
+    //
+    // An X11 window is not hidden when it is created, and mutter places it
+    // after that without a 'shown'. Its rule waits for the first frame of its
+    // actor. Mutter can destroy the actor before 'unmanaged', and a destroyed
+    // actor takes no disconnect.
+
+    {
+        windows.length = 0;
+        const rules = new WindowRules(new WindowPlacer());
+        rules.enable();
+        await sleep(300);
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"xapp"},"tile":"left"}]' }]);
+        const x11Window = id => {
+            const win = new FakeWindow({ id, wmClass: 'xapp' });
+            Object.assign(win, { clientType: Meta.WindowClientType.X11, hidden: false, actor: new Emitter() });
+            windows.push(win);
+            display.emit('window-created', win);
+            return win;
+        };
+
+        const xterm = x11Window(80);
+        await sleep(100);
+        check('an X11 window gets no rule before its first frame', xterm.moves.length === 0,
+            JSON.stringify(xterm.moves));
+        xterm.actor.emit('first-frame');
+        await sleep(100);
+        check('an X11 window gets its rule after its first frame',
+            JSON.stringify(xterm.moves) === '[[0,0,480,1080]]', JSON.stringify(xterm.moves));
+        check('a placed X11 window keeps no handler', xterm.handlerCount() === 0 && xterm.actor.handlerCount() === 0,
+            `${xterm.handlerCount()} on the window, ${xterm.actor.handlerCount()} on the actor`);
+
+        const closed = x11Window(81);
+        closed.actor.emit('destroy');
+        closed.actor.disconnect = () => {
+            throw new Error('disconnect on a destroyed actor');
+        };
+        let closeError = null;
+        try {
+            closed.emit('unmanaged');
+        } catch (e) {
+            closeError = e;
+        }
+        check('an X11 window whose actor went first is untracked without a disconnect on the actor',
+            closeError === null && !rules._tracked.has(closed) && closed.handlerCount() === 0,
+            `${closeError?.message}, ${closed.handlerCount()} handler(s)`);
+
+        const waiting = x11Window(82);
+        rules.disable();
+        check('WindowRules.disable() leaves no handler on an X11 window that waits for its first frame',
+            waiting.handlerCount() === 0 && waiting.actor.handlerCount() === 0,
+            `${waiting.handlerCount()} on the window, ${waiting.actor.handlerCount()} on the actor`);
+        windows.length = 0;
+    }
+
     // -- WindowRules: a config directory that cannot be watched -------------------
     //
     // monitor_directory() throws when the user has no inotify instance left
