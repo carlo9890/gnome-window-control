@@ -46,10 +46,10 @@ a change as verified.** Some suites move windows and press keys.
 
 ### Running the extension by hand
 
-**MUST read [docs/RUNNING.md](docs/RUNNING.md) before `./install-wctl.sh`,
+**MUST read [docs/RUNNING.md](docs/RUNNING.md) before you run an `install-wctl.sh`,
 `./scripts/build.sh install` or `install-zip`, `gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
 `./scripts/start-*.sh` or `./scripts/demo/record.sh`, and before you start, kill or restart any GNOME Shell.** Each start, and each
-`install-wctl.sh` run, needs the user's consent; a wrong start can log the user out.
+`install-wctl.sh` run into the real `HOME`, needs the user's consent; a wrong start can log the user out.
 
 ### Git
 

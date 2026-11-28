@@ -3,10 +3,10 @@
 ## Logs
 
 ```bash
-journalctl --user -b -g "Window Control|JS ERROR" --no-pager | tail -n 50
+journalctl --user -b -g "Window Control|JS ERROR" -n 50 --no-pager
 ```
 
-- Add `-f` only in a terminal you watch: it does not return.
+- Add `-f` to follow, only in a terminal you watch: it does not return.
 - `Window Control` tags every line the extension writes. `JS ERROR` lines are
   untagged throws that GJS logged for it: a D-Bus handler, a rule placement or
   a shortcut.

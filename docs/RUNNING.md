@@ -26,9 +26,11 @@ The project supports Wayland only.
 5. **Check headlessly first.** Extension logic that a fake window can drive is
    verified by the `gjs -m` checks in [TESTING.md](TESTING.md). Start a shell
    only for behaviour that needs a compositor.
-6. **Ask the user's consent before each `./install-wctl.sh` run** on this
-   machine, in any mode: it replaces the user's `~/.local/bin/wctl`. Name the
-   command and wait. To run a local build, use `cli/target/release/wctl`.
+6. **Ask the user's consent before any run of an `install-wctl.sh`**, local or
+   downloaded, that installs into the real `HOME`: it replaces the user's
+   `~/.local/bin/wctl`. Name the command and wait. The offline drive of
+   [TESTING.md](TESTING.md#driving-install-wctlsh-and-releasesh-offline) and
+   `--help` need none. To run a local build, use `cli/target/release/wctl`.
 
 ## Reload after a code change (required)
 

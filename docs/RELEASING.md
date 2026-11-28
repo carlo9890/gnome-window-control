@@ -39,8 +39,8 @@ the checks it makes.
 4. On the same commit, run every check the "Before release" row of
    [TESTING.md](TESTING.md#minimum-checks-before-a-pr) requires, in a headless
    shell or a VM guest, never in the real session
-   (ask before the start: [RUNNING.md](RUNNING.md#hard-rules) hard rule 1; the
-   release request is not consent). Do not tag until all pass.
+   (ask before each start as [RUNNING.md](RUNNING.md#hard-rules) says; a
+   throwaway VM is the exception). Do not tag until all pass.
 5. Tag that commit and push the tag: `git tag vN && git push origin vN`.
 6. Write the [release notes](#release-notes) to a file outside the repository,
    e.g. `/tmp/vN-notes.md`.
