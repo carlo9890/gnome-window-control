@@ -28,12 +28,12 @@ gdbus call --session \
 | `List` | `() -> a(tssssbiiii)` | List all windows |
 | `ListDetailed` | `() -> s` | List windows as JSON with full details. `client_type` is `x11` for an XWayland window, else `wayland` |
 | `ListMonitors` | `() -> s` | List monitors as JSON |
-| `Activate` | `(t) -> b` | Activate window by ID |
+| `Activate` | `(t) -> b` | Hide the overview, activate window by ID |
 | `ActivateByTitle` | `(s) -> b` | Activate by exact title |
 | `ActivateByTitleSubstring` | `(s) -> b` | Activate by title substring |
 | `ActivateByWmClass` | `(s) -> b` | Activate by WM class |
 | `ActivateByPid` | `(i) -> b` | Activate by process ID |
-| `Focus` | `(t) -> b` | Focus window without raising it |
+| `Focus` | `(t) -> b` | Hide the overview, focus window without raising it |
 | `Close` | `(t) -> b` | Ask the window to close |
 | `GetFocused` | `() -> (tss)` | The focused window: ID, title, class |
 | `Move` | `(tii) -> ()` | Move window to (x, y). Raises on failure; see [Errors](#errors) |

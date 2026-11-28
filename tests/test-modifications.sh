@@ -500,7 +500,7 @@ wait_for_change
 focused_class=$("$WCTL" focused --json 2>/dev/null | jq -r '.wm_class // empty' 2>/dev/null)
 assert_equals "$focused_class" "kitty" "activate -c: focused window is a kitty window"
 
-# Test: activate from the Activities overview closes the overview.
+# Test: activate and focus from the Activities overview close the overview.
 overview_active() {
     gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
         --method org.freedesktop.DBus.Properties.Get org.gnome.Shell OverviewActive 2>/dev/null |
@@ -510,23 +510,25 @@ set_overview_active() {
     gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
         --method org.freedesktop.DBus.Properties.Set org.gnome.Shell OverviewActive "<$1>" >/dev/null 2>&1
 }
-info "Testing: activate from the overview"
-if [[ -n "$other_id" ]]; then
-    "$WCTL" activate "$other_id" 2>/dev/null || true
+for command in activate focus; do
+    info "Testing: $command from the overview"
+    if [[ -n "$other_id" ]]; then
+        "$WCTL" activate "$other_id" 2>/dev/null || true
+        wait_for_change
+    fi
+    set_overview_active true || true
     wait_for_change
-fi
-set_overview_active true || true
-wait_for_change
-if [[ "$(overview_active)" == "true" ]]; then
-    run_wctl activate "$TEST_WINDOW_ID"
+    if [[ "$(overview_active)" == "true" ]]; then
+        run_wctl "$command" "$TEST_WINDOW_ID"
+        wait_for_change
+        assert_equals "$(overview_active)" "false" "$command from the overview: overview is closed"
+        assert_equals "$(get_window_field '.has_focus')" "true" "$command from the overview: window is focused"
+    else
+        skip "$command from the overview: the shell did not open the overview"
+    fi
+    set_overview_active false || true
     wait_for_change
-    assert_equals "$(overview_active)" "false" "activate from the overview: overview is closed"
-    assert_equals "$(get_window_field '.has_focus')" "true" "activate from the overview: window is focused"
-else
-    skip "activate from the overview: the shell did not open the overview"
-fi
-set_overview_active false || true
-wait_for_change
+done
 
 # Test: focus
 info "Testing: focus"

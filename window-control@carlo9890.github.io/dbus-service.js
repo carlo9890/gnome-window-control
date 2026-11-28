@@ -61,12 +61,16 @@ function _timestamp() {
     return global.display.get_current_time_roundtrip();
 }
 
-// Meta.Window.activate() focuses and raises the window but leaves the
-// Activities overview open over it, so the overview is hidden first, as in
-// ActivateWorkspace.
-function _activate(win) {
+// Meta.Window.activate() and focus() leave the Activities overview open
+// over the window, and Meta.Workspace.activate() does not switch while it is
+// shown, so each of them runs after this.
+function _hideOverview() {
     if (Main.overview.visible)
         Main.overview.hide();
+}
+
+function _activate(win) {
+    _hideOverview();
     win.activate(_timestamp());
 }
 
@@ -391,6 +395,7 @@ export class WindowControlService {
             if (win.minimized ||
                 !win.located_on_workspace(global.workspace_manager.get_active_workspace()))
                 return false;
+            _hideOverview();
             win.focus(_timestamp());
             return true;
         });
@@ -573,10 +578,8 @@ export class WindowControlService {
         return JSON.stringify(result);
     }
 
-    // While the Activities overview is shown, Meta.Workspace.activate() leaves
-    // the active workspace unchanged, so the overview is hidden first. The
-    // result is read back rather than assumed, so a switch that did not take
-    // effect reports false.
+    // The result is read back rather than assumed, so a switch that did not
+    // take effect reports false.
     ActivateWorkspace(workspaceIndex) {
         console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) called`);
         const manager = global.workspace_manager;
@@ -584,8 +587,7 @@ export class WindowControlService {
             console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> false (invalid index)`);
             return false;
         }
-        if (Main.overview.visible)
-            Main.overview.hide();
+        _hideOverview();
         manager.get_workspace_by_index(workspaceIndex).activate(_timestamp());
         const switched = manager.get_active_workspace_index() === workspaceIndex;
         console.debug(`[Window Control] ActivateWorkspace(${workspaceIndex}) -> ${switched}`);

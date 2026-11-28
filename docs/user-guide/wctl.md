@@ -17,8 +17,8 @@ takes a `<WINDOW>` takes a [selector](concepts.md#selectors). `place` takes
 | `wctl workspaces` | List the workspaces. |
 | `wctl monitors` | List the monitors. |
 | `wctl workarea` | Show the usable area of a monitor. |
-| `wctl activate` | Raise and focus a window, and restore it from minimize. |
-| `wctl focus` | Focus a window without raising it. |
+| `wctl activate` | Raise and focus a window, and restore it from minimize. Closes the Activities overview. |
+| `wctl focus` | Focus a window without raising it. Closes the Activities overview. |
 | `wctl wait` | Wait until a matching window is shown, and print its ID. |
 | `wctl move` | Move a window. |
 | `wctl resize` | Resize a window. |

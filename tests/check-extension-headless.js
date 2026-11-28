@@ -686,10 +686,10 @@ export class PopupSeparatorMenuItem {}
         windows.length = 0;
     }
 
-    // -- Activate: the Activities overview --------------------------------------
+    // -- Activate and Focus: the Activities overview ----------------------------
     //
-    // Meta.Window.activate() leaves the overview open over the window, so every
-    // activate method hides it first.
+    // Meta.Window.activate() and focus() leave the overview open over the
+    // window, so every activate method and Focus hide it first.
 
     {
         const win = createWindow({ id: 18, wmClass: 'A' });
@@ -712,6 +712,13 @@ export class PopupSeparatorMenuItem {}
                 ok === true && overviewAtActivate === false && !Main.overview.visible,
                 `ok ${ok}, overview at activate ${overviewAtActivate}, after ${Main.overview.visible}`);
         }
+        let overviewAtFocus = null;
+        win.focus = () => { overviewAtFocus = Main.overview.visible; };
+        Main.overview.visible = true;
+        const focused = service.Focus(18);
+        check('Focus hides the overview before it focuses the window',
+            focused === true && overviewAtFocus === false && !Main.overview.visible,
+            `ok ${focused}, overview at focus ${overviewAtFocus}, after ${Main.overview.visible}`);
         service.unexport();
         windows.length = 0;
     }
