@@ -344,16 +344,18 @@ export class RulesEditor {
     }
 
     // Save takes a valid, changed text only: the extension loads no rule at
-    // all from a file with one error.
+    // all from a file with one error. Apply waits for a save only after an
+    // edit: the example shown for a missing file is no change of the user's.
     _syncButtons() {
         const modified = this._buffer.text !== this._savedText;
+        const edited = this._buffer.text !== this._loadedText;
         const checked = this._checkId === 0;
         this._saveButton.sensitive = modified && checked && this._result.ok;
-        this._revertButton.sensitive = this._buffer.text !== this._loadedText;
-        this._applyButton.sensitive = !modified;
+        this._revertButton.sensitive = edited;
+        this._applyButton.sensitive = !(modified && edited);
         if (this._result.ok)
             this._statusRow.subtitle = modified ? 'Not saved' : '';
-        this._applyRow.subtitle = modified
+        this._applyRow.subtitle = modified && edited
             ? `Save the changes first: this applies the saved ${RULES_FILE} and the files in ${DROPIN_DIR}`
             : 'Place every open window by the saved rules of all files, as a new window is placed';
     }
