@@ -94,8 +94,9 @@ with the correct form.
   The correct forms: `wctl tile` and `wctl center` compose a layout from
   `Move`, `MoveResize` and `GetWorkarea`; rules and shortcuts take their
   rectangles from `rules-format.js`; `Close` uses `Meta.Window.delete`.
-- A D-Bus method in `dbus-interface.js` has its row in the method table of
-  `docs/user-guide/dbus.md`. Flag a method the table does not list.
+- A row in the method table of `docs/user-guide/dbus.md` gives the signature
+  and the description of the interface XML. `tests/check-dbus-doc-table.sh`
+  checks the method names only.
 - A script under `scripts/` that sends a state-changing call to
   `org.gnome.Shell` refuses the login session bus unless the caller opts in.
   `scripts/debug-dbus.sh` and its `--real-session-ok` flag are the correct form.
