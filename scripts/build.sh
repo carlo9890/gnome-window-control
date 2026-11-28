@@ -106,10 +106,10 @@ validate() {
     # extension then reports state ERROR and serves nothing. Two delimiters are
     # expected; anything else is the bug.
     #
-    # grep -o, not grep -c: -c counts matching LINES, so a second backtick on
-    # either delimiter line would leave the count at 2 and pass a broken file.
+    # Characters, not lines: a second backtick on either delimiter line must
+    # count too.
     local ticks
-    ticks=$(grep -o '`' "$EXTENSION_DIR/dbus-interface.js" | wc -l)
+    ticks=$(tr -cd '`' < "$EXTENSION_DIR/dbus-interface.js" | wc -c)
     if [[ "$ticks" -ne 2 ]]; then
         log_error "dbus-interface.js has $ticks backtick(s), expected 2 (the template delimiters)."
         log_error "A backtick inside the XML ends the template literal early; use a single quote."
