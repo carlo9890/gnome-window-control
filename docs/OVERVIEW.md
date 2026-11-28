@@ -62,8 +62,9 @@ grep -rn 'decisions/<NNNN>' docs $X cli                  # every citation of one
 ```
 
 The interface XML is the D-Bus contract. The method table in
-`docs/user-guide/dbus.md` is a copy kept by hand: trust the XML when they
-disagree.
+`docs/user-guide/dbus.md` is a copy kept by hand, and
+`tests/check-dbus-doc-table.sh` checks only its method names: trust the XML
+when they disagree.
 
 ## External resources
 

@@ -26,11 +26,14 @@ queue.
    rules.
 4. Run shexli, the analyzer of extensions.gnome.org, from the repo root. Pin
    `tree-sitter`, because 0.26.0 segfaults shexli 0.2.1; pass an absolute path,
-   because a relative one fails with a `ValueError`:
+   because a relative one fails with a `ValueError`. Install into a venv in
+   your scratch directory, not into the user's Python; a system `python3` on
+   Debian or Ubuntu needs the `python3-venv` package for it:
 
    ```bash
-   pip install -U shexli 'tree-sitter==0.25.2'
-   shexli "$PWD/window-control@carlo9890.github.io"
+   V=<scratch-dir>/shexli-venv
+   python3 -m venv "$V" && "$V/bin/pip" install -q -U shexli 'tree-sitter==0.25.2'
+   "$V/bin/shexli" "$PWD/window-control@carlo9890.github.io"
    ```
 
 5. Where the pages reject a pattern, they win over this repository: its docs,
@@ -94,8 +97,9 @@ with the correct form.
   The correct forms: `wctl tile` and `wctl center` compose a layout from
   `Move`, `MoveResize` and `GetWorkarea`; rules and shortcuts take their
   rectangles from `rules-format.js`; `Close` uses `Meta.Window.delete`.
-- A D-Bus method in `dbus-interface.js` has its row in the method table of
-  `docs/user-guide/dbus.md`. Flag a method the table does not list.
+- A row in the method table of `docs/user-guide/dbus.md` gives the signature
+  and the description of the interface XML. `tests/check-dbus-doc-table.sh`
+  checks the method names only.
 - A script under `scripts/` that sends a state-changing call to
   `org.gnome.Shell` refuses the login session bus unless the caller opts in.
   `scripts/debug-dbus.sh` and its `--real-session-ok` flag are the correct form.

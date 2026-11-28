@@ -15,6 +15,10 @@ export const DBUS_INTERFACE_XML = `
       <arg type="a(tssssbiiii)" direction="out" name="windows"/>
     </method>
 
+    <!--
+      A JSON array of one object per window. client_type is x11 for an
+      XWayland client, else wayland.
+    -->
     <method name="ListDetailed">
       <arg type="s" direction="out" name="windows_json"/>
     </method>
@@ -24,8 +28,9 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      Focuses and raises the window. Every method that answers b success
-      answers false when no window has that id.
+      Hides the Activities overview, then focuses and raises the window.
+      Every method that answers b success answers false when no window has
+      that id.
     -->
     <method name="Activate">
       <arg type="t" direction="in" name="window_id"/>
@@ -57,7 +62,8 @@ export const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
-      Focuses the window without raising it. false also for a hidden window
+      Hides the Activities overview, then focuses the window without raising
+      it. false also for a hidden window
       (minimized, or on another workspace), which mutter does not focus.
     -->
     <method name="Focus">

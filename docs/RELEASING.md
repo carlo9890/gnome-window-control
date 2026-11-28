@@ -30,22 +30,24 @@ the checks it makes.
 1. On a branch, set the [version](#version-format) in `metadata.json` and
    `cli/Cargo.toml`, then refresh the lock, or CI and the release build refuse
    it: `(cd cli && cargo update -p wctl)`.
-2. Commit `chore: bump version to vN`, open the PR
-   ([CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md)), and wait for the merge.
+2. Commit `chore: bump version to vN`, open the PR, and stop there: the merge
+   is the user's ([CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md#pull-requests)). Go
+   on with step 3 once the PR is merged.
 3. On the merged `main` commit, run the
    [extensions.gnome.org review](REVIEWING.md#extensionsgnomeorg-review). Fix
    each violation through a PR, then start this step again on the new `main`.
 4. On the same commit, run every check the "Before release" row of
    [TESTING.md](TESTING.md#minimum-checks-before-a-pr) requires, in a headless
    shell or a VM guest, never in the real session
-   ([RUNNING.md](RUNNING.md) says when a shell start needs consent). Do not tag
-   until all pass.
-5. Tag that commit and push the tag: `git tag vN && git push --tags`.
+   (ask before each start as [RUNNING.md](RUNNING.md#hard-rules) says; a
+   throwaway VM is the exception). Do not tag until all pass.
+5. Tag that commit and push the tag: `git tag vN && git push origin vN`.
 6. Write the [release notes](#release-notes) to a file outside the repository,
    e.g. `/tmp/vN-notes.md`.
-7. Run `./scripts/release.sh --notes-file /tmp/vN-notes.md`. A re-run for an
-   existing release replaces its assets and notes in place; run it again after
-   a failed upload.
+7. Run `./scripts/release.sh --notes-file /tmp/vN-notes.md`. Run it again
+   after a failed upload: it replaces the release's assets and notes in place.
+   The re-run asks `(y/N)` on stdin and aborts without an answer, so ask the
+   user, then pipe the answer: `echo y | ./scripts/release.sh --notes-file …`.
 
 ## Release notes
 

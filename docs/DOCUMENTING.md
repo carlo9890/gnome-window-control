@@ -32,6 +32,12 @@ each step and restates none.
 - A breaking change of a past version, unless a user can still meet it.
 - X11. The project supports Wayland only; the X11 code paths stay undocumented.
 
+## Docs with no route
+
+- Give a doc an `AGENTS.md` route only where a skipped read can cause damage.
+- `docs/MONITORING.md` and `docs/specs/RULES-JSON.md` have no route: keep the
+  links to them from `docs/RUNNING.md` and `docs/CODING.md`.
+
 ## `docs/decisions/`
 
 - Cite a record in `docs/` as a link with its number:

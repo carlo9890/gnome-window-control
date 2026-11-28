@@ -1,11 +1,12 @@
 # Testing
 
 ```bash
-mise run ci                                              # the crate gate: fmt, clippy, tests, build
+mise run ci                                              # the crate gate: fmt, clippy, tests, build, cargo audit
 env -u GI_TYPELIB_PATH gjs -m tests/check-rules-format.js   # rules grammar, no typelib
 env -u GI_TYPELIB_PATH gjs -m tests/check-prefs.js          # preferences logic
 dir=$(find /usr/lib* -name 'Meta-*.typelib' -printf '%h\n' | sort -V | tail -1) &&
     GI_TYPELIB_PATH=${dir:?no Meta-*.typelib installed} gjs -m tests/check-extension-headless.js
+./tests/check-dbus-doc-table.sh                          # the method table in docs/user-guide/dbus.md
 ./tests/run-all-query-tests.sh                           # read-only, against a running extension
 ./tests/run-all-modification-tests.sh                    # state-changing: headless shell or VM guest only
 ```
@@ -26,7 +27,7 @@ Coverage is not measured. The minimum-checks table below is the whole bar.
 ## CI gate
 
 `.github/workflows/build.yml` runs two jobs on a bare `ubuntu-latest`: `extension`
-(the three headless `gjs` checks) and `cli` (`mise run ci` and the release
+(the three headless `gjs` checks and the method-table check) and `cli` (`mise run ci` and the release
 checks). Run the release checks locally before a push that changes a version or
 a dependency:
 
@@ -152,4 +153,5 @@ Which change brings in which column:
   or a VM guest ([RUNNING.md](RUNNING.md)) and run the query suite there.
 
 A JavaScript change also passes the `node --check` gate in
-[CODING.md](CODING.md).
+[CODING.md](CODING.md). A change to `dbus-interface.js` or
+`docs/user-guide/dbus.md` also passes `./tests/check-dbus-doc-table.sh`.
