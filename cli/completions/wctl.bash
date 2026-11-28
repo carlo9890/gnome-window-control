@@ -37,16 +37,27 @@ _wctl() {
 
     local cmd="${words[$((1 + off))]}"
 
-    # Position of the word being completed, counted from the command: slot 2 is
-    # the <WINDOW> slot for every command that takes one.
-    local slot=$((cword - off))
+    # Position of the word being completed among the arguments, counted from
+    # the command: 2 is the <WINDOW> slot for every command that takes one. A
+    # flag such as --json takes no position, wherever it stands. A -c/-t/-s/-p
+    # selector and its value fill the <WINDOW> slot together; the value of any
+    # other option (the list of VALUE_OPTIONS in commands/mod.rs) takes none.
+    local pos=2 i
+    for ((i = 2 + off; i < cword; i++)); do
+        case "${words[i]}" in
+            -[ctsp]) ((i++, pos++)) ;;
+            --title-prefix | --title-suffix | --class-prefix | --class | --workspace | --monitor | --timeout | --min-width | --at | --file) ((i++)) ;;
+            --*) ;;
+            *) ((pos++)) ;;
+        esac
+    done
+    # The loop stepped past the word being completed: it is an option's value,
+    # which the user makes up.
+    ((i > cword)) && return
 
-    # A -c/-t/-s/-p selector occupies two words, so the arguments AFTER the
-    # <WINDOW> slot sit one position further right. The <WINDOW> slot itself
-    # still uses `slot`, because the selector option is the word being typed
-    # there and shifting on it would offer nothing at all.
-    local pos=$slot
-    [[ "${words[$((2 + off))]:-}" == -[ctsp] ]] && pos=$((slot - 1))
+    # The raw position, for activate: its --no-animation goes with a window ID
+    # given right after the command, never with -t/-s/-c/-p.
+    local slot=$((cword - off))
 
     case "$cmd" in
         list)
@@ -56,14 +67,14 @@ _wctl() {
             COMPREPLY=($(compgen -W "--json" -- "$cur"))
             ;;
         info)
-            if [[ $slot -eq 2 ]]; then
+            if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "--json" -- "$cur"))
             fi
             ;;
         place)
-            if [[ $slot -eq 2 ]]; then
+            if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "left center right" -- "$cur"))
@@ -95,7 +106,7 @@ _wctl() {
             fi
             ;;
         tile)
-            if [[ $slot -eq 2 ]]; then
+            if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "top-left top-center top-right left center right bottom-left bottom-center bottom-right wide-left wide-right" -- "$cur"))
@@ -104,7 +115,7 @@ _wctl() {
             fi
             ;;
         center)
-            if [[ $slot -eq 2 ]]; then
+            if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "horizontal vertical both" -- "$cur"))
@@ -130,29 +141,29 @@ _wctl() {
             COMPREPLY=($(compgen -W "-c -t -s -p --timeout" -- "$cur"))
             ;;
         above|sticky)
-            if [[ $slot -eq 2 ]]; then
+            if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             elif [[ $pos -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "on off" -- "$cur"))
             fi
             ;;
         completion)
-            if [[ $slot -eq 2 ]]; then
+            if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "bash zsh" -- "$cur"))
             fi
             ;;
         minimize|unminimize)
-            if [[ $slot -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "$(_wctl_window_words) --no-animation" -- "$cur"))
-            elif [[ $slot -eq 3 && "$prev" == "--no-animation" ]]; then
-                # The flag may come before the window too.
-                COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
-            elif [[ $pos -eq 3 && " ${words[*]} " != *" --no-animation "* ]]; then
-                COMPREPLY=($(compgen -W "--no-animation" -- "$cur"))
+            # The flag may come before the window too, and is taken once.
+            local flag="--no-animation"
+            [[ " ${words[*]} " == *" --no-animation "* ]] && flag=""
+            if [[ $pos -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_window_words) $flag" -- "$cur"))
+            elif [[ $pos -eq 3 ]]; then
+                COMPREPLY=($(compgen -W "$flag" -- "$cur"))
             fi
             ;;
         focus|move|resize|move-resize|move-to-workspace|move-to-monitor|maximize|unmaximize|fullscreen|unfullscreen|close)
-            if [[ $slot -eq 2 ]]; then
+            if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
             fi
             ;;

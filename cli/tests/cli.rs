@@ -1656,7 +1656,7 @@ fn bash_completions(line: &[&str]) -> Vec<String> {
 source <(wctl completion bash)
 COMP_WORDS=({words}); COMP_CWORD={cword}
 _wctl
-printf '%s\n' "${{COMPREPLY[@]}}""#,
+[[ ${{#COMPREPLY[@]}} -eq 0 ]] || printf '%s\n' "${{COMPREPLY[@]}}""#,
         words = line
             .iter()
             .map(|word| format!("'{word}'"))
@@ -1698,6 +1698,44 @@ fn bash_completion_offers_what_each_position_accepts() {
     // --no-animation may come before the window.
     let offered = bash_completions(&["wctl", "minimize", "--no-animation", ""]);
     assert!(offered.iter().any(|word| word == "focused"), "{offered:?}");
+
+    // The value of an option is the user's own word: nothing is offered.
+    for line in [
+        &["wctl", "tile", "-c", ""][..],
+        &["wctl", "wait", "-c", ""],
+        &["wctl", "list", "--class", ""],
+        &["wctl", "resolve-place", "--monitor", ""],
+        &["wctl", "rules", "test", "-c", ""],
+    ] {
+        let offered = bash_completions(line);
+        assert!(offered.is_empty(), "{line:?} offered {offered:?}");
+    }
+    // A flag takes no position, on either side of the selector, and a
+    // selector with its value fills the <WINDOW> slot.
+    assert_eq!(
+        bash_completions(&["wctl", "place", "--json", "111", ""]),
+        ["left", "center", "right"]
+    );
+    assert_eq!(
+        bash_completions(&["wctl", "tile", "--settled", ""]),
+        ["focused", "-c", "-t", "-s", "-p"]
+    );
+    assert_eq!(
+        bash_completions(&["wctl", "tile", "--json", "-c", "kitty", ""]),
+        [
+            "top-left",
+            "top-center",
+            "top-right",
+            "left",
+            "center",
+            "right",
+            "bottom-left",
+            "bottom-center",
+            "bottom-right",
+            "wide-left",
+            "wide-right"
+        ]
+    );
 }
 
 /// `wctl` with XDG_CONFIG_HOME at `config`, so the default rules file and
