@@ -1031,6 +1031,19 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
         })
 }
 
+/// The rules after `position` that the rule there shadows and that no other
+/// rule before them shadows: the ones a rule inserted there turns off.
+fn newly_shadowed(rules: &[rules::Rule], position: usize) -> Vec<usize> {
+    let added = &rules[position];
+    (position + 1..rules.len())
+        .filter(|&later| {
+            shadows(added, &rules[later])
+                && !(0..later)
+                    .any(|earlier| earlier != position && shadows(&rules[earlier], &rules[later]))
+        })
+        .collect()
+}
+
 /// What the extension makes of the file `add` or `remove` writes.
 enum Target {
     /// rules.json: no `--file`, or one that names it.
@@ -1295,6 +1308,12 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         eprintln!(
             "Warning: {shadow} already matches every window this rule would, \
              and the first match wins, so the new rule will never fire."
+        );
+    }
+    for index in newly_shadowed(&recompiled, position) {
+        eprintln!(
+            "Warning: this rule matches every window rule {index} would, \
+             and the first match wins, so rule {index} will never fire."
         );
     }
     for file in &after {
@@ -2185,6 +2204,37 @@ mod tests {
              and its own rule is still on the way"
         );
         assert_eq!(applied_line(7, 1), "Applied a rule to window 7");
+    }
+
+    fn compiled(document: Value) -> Vec<rules::Rule> {
+        rules::compile_rules(&document).expect("a valid document")
+    }
+
+    /// `rules add --at` names each later rule of the file that the new rule
+    /// turns off, and none that an earlier rule had turned off already.
+    #[test]
+    fn newly_shadowed_names_the_later_rules_the_inserted_rule_turns_off() {
+        let general_first = compiled(json!([
+            {"match": {"class": "kitty"}, "tile": "left"},
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+            {"match": {"class": "foot"}, "tile": "right"},
+            {"match": {"class": "kitty", "title": "vim"}, "center": "both"},
+        ]));
+        assert_eq!(newly_shadowed(&general_first, 0), vec![1, 3]);
+
+        // Rule 1 shadows rule 2 already, and rule 0 is narrower than rule 1.
+        let already_off = compiled(json!([
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+            {"match": {"class": "kitty"}, "tile": "left"},
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+        ]));
+        assert_eq!(newly_shadowed(&already_off, 0), Vec::<usize>::new());
+
+        let appended = compiled(json!([
+            {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
+            {"match": {"class": "kitty"}, "tile": "left"},
+        ]));
+        assert_eq!(newly_shadowed(&appended, 1), Vec::<usize>::new());
     }
 
     fn scratch_folder(name: &str) -> PathBuf {

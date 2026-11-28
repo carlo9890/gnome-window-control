@@ -2385,6 +2385,52 @@ fn rules_add_into_rules_d_prints_no_refused_key_text() {
     std::fs::remove_dir_all(&config).ok();
 }
 
+/// A rule added ahead of a narrower rule of the same file takes its windows:
+/// `rules add --at` names the rule it turns off.
+#[test]
+fn rules_add_at_warns_about_the_later_rule_it_shadows() {
+    let config = rules_config("rules-add-at-shadow", "[]", &[]);
+    let user = config.join("gnome-window-control/rules.json");
+
+    let (stdout, stderr, code) = wctl_config(
+        &config,
+        &[
+            "rules",
+            "add",
+            "-c",
+            "kitty",
+            "place",
+            "center",
+            "top",
+            "75%",
+            "100%",
+            "--min-width",
+            "3000",
+        ],
+    );
+    assert_eq!(
+        (stdout, stderr.as_str(), code),
+        (format!("Added rule 0 to {}\n", user.display()), "", 0)
+    );
+
+    let (stdout, stderr, code) = wctl_config(
+        &config,
+        &[
+            "rules", "add", "-c", "kitty", "place", "center", "top", "100%", "100%", "--at", "0",
+        ],
+    );
+    assert_eq!(
+        (stdout, stderr.as_str(), code),
+        (
+            format!("Added rule 0 to {}\n", user.display()),
+            "Warning: this rule matches every window rule 1 would, \
+             and the first match wins, so rule 1 will never fire.\n",
+            0
+        )
+    );
+    std::fs::remove_dir_all(&config).ok();
+}
+
 /// A rewrite would put U+FFFD over a byte that is not UTF-8, so `rules add`
 /// and `rules remove` refuse the file and leave it as it is.
 #[test]
