@@ -11,9 +11,8 @@ use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use zbus::blocking::connection::Builder;
-use zbus::blocking::{Connection, Proxy};
-use zbus::zvariant::{DynamicType, OwnedValue};
+use zbus::connection::Builder;
+use zbus::{block_on, Connection, DBusError, DynamicType, OwnedVariant, Proxy};
 
 use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_NO_EXTENSION, EXIT_REFUSED, EXIT_TIMEOUT};
 
@@ -52,6 +51,26 @@ const ERROR_SERVICE_UNKNOWN: &str = "org.freedesktop.DBus.Error.ServiceUnknown";
 /// it (see `main::global_options`).
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 25;
 
+/// The name and the detail of a D-Bus error reply, or `None` for a failure
+/// that is not a reply.
+///
+/// zbus gives a reply whose name `zbus::fdo::Error` defines, such as
+/// ServiceUnknown, UnknownMethod or NoReply, as `Error::FDO`, and every other
+/// name, the extension's own included, as `Error::MethodError`.
+fn error_reply(err: &zbus::Error) -> Option<(String, Option<String>)> {
+    match err {
+        zbus::Error::MethodError(name, detail, _) => Some((name.to_string(), detail.clone())),
+        zbus::Error::FDO(fdo) => {
+            Some((fdo.name().to_string(), fdo.description().map(String::from)))
+        }
+        _ => None,
+    }
+}
+
+fn error_name(err: &zbus::Error) -> Option<String> {
+    error_reply(err).map(|(name, _)| name)
+}
+
 /// Classify a failed call as "the extension is not running".
 ///
 /// Matched on the error NAME alone. UnknownMethod is not here: GDBus raises
@@ -64,19 +83,18 @@ pub const DEFAULT_TIMEOUT_SECONDS: u64 = 25;
 /// arbitrary exception messages under org.freedesktop.DBus.Error.Failed or
 /// org.gnome.gjs.JSError.*, and a message that happened to contain "does not
 /// exist" must not send the user to re-enable an extension that just answered.
+///
+/// A session bus that cannot be reached at all is `map_connect_err`'s case,
+/// and says so by its own message.
 fn is_extension_not_running(err: &zbus::Error) -> bool {
-    match err {
-        zbus::Error::MethodError(name, _, _) => {
-            matches!(name.as_str(), ERROR_SERVICE_UNKNOWN | ERROR_DISABLED)
-        }
-        // A session bus that cannot be reached at all is `map_connect_err`'s
-        // case, and says so by its own message.
-        _ => false,
-    }
+    matches!(
+        error_name(err).as_deref(),
+        Some(ERROR_SERVICE_UNKNOWN | ERROR_DISABLED)
+    )
 }
 
 fn is_unknown_method(err: &zbus::Error) -> bool {
-    matches!(err, zbus::Error::MethodError(name, _, _) if name.as_str() == ERROR_UNKNOWN_METHOD)
+    error_name(err).as_deref() == Some(ERROR_UNKNOWN_METHOD)
 }
 
 /// Classify a failed call as "the reply never came".
@@ -88,27 +106,23 @@ fn is_unknown_method(err: &zbus::Error) -> bool {
 ///
 /// This is matched on the error VALUE, not its text.
 fn is_timeout(err: &zbus::Error) -> bool {
-    match err {
-        zbus::Error::InputOutput(io) => io.kind() == std::io::ErrorKind::TimedOut,
-        zbus::Error::MethodError(name, _, _) => matches!(
-            name.as_str(),
-            "org.freedesktop.DBus.Error.NoReply" | "org.freedesktop.DBus.Error.Timeout"
-        ),
-        _ => false,
+    if let zbus::Error::InputOutput(io) = err {
+        return io.kind() == std::io::ErrorKind::TimedOut;
     }
+    matches!(
+        error_name(err).as_deref(),
+        Some("org.freedesktop.DBus.Error.NoReply" | "org.freedesktop.DBus.Error.Timeout")
+    )
 }
 
 /// What a timed-out call says happened. The bus daemon's NoReply also stands
 /// for a shell that left the bus with the call pending -- a crash or a
 /// restart -- so it is not called slow.
 fn no_reply(err: &zbus::Error) -> &'static str {
-    match err {
-        zbus::Error::MethodError(name, _, _)
-            if name.as_str() == "org.freedesktop.DBus.Error.NoReply" =>
-        {
-            "GNOME Shell did not reply: it stopped responding or left the bus."
-        }
-        _ => "GNOME Shell did not reply in time.",
+    if error_name(err).as_deref() == Some("org.freedesktop.DBus.Error.NoReply") {
+        "GNOME Shell did not reply: it stopped responding or left the bus."
+    } else {
+        "GNOME Shell did not reply in time."
     }
 }
 
@@ -141,8 +155,8 @@ fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
     // The extension writes these messages, and they are the whole reason the
     // geometry methods raise: it is the only party that can see the difference
     // between a missing window, a pinned frame and a tiled one.
-    if let zbus::Error::MethodError(name, detail, _) = &err {
-        let message = detail.clone().unwrap_or_else(|| name.to_string());
+    if let Some((name, detail)) = error_reply(&err) {
+        let message = detail.unwrap_or_else(|| name.clone());
         match name.as_str() {
             // Extension-said-no goes to stdout, the shape the suites pin.
             ERROR_NOT_FOUND => return Fail::plain(message).with_code(EXIT_NOT_FOUND),
@@ -159,9 +173,9 @@ fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
     // The shell is serving the object, but not this method -- so what it
     // loaded is older than this binary. On Wayland that is the ordinary
     // state right after an upgrade, until the user logs out.
-    if let zbus::Error::MethodError(name, detail, _) = &err {
-        if is_unknown_method(&err) {
-            let message = detail.clone().unwrap_or_else(|| name.to_string());
+    if let Some((name, detail)) = error_reply(&err) {
+        if name == ERROR_UNKNOWN_METHOD {
+            let message = detail.unwrap_or(name);
             return Fail::error(format!(
                 "{message}. The extension GNOME Shell has loaded is older than this wctl. \
                  Check with 'wctl version --json', then restart the shell \
@@ -183,7 +197,7 @@ fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
 /// keeps exit 5 by position, not by the error text, and the transport's own
 /// words stay in the message, because they name the address that is wrong.
 ///
-/// No timeout branch: zbus 5 applies `method_timeout` to method calls only,
+/// No timeout branch: zbus applies `method_timeout` to method calls only,
 /// never to the connect and the handshake, so a failure here is never the
 /// shell being slow to reply.
 fn map_connect_err(err: zbus::Error) -> Fail {
@@ -194,16 +208,16 @@ fn map_connect_err(err: zbus::Error) -> Fail {
 }
 
 /// A session connection whose method calls give up after `timeout`.
+///
+/// zbus has no blocking API: every call here runs to completion in
+/// `block_on`, on the runtime of the calling thread, which also drives the
+/// connection.
 fn session_connection(timeout: Duration) -> Result<Connection> {
-    Builder::session()
-        .map_err(map_connect_err)?
-        .method_timeout(timeout)
-        .build()
-        .map_err(map_connect_err)
+    block_on(Builder::session().method_timeout(timeout).build()).map_err(map_connect_err)
 }
 
 fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
-    Proxy::new(conn, DEST, PATH, IFACE).map_err(|err| map_err(err, || false))
+    block_on(Proxy::new(conn, DEST, PATH, IFACE)).map_err(|err| map_err(err, || false))
 }
 
 /// Is the extension's object exported on `conn`?
@@ -212,13 +226,13 @@ fn proxy(conn: &Connection) -> Result<Proxy<'_>> {
 /// every exported object, so the answer does not depend on which methods the
 /// loaded extension has: one too old to serve GetVersion is still found.
 fn serves_object(conn: &Connection) -> bool {
-    conn.call_method(
+    block_on(conn.call_method(
         Some(DEST),
         PATH,
         Some("org.freedesktop.DBus.Properties"),
         "GetAll",
         &(IFACE,),
-    )
+    ))
     .is_ok()
 }
 
@@ -230,10 +244,9 @@ fn call_on<B, R>(
 ) -> Result<R>
 where
     B: serde::ser::Serialize + DynamicType,
-    R: serde::de::DeserializeOwned + zbus::zvariant::Type,
+    R: serde::de::DeserializeOwned + zbus::Type,
 {
-    proxy(conn)?
-        .call(method, body)
+    block_on(proxy(conn)?.call(method, body))
         .map_err(|err| mapper(err, Box::new(|| serves_object(conn))))
 }
 
@@ -279,7 +292,7 @@ impl Bus {
     pub fn call<B, R>(&self, method: &str, body: &B) -> Result<R>
     where
         B: serde::ser::Serialize + DynamicType,
-        R: serde::de::DeserializeOwned + zbus::zvariant::Type,
+        R: serde::de::DeserializeOwned + zbus::Type,
     {
         call_on(self.conn()?, method, body, |err, asks| map_err(err, asks))
     }
@@ -320,7 +333,7 @@ impl Bus {
     fn call_bounded<B, R>(&self, method: &str, body: &B, client_bound: Duration) -> Result<R>
     where
         B: serde::ser::Serialize + DynamicType,
-        R: serde::de::DeserializeOwned + zbus::zvariant::Type,
+        R: serde::de::DeserializeOwned + zbus::Type,
     {
         // The variable does not set this bound, but a bad one is still an
         // error for every command that opens a connection.
@@ -355,7 +368,7 @@ impl Bus {
     /// not an empty list a caller would read as "no capabilities".
     pub fn capabilities_of_answering(&self) -> Result<Vec<String>> {
         let conn = self.conn()?;
-        match proxy(conn)?.call::<_, _, Vec<String>>("GetCapabilities", &()) {
+        match block_on(proxy(conn)?.call::<_, _, Vec<String>>("GetCapabilities", &())) {
             Ok(names) => Ok(names),
             Err(err) if is_unknown_method(&err) && serves_object(conn) => Ok(Vec::new()),
             Err(err) => Err(map_err(err, || serves_object(conn))),
@@ -376,7 +389,7 @@ impl Bus {
     pub fn reported_capabilities(&self, bound: Duration) -> Option<Vec<String>> {
         let conn = session_connection(bound).ok()?;
         let proxy = proxy(&conn).ok()?;
-        match proxy.call::<_, _, Vec<String>>("GetCapabilities", &()) {
+        match block_on(proxy.call::<_, _, Vec<String>>("GetCapabilities", &())) {
             Ok(names) => Some(names),
             Err(err) if is_unknown_method(&err) => serves_object(&conn).then(Vec::new),
             Err(_) => None,
@@ -388,21 +401,19 @@ impl Bus {
     /// the answer as its `layout-mode` property: 1 logical, 2 physical. A
     /// state without it is physical.
     pub fn stage_is_logical(&self) -> Result<bool> {
-        type Properties = HashMap<String, OwnedValue>;
+        type Properties = HashMap<String, OwnedVariant>;
         type Identity = (String, String, String, String);
         type Mode = (String, i32, i32, f64, f64, Vec<f64>, Properties);
         type Monitor = (Identity, Vec<Mode>, Properties);
         type Logical = (i32, i32, f64, u32, bool, Vec<Identity>, Properties);
-        let reply = self
-            .conn()?
-            .call_method(
-                Some("org.gnome.Mutter.DisplayConfig"),
-                "/org/gnome/Mutter/DisplayConfig",
-                Some("org.gnome.Mutter.DisplayConfig"),
-                "GetCurrentState",
-                &(),
-            )
-            .map_err(|err| Fail::error(format!("Cannot read mutter's layout mode: {err}")))?;
+        let reply = block_on(self.conn()?.call_method(
+            Some("org.gnome.Mutter.DisplayConfig"),
+            "/org/gnome/Mutter/DisplayConfig",
+            Some("org.gnome.Mutter.DisplayConfig"),
+            "GetCurrentState",
+            &(),
+        ))
+        .map_err(|err| Fail::error(format!("Cannot read mutter's layout mode: {err}")))?;
         let (_, _, _, properties): (u32, Vec<Monitor>, Vec<Logical>, Properties) = reply
             .body()
             .deserialize()
@@ -458,16 +469,35 @@ mod tests {
 
     fn method_error(name: &str, detail: &str) -> zbus::Error {
         let reply = zbus::Message::method_call(PATH, "Probe")
-            .expect("a valid path and member")
             .build(&())
             .expect("an empty body");
-        zbus::Error::MethodError(
+        let reply = zbus::Error::MethodError(
             zbus::names::ErrorName::try_from(name)
                 .expect("a valid error name")
                 .into(),
             Some(detail.to_string()),
             reply,
-        )
+        );
+        // The conversion zbus applies to every error reply it receives: a name
+        // that zbus::fdo::Error defines becomes Error::FDO.
+        zbus::fdo::Error::from(reply).into()
+    }
+
+    #[test]
+    fn a_reply_keeps_its_name_whichever_variant_zbus_gives() {
+        let fdo = method_error(ERROR_SERVICE_UNKNOWN, "The name is not activatable");
+        assert!(matches!(fdo, zbus::Error::FDO(_)), "{fdo:?}");
+        let own = method_error(ERROR_NOT_FOUND, "Window 7 not found");
+        assert!(matches!(own, zbus::Error::MethodError(..)), "{own:?}");
+        for (err, name, detail) in [
+            (fdo, ERROR_SERVICE_UNKNOWN, "The name is not activatable"),
+            (own, ERROR_NOT_FOUND, "Window 7 not found"),
+        ] {
+            assert_eq!(
+                error_reply(&err),
+                Some((name.to_string(), Some(detail.to_string())))
+            );
+        }
     }
 
     fn timed_out() -> zbus::Error {
