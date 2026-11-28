@@ -73,15 +73,30 @@ function isInPlace(stream, old) {
     }
 }
 
+function writeOver(seekable, output, bytes) {
+    seekable.seek(0, GLib.SeekType.SET, null);
+    output.write_all(bytes, null);
+    seekable.truncate(bytes.length, null);
+}
+
 // Through the open stream, so a file that another program has renamed over
-// this path in the meantime stays as it is.
-function restoreInPlace(stream, old) {
+// this path in the meantime stays as it is. A failed close() leaves the stream
+// closed: the file is opened again then, and written only while it is still
+// the one this save cut. That open creates nothing, so a deleted file stays
+// deleted.
+function restoreInPlace(file, stream, old) {
     try {
-        stream.seek(0, GLib.SeekType.SET, null);
-        stream.write_all(old, null);
-        stream.truncate(old.length, null);
-        stream.close(null);
-        return true;
+        if (!stream.is_closed()) {
+            writeOver(stream, stream, old.bytes);
+            stream.close(null);
+            return true;
+        }
+        const reopened = file.open_readwrite(null);
+        const same = inodeOf(reopened.query_info('unix::inode', null)) === old.inode;
+        if (same)
+            writeOver(reopened, reopened.get_output_stream(), old.bytes);
+        reopened.close(null);
+        return same;
     } catch {
         return false;
     }
@@ -118,7 +133,7 @@ function replaceFile(file, bytes, lastRead) {
         stream.write_all(bytes, cancellable);
         stream.close(cancellable);
     } catch (e) {
-        if (inPlace && restoreInPlace(stream, old.bytes))
+        if (inPlace && restoreInPlace(file, stream, old))
             throw e;
         cancellable.cancel();
         try {

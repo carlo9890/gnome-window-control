@@ -460,6 +460,63 @@ GLib.log_set_writer_func((level, fields) => {
     }
 }
 
+// -- a close that fails after an in-place write puts the old text back -------
+
+{
+    // A cancelled cancellable fails the close of Gio's stream after its
+    // fsync, where a disk error fails it: the whole new text is written.
+    const folder = `${SCRATCH}/close`;
+    GLib.mkdir_with_parents(folder, 0o755);
+    const read = path => new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+    const names = () => [...Gio.File.new_for_path(folder).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name()).sort();
+    const saveWithFailingClose = (path, beforeClose = () => {}) => {
+        const close = Gio.OutputStream.prototype.close;
+        Gio.OutputStream.prototype.close = function () {
+            Gio.OutputStream.prototype.close = close;
+            beforeClose();
+            const cancelled = new Gio.Cancellable();
+            cancelled.cancel();
+            return close.call(this, cancelled);
+        };
+        try {
+            writeText(Gio.File.new_for_path(path), 'new', 'old');
+            return null;
+        } catch (e) {
+            return e;
+        } finally {
+            Gio.OutputStream.prototype.close = close;
+        }
+    };
+
+    const plain = `${folder}/plain.json`;
+    GLib.file_set_contents(plain, 'old');
+    check('a save whose close fails reports a failure', saveWithFailingClose(plain) !== null);
+    check('a failed close keeps the old text of a regular file', read(plain) === 'old', read(plain));
+    check('a failed close leaves no temporary file', JSON.stringify(names()) === '["plain.json"]',
+        JSON.stringify(names()));
+
+    // Gio writes a hard link in place.
+    const regular = `${folder}/rules.json`;
+    const hard = `${folder}/hard.json`;
+    GLib.file_set_contents(regular, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(regular)} ${GLib.shell_quote(hard)}`);
+    const failure = saveWithFailingClose(regular);
+    check('a failed close of a hard link reports a failure', failure !== null);
+    check('a failed close puts the old text back in a hard link',
+        read(regular) === 'old' && read(hard) === 'old', `${read(regular)} / ${read(hard)}`);
+    check('a failed close with the old text back does not report it lost',
+        !`${failure}`.includes('could not be written back'), `${failure}`);
+
+    // GLib.file_set_contents() renames a new file over the path.
+    const renamed = `${folder}/renamed.json`;
+    GLib.file_set_contents(renamed, 'old');
+    GLib.spawn_command_line_sync(`ln ${GLib.shell_quote(renamed)} ${GLib.shell_quote(`${folder}/renamed-hard.json`)}`);
+    saveWithFailingClose(renamed, () => GLib.file_set_contents(renamed, 'from another program'));
+    check('a failed close keeps a file renamed over the path during the save',
+        read(renamed) === 'from another program', read(renamed));
+}
+
 // -- a save keeps the file's mode, and follows every link ----------------------
 
 {
