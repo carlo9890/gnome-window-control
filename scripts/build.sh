@@ -71,14 +71,14 @@ validate() {
     fi
     
     # Validate JSON syntax
-    if ! python3 -c "import json; json.load(open('$EXTENSION_DIR/metadata.json'))" 2>/dev/null; then
+    if ! python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$EXTENSION_DIR/metadata.json" 2>/dev/null; then
         log_error "metadata.json is not valid JSON!"
         exit 1
     fi
     
     # Check UUID matches directory name
     local uuid
-    uuid=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['uuid'])")
+    uuid=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['uuid'])" "$EXTENSION_DIR/metadata.json")
     if [[ "$uuid" != "$EXTENSION_UUID" ]]; then
         log_error "UUID mismatch: expected $EXTENSION_UUID, got $uuid"
         exit 1
@@ -140,7 +140,7 @@ build() {
     log_info "Building extension..."
     
     local version
-    version=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version-name'])")
+    version=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['version-name'])" "$EXTENSION_DIR/metadata.json")
     local zip_name="${EXTENSION_UUID}_v${version}.zip"
     local zip_path="$DIST_DIR/$zip_name"
     

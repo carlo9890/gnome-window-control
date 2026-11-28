@@ -172,7 +172,7 @@ get_version() {
         exit 1
     fi
     
-    VERSION=$(python3 -c "import json; print(json.load(open('$EXTENSION_DIR/metadata.json'))['version-name'])")
+    VERSION=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['version-name'])" "$EXTENSION_DIR/metadata.json")
     TAG="v${VERSION}"
     ZIP_NAME="${EXTENSION_UUID}_v${VERSION}.zip"
     ZIP_PATH="$DIST_DIR/$ZIP_NAME"
