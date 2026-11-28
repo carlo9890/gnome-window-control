@@ -56,6 +56,10 @@ first with `mise run build`. Set `WCTL` to test another binary:
 
 ## Write a test
 
+- Let a test or a reproduction write only to a scratch directory or a throwaway
+  clone. Before a command that installs or keeps state (`install-wctl.sh`,
+  `wctl rules add`, the preferences writer), set `HOME` and `XDG_CONFIG_HOME`
+  to scratch directories.
 - Pin **hardcoded** expected values in Rust unit tests. Never recompute them
   with the implementation's own formula.
 - Put a test that proves an argument is refused before any D-Bus call in
@@ -97,7 +101,16 @@ and the other local tools real.
   `main` with a clean tree and tag `v<metadata.json version-name>` on `HEAD`
   (`git tag -f`) first: it checks the tag, and writes `dist/` and
   `cli/target/` there.
-
+- Write the `mise` stub so that it never calls the real `mise`: for
+  `run build:musl` it runs the task's `cargo` and `check-static.sh` lines
+  itself, and for `install` it exits 0.
+- Never run `mise install`, `mise reshim` or `release.sh` with a stub or a
+  wrapper of `mise` on `PATH`, unless `MISE_DATA_DIR`, `MISE_CACHE_DIR` and
+  `MISE_STATE_DIR` point to a scratch directory: `release.sh` calls
+  `mise install`, which relinks every shim in `~/.local/share/mise/shims` to
+  the first `mise` on `PATH`, and that breaks every mise tool on the machine.
+- If the shims point to a stub, run `mise reshim --force` from a shell that has
+  no stub on `PATH`.
 - With `mise` stubbed, the static-linkage check of `mise run build:musl`
   never runs.
 - `install-wctl.sh` calls `wget` only when no `curl` is on `PATH`: to test that
