@@ -1468,9 +1468,12 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // rules.js skips the geometry of a fullscreen window.
     let fullscreen =
         model::flag(&window, "is_fullscreen") && winner.is_some_and(|rule| rule.action.is_some());
+    let frame_change = winner.and_then(|rule| {
+        frame_changes_first(rule, model::flag(&window, "is_maximized"), window_monitor)
+    });
     let target = winner
         .zip(workarea)
-        .filter(|_| !fullscreen)
+        .filter(|_| !fullscreen && frame_change.is_none())
         .and_then(|(rule, workarea)| rule.resolve(workarea, frame));
 
     if json {
@@ -1495,6 +1498,8 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
             report["skipped"] = serde_json::json!(SKIPPED_NO_SUCH_MONITOR);
         } else if fullscreen {
             report["skipped"] = serde_json::json!(SKIPPED_FULLSCREEN);
+        } else if let Some(change) = frame_change {
+            report["target_depends_on"] = serde_json::json!(change.json());
         }
         if merged {
             report["matched_source"] =
@@ -1554,6 +1559,10 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         println!("  the window is fullscreen; the geometry would be skipped");
         return Ok(());
     }
+    if let Some(change) = frame_change {
+        println!("{}", change.line());
+        return Ok(());
+    }
     match target {
         Some(rect) => println!(
             "  would place at {},{} {}x{}",
@@ -1563,6 +1572,59 @@ fn test(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         None => println!("  the action resolves to nothing on this workarea; it would be skipped"),
     }
     Ok(())
+}
+
+/// What rules.js does to the window before a `center` rule reads its frame.
+/// The frame it centres is then not the listed one, and `ListDetailed` gives
+/// no other, so `test` has no rectangle to name.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum FrameChange {
+    Restore,
+    MonitorMove,
+}
+
+impl FrameChange {
+    fn line(self) -> &'static str {
+        match self {
+            FrameChange::Restore => {
+                "  the window is maximized; the extension would restore it and center the frame it has then"
+            }
+            FrameChange::MonitorMove => {
+                "  the extension would move the window to the monitor first and center the frame it has there"
+            }
+        }
+    }
+
+    fn json(self) -> &'static str {
+        match self {
+            FrameChange::Restore => "restored frame",
+            FrameChange::MonitorMove => "frame after the monitor move",
+        }
+    }
+}
+
+/// A maximized window is restored first. A move to the rule's monitor changes
+/// the position, which a rule that centers on one axis keeps on the other; a
+/// rule that centers on both reads only the size.
+fn frame_changes_first(
+    rule: &rules::Rule,
+    maximized: bool,
+    window_monitor: i64,
+) -> Option<FrameChange> {
+    let Some(rules::Action::Center(axis)) = &rule.action else {
+        return None;
+    };
+    if maximized {
+        Some(FrameChange::Restore)
+    } else if axis != "both"
+        && rule
+            .monitor
+            .is_some_and(|monitor| monitor != window_monitor)
+    {
+        Some(FrameChange::MonitorMove)
+    } else {
+        None
+    }
 }
 
 /// A rule of `test`'s output. A rule of rules.json reads as it did before
@@ -2235,6 +2297,77 @@ mod tests {
             {"match": {"class": "kitty"}, "tile": "left"},
         ]));
         assert_eq!(newly_shadowed(&appended, 1), Vec::<usize>::new());
+    }
+
+    /// `rules test` names no rectangle where rules.js changes the frame
+    /// before a center rule reads it.
+    #[test]
+    fn frame_changes_first_for_a_center_rule_only() {
+        let rule = |action: Value, monitor: Option<i64>| {
+            let mut rule = json!({"match": {"class": "kitty"}});
+            for (key, value) in action.as_object().unwrap() {
+                rule[key] = value.clone();
+            }
+            if let Some(monitor) = monitor {
+                rule["monitor"] = json!(monitor);
+            }
+            rules::compile_rule(&rule, 0).expect("a valid rule")
+        };
+        let center = |axis: &str, monitor| rule(json!({"center": axis}), monitor);
+        let cases = [
+            (center("both", None), true, 0, Some(FrameChange::Restore)),
+            (
+                center("horizontal", None),
+                true,
+                0,
+                Some(FrameChange::Restore),
+            ),
+            (center("both", Some(1)), true, 0, Some(FrameChange::Restore)),
+            (center("both", None), false, 0, None),
+            (center("both", Some(1)), false, 0, None),
+            (center("vertical", Some(1)), false, 1, None),
+            (center("vertical", None), false, 1, None),
+            (
+                center("vertical", Some(1)),
+                false,
+                0,
+                Some(FrameChange::MonitorMove),
+            ),
+            (
+                center("horizontal", Some(0)),
+                false,
+                1,
+                Some(FrameChange::MonitorMove),
+            ),
+            (rule(json!({"tile": "left"}), Some(1)), true, 0, None),
+            (
+                rule(json!({"place": ["0", "0", "50%", "50%"]}), None),
+                true,
+                0,
+                None,
+            ),
+            (rule(json!({"workspace": 1}), Some(1)), true, 0, None),
+        ];
+        for (rule, maximized, window_monitor, expected) in cases {
+            assert_eq!(
+                frame_changes_first(&rule, maximized, window_monitor),
+                expected,
+                "{rule:?}, maximized {maximized}, on monitor {window_monitor}"
+            );
+        }
+        assert_eq!(
+            FrameChange::Restore.line(),
+            "  the window is maximized; the extension would restore it and center the frame it has then"
+        );
+        assert_eq!(
+            FrameChange::MonitorMove.line(),
+            "  the extension would move the window to the monitor first and center the frame it has there"
+        );
+        assert_eq!(FrameChange::Restore.json(), "restored frame");
+        assert_eq!(
+            FrameChange::MonitorMove.json(),
+            "frame after the monitor move"
+        );
     }
 
     fn scratch_folder(name: &str) -> PathBuf {
