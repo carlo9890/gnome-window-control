@@ -26,11 +26,13 @@ queue.
    rules.
 4. Run shexli, the analyzer of extensions.gnome.org, from the repo root. Pin
    `tree-sitter`, because 0.26.0 segfaults shexli 0.2.1; pass an absolute path,
-   because a relative one fails with a `ValueError`:
+   because a relative one fails with a `ValueError`. Install into a venv in
+   your scratch directory, not into the user's Python:
 
    ```bash
-   pip install -U shexli 'tree-sitter==0.25.2'
-   shexli "$PWD/window-control@carlo9890.github.io"
+   V=<scratch-dir>/shexli-venv
+   python3 -m venv "$V" && "$V/bin/pip" install -q -U shexli 'tree-sitter==0.25.2'
+   "$V/bin/shexli" "$PWD/window-control@carlo9890.github.io"
    ```
 
 5. Where the pages reject a pattern, they win over this repository: its docs,

@@ -46,16 +46,16 @@ a change as verified.** Some suites move windows and press keys.
 
 ### Running the extension by hand
 
-**MUST read [docs/RUNNING.md](docs/RUNNING.md) before `./scripts/build.sh
-install` or `install-zip`, `gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
-`./scripts/start-*.sh` or `./scripts/demo/record.sh`, and before you start, kill or restart any GNOME Shell.** Each start needs the
-user's consent; a wrong start can log the user out.
+**MUST read [docs/RUNNING.md](docs/RUNNING.md) before `./install-wctl.sh`,
+`./scripts/build.sh install` or `install-zip`, `gnome-extensions`, `wctl`, `gdbus call`, `busctl`, `./scripts/debug-dbus.sh`,
+`./scripts/start-*.sh` or `./scripts/demo/record.sh`, and before you start, kill or restart any GNOME Shell.** Each start, and each
+`install-wctl.sh` run, needs the user's consent; a wrong start can log the user out.
 
 ### Git
 
 **MUST read [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) before ANY git
-command that writes, and before `gh pr create`.** It sets the test bar for a commit, and only the
-maintainer merges.
+command that writes, and before `gh pr create` or `gh pr merge`.** It sets the test bar for a commit,
+and an agent merges only on the user's request.
 
 ### Reviewing
 

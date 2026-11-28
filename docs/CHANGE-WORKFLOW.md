@@ -40,14 +40,13 @@ Call the Skill tool with `commit-commands:commit` for the standard flow.
    [Before opening a PR](#before-opening-a-pr)).
 2. Review it against [REVIEWING.md](REVIEWING.md): call the Skill tool with
    `worktree-flow:worktree-review` and the PR number.
-3. Stop once the PR is open and its checks are green. The maintainer merges.
+3. Stop once the PR is open and its checks are green, and report the PR. Run
+   `gh pr merge` only after the user asks for the merge of that PR. A request
+   to release or to ship asks for no merge, the version-bump PR included.
 
 ## CI
 
-`.github/workflows/build.yml` runs the jobs `extension` and `cli` as two PR
-checks. Every gate in them runs locally from the
-[minimum-checks table](TESTING.md#minimum-checks-before-a-pr).
-
+[TESTING.md](TESTING.md#ci-gate) has what CI runs and how to run it locally.
 A PR that touches no path in the `on.pull_request.paths` filter of `build.yml`,
 a docs-only PR for example, reports no checks. No branch protection is set, so
 it can still merge: a missing tick is not a passed check.

@@ -2,7 +2,8 @@
 
 Call the Skill tool with `run` for the generic launch-and-drive flow.
 **Local delta:** everything below wins where the two disagree. The automated
-suites are [TESTING.md](TESTING.md)'s; logs are [MONITORING.md](MONITORING.md)'s.
+suites are [TESTING.md](TESTING.md)'s. Read [MONITORING.md](MONITORING.md)
+before you read the extension's log or diagnose a `wctl` error.
 
 The project supports Wayland only.
 
@@ -10,9 +11,10 @@ The project supports Wayland only.
 
 1. **Ask the user's explicit consent before each start, kill or restart of a
    GNOME Shell**, nested and headless included. Name the exact command and
-   wait. One approval covers one start. "Verify the change in a running shell"
-   is not consent. The one exception is a throwaway VM made for the current
-   task; a guest that is kept needs consent for each run, its reboot included.
+   wait. One approval covers one start. A task that needs a shell ("verify the
+   change in a running shell", "do the release") is not consent. The one
+   exception is a throwaway VM made for the current task; a guest that is kept
+   needs consent for each run, its reboot included.
 2. **Never `pkill`, `killall` or kill a shell by name**: the pattern matches the
    real shell. Stop only the PID the start script printed, with `kill <pid>`;
    for a headless shell, that is `HEADLESS_SHELL_PID`.
@@ -24,6 +26,9 @@ The project supports Wayland only.
 5. **Check headlessly first.** Extension logic that a fake window can drive is
    verified by the `gjs -m` checks in [TESTING.md](TESTING.md). Start a shell
    only for behaviour that needs a compositor.
+6. **Ask the user's consent before each `./install-wctl.sh` run** on this
+   machine, in any mode: it replaces the user's `~/.local/bin/wctl`. Name the
+   command and wait. To run a local build, use `cli/target/release/wctl`.
 
 ## Reload after a code change (required)
 
