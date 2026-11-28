@@ -4,12 +4,16 @@ Find the symptom, then apply the fix.
 
 ## wctl exits 5
 
-The extension does not run, or it does not have a capability the command
-needs. Run `wctl version --json` and read `extension`; see
+`wctl` cannot reach the session bus, the extension does not run, or it does not
+have a capability the command needs. Run `wctl version --json` and read
+`extension`; see
 [Checking the extension version](wctl.md#checking-the-extension-version).
 
-- `extension` is `null`: enable the extension, or install a current one; see
-  [Install](install.md).
+- `extension` is `null` and `message` starts with "Cannot connect to the
+  session bus": the extension can be fine. Run `wctl` as your own user in the
+  graphical session, without `sudo`.
+- `extension` is `null` with any other `message`: enable the extension, or
+  install a current one; see [Install](install.md).
 - `extension` is below `min_extension`: install a newer extension.
 - `extension` is above `expects_extension`: install a newer `wctl`; see
   [Install: wctl](install.md#wctl).
