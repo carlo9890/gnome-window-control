@@ -191,13 +191,31 @@ GLib.log_set_writer_func((level, fields) => {
     const isLink = () => file.query_info('standard::is-symlink',
         Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_is_symlink();
 
-    writeText(file, 'new', 'old');
+    // Given the link itself, Gio writes in place and empties the target at
+    // the open, and a crash before the write left it empty.
+    const writeAll = Gio.OutputStream.prototype.write_all;
+    let atFirstWrite = null;
+    Gio.OutputStream.prototype.write_all = function (...args) {
+        atFirstWrite ??= read(target);
+        return writeAll.apply(this, args);
+    };
+    try {
+        writeText(file, 'new', 'old');
+    } finally {
+        Gio.OutputStream.prototype.write_all = writeAll;
+    }
+    check('a save through a symlink keeps the old target until the new text is complete',
+        atFirstWrite === 'old', JSON.stringify(atFirstWrite));
     check('a save through a symlink writes the target', read(target) === 'new', read(target));
     check('a save through a symlink leaves a symlink', isLink());
     const entries = [...Gio.File.new_for_path(config).enumerate_children('standard::name',
         Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
     check('a save leaves no temporary link behind', JSON.stringify(entries) === '["rules.json"]',
         JSON.stringify(entries));
+    const targetEntries = [...Gio.File.new_for_path(`${SCRATCH}/dotfiles`).enumerate_children('standard::name',
+        Gio.FileQueryInfoFlags.NONE, null)].map(info => info.get_name());
+    check('a save through a symlink leaves no temporary file beside the target',
+        JSON.stringify(targetEntries) === '["rules.json"]', JSON.stringify(targetEntries));
 
     // The folder takes no new entry, so the new link cannot be made. The
     // target is still writable: a save that reports a failure must not
