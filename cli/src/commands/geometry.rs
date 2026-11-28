@@ -17,7 +17,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::commands::{monitor_index, primary_monitor, take_flag, workarea_of};
-use crate::fail::{Fail, Result, EXIT_NOT_FOUND};
+use crate::fail::{Fail, Result, EXIT_NOT_FOUND, EXIT_REFUSED};
 use crate::geometry::{self, Rect, TILE_USAGE};
 use crate::model::{self, Ctx};
 use crate::selector;
@@ -204,10 +204,12 @@ fn settle_within(ctx: &mut Ctx, id: u64, bound: Duration) -> Result<Rect> {
 
 /// Report a geometry command that resolved a rectangle first.
 ///
-/// Under `--json` stdout carries a document on EVERY outcome once the window
-/// is known (see `unresolved` for the failures before this), so a caller never
-/// has to parse an English sentence off the same stream; the exit code still
-/// classifies the failure. Without it, nothing about the existing output moves.
+/// Under `--json` stdout carries a document on every outcome the extension
+/// reports once the window is known (see `unresolved` for the failures before
+/// this), so a caller never has to parse an English sentence off the same
+/// stream; the exit code still classifies the failure. A failure of the bus
+/// itself stays an error, as in `unresolved_workarea`. Without `--json`,
+/// nothing about the existing output moves.
 fn report_placement(
     ctx: &mut Ctx,
     id: u64,
@@ -217,10 +219,12 @@ fn report_placement(
     success: &str,
     json_output: bool,
 ) -> Result<()> {
-    // The placement itself failed: the extension named the reason, so there is
-    // nothing to work out here.
+    // Only a reason the extension named -- no such window, or a frame it
+    // would not move -- says the window was not placed. A reply that never
+    // came says nothing of the kind: the shell can still apply the request
+    // after wctl gave up waiting.
     if let Err(failure) = applied {
-        if !json_output {
+        if !json_output || !matches!(failure.code(), EXIT_NOT_FOUND | EXIT_REFUSED) {
             return Err(failure);
         }
         let document = placement.outcome(id, false, None, Some(&failure.to_string()));
@@ -567,5 +571,59 @@ mod tests {
 
         let plain = unresolved(42, false, failure()).unwrap_err();
         assert_eq!(plain.to_string(), "Window not found: 42");
+    }
+
+    /// A failed MoveResize or Move under `--json`. `Ctx::new` opens no
+    /// connection, and the failure is reported before any call.
+    fn failed_placement(failure: Fail) -> Fail {
+        let placement = Placement {
+            monitor_index: 0,
+            workarea: Rect {
+                x: 0,
+                y: 32,
+                width: 1920,
+                height: 1048,
+            },
+            target: Rect {
+                x: 0,
+                y: 32,
+                width: 480,
+                height: 1048,
+            },
+        };
+        report_placement(
+            &mut Ctx::new(None),
+            123,
+            &placement,
+            Err(failure),
+            false,
+            "Window tiled to left",
+            true,
+        )
+        .unwrap_err()
+    }
+
+    #[test]
+    fn a_reason_the_extension_named_is_a_document_that_says_not_placed() {
+        for code in [2, 3] {
+            let document = failed_placement(Fail::plain("Window 123 is maximized").with_code(code));
+            assert_eq!((document.code(), document.is_plain()), (code, true));
+            assert_eq!(
+                document.to_string(),
+                r#"{"window_id":123,"monitor_index":0,"workarea":{"x":0,"y":32,"width":1920,"height":1048},"target":{"x":0,"y":32,"width":480,"height":1048},"placed":false,"message":"Window 123 is maximized"}"#
+            );
+        }
+    }
+
+    /// The shell can still apply a request whose reply did not come in time,
+    /// so no document says the window was not placed.
+    #[test]
+    fn a_failure_of_the_bus_stays_an_error_under_json() {
+        let message = "GNOME Shell did not reply in time.";
+        for code in [1, 4, 5] {
+            let failure = failed_placement(Fail::error(message).with_code(code));
+            assert_eq!((failure.code(), failure.is_plain()), (code, false));
+            assert_eq!(failure.to_string(), message);
+        }
     }
 }
