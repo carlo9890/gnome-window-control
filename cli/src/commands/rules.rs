@@ -742,7 +742,9 @@ fn replace_file(path: &Path, text: &str, links: Links) -> Result<()> {
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
 
     let temporary = directory.join(temporary_name(path, ""));
-    std::fs::write(&temporary, text).map_err(|e| {
+    // Synced before the rename: some file systems commit the rename before
+    // the data, and a power loss between the two leaves the rules file empty.
+    write_synced(std::fs::File::create(&temporary), text.as_bytes()).map_err(|e| {
         // A write that fails after creating the file (a full disk) must not
         // leave it next to the rules file.
         let _ = std::fs::remove_file(&temporary);
@@ -753,6 +755,14 @@ fn replace_file(path: &Path, text: &str, links: Links) -> Result<()> {
         let _ = std::fs::set_permissions(&temporary, metadata.permissions());
     }
     rename_over(&temporary, path)
+}
+
+fn write_synced(file: std::io::Result<std::fs::File>, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut file = file?;
+    file.write_all(bytes)?;
+    file.sync_all()
 }
 
 /// `.<name of path><infix>.<pid>`. The leading dot keeps the extension from
