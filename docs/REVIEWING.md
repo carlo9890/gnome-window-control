@@ -27,7 +27,8 @@ queue.
 4. Run shexli, the analyzer of extensions.gnome.org, from the repo root. Pin
    `tree-sitter`, because 0.26.0 segfaults shexli 0.2.1; pass an absolute path,
    because a relative one fails with a `ValueError`. Install into a venv in
-   your scratch directory, not into the user's Python:
+   your scratch directory, not into the user's Python; a system `python3` on
+   Debian or Ubuntu needs the `python3-venv` package for it:
 
    ```bash
    V=<scratch-dir>/shexli-venv

@@ -47,6 +47,6 @@ Call the Skill tool with `commit-commands:commit` for the standard flow.
 ## CI
 
 [TESTING.md](TESTING.md#ci-gate) has what CI runs and how to run it locally.
-A PR that touches no path in the `on.pull_request.paths` filter of `build.yml`,
+A PR that touches no path in the `on.pull_request.paths` filter of `.github/workflows/build.yml`,
 a docs-only PR for example, reports no checks. No branch protection is set, so
 it can still merge: a missing tick is not a passed check.
