@@ -134,7 +134,7 @@ try {
 let nextId = 1;
 export const overview = {
     visible: false,
-    hide() {},
+    hide() { this.visible = false; },
     connect(name, callback) {
         handlers.set(nextId, [name, callback]);
         return nextId++;
@@ -664,6 +664,62 @@ export class PopupSeparatorMenuItem {}
             display.handlerCount() === 0 && unshown.handlerCount() === 0 && old.handlerCount() === 0,
             `display ${display.handlerCount()}, unshown ${unshown.handlerCount()}, ` +
             `old ${old.handlerCount()}`);
+        windows.length = 0;
+    }
+
+    // -- ListDetailed: client_type ----------------------------------------------
+    //
+    // A script tells an XWayland window from a native Wayland one by this key.
+
+    {
+        createWindow({ id: 16, wmClass: 'W' });
+        const xwayland = createWindow({ id: 17, wmClass: 'X' });
+        xwayland.get_client_type = () => Meta.WindowClientType.X11;
+        const service = startService();
+        const types = Object.fromEntries(JSON.parse(service.ListDetailed())
+            .map(doc => [doc.id, doc.client_type]));
+        check('ListDetailed reports a Wayland client as wayland', types[16] === 'wayland',
+            JSON.stringify(types));
+        check('ListDetailed reports an XWayland client as x11', types[17] === 'x11',
+            JSON.stringify(types));
+        service.unexport();
+        windows.length = 0;
+    }
+
+    // -- Activate and Focus: the Activities overview ----------------------------
+    //
+    // Meta.Window.activate() and focus() leave the overview open over the
+    // window, so every activate method and Focus hide it first.
+
+    {
+        const win = createWindow({ id: 18, wmClass: 'A' });
+        win.title = 'A title';
+        const service = startService();
+        const calls = [
+            ['Activate', () => service.Activate(18)],
+            ['ActivateNoAnimation', () => service.ActivateNoAnimation(18)],
+            ['ActivateByTitle', () => service.ActivateByTitle('A title')],
+            ['ActivateByTitleSubstring', () => service.ActivateByTitleSubstring('title')],
+            ['ActivateByWmClass', () => service.ActivateByWmClass('A')],
+            ['ActivateByPid', () => service.ActivateByPid(1)],
+        ];
+        for (const [method, call] of calls) {
+            let overviewAtActivate = null;
+            win.activate = () => { overviewAtActivate = Main.overview.visible; };
+            Main.overview.visible = true;
+            const ok = call();
+            check(`${method} hides the overview before it activates the window`,
+                ok === true && overviewAtActivate === false && !Main.overview.visible,
+                `ok ${ok}, overview at activate ${overviewAtActivate}, after ${Main.overview.visible}`);
+        }
+        let overviewAtFocus = null;
+        win.focus = () => { overviewAtFocus = Main.overview.visible; };
+        Main.overview.visible = true;
+        const focused = service.Focus(18);
+        check('Focus hides the overview before it focuses the window',
+            focused === true && overviewAtFocus === false && !Main.overview.visible,
+            `ok ${focused}, overview at focus ${overviewAtFocus}, after ${Main.overview.visible}`);
+        service.unexport();
         windows.length = 0;
     }
 
