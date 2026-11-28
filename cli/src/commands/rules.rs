@@ -679,13 +679,18 @@ fn compile_text(
 /// writing only the target would raise no event in the watched directory. A
 /// dangling link names the file to create. The new link is made before the
 /// target is touched, so a link that cannot be made changes nothing.
-fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
+///
+/// A file with a second hard link, say a dotfiles copy, is refused
+/// (`Links::Refuse`): the rename would leave the other name on the old text,
+/// and a write in place that fails half way leaves both names cut off. A
+/// drop-in is always renamed, as docs/specs/RULES-JSON.md requires.
+fn write_atomically(path: &Path, document: &[Value], links: Links) -> Result<()> {
     let text = format!(
         "{}\n",
         serde_json::to_string_pretty(document).map_err(|e| Fail::error(e.to_string()))?
     );
     let Ok(link) = std::fs::read_link(path) else {
-        return replace_file(path, &text);
+        return replace_file(path, &text, links);
     };
     let link_directory = path.parent().unwrap_or(Path::new("."));
     let target = match std::fs::canonicalize(path) {
@@ -703,16 +708,35 @@ fn write_atomically(path: &Path, document: &[Value]) -> Result<()> {
     let _ = std::fs::remove_file(&temporary_link);
     std::os::unix::fs::symlink(&link, &temporary_link)
         .map_err(|e| Fail::error(format!("Cannot write {}: {e}", temporary_link.display())))?;
-    if let Err(failure) = replace_file(&target, &text) {
+    if let Err(failure) = replace_file(&target, &text, links) {
         let _ = std::fs::remove_file(&temporary_link);
         return Err(failure);
     }
     rename_over(&temporary_link, path)
 }
 
+/// What a write does with a file that has a second hard link.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Links {
+    /// Change nothing and fail.
+    Refuse,
+    /// Rename a new file over the name; the other names keep the old text.
+    Cut,
+}
+
 /// Replace the regular file at `path` with `text` through a temporary file in
 /// its directory.
-fn replace_file(path: &Path, text: &str) -> Result<()> {
+fn replace_file(path: &Path, text: &str, links: Links) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+
+    if links == Links::Refuse && std::fs::metadata(path).is_ok_and(|metadata| metadata.nlink() > 1)
+    {
+        return Err(Fail::error(format!(
+            "Cannot rewrite {}: it has a second hard link, which the rewrite would cut off. \
+             Replace the hard link with a symlink, or edit the file by hand.",
+            path.display()
+        )));
+    }
     let directory = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(directory)
         .map_err(|e| Fail::error(format!("Cannot create {}: {e}", directory.display())))?;
@@ -1051,6 +1075,13 @@ impl Target {
         }
     }
 
+    fn links(&self) -> Links {
+        match self {
+            Target::DropIn(_) => Links::Cut,
+            Target::User | Target::SkippedName(_) | Target::Other => Links::Refuse,
+        }
+    }
+
     /// After a write: warn about what keeps the extension from applying it.
     fn warn_after_write(&self, ctx: &Ctx, document: &[Value]) {
         match self {
@@ -1277,7 +1308,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     }
 
     raw.insert(position, rule);
-    write_atomically(&path, &raw)?;
+    write_atomically(&path, &raw, target.links())?;
     println!("Added rule {position} to {}", path.display());
     target.warn_after_write(ctx, &raw);
     Ok(())
@@ -1313,7 +1344,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
         );
         return Ok(());
     }
-    write_atomically(&path, &raw)?;
+    write_atomically(&path, &raw, target.links())?;
     println!("Removed rule {index} from {}", path.display());
     target.warn_after_write(ctx, &raw);
     Ok(())
@@ -2151,6 +2182,46 @@ mod tests {
         std::fs::remove_dir_all(&folder).ok();
         std::fs::create_dir_all(&folder).expect("a scratch folder");
         folder
+    }
+
+    /// A dotfiles copy kept as a hard link is refused with nothing changed; a
+    /// drop-in is renamed into place whatever its links.
+    #[test]
+    fn a_write_refuses_a_hard_link_unless_the_file_is_a_drop_in() {
+        use std::os::unix::fs::MetadataExt;
+
+        let folder = scratch_folder("hard-link");
+        let (file, other_name) = (folder.join("rules.json"), folder.join("dotfiles.json"));
+        let document = [json!({"match": {"class": "foot"}, "tile": "right"})];
+        let written = "[\n  {\n    \"match\": {\n      \"class\": \"foot\"\n    },\n    \"tile\": \"right\"\n  }\n]\n";
+
+        std::fs::write(&file, "[]\n").unwrap();
+        std::fs::hard_link(&file, &other_name).unwrap();
+        let inode = std::fs::metadata(&file).unwrap().ino();
+        let refused = write_atomically(&file, &document, Links::Refuse)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("it has a second hard link"), "{refused}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "[]\n");
+        assert_eq!(std::fs::metadata(&file).unwrap().ino(), inode);
+
+        write_atomically(&file, &document, Links::Cut).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), written);
+        assert_eq!(std::fs::read_to_string(&other_name).unwrap(), "[]\n");
+
+        // With one name left, the rename is not refused.
+        write_atomically(&file, &[], Links::Refuse).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "[]\n");
+        let names: Vec<_> = std::fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 2, "left behind: {names:?}");
+
+        assert_eq!(Target::User.links(), Links::Refuse);
+        assert_eq!(Target::Other.links(), Links::Refuse);
+        assert_eq!(Target::DropIn("a.json".to_string()).links(), Links::Cut);
+        std::fs::remove_dir_all(&folder).ok();
     }
 
     /// The extension loads a file that is not UTF-8, so `check`, `list` and

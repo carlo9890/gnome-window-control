@@ -2413,3 +2413,42 @@ fn rules_add_and_remove_refuse_a_file_that_is_not_utf8() {
     }
     std::fs::remove_dir_all(&config).ok();
 }
+
+/// A rules.json with a second name is refused with nothing changed: a rename
+/// would leave the other name on the old rules.
+#[cfg(unix)]
+#[test]
+fn rules_add_and_remove_refuse_a_hard_linked_file() {
+    use std::os::unix::fs::MetadataExt;
+
+    let rule = r#"[{"match": {"class": "foot"}, "tile": "right"}]"#;
+    let config = rules_config("rules-hard-link", rule, &[]);
+    let user = config.join("gnome-window-control/rules.json");
+    let second_name = config.join("second-name.json");
+    std::fs::hard_link(&user, &second_name).expect("hard link");
+    let inode = std::fs::metadata(&user).expect("stat rules.json").ino();
+    let refusal = format!(
+        "Error: Cannot rewrite {}: it has a second hard link, which the rewrite would cut off. \
+         Replace the hard link with a symlink, or edit the file by hand.\n",
+        user.display()
+    );
+
+    for args in [
+        &["rules", "add", "-c", "kitty", "tile", "left"][..],
+        &["rules", "remove", "0"][..],
+    ] {
+        let (stdout, stderr, code) = wctl_config(&config, args);
+        assert_eq!(
+            (stdout.as_str(), stderr.as_str(), code),
+            ("", refusal.as_str(), 1),
+            "{args:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&user).expect("read rules.json"),
+            rule
+        );
+        let metadata = std::fs::metadata(&user).expect("stat rules.json");
+        assert_eq!((metadata.ino(), metadata.nlink()), (inode, 2));
+    }
+    std::fs::remove_dir_all(&config).ok();
+}
