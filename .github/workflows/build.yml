@@ -145,5 +145,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wctl
-          path: cli/target/release/wctl
+          path: cli/target/x86_64-unknown-linux-musl/release/wctl
           retention-days: 30
