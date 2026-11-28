@@ -1698,6 +1698,9 @@ fn bash_completion_offers_what_each_position_accepts() {
     // --no-animation may come before the window.
     let offered = bash_completions(&["wctl", "minimize", "--no-animation", ""]);
     assert!(offered.iter().any(|word| word == "focused"), "{offered:?}");
+    // A flag already given is not offered again.
+    assert_eq!(bash_completions(&["wctl", "info", "111", ""]), ["--json"]);
+    assert!(bash_completions(&["wctl", "info", "111", "--json", ""]).is_empty());
 
     // The value of an option is the user's own word: nothing is offered.
     for line in [

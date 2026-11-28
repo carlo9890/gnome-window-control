@@ -70,7 +70,7 @@ _wctl() {
         info)
             if [[ $pos -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "$(_wctl_window_words)" -- "$cur"))
-            elif [[ $pos -eq 3 ]]; then
+            elif [[ $pos -eq 3 && " ${words[*]} " != *" --json "* ]]; then
                 COMPREPLY=($(compgen -W "--json" -- "$cur"))
             fi
             ;;
