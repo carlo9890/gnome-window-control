@@ -58,19 +58,11 @@ echo "Waiting for nested session to start..."
 for i in {1..30}; do
     sleep 0.5
     
-    # Look for the Wayland display in output (gnome-shell prints "Running on wayland display 'wayland-X'")
-    WAYLAND_DISP=$(grep -oP "wayland display '\K[^']+" "$OUTPUT_FILE" 2>/dev/null || true)
-    # Look for X display (gnome-shell prints "Running on X display ':X'")
-    X_DISP=$(grep -oP "X display '\K[^']+" "$OUTPUT_FILE" 2>/dev/null || true)
-    
-    # If we haven't found them yet, try alternative patterns
-    if [ -z "$WAYLAND_DISP" ]; then
-        WAYLAND_DISP=$(grep -oP "WAYLAND_DISPLAY=\K\S+" "$OUTPUT_FILE" 2>/dev/null || true)
-    fi
-    if [ -z "$X_DISP" ]; then
-        X_DISP=$(grep -oP "(?<![A-Z_])DISPLAY=\K\S+" "$OUTPUT_FILE" 2>/dev/null || true)
-    fi
-    
+    # mutter's own lines (45-49). It logs the X11 one first, so the X11
+    # display is known by the time the loop stops on the Wayland one.
+    WAYLAND_DISP=$(grep -oP "Using Wayland display name '\K[^']+" "$OUTPUT_FILE" 2>/dev/null || true)
+    X_DISP=$(grep -oP "Using public X11 display \K[^,]+" "$OUTPUT_FILE" 2>/dev/null || true)
+
     # Check if gnome-shell died
     if ! kill -0 $RUNNER_PID 2>/dev/null; then
         echo "ERROR: Nested GNOME Shell failed to start"
