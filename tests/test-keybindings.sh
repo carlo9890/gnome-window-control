@@ -103,11 +103,18 @@ assert_tiled left "KP_Left on a maximized window"
 
 echo ""
 echo "--- A fullscreen window is left alone ---"
+# Maximized first: mutter keeps a fullscreen window fullscreen and its frame
+# as it is whatever a press asks for, so a press that got through shows only
+# in the unmaximize it starts with.
+"$WCTL" maximize "$TEST_WINDOW_ID" >/dev/null
+wait_for_change
 "$WCTL" fullscreen "$TEST_WINDOW_ID" >/dev/null
 wait_for_change
 press KP_Home
 assert_equals "$(get_window_field .is_fullscreen)" "true" "still fullscreen after the press"
+assert_equals "$(get_window_field .is_maximized)" "true" "still maximized under the fullscreen after the press"
 "$WCTL" unfullscreen "$TEST_WINDOW_ID" >/dev/null
 wait_for_change
+assert_equals "$(get_window_field .is_maximized)" "true" "maximized again after unfullscreen"
 
 summary

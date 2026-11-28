@@ -1509,6 +1509,80 @@ export class PopupSeparatorMenuItem {}
         windows.length = 0;
     }
 
+    // -- A fullscreen window gets no frame request -------------------------------
+    //
+    // Mutter drops a frame request on a fullscreen window. So the geometry
+    // methods raise Refused, a shortcut does nothing, and a rule skips its
+    // geometry, at the head start too, but still does its other steps.
+
+    {
+        windows.length = 0;
+        const placer = new WindowPlacer();
+        const rules = new WindowRules(placer);
+        rules.enable();
+        await sleep(300);
+        rules._compile([{ label: 'rules.json', text: '[{"match":{"class":"full"},"workspace":0,"tile":"left"}]' }]);
+        const service = startService(placer);
+        service.applyRules = (win, isUnshown) => rules.applyRules(win, isUnshown);
+        service.whenRulesLoaded = callback => rules.whenLoaded(callback);
+        const keybindings = new WindowKeybindings(placer, () => service.applyRulesToAll());
+        const win = createWindow({ id: 110, wmClass: 'full' });
+        win.map();
+        await sleep(100);
+        win.moves.length = 0;
+        win.workspaceMoves = undefined;
+        service.Fullscreen(110);
+
+        const calls = [['Move', [110, 5, 5]], ['Resize', [110, 300, 200]], ['MoveResize', [110, 5, 5, 300, 200]]]
+            .map(([method, args]) => {
+                const call = invocation();
+                service[`${method}Async`](args, call);
+                return call;
+            });
+        check('Move, Resize and MoveResize raise Refused on a fullscreen window',
+            calls.every(call => call.reply?.error === 'org.gnome.Shell.Extensions.WindowControl.Refused' &&
+                call.reply.message.includes('fullscreen')) && win.moves.length === 0,
+            `${calls.map(showReply).join(' ')} moves ${JSON.stringify(win.moves)}`);
+
+        win.moves.length = 0;
+        keybindings._tile('tile-left', win, 'left');
+        keybindings._cycleWide(win);
+        check('a shortcut leaves a fullscreen window alone', win.moves.length === 0 && !placer.awaitsAnswer(win),
+            JSON.stringify(win.moves));
+
+        win.moves.length = 0;
+        const applied = invocation();
+        service.ApplyRulesAsync([110], applied);
+        await sleep(100);
+        check('ApplyRules skips the geometry of a fullscreen window and still does its other steps',
+            showReply(applied) === '{"value":[1]}' && win.moves.length === 0 &&
+            JSON.stringify(win.workspaceMoves) === '[0]',
+            `${showReply(applied)} moves ${JSON.stringify(win.moves)} workspace moves ${JSON.stringify(win.workspaceMoves)}`);
+
+        const early = createWindow({ id: 111, wmClass: 'full' });
+        early.make_fullscreen();
+        const config = {
+            get_is_initial: () => true,
+            set_position(x, y) { this.position = [x, y]; },
+            set_size(width, height) { this.size = [width, height]; },
+        };
+        rules._preplace(early, config);
+        check('a window fullscreen before its first frame gets no head start',
+            config.position === undefined && config.size === undefined,
+            `position ${JSON.stringify(config.position)}, size ${JSON.stringify(config.size)}`);
+
+        service.Unfullscreen(110);
+        win.moves.length = 0;
+        keybindings._tile('tile-left', win, 'left');
+        check('a shortcut tiles the window again once it leaves fullscreen',
+            JSON.stringify(win.moves) === '[[0,0,480,1080]]', JSON.stringify(win.moves));
+
+        service.unexport();
+        rules.disable();
+        placer.destroy();
+        windows.length = 0;
+    }
+
     // -- WindowKeybindings: a shortcut that cannot be registered ---------------
     //
     // All or none: the shortcuts registered before it are removed again.
