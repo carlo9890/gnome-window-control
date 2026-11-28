@@ -86,8 +86,8 @@ second rule then applies on a smaller monitor:
 - The monitor is the `monitor` of the rule, or else the monitor the window
   opens on.
 - The logical width is the width after scaling: a 3840 px monitor at 200% is
-  1920 wide. `wctl monitors` shows the logical width with GNOME 50 or with
-  fractional scaling on, and the physical width otherwise.
+  1920 wide. `wctl monitors` shows the logical width with GNOME 50 or later,
+  or with fractional scaling on, and the physical width otherwise.
 - When the rule's `monitor` does not exist, a rule with `min_width` does not
   match, and the next rule can.
 
