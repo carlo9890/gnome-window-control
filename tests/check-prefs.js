@@ -117,6 +117,17 @@ GLib.log_set_writer_func((level, fields) => {
     check('no rules.json reads as null', readText(file) === null);
     GLib.file_set_contents(file.get_path(), '[]');
     check('a rules.json reads as its text', readText(file) === '[]');
+
+    // A lenient decoder reads U+FFFD in place of the Latin-1 é, and a save
+    // writes that back.
+    GLib.file_set_contents(file.get_path(), new Uint8Array([0x5b, 0x22, 0x43, 0x61, 0x66, 0xe9, 0x22, 0x5d]));
+    let undecodable = null;
+    try {
+        readText(file);
+    } catch (e) {
+        undecodable = e;
+    }
+    check('a rules.json that is not UTF-8 is an error, not text', undecodable !== null, `${undecodable}`);
     GLib.unlink(file.get_path());
 
     // Without the type check this read never returns: nothing writes to the FIFO.

@@ -21,17 +21,24 @@ function refuseNonRegular(file) {
     refuseUnlessRegular(type);
 }
 
+// Throws for bytes that are not UTF-8: a lenient decoder puts U+FFFD in their
+// place, and the next save would write that over the file.
+function decode(bytes) {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+
 // The text of `file`, or null when there is none.
 export function readText(file) {
     refuseNonRegular(file);
+    let bytes;
     try {
-        const [, bytes] = file.load_contents(null);
-        return new TextDecoder().decode(bytes);
+        [, bytes] = file.load_contents(null);
     } catch (e) {
         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
             return null;
         throw e;
     }
+    return decode(bytes);
 }
 
 // A string, because a uint64 inode can lose precision as a JS number.
