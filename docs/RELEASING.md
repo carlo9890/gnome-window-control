@@ -28,8 +28,8 @@ the checks it makes.
 ## Cut a release
 
 1. On a branch, set the [version](#version-format) in `metadata.json` and
-   `cli/Cargo.toml`, then refresh the lock, or the release build dirties the
-   tree: `(cd cli && cargo update -p wctl)`.
+   `cli/Cargo.toml`, then refresh the lock, or CI and the release build refuse
+   it: `(cd cli && cargo update -p wctl)`.
 2. Commit `chore: bump version to vN`, open the PR
    ([CHANGE-WORKFLOW.md](CHANGE-WORKFLOW.md)), and wait for the merge.
 3. On the merged `main` commit, run the

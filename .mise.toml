@@ -26,23 +26,28 @@ depends = ["components"]
 dir = "{{config_root}}/cli"
 run = "cargo fmt --check"
 
+# --locked on every task that resolves dependencies: a Cargo.lock that
+# disagrees with Cargo.toml, as after a version bump without
+# `cargo update -p wctl`, fails the task. Without it cargo rewrites the lock in
+# place, which CI never sees and which happens after release.sh has checked
+# for a clean tree, so the tag ships the stale lock.
 [tasks.lint]
 description = "Clippy with warnings as errors"
 depends = ["components"]
 dir = "{{config_root}}/cli"
-run = "cargo clippy --all-targets -- -D warnings"
+run = "cargo clippy --locked --all-targets -- -D warnings"
 
 [tasks.test]
 description = "Unit and argument-guard tests (no extension needed)"
 depends = ["components"]
 dir = "{{config_root}}/cli"
-run = "cargo test"
+run = "cargo test --locked"
 
 [tasks.build]
 description = "Build the release binary"
 depends = ["components"]
 dir = "{{config_root}}/cli"
-run = "cargo build --release"
+run = "cargo build --release --locked"
 
 [tasks.ci]
 description = "Everything CI gates on"
@@ -60,6 +65,6 @@ depends = ["components"]
 dir = "{{config_root}}/cli"
 run = [
   "rustup target add x86_64-unknown-linux-musl",
-  "cargo build --release --target x86_64-unknown-linux-musl --target-dir target",
+  "cargo build --release --locked --target x86_64-unknown-linux-musl --target-dir target",
   "../scripts/check-static.sh target/x86_64-unknown-linux-musl/release/wctl",
 ]
