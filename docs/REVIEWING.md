@@ -112,4 +112,7 @@ with the correct form.
   argument, sits behind the feature test in `window-helpers.js` and does not run
   on GNOME 49; the `Meta.MaximizeFlags` enum still exists on 49 and later as the
   type `get_maximize_flags()` returns
-  ([0006](decisions/0006-one-extension-serves-gnome-shell-45-to-51.md)).
+  ([0006](decisions/0006-one-extension-serves-every-gnome-shell-version-from-45.md)).
+- shexli `EGO-M-004` on a `shell-version` entry above 50 is no defect when that
+  GNOME version is released: shexli 0.2.1 takes every major above 50 as a
+  future release. An entry for a version not yet released still blocks.

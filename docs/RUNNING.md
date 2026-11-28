@@ -53,8 +53,8 @@ gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
 
 - Enable over D-Bus. `gnome-extensions enable` writes the real dconf, the real
   shell reacts, and it has left the real session's extension INACTIVE.
-- A shell without `--nested` (GNOME 50) makes `start-nested.sh` refuse: use the
-  [headless session](#headless-session-no-window-on-the-real-screen).
+- A shell without `--nested` (GNOME 50 and later) makes `start-nested.sh`
+  refuse: use the [headless session](#headless-session-no-window-on-the-real-screen).
 - To get the nested bus address again, read it from the process:
   `tr '\0' '\n' < /proc/$(pgrep -f '^gnome-shell --nested')/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p'`.
 
