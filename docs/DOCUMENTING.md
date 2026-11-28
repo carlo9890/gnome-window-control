@@ -34,10 +34,9 @@ each step and restates none.
 
 ## Docs with no route
 
-`AGENTS.md` routes a doc only where a skipped read can cause damage.
-`docs/MONITORING.md` and `docs/specs/RULES-JSON.md` have no route on purpose:
-a skipped read costs time. `docs/RUNNING.md` and `docs/CODING.md` link them.
-Keep those links.
+- Give a doc an `AGENTS.md` route only where a skipped read can cause damage.
+- `docs/MONITORING.md` and `docs/specs/RULES-JSON.md` have no route: keep the
+  links to them from `docs/RUNNING.md` and `docs/CODING.md`.
 
 ## `docs/decisions/`
 
