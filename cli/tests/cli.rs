@@ -1845,6 +1845,7 @@ fn wctl_config(config: &Path, args: &[&str]) -> (String, String, i32) {
     let output = Command::new(cargo_bin("wctl"))
         .args(args)
         .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .env("HOME", config)
         .env("XDG_CONFIG_HOME", config)
         .env_remove("WCTL_TIMEOUT")
         .output()
