@@ -1032,12 +1032,20 @@ fn shadows(earlier: &rules::Rule, later: &rules::Rule) -> bool {
 }
 
 /// The rules after `position` that the rule there shadows and that no other
-/// rule before them shadows: the ones a rule inserted there turns off.
-fn newly_shadowed(rules: &[rules::Rule], position: usize) -> Vec<usize> {
+/// rule before them shadows, in this file or in `earlier_files`: the ones a
+/// rule inserted there turns off.
+fn newly_shadowed(
+    earlier_files: &[&rules::Rule],
+    rules: &[rules::Rule],
+    position: usize,
+) -> Vec<usize> {
     let added = &rules[position];
     (position + 1..rules.len())
         .filter(|&later| {
             shadows(added, &rules[later])
+                && !earlier_files
+                    .iter()
+                    .any(|earlier| shadows(earlier, &rules[later]))
                 && !(0..later)
                     .any(|earlier| earlier != position && shadows(&rules[earlier], &rules[later]))
         })
@@ -1310,7 +1318,8 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
              and the first match wins, so the new rule will never fire."
         );
     }
-    for index in newly_shadowed(&recompiled, position) {
+    let earlier_file_rules: Vec<_> = before.iter().flat_map(|file| &file.compiled).collect();
+    for index in newly_shadowed(&earlier_file_rules, &recompiled, position) {
         eprintln!(
             "Warning: this rule matches every window rule {index} would, \
              and the first match wins, so rule {index} will never fire."
@@ -2282,7 +2291,7 @@ mod tests {
             {"match": {"class": "foot"}, "tile": "right"},
             {"match": {"class": "kitty", "title": "vim"}, "center": "both"},
         ]));
-        assert_eq!(newly_shadowed(&general_first, 0), vec![1, 3]);
+        assert_eq!(newly_shadowed(&[], &general_first, 0), vec![1, 3]);
 
         // Rule 1 shadows rule 2 already, and rule 0 is narrower than rule 1.
         let already_off = compiled(json!([
@@ -2290,13 +2299,24 @@ mod tests {
             {"match": {"class": "kitty"}, "tile": "left"},
             {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
         ]));
-        assert_eq!(newly_shadowed(&already_off, 0), Vec::<usize>::new());
+        assert_eq!(newly_shadowed(&[], &already_off, 0), Vec::<usize>::new());
 
         let appended = compiled(json!([
             {"match": {"class": "kitty", "min_width": 3000}, "tile": "right"},
             {"match": {"class": "kitty"}, "tile": "left"},
         ]));
-        assert_eq!(newly_shadowed(&appended, 1), Vec::<usize>::new());
+        assert_eq!(newly_shadowed(&[], &appended, 1), Vec::<usize>::new());
+
+        // A rule of an earlier file shadows rule 1 already.
+        let earlier_file = compiled(json!([{"match": {"class": "kitty"}, "tile": "left"}]));
+        let drop_in = compiled(json!([
+            {"match": {"class": "kitty"}, "tile": "right"},
+            {"match": {"class": "kitty", "title": "vim"}, "center": "both"},
+        ]));
+        assert_eq!(
+            newly_shadowed(&[&earlier_file[0]], &drop_in, 0),
+            Vec::<usize>::new()
+        );
     }
 
     /// `rules test` names no rectangle where rules.js changes the frame

@@ -2571,6 +2571,46 @@ fn rules_add_at_warns_about_the_later_rule_it_shadows() {
     std::fs::remove_dir_all(&config).ok();
 }
 
+/// A later rule that a rule of an earlier file turns off already is not one
+/// the new rule turns off.
+#[test]
+fn rules_add_at_names_no_later_rule_an_earlier_file_shadows() {
+    let config = rules_config(
+        "rules-add-at-earlier-file",
+        r#"[{"match":{"class":"kitty"},"tile":"left"}]"#,
+        &[(
+            "50-x.json",
+            r#"[{"match":{"class":"kitty","title":"vim"},"center":"both"}]"#,
+        )],
+    );
+    let drop_in = config.join("gnome-window-control/rules.d/50-x.json");
+    let drop_in_arg = drop_in.display().to_string();
+
+    let (stdout, stderr, code) = wctl_config(
+        &config,
+        &[
+            "rules",
+            "add",
+            "--file",
+            &drop_in_arg,
+            "--at",
+            "0",
+            "-c",
+            "kitty",
+            "tile",
+            "right",
+        ],
+    );
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(stdout, format!("Added rule 0 to {}\n", drop_in.display()));
+    assert_eq!(
+        stderr,
+        "Warning: rule 0 of rules.json already matches every window this rule would, \
+         and the first match wins, so the new rule will never fire.\n"
+    );
+    std::fs::remove_dir_all(&config).ok();
+}
+
 /// A rewrite would put U+FFFD over a byte that is not UTF-8, so `rules add`
 /// and `rules remove` refuse the file and leave it as it is.
 #[test]
