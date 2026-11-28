@@ -281,8 +281,9 @@ export class PopupSeparatorMenuItem {}
             super();
             Object.assign(this, {
                 id, wmClass, type, maximizeFlags, hidden: true, minimized: false, moves: [],
-                above: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
+                above: false, fullscreen: false, transientFor: null, minimizable: true, onActiveWorkspace: true,
                 monitor: 0, frame: { x: 10, y: 10, width: 400, height: 300 }, answersLate: false, constrain: null,
+                clientType: Meta.WindowClientType.WAYLAND, actor: this,
             });
         }
 
@@ -305,7 +306,17 @@ export class PopupSeparatorMenuItem {}
             this.emit('notify::above');
         }
 
-        get_compositor_private() { return this; }
+        make_fullscreen() {
+            this.fullscreen = true;
+            this.emit('notify::fullscreen');
+        }
+
+        unmake_fullscreen() {
+            this.fullscreen = false;
+            this.emit('notify::fullscreen');
+        }
+
+        get_compositor_private() { return this.actor; }
         is_on_all_workspaces() { return false; }
         is_skip_taskbar() { return false; }
         get_title() { return this.title ?? ''; }
@@ -313,8 +324,9 @@ export class PopupSeparatorMenuItem {}
         get_window_type() { return this.type; }
         is_hidden() { return this.hidden; }
         located_on_workspace() { return this.onActiveWorkspace; }
-        get_client_type() { return Meta.WindowClientType.WAYLAND; }
-        is_fullscreen() { return false; }
+        get_client_type() { return this.clientType; }
+        is_fullscreen() { return this.fullscreen; }
+        maximize() { this.maximizeFlags = Meta.MaximizeFlags.BOTH; }
         unmaximize() { this.maximizeFlags = 0; }
         get_monitor() { return this.monitor; }
         get_workspace() { return workspace; }
