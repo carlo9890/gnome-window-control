@@ -1,6 +1,9 @@
 #compdef wctl
 # Zsh completion for wctl
-# Install: wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
+# Install: mkdir -p ~/.local/share/zsh/site-functions
+#          wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
+#          and add to ~/.zshrc, before compinit:
+#          fpath=(~/.local/share/zsh/site-functions $fpath)
 
 # Window ids with their titles as descriptions, read from the compact JSON list.
 # No jq: wctl has no runtime dependencies and its completion must not add one.
@@ -270,4 +273,11 @@ _wctl() {
     esac
 }
 
-_wctl "$@"
+# Autoloaded from fpath, this file is the body of _wctl, and the first call
+# must complete. Sourced after compinit, as `source <(wctl completion zsh)`,
+# it is outside any completion and must only register _wctl.
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    _wctl "$@"
+else
+    compdef _wctl wctl
+fi

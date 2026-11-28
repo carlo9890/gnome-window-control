@@ -1,5 +1,6 @@
 # Bash completion for wctl
-# Install: wctl completion bash > ~/.local/share/bash-completion/completions/wctl
+# Install: mkdir -p ~/.local/share/bash-completion/completions
+#          wctl completion bash > ~/.local/share/bash-completion/completions/wctl
 
 # Window IDs come straight out of the compact JSON list. No jq: wctl has no
 # runtime dependencies and its completion must not add one.

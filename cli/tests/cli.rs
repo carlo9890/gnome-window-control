@@ -1738,6 +1738,107 @@ fn bash_completion_offers_what_each_position_accepts() {
     );
 }
 
+/// `script` run by `shell` with `flags`, in a new, empty home folder, with
+/// this wctl first on PATH: stdout and stderr, or None when the shell is not
+/// installed.
+fn run_in_new_home(
+    tag: &str,
+    shell: &str,
+    flags: &[&str],
+    script: &str,
+) -> Option<(String, String)> {
+    let home = std::env::temp_dir().join(format!("wctl-home-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).expect("home folder");
+    let binary = cargo_bin("wctl");
+    let path = format!(
+        "{}:{}",
+        binary.parent().expect("binary directory").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new(shell)
+        .args(flags)
+        .args(["-c", script])
+        .env("HOME", &home)
+        .env("PATH", path)
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .output();
+    std::fs::remove_dir_all(&home).ok();
+    let Ok(output) = output else {
+        eprintln!("skipping: {shell} is not installed");
+        return None;
+    };
+    Some((
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    ))
+}
+
+/// The bash lines of `wctl help` work as written on an account that has no
+/// completions folder yet.
+#[test]
+fn bash_completion_installs_as_the_help_says() {
+    let install = [
+        "mkdir -p ~/.local/share/bash-completion/completions",
+        "wctl completion bash > ~/.local/share/bash-completion/completions/wctl",
+    ];
+    let (help, _) = wctl(&["help"]);
+    for line in install {
+        assert!(help.contains(line), "help has no {line:?}");
+    }
+    let (script, _) = wctl(&["completion", "bash"]);
+    let check = format!(
+        "{}\ncat ~/.local/share/bash-completion/completions/wctl",
+        install.join("\n")
+    );
+    if let Some((stdout, stderr)) =
+        run_in_new_home("bash-install", "bash", &["--norc", "--noprofile"], &check)
+    {
+        assert_eq!(stderr, "");
+        assert_eq!(stdout, script);
+    }
+}
+
+/// The zsh lines of `wctl help` work as written on an account that has no
+/// site-functions folder yet: compinit finds `_wctl` and registers it for
+/// wctl, and the first call of the autoloaded function completes. Sourced
+/// after compinit, the script registers itself and completes nothing.
+#[test]
+fn zsh_completion_installs_as_the_help_says() {
+    let install = [
+        "mkdir -p ~/.local/share/zsh/site-functions",
+        "wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl",
+    ];
+    let before_compinit = "fpath=(~/.local/share/zsh/site-functions $fpath)";
+    let (help, _) = wctl(&["help"]);
+    for line in install.iter().chain([&before_compinit]) {
+        assert!(help.contains(line), "help has no {line:?}");
+    }
+    // A stand-in _arguments shows that the autoloaded body called the
+    // completion rather than compdef: the real one needs a completion widget.
+    let autoloaded = format!(
+        "{}\n{before_compinit}\nautoload -Uz compinit\ncompinit -D -u\n\
+         print -r -- \"registered: ${{_comps[wctl]-}}\"\n\
+         _arguments() {{ print -r -- completes }}\n_wctl",
+        install.join("\n")
+    );
+    let sourced = "autoload -Uz compinit\ncompinit -D -u\nsource <(wctl completion zsh)\n\
+         print -r -- \"registered: ${_comps[wctl]-}\"";
+    for (tag, script, expected) in [
+        (
+            "zsh-fpath",
+            autoloaded.as_str(),
+            "registered: _wctl\ncompletes\n",
+        ),
+        ("zsh-source", sourced, "registered: _wctl\n"),
+    ] {
+        if let Some((stdout, stderr)) = run_in_new_home(tag, "zsh", &["-f"], script) {
+            assert_eq!(stderr, "", "{tag}");
+            assert_eq!(stdout, expected, "{tag}");
+        }
+    }
+}
+
 /// `wctl` with XDG_CONFIG_HOME at `config`, so the default rules file and
 /// rules.d are the test's own: stdout, stderr, exit code.
 fn wctl_config(config: &Path, args: &[&str]) -> (String, String, i32) {

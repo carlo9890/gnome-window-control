@@ -221,8 +221,12 @@ EXAMPLES:
     wctl close 12345                  # Close window
 
 SHELL COMPLETION:
-    Bash: wctl completion bash > ~/.local/share/bash-completion/completions/wctl
-    Zsh:  wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
+    Bash: mkdir -p ~/.local/share/bash-completion/completions
+          wctl completion bash > ~/.local/share/bash-completion/completions/wctl
+    Zsh:  mkdir -p ~/.local/share/zsh/site-functions
+          wctl completion zsh > ~/.local/share/zsh/site-functions/_wctl
+          and add to ~/.zshrc, before compinit:
+          fpath=(~/.local/share/zsh/site-functions $fpath)
 
 EXIT CODES:
     0   Success
