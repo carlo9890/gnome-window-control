@@ -174,6 +174,17 @@ fn map_err(err: zbus::Error, serves_object: impl FnOnce() -> bool) -> Fail {
     Fail::error(format!("D-Bus call failed: {err}"))
 }
 
+/// Map a failed GetCurrentState. Mutter answers it from the GNOME Shell
+/// process, so a reply that never came and a shell gone from the bus are the
+/// failures of any call to the extension, with their exit codes. Any other
+/// error is mutter's own and says nothing about the extension.
+fn map_layout_mode_err(err: zbus::Error) -> Fail {
+    if is_timeout(&err) || is_extension_not_running(&err) {
+        return map_err(err, || false);
+    }
+    Fail::error(format!("Cannot read mutter's layout mode: {err}"))
+}
+
 /// Classify a failure to open the session connection.
 ///
 /// No bus at the address, a malformed `DBUS_SESSION_BUS_ADDRESS` and a refused
@@ -402,7 +413,7 @@ impl Bus {
                 "GetCurrentState",
                 &(),
             )
-            .map_err(|err| Fail::error(format!("Cannot read mutter's layout mode: {err}")))?;
+            .map_err(map_layout_mode_err)?;
         let (_, _, _, properties): (u32, Vec<Monitor>, Vec<Logical>, Properties) = reply
             .body()
             .deserialize()
@@ -593,6 +604,43 @@ mod tests {
             message.starts_with("D-Bus call failed: "),
             "printed: {message}"
         );
+    }
+
+    #[test]
+    fn a_failed_layout_mode_call_keeps_the_timeout_and_not_running_codes() {
+        for err in [
+            timed_out(),
+            method_error(
+                "org.freedesktop.DBus.Error.NoReply",
+                "Message recipient disconnected from message bus without replying",
+            ),
+        ] {
+            let (code, plain, _) = mapped(map_layout_mode_err(err));
+            assert_eq!((code, plain), (4, false));
+        }
+        assert_eq!(
+            mapped(map_layout_mode_err(method_error(
+                ERROR_SERVICE_UNKNOWN,
+                "The name org.gnome.Mutter.DisplayConfig was not provided by any .service files",
+            ))),
+            (5, false, NOT_RUNNING.to_string())
+        );
+        // Mutter's own errors: an UnknownMethod here is not an outdated
+        // extension.
+        for err in [
+            method_error(
+                ERROR_UNKNOWN_METHOD,
+                "No such method \u{201c}GetCurrentState\u{201d}",
+            ),
+            method_error("org.freedesktop.DBus.Error.AccessDenied", "Rejected"),
+        ] {
+            let (code, plain, message) = mapped(map_layout_mode_err(err));
+            assert_eq!((code, plain), (EXIT_ERROR, false));
+            assert!(
+                message.starts_with("Cannot read mutter's layout mode: "),
+                "printed: {message}"
+            );
+        }
     }
 
     #[test]
