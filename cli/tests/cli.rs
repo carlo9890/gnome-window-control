@@ -2384,3 +2384,32 @@ fn rules_add_into_rules_d_prints_no_refused_key_text() {
 
     std::fs::remove_dir_all(&config).ok();
 }
+
+/// A rewrite would put U+FFFD over a byte that is not UTF-8, so `rules add`
+/// and `rules remove` refuse the file and leave it as it is.
+#[test]
+fn rules_add_and_remove_refuse_a_file_that_is_not_utf8() {
+    let config = rules_config("rules-not-utf8", "", &[]);
+    let user = config.join("gnome-window-control/rules.json");
+    // "Café" in Latin-1: e9 alone is no UTF-8 sequence.
+    let latin1 = b"[{\"match\":{\"title\":\"Caf\xe9\"},\"tile\":\"left\"}]\n";
+    std::fs::write(&user, latin1).expect("write rules.json");
+    let refusal = format!(
+        "Error: Cannot rewrite {}: it has bytes that are not UTF-8, and they would be lost. \
+         Save the file as UTF-8 first.\n",
+        user.display()
+    );
+
+    for args in [
+        &["rules", "add", "-c", "kitty", "tile", "right"][..],
+        &["rules", "remove", "0"],
+    ] {
+        assert_eq!(
+            wctl_config(&config, args),
+            (String::new(), refusal.clone(), 1),
+            "{args:?}"
+        );
+        assert_eq!(std::fs::read(&user).expect("read rules.json"), latin1);
+    }
+    std::fs::remove_dir_all(&config).ok();
+}

@@ -381,7 +381,7 @@ enum Loaded {
     /// The file does not exist. Not an error: an absent file means no rules.
     Absent,
     Present {
-        text: String,
+        bytes: Vec<u8>,
     },
 }
 
@@ -402,8 +402,8 @@ fn read_file(path: &Path) -> Result<Loaded> {
         }
         _ => {}
     }
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(Loaded::Present { text }),
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Loaded::Present { bytes }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Loaded::Absent),
         Err(e) => Err(Fail::error(format!("Cannot read {}: {e}", path.display()))),
     }
@@ -415,9 +415,7 @@ fn read_file(path: &Path) -> Result<Loaded> {
 /// serde_json refuses some text the extension's `JSON.parse` loads: a number
 /// too large for a double such as `1e400` (the extension then gives the key's
 /// own message), a lone surrogate escape, and arrays nested past the recursion
-/// limit. A byte sequence that is not UTF-8 already fails `read_to_string` in
-/// `read_file`; the extension loads it with U+FFFD. `wctl rules add` never
-/// writes any of these.
+/// limit. `wctl rules add` never writes any of these.
 fn parse(text: &str, path: &Path) -> Result<Value> {
     serde_json::from_str(text)
         .map_err(|e| Fail::error(format!("{}: not valid JSON: {e}", path.display())))
@@ -614,21 +612,45 @@ fn cross_file_shadows(files: &[RuleFile]) -> Vec<(&str, usize, &str, usize)> {
 /// themselves rather than a verdict.
 ///
 /// An absent file is `(Vec::new(), Vec::new())`, not an error. A file that does
-/// not parse or does not validate IS an error: `add` and `remove` rewrite the
-/// whole document, so acting on a file we could not read correctly would
-/// discard whatever the user actually wrote.
+/// not parse or does not validate IS an error.
 fn load(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
     Ok(read_rules(path, false)?.unwrap_or_default())
+}
+
+/// `load` for `add` and `remove`, which rewrite the whole document: acting on
+/// a file we could not read correctly would discard whatever the user
+/// actually wrote. So a file that is not UTF-8 is refused here, though the
+/// extension loads it: the rewrite would put U+FFFD over those bytes.
+fn load_to_rewrite(path: &Path) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
+    let Loaded::Present { bytes } = read_file(path)? else {
+        return Ok(Default::default());
+    };
+    let text = String::from_utf8(bytes).map_err(|_| {
+        Fail::error(format!(
+            "Cannot rewrite {}: it has bytes that are not UTF-8, and they would be lost. \
+             Save the file as UTF-8 first.",
+            path.display()
+        ))
+    })?;
+    compile_text(&text, path, false)
 }
 
 /// The rules of the file, or None when it does not exist. `name_the_file`
 /// puts the path before a validation message, which names no file of its own;
 /// a read or parse failure names it already.
 fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Vec<rules::Rule>)>> {
-    let Loaded::Present { text } = read_file(path)? else {
+    let Loaded::Present { bytes } = read_file(path)? else {
         return Ok(None);
     };
-    let document = parse(&text, path)?;
+    compile_text(&rules::decode(&bytes), path, name_the_file).map(Some)
+}
+
+fn compile_text(
+    text: &str,
+    path: &Path,
+    name_the_file: bool,
+) -> Result<(Vec<Value>, Vec<rules::Rule>)> {
+    let document = parse(text, path)?;
     let compiled = rules::compile_rules(&document).map_err(|message| {
         if name_the_file {
             Fail::error(format!("{}: {message}", path.display()))
@@ -640,7 +662,7 @@ fn read_rules(path: &Path, name_the_file: bool) -> Result<Option<(Vec<Value>, Ve
         .as_array()
         .expect("compile_rules refuses a non-array")
         .clone();
-    Ok(Some((raw, compiled)))
+    Ok((raw, compiled))
 }
 
 /// Write the document, atomically.
@@ -1189,7 +1211,7 @@ fn add(ctx: &mut Ctx, args: &[String]) -> Result<()> {
     // `--file` earns neither them nor the bus call they cost.
     let target = Target::of(file.as_deref());
     let path = rules_path(file)?;
-    let (mut raw, compiled) = load(&path)?;
+    let (mut raw, compiled) = load_to_rewrite(&path)?;
 
     let position = match at {
         None => raw.len(),
@@ -1274,7 +1296,7 @@ fn remove(ctx: &mut Ctx, args: &[String]) -> Result<()> {
 
     let target = Target::of(file.as_deref());
     let path = rules_path(file)?;
-    let (mut raw, _) = load(&path)?;
+    let (mut raw, _) = load_to_rewrite(&path)?;
     // A number too large for usize is past the end like any other.
     let Some(index) = index.parse().ok().filter(|index| *index < raw.len()) else {
         return Err(Fail::error(format!(
@@ -2122,6 +2144,47 @@ mod tests {
              and its own rule is still on the way"
         );
         assert_eq!(applied_line(7, 1), "Applied a rule to window 7");
+    }
+
+    fn scratch_folder(name: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("wctl-{name}-{}", std::process::id()));
+        std::fs::remove_dir_all(&folder).ok();
+        std::fs::create_dir_all(&folder).expect("a scratch folder");
+        folder
+    }
+
+    /// The extension loads a file that is not UTF-8, so `check`, `list` and
+    /// `test` read it as the extension does; `add` and `remove` would write
+    /// U+FFFD over the bytes, and refuse it.
+    #[test]
+    fn a_file_that_is_not_utf8_loads_and_is_not_rewritten() {
+        let folder = scratch_folder("latin-1");
+        let file = folder.join("rules.json");
+        std::fs::write(
+            &file,
+            b"[{\"match\":{\"title\":\"Caf\xe9\"},\"tile\":\"left\"}]",
+        )
+        .unwrap();
+
+        let (raw, compiled) = load(&file).expect("the extension loads it");
+        assert_eq!(
+            raw,
+            vec![json!({"match": {"title": "Caf\u{fffd}"}, "tile": "left"})]
+        );
+        assert_eq!(compiled.len(), 1);
+
+        let Err(refusal) = load_to_rewrite(&file) else {
+            panic!("a rewrite would lose the bytes");
+        };
+        assert_eq!(
+            refusal.to_string(),
+            format!(
+                "Cannot rewrite {}: it has bytes that are not UTF-8, and they would be lost. \
+                 Save the file as UTF-8 first.",
+                file.display()
+            )
+        );
+        std::fs::remove_dir_all(&folder).ok();
     }
 
     #[test]

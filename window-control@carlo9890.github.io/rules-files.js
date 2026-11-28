@@ -66,6 +66,13 @@ export function refuseUnlessRegular(type) {
         throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_REGULAR_FILE, 'not a regular file');
 }
 
+// The text of a rules file's bytes. A file that is not UTF-8 still loads, with
+// U+FFFD for each invalid sequence; wctl reads the same bytes the same way
+// (tests/vectors/rules-spec.json "decoding").
+export function decode(bytes) {
+    return new TextDecoder().decode(bytes);
+}
+
 // The text of a file under CONFIG_DIR, or null when there is none to read.
 // Only a regular file is opened: the read of a FIFO never finishes, and the
 // load would wait for it.
@@ -76,7 +83,7 @@ async function readFile(label, cancellable) {
             GLib.PRIORITY_DEFAULT, cancellable);
         refuseUnlessRegular(info.get_file_type());
         const [bytes] = await file.load_contents_async(cancellable);
-        return new TextDecoder().decode(bytes);
+        return decode(bytes);
     } catch (e) {
         // A drop-in deleted since the listing is simply gone.
         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {

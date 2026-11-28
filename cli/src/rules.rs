@@ -8,9 +8,9 @@
 //! `wctl` cannot load GJS, and the whole point of `wctl rules check` is to give
 //! the same verdict without a running shell. The two are kept honest by
 //! `tests/vectors/rules-spec.json`, which both read: the `rules_spec_vectors`,
-//! `geometry_vectors`, `match_vectors` and `min_width_vectors` tests below
-//! assert its groups, and `tests/check-rules-format.js` asserts the same ones
-//! against the extension.
+//! `geometry_vectors`, `match_vectors`, `min_width_vectors`, `dropin_vectors`
+//! and `decoding_vectors` tests below assert its groups, and
+//! `tests/check-rules-format.js` asserts the same ones against the extension.
 //!
 //! So the error strings here are not this file's to choose. They are the
 //! extension's messages, reproduced exactly: `docs/specs/RULES-JSON.md` states
@@ -95,6 +95,13 @@ pub fn fits_monitor(min_width: Option<i64>, monitor_width: Option<i64>) -> bool 
         (Some(min_width), Some(width)) => width >= min_width,
         (Some(_), None) => false,
     }
+}
+
+/// The text of a rules file as the extension reads it. rules-files.js decodes
+/// with a non-fatal `TextDecoder`, so a file that is not UTF-8 still loads,
+/// with U+FFFD in place of each invalid sequence.
+pub fn decode(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 /// A name in rules.d that is loaded as a rules file. Mirrors isDropInName in
@@ -599,6 +606,27 @@ mod tests {
         let mut sorted = strings("input");
         sorted.sort();
         assert_eq!(sorted, strings("output"));
+    }
+
+    /// The bytes of a rules file and the text the extension reads from them,
+    /// against `decode`.
+    #[test]
+    fn decoding_vectors() {
+        let vectors = vectors();
+        for case in vectors["decoding"]["cases"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let bytes: Vec<u8> = case["bytes"]
+                .as_str()
+                .unwrap()
+                .split_whitespace()
+                .map(|byte| u8::from_str_radix(byte, 16).unwrap())
+                .collect();
+            assert_eq!(
+                decode(&bytes),
+                case["text"].as_str().unwrap(),
+                "decoding: {name}"
+            );
+        }
     }
 
     #[test]
